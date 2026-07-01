@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
 import { AsyncBoundary } from '../components/ui/States';
+import { safeHref } from '../lib/safeHref';
 import type { Proof } from '../types';
 
 export default function QuoteDetailPage() {
@@ -107,9 +108,13 @@ export default function QuoteDetailPage() {
                     <span>
                       v{p.version} — <span className={`badge badge--${p.state.toLowerCase()}`}>{p.state}</span>
                     </span>
-                    <a href={p.artwork_version_ref} target="_blank" rel="noreferrer">
-                      View artwork
-                    </a>
+                    {safeHref(p.artwork_version_ref) ? (
+                      <a href={safeHref(p.artwork_version_ref)} target="_blank" rel="noreferrer">
+                        View artwork
+                      </a>
+                    ) : (
+                      <span className="muted">{p.artwork_version_ref}</span>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\PriceEstimateController;
 use App\Http\Controllers\ProcurementController;
@@ -17,14 +18,26 @@ use Illuminate\Support\Facades\Route;
 | Public catalogue is account-free (spec 6.1). Everything past Request Quote
 | requires a Sanctum-authenticated session. Real-time updates are pushed over
 | Reverb channels (see routes/channels.php); clients never poll these routes.
+|
+| Rate limits (defence-in-depth, A04/A07): unauthenticated surfaces are
+| throttled tighter than authenticated ones; login is throttled hardest to
+| blunt credential stuffing.
 */
 
-// Public, no-account catalogue.
-Route::get('/catalogue', [CatalogueController::class, 'index']);
-Route::get('/catalogue/{product}', [CatalogueController::class, 'show']);
-Route::post('/price-estimate', PriceEstimateController::class);
+// Authentication (Sanctum stateful cookie).
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
 
-Route::middleware('auth:sanctum')->group(function (): void {
+// Public, no-account catalogue (browse + live estimate).
+Route::middleware('throttle:60,1')->group(function (): void {
+    Route::get('/catalogue', [CatalogueController::class, 'index']);
+    Route::get('/catalogue/{product}', [CatalogueController::class, 'show']);
+    Route::post('/price-estimate', PriceEstimateController::class);
+});
+
+Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user', [AuthController::class, 'user']);
+
     // Quotes
     Route::get('/quotes', [QuoteController::class, 'index']);
     Route::post('/quotes', [QuoteController::class, 'store']);
