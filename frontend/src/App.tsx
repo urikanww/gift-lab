@@ -13,6 +13,7 @@ import CatalogueAdminPage from './pages/CatalogueAdminPage';
 import LoginPage from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
 import { useQuoteStore } from './stores/quoteStore';
+import { ThemeProvider, ToastProvider } from './ui';
 
 export default function App() {
   const { user, status, fetchUser } = useAuthStore();
@@ -37,8 +38,10 @@ export default function App() {
   if (status === 'idle') return null;
 
   return (
-    <BrowserRouter>
-      <Routes>
+    <ThemeProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<CataloguePage />} />
           <Route path="catalogue/:id" element={<ProductDesignerPage />} />
@@ -84,9 +87,11 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
