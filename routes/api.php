@@ -10,6 +10,9 @@ use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
 use App\Http\Controllers\QuoteController;
+use App\Http\Controllers\PayNowController;
+use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\UploadController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,7 +36,12 @@ Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/catalogue', [CatalogueController::class, 'index']);
     Route::get('/catalogue/{product}', [CatalogueController::class, 'show']);
     Route::post('/price-estimate', PriceEstimateController::class);
+    // Designer artwork upload (account-free designer, spec 6.1).
+    Route::post('/uploads/artwork', [UploadController::class, 'artwork']);
 });
+
+// Stripe webhook — unauthenticated, verified by signature (see controller).
+Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');
 
 Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -48,6 +56,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
     Route::post('/quotes/{quote}/purchase-order', [QuoteController::class, 'issuePurchaseOrder']);
     Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure']);
+    Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);
 
     // Proofs
     Route::post('/quotes/{quote}/proofs', [ProofController::class, 'store']);

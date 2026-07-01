@@ -55,10 +55,24 @@ SECURITY.md     OWASP Top 10 audit + hardening
 
 ## Run it
 
-Deploying to production: follow [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — it
-assembles this source into a Laravel skeleton and stands up the LEMP + Reverb +
-Supervisor + Certbot stack on DigitalOcean Ubuntu.
+This repo is a **complete, runnable Laravel app** (not just source).
 
-API + realtime channel reference: [`docs/API.md`](docs/API.md).
+```bash
+composer install
+cp .env.example .env && php artisan key:generate
+touch database/database.sqlite && php artisan migrate --seed
+vendor/bin/pest                      # 68 passing
+php artisan serve                    # API at http://localhost:8000
 
-Frontend checks (standalone): `cd frontend && npm install && npm run typecheck && npm test`.
+cd frontend && npm install && npm run dev   # SPA at http://localhost:5173
+```
+
+- **Setup / provisioning** (S3, mail, Stripe, Reverb keys, domains): [`SETUP.md`](SETUP.md)
+- **Production deploy** (DigitalOcean LEMP + Reverb + Supervisor + Certbot): [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- **API + realtime reference**: [`docs/API.md`](docs/API.md)
+- **Security audit**: [`SECURITY.md`](SECURITY.md)
+
+Ships working with fixtures/stubs; provisioning a credential (Thingiverse,
+Stripe) auto-switches to the live integration with no code change. Live 3D pull,
+B2C Stripe pay-now, artwork upload, and CI (`.github/workflows/ci.yml`) are all
+built.

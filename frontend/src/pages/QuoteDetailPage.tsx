@@ -9,7 +9,7 @@ import type { Proof } from '../types';
 export default function QuoteDetailPage() {
   const { id } = useParams();
   const quoteId = Number(id);
-  const { current, loading, error, fetchQuote, send, accept, procure, issueProof, decideProof, issuePurchaseOrder } =
+  const { current, loading, error, fetchQuote, send, accept, procure, issueProof, decideProof, issuePurchaseOrder, payNow } =
     useQuoteStore();
   const user = useAuthStore((s) => s.user);
   const isStaff = user?.role !== 'buyer';
@@ -152,6 +152,15 @@ export default function QuoteDetailPage() {
             <div className="actions">
               <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => accept(current.id))}>
                 Accept quote
+              </button>
+            </div>
+          )}
+
+          {/* Buyer action: B2C pay-now on a proof-approved quote (if enabled). */}
+          {!isStaff && current.state === 'PROOF_APPROVED' && (
+            <div className="actions">
+              <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => payNow(current.id))}>
+                Pay now
               </button>
             </div>
           )}

@@ -33,6 +33,7 @@ interface QuoteStoreState {
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
   decideProof: (proofId: number, decision: 'approve' | 'request_changes', notes: string | null) => Promise<void>;
   issuePurchaseOrder: (id: number, poRef: string, terms: string | null) => Promise<void>;
+  payNow: (id: number) => Promise<void>;
   subscribeCompany: (companyId: number) => void;
   unsubscribeCompany: () => void;
 }
@@ -120,6 +121,18 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     await ensureCsrf();
     await api.post(`/quotes/${id}/purchase-order`, { po_ref: poRef, terms });
     await get().fetchQuote(id);
+  },
+
+  payNow: async (id) => {
+    await ensureCsrf();
+    const { data } = await api.post<{ checkout_url: string; paid: boolean }>(`/quotes/${id}/pay`);
+    if (data.paid) {
+      // Fixture/dev: captured immediately — refresh to show production status.
+      await get().fetchQuote(id);
+    } else {
+      // Stripe: redirect to hosted checkout.
+      window.location.href = data.checkout_url;
+    }
   },
 
   subscribeCompany: (companyId) => {

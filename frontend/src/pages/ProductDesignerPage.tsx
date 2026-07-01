@@ -4,6 +4,7 @@ import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
 import { useCartStore } from '../stores/cartStore';
+import { uploadArtwork } from '../lib/uploadArtwork';
 import type { Product, Variant } from '../types';
 
 export default function ProductDesignerPage() {
@@ -41,9 +42,24 @@ export default function ProductDesignerPage() {
     [product, variantId],
   );
 
-  const addToCart = () => {
+  const [uploading, setUploading] = useState(false);
+
+  const addToCart = async () => {
     if (!product) return;
-    addLine(product, selectedVariant, artwork?.customization ?? {});
+    const customization = { ...(artwork?.customization ?? {}) };
+    // Persist the captured artwork server-side; store the returned ref (not the
+    // large data URL) on the cart line.
+    if (artwork?.dataUrl) {
+      setUploading(true);
+      try {
+        customization.artwork_ref = await uploadArtwork(artwork.dataUrl);
+      } catch {
+        customization.artwork_ref = null;
+      } finally {
+        setUploading(false);
+      }
+    }
+    addLine(product, selectedVariant, customization);
     navigate('/cart');
   };
 
@@ -87,8 +103,8 @@ export default function ProductDesignerPage() {
             ) : (
               <span className="muted">Add a logo or text, then “Use this design”.</span>
             )}
-            <button type="button" className="btn btn--primary" onClick={addToCart} disabled={!product}>
-              Add to cart
+            <button type="button" className="btn btn--primary" onClick={addToCart} disabled={!product || uploading}>
+              {uploading ? 'Uploading…' : 'Add to cart'}
             </button>
           </div>
         </section>

@@ -2,6 +2,9 @@
 /node_modules
 node_modules/
 frontend/dist
+/database/*.sqlite
+/database/*.sqlite-journal
+/.env.ci.local
 /public/build
 /public/hot
 /public/storage
