@@ -1,5 +1,6 @@
 import { AnimatedOutlet } from './AnimatedOutlet';
 import SiteHeader from './SiteHeader';
+import SiteFooter from './SiteFooter';
 
 export default function Layout() {
   return (
@@ -17,7 +18,7 @@ export default function Layout() {
         <AnimatedOutlet />
       </main>
 
-      {/* <SiteFooter /> — added in Task 4 */}
+      <SiteFooter />
     </div>
   );
 }
