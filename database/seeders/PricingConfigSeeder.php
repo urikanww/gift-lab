@@ -37,6 +37,10 @@ class PricingConfigSeeder extends Seeder
                 ['max_weight_g' => null, 'price' => 60.00],
             ], 'Delivery price by total shipment weight (grams)', true],
             ['config', 'pay_now_cutoff', ['mode' => 'quote_only', 'b2c_enabled' => false], 'Pay-now vs quote cutoff rule', false],
+            // Phase 2 catalogue-breadth controls.
+            ['catalogue', 'auto_publish', false, 'Auto-publish complete scraped/3D items', false],
+            ['catalogue', 'drift_pct', 10, 'Price drift % that pulls a scraped item for re-review', false],
+            ['catalogue', 'price_jump_pct', 10, 'Re-check price jump % tolerated before PRICE_JUMPED', false],
         ];
 
         foreach ($rows as [$group, $key, $value, $label, $isMoney]) {

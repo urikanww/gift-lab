@@ -132,6 +132,27 @@ Shared FCFS-by-`ready_at` queue (UV + 3D, no customer priority).
 
 ---
 
+## Admin catalogue gate · staff (spec Phase 2)
+
+Superadmin/staff review of scraped-UV + 3D items.
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| GET | `/admin/catalogue?class=&state=` | staff | List scraped/3D items + `publish_state` + `cannot_publish_reasons` |
+| POST | `/admin/products/{product}/publish` | staff | `READY_TO_APPROVE` → `PUBLISHED` (422 if `CANNOT_PUBLISH`) |
+| POST | `/admin/products/{product}/unpublish` | staff | Pull from public → `READY_TO_APPROVE` |
+| PATCH | `/admin/settings/auto-publish` | superadmin | `{ "enabled": true }` — global auto-publish toggle |
+
+Scraped-UV lifecycle: ingest → completeness gate (reason tags `missing_price`,
+`missing_dimensions`, `not_printable`, `stock_unreadable`, `source_dead`) →
+auto-publish toggle → daily re-sync with >10% price-drift auto-pull
+(`needs_re-review`). 3D: licence gate publishes only `CC0`/`CC_BY`(+credit)/`OWNED`;
+`CC_BY` shows creator credit; others `CANNOT_PUBLISH` (`license_blocked`).
+Procurement re-check: scraped → live qty/price (`QTY_SHORT`/`PRICE_JUMPED`); 3D →
+filament grams decrement (`QTY_SHORT` if a spool can't cover the run).
+
+---
+
 ## Realtime — Laravel Reverb (websockets only, no polling)
 
 Client: Laravel Echo (`broadcaster: 'reverb'`), auth via `/broadcasting/auth`

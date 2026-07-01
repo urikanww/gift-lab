@@ -57,6 +57,9 @@ class ProductFactory extends Factory
             'license' => 'CC_BY',
             'creator_credit' => $this->faker->name(),
             'model_file_ref' => 'models/'.$this->faker->uuid().'.stl',
+            'filament_material' => 'PLA',
+            'filament_color' => 'Black',
+            'est_grams' => $this->faker->randomFloat(3, 20, 300),
         ]);
     }
 }

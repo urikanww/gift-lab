@@ -26,6 +26,7 @@ export default function Layout() {
             <>
               <NavLink to="/production-queue">Queue</NavLink>
               <NavLink to="/procurement">Procurement</NavLink>
+              <NavLink to="/catalogue-admin">Catalogue</NavLink>
             </>
           )}
         </nav>

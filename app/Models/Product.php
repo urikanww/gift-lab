@@ -50,6 +50,9 @@ class Product extends Model
         'license',
         'creator_credit',
         'model_file_ref',
+        'filament_material',
+        'filament_color',
+        'est_grams',
         'created_by',
     ];
 
@@ -67,6 +70,7 @@ class Product extends Model
             'stock_estimate' => 'integer',
             'is_printable' => 'boolean',
             'license' => License::class,
+            'est_grams' => 'decimal:3',
         ];
     }
 

@@ -9,6 +9,7 @@ import QuoteListPage from './pages/QuoteListPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import ProductionQueuePage from './pages/ProductionQueuePage';
 import ProcurementPage from './pages/ProcurementPage';
+import CatalogueAdminPage from './pages/CatalogueAdminPage';
 import LoginPage from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
 import { useQuoteStore } from './stores/quoteStore';
@@ -68,6 +69,14 @@ export default function App() {
             element={
               <ProtectedRoute staffOnly>
                 <ProcurementPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="catalogue-admin"
+            element={
+              <ProtectedRoute staffOnly>
+                <CatalogueAdminPage />
               </ProtectedRoute>
             }
           />

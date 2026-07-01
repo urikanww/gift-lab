@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\PriceEstimateController;
@@ -58,4 +59,10 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Shared production queue
     Route::get('/production-queue', [ProductionQueueController::class, 'index']);
     Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance']);
+
+    // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
+    Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index']);
+    Route::post('/admin/products/{product}/publish', [AdminCatalogueController::class, 'publish']);
+    Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish']);
+    Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 });

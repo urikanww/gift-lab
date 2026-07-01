@@ -151,6 +151,21 @@ export interface CartLine {
   customization: Customization;
 }
 
+export type PublishState = 'PENDING' | 'READY_TO_APPROVE' | 'PUBLISHED' | 'CANNOT_PUBLISH';
+
+export interface AdminCatalogueItem {
+  id: number;
+  name: string;
+  class: ProductClass;
+  publish_state: PublishState;
+  cannot_publish_reasons: string[] | null;
+  base_cost: string;
+  currency: string;
+  creator_credit: string | null;
+  image_url: string | null;
+  source_url: string | null;
+}
+
 export interface Paginated<T> {
   data: T[];
   meta?: { current_page: number; last_page: number; total: number };

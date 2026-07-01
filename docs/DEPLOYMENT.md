@@ -75,6 +75,7 @@ cp -r ../giftlab-src/database/factories/.  database/factories/
 cp -r ../giftlab-src/database/seeders/.    database/seeders/
 cp    ../giftlab-src/routes/api.php        routes/api.php
 cp    ../giftlab-src/routes/channels.php   routes/channels.php
+cp    ../giftlab-src/routes/console.php    routes/console.php   # daily scraped re-sync schedule
 cp -r ../giftlab-src/tests/.              tests/
 cp    ../giftlab-src/phpunit.xml           phpunit.xml
 
