@@ -7,7 +7,7 @@ namespace App\Events;
 use App\Models\Proof;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -15,7 +15,7 @@ use Illuminate\Queue\SerializesModels;
  * Pushed when a proof is sent, changes-requested, or approved. Buyer sees the
  * sign-off request/result live on the company channel.
  */
-class ProofStatusChanged implements ShouldBroadcastNow
+class ProofStatusChanged implements ShouldBroadcast
 {
     use Dispatchable;
     use InteractsWithSockets;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
@@ -18,7 +18,7 @@ export default function ProductDesignerPage() {
   const [variantId, setVariantId] = useState<number | null>(null);
   const [artwork, setArtwork] = useState<CapturedArtwork | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -30,12 +30,11 @@ export default function ProductDesignerPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [load]);
 
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === variantId) ?? null,
@@ -43,18 +42,23 @@ export default function ProductDesignerPage() {
   );
 
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const addToCart = async () => {
     if (!product) return;
+    setUploadError(null);
     const customization = { ...(artwork?.customization ?? {}) };
     // Persist the captured artwork server-side; store the returned ref (not the
-    // large data URL) on the cart line.
+    // large data URL) on the cart line. On failure, surface an error and ABORT —
+    // previously the failure was swallowed and the line was added with no
+    // artwork_ref, silently losing the buyer's design.
     if (artwork?.dataUrl) {
       setUploading(true);
       try {
         customization.artwork_ref = await uploadArtwork(artwork.dataUrl);
-      } catch {
-        customization.artwork_ref = null;
+      } catch (err) {
+        setUploadError(apiError(err) || 'We couldn’t upload your artwork. Please try again.');
+        return;
       } finally {
         setUploading(false);
       }
@@ -106,6 +110,11 @@ export default function ProductDesignerPage() {
             <button type="button" className="btn btn--primary" onClick={addToCart} disabled={!product || uploading}>
               {uploading ? 'Uploading…' : 'Add to cart'}
             </button>
+            {uploadError && (
+              <p className="error" role="alert">
+                {uploadError}
+              </p>
+            )}
           </div>
         </section>
       )}

@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
-import { getEcho } from '../lib/echo';
+import { getEcho, onEchoReconnect } from '../lib/echo';
 import type { JobState, ProductionJob } from '../types';
+
+// Unregister handle for the reconnect-refetch subscription.
+let offReconnect: (() => void) | null = null;
 
 interface QueueUpdatedPayload {
   job_id: number;
@@ -46,13 +49,25 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
   },
 
   advance: async (jobId, state) => {
-    await ensureCsrf();
-    await api.post(`/production-jobs/${jobId}/advance`, { state });
-    // The broadcast will reconcile state; no refetch/poll needed.
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/production-jobs/${jobId}/advance`, { state });
+      // Broadcast reconciles the happy path; a single post-mutation refetch (not
+      // a poll) guards against a dropped socket / missed event leaving the queue
+      // diverged from server truth, and surfaces rejections instead of a
+      // silently frozen button.
+      await get().fetchQueue();
+    } catch (err) {
+      set({ error: apiError(err) });
+      await get().fetchQueue();
+    }
   },
 
   subscribe: () => {
     if (get().subscribed) return;
+    // Reconcile the queue after a socket reconnect (events missed while down).
+    offReconnect = onEchoReconnect(() => void get().fetchQueue());
     getEcho()
       .private('staff.queue')
       .listen('.production-queue.updated', (e: QueueUpdatedPayload) => {
@@ -80,6 +95,8 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
 
   unsubscribe: () => {
     if (!get().subscribed) return;
+    offReconnect?.();
+    offReconnect = null;
     getEcho().leave('staff.queue');
     set({ subscribed: false });
   },

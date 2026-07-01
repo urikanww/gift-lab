@@ -26,26 +26,43 @@ class AdminCatalogueController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        $products = Product::query()
+        // Bounded pagination (matches the public CatalogueController) — the admin
+        // gate previously did an unbounded ->get() over all SCRAPED_UV + MODEL_3D
+        // rows, so response size/memory grew linearly with scraped inventory.
+        $perPage = max(1, min((int) $request->integer('per_page', 24), 100));
+
+        $paginator = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->when($request->filled('state'), fn ($q) => $q->where('publish_state', $request->string('state')->toString()))
             ->orderByDesc('updated_at')
-            ->get()
-            ->map(fn (Product $p): array => [
-                'id' => $p->id,
-                'name' => $p->name,
-                'class' => $p->class->value,
-                'publish_state' => $p->publish_state->value,
-                'cannot_publish_reasons' => $p->cannot_publish_reasons,
-                'base_cost' => $p->base_cost,
-                'currency' => $p->currency,
-                'creator_credit' => $p->creator_credit,
-                'image_url' => $p->image_url,
-                'source_url' => $p->source_url,
-            ]);
+            ->paginate($perPage);
 
-        return response()->json(['data' => $products]);
+        $paginator->getCollection()->transform(fn (Product $p): array => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'class' => $p->class->value,
+            'publish_state' => $p->publish_state->value,
+            'cannot_publish_reasons' => $p->cannot_publish_reasons,
+            'base_cost' => $p->base_cost,
+            'currency' => $p->currency,
+            'creator_credit' => $p->creator_credit,
+            'image_url' => $p->image_url,
+            'source_url' => $p->source_url,
+        ]);
+
+        return response()->json([
+            'data' => $paginator->items(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                // Surfaced so the admin UI can hydrate the auto-publish toggle
+                // from the real server setting instead of defaulting to false.
+                'auto_publish' => (bool) PricingConfig::value('catalogue', 'auto_publish', false),
+            ],
+        ]);
     }
 
     public function publish(Request $request, Product $product): JsonResponse
@@ -58,9 +75,17 @@ class AdminCatalogueController extends Controller
             return response()->json(['message' => 'Product is not awaiting approval.'], 422);
         }
 
-        $product->publish_state = PublishState::Published;
-        $product->cannot_publish_reasons = null;
-        $product->save();
+        // Route through the service so publication is re-gated by CompletenessGate
+        // (was set to Published directly here, trusting the possibly-stale state
+        // flag and bypassing the completeness/licence check).
+        $product = $this->scraped->publish($product);
+
+        if ($product->publish_state !== PublishState::Published) {
+            return response()->json([
+                'message' => 'Product failed completeness/licence checks and cannot be published.',
+                'cannot_publish_reasons' => $product->cannot_publish_reasons,
+            ], 422);
+        }
 
         return response()->json(['publish_state' => $product->publish_state->value]);
     }

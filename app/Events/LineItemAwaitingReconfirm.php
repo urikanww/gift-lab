@@ -7,7 +7,7 @@ namespace App\Events;
 use App\Models\LineItem;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -15,7 +15,7 @@ use Illuminate\Queue\SerializesModels;
  * Procurement re-check surfaced a qty shortfall or price jump. Pushed to staff
  * so an admin can reconfirm/amend/drop without polling.
  */
-class LineItemAwaitingReconfirm implements ShouldBroadcastNow
+class LineItemAwaitingReconfirm implements ShouldBroadcast
 {
     use Dispatchable;
     use InteractsWithSockets;

@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
-import { getEcho } from '../lib/echo';
-import type { CartLine, Proof, Quote, QuoteState } from '../types';
+import { getEcho, onEchoReconnect } from '../lib/echo';
+import type { CartLine, Paginated, Proof, Quote, QuoteState } from '../types';
+
+// Unregister handle for the reconnect-refetch subscription.
+let offReconnect: (() => void) | null = null;
 
 interface QuoteStateChangedPayload {
   quote_id: number;
@@ -22,9 +25,11 @@ interface QuoteStoreState {
   current: Quote | null;
   loading: boolean;
   error: string | null;
+  page: number;
+  lastPage: number;
   subscribedCompany: number | null;
 
-  fetchQuotes: () => Promise<void>;
+  fetchQuotes: (page?: number) => Promise<void>;
   fetchQuote: (id: number) => Promise<void>;
   createQuote: (companyId: number, lines: CartLine[], notes: string | null) => Promise<Quote | null>;
   send: (id: number) => Promise<void>;
@@ -43,13 +48,20 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   current: null,
   loading: false,
   error: null,
+  page: 1,
+  lastPage: 1,
   subscribedCompany: null,
 
-  fetchQuotes: async () => {
+  fetchQuotes: async (page = 1) => {
     set({ loading: true, error: null });
     try {
-      const { data } = await api.get<{ data: Quote[] }>('/quotes');
-      set({ quotes: data.data, loading: false });
+      const { data } = await api.get<Paginated<Quote>>('/quotes', { params: { page } });
+      set({
+        quotes: data.data,
+        page: data.meta?.current_page ?? page,
+        lastPage: data.meta?.last_page ?? 1,
+        loading: false,
+      });
     } catch (err) {
       set({ loading: false, error: apiError(err) });
     }
@@ -86,58 +98,107 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
+  // Every write-path action sets `error` on failure instead of leaking an
+  // unhandled promise rejection (the page awaits these in a try/finally with no
+  // catch). On success the affected quote is refetched so state stays truthful
+  // even if the Reverb broadcast is missed.
   send: async (id) => {
-    await ensureCsrf();
-    await api.post(`/quotes/${id}/send`);
-    await get().fetchQuote(id);
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/send`);
+      await get().fetchQuote(id);
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 
   accept: async (id) => {
-    await ensureCsrf();
-    await api.post(`/quotes/${id}/accept`);
-    await get().fetchQuote(id);
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/accept`);
+      await get().fetchQuote(id);
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 
   procure: async (id) => {
-    await ensureCsrf();
-    await api.post(`/quotes/${id}/procure`);
-    await get().fetchQuote(id);
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/procure`);
+      await get().fetchQuote(id);
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 
   issueProof: async (id, artworkRef, notes) => {
-    await ensureCsrf();
-    await api.post(`/quotes/${id}/proofs`, { artwork_version_ref: artworkRef, notes });
-    await get().fetchQuote(id);
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/proofs`, { artwork_version_ref: artworkRef, notes });
+      await get().fetchQuote(id);
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 
   decideProof: async (proofId, decision, notes) => {
-    await ensureCsrf();
-    await api.post(`/proofs/${proofId}/decide`, { decision, notes });
-    const current = get().current;
-    if (current) await get().fetchQuote(current.id);
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/proofs/${proofId}/decide`, { decision, notes });
+      const current = get().current;
+      if (current) await get().fetchQuote(current.id);
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 
   issuePurchaseOrder: async (id, poRef, terms) => {
-    await ensureCsrf();
-    await api.post(`/quotes/${id}/purchase-order`, { po_ref: poRef, terms });
-    await get().fetchQuote(id);
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/purchase-order`, { po_ref: poRef, terms });
+      await get().fetchQuote(id);
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 
   payNow: async (id) => {
-    await ensureCsrf();
-    const { data } = await api.post<{ checkout_url: string; paid: boolean }>(`/quotes/${id}/pay`);
-    if (data.paid) {
-      // Fixture/dev: captured immediately — refresh to show production status.
-      await get().fetchQuote(id);
-    } else {
-      // Stripe: redirect to hosted checkout.
-      window.location.href = data.checkout_url;
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ checkout_url: string; paid: boolean }>(`/quotes/${id}/pay`);
+      if (data.paid) {
+        // Fixture/dev: captured immediately — refresh to show production status.
+        await get().fetchQuote(id);
+      } else {
+        // Stripe: redirect to hosted checkout.
+        window.location.href = data.checkout_url;
+      }
+    } catch (err) {
+      // Payment provider / gateway failure: surface friendly copy so the pay
+      // button never freezes on an unhandled rejection.
+      set({ error: apiError(err) });
     }
   },
 
   subscribeCompany: (companyId) => {
     if (get().subscribedCompany === companyId) return;
     get().unsubscribeCompany();
+
+    // Reconcile after a socket reconnect: refresh the list and the open quote so
+    // any state-changed/proof events missed while offline are picked up.
+    offReconnect = onEchoReconnect(() => {
+      void get().fetchQuotes(get().page);
+      const current = get().current;
+      if (current) void get().fetchQuote(current.id);
+    });
 
     const echo = getEcho();
     echo
@@ -167,6 +228,8 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   unsubscribeCompany: () => {
     const companyId = get().subscribedCompany;
     if (companyId !== null) {
+      offReconnect?.();
+      offReconnect = null;
       getEcho().leave(`company.${companyId}`);
       set({ subscribedCompany: null });
     }

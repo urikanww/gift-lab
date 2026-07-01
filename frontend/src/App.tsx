@@ -22,13 +22,17 @@ export default function App() {
     void fetchUser();
   }, [fetchUser]);
 
-  // Subscribe a buyer to their company's realtime channel once known.
+  // Subscribe a buyer to their company's realtime channel once known. Depend on
+  // the primitive company_id, NOT the whole user object — the user reference
+  // changes on every fetchUser/login, which would needlessly tear down and
+  // re-establish the private-channel subscription (and drop events in the gap).
+  const companyId = user?.company_id ?? null;
   useEffect(() => {
-    if (user && user.company_id !== null) {
-      subscribeCompany(user.company_id);
+    if (companyId !== null) {
+      subscribeCompany(companyId);
     }
     return () => unsubscribeCompany();
-  }, [user, subscribeCompany, unsubscribeCompany]);
+  }, [companyId, subscribeCompany, unsubscribeCompany]);
 
   if (status === 'idle') return null;
 

@@ -8,6 +8,7 @@ use Database\Factories\VariantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * @property int $id
@@ -19,6 +20,7 @@ class Variant extends Model
 {
     /** @use HasFactory<VariantFactory> */
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'product_id',
@@ -51,11 +53,6 @@ class Variant extends Model
     public function isBelowThreshold(): bool
     {
         return $this->stock_on_hand <= $this->reorder_threshold;
-    }
-
-    public function hasStockFor(int $qty): bool
-    {
-        return $this->stock_on_hand >= $qty;
     }
 
     protected static function newFactory(): VariantFactory

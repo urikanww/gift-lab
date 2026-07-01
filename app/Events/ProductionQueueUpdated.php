@@ -7,7 +7,7 @@ namespace App\Events;
 use App\Models\ProductionJob;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -15,7 +15,7 @@ use Illuminate\Queue\SerializesModels;
  * Pushed whenever a job enters the queue or changes production state, keeping
  * every floor operator's shared-queue view in sync (Reverb-only; no polling).
  */
-class ProductionQueueUpdated implements ShouldBroadcastNow
+class ProductionQueueUpdated implements ShouldBroadcast
 {
     use Dispatchable;
     use InteractsWithSockets;

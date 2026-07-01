@@ -4,10 +4,10 @@ import { useQuoteStore } from '../stores/quoteStore';
 import { AsyncBoundary } from '../components/ui/States';
 
 export default function QuoteListPage() {
-  const { quotes, loading, error, fetchQuotes } = useQuoteStore();
+  const { quotes, loading, error, page, lastPage, fetchQuotes } = useQuoteStore();
 
   useEffect(() => {
-    void fetchQuotes();
+    void fetchQuotes(1);
   }, [fetchQuotes]);
 
   return (
@@ -46,6 +46,30 @@ export default function QuoteListPage() {
             ))}
           </tbody>
         </table>
+
+        {lastPage > 1 && (
+          <nav className="pager" aria-label="Pagination">
+            <button
+              type="button"
+              className="btn"
+              disabled={loading || page <= 1}
+              onClick={() => void fetchQuotes(page - 1)}
+            >
+              Previous
+            </button>
+            <span className="pager__status">
+              Page {page} of {lastPage}
+            </span>
+            <button
+              type="button"
+              className="btn"
+              disabled={loading || page >= lastPage}
+              onClick={() => void fetchQuotes(page + 1)}
+            >
+              Next
+            </button>
+          </nav>
+        )}
       </AsyncBoundary>
     </section>
   );

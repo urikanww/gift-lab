@@ -24,7 +24,7 @@ beforeEach(() => get.mockReset());
 describe('CataloguePage', () => {
   it('renders published products from the API', async () => {
     get.mockResolvedValue({
-      data: { data: [{ id: 1, name: 'Ceramic Mug', base_cost: '3.20', currency: 'SGD', image_url: null }] },
+      data: { data: [{ id: 1, name: 'Ceramic Mug', from_price: 3.2, currency: 'SGD', image_url: null }] },
     });
 
     renderPage();

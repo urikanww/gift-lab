@@ -25,6 +25,25 @@ export async function ensureCsrf(): Promise<void> {
   csrfInitialized = true;
 }
 
+// Global 401 handling: a session that expires mid-session should land the user
+// on a clean re-auth, not scatter generic "Something went wrong" toasts. The
+// /user probe legitimately 401s for anonymous visitors browsing the public
+// catalogue, and /login failures are handled inline — those are excluded.
+api.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    if (error instanceof AxiosError && error.response?.status === 401) {
+      const url = error.config?.url ?? '';
+      const isAuthProbe = url.includes('/user') || url.includes('/login');
+      if (!isAuthProbe && !window.location.pathname.startsWith('/login')) {
+        csrfInitialized = false;
+        window.location.assign('/login');
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
 /** Normalize an axios error into a human-readable message. */
 export function apiError(err: unknown): string {
   if (err instanceof AxiosError) {

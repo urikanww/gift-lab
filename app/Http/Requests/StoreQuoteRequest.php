@@ -50,9 +50,27 @@ class StoreQuoteRequest extends FormRequest
                 $validator->errors()->add('company_id', 'You may only create quotes for your own company.');
             }
 
-            // Every referenced product must be publicly published.
-            foreach ((array) $this->input('line_items', []) as $index => $line) {
-                $product = Product::find($line['product_id'] ?? null);
+            // Every referenced product must be publicly published. Batch-load
+            // all referenced products in a single query (was Product::find per
+            // line — one query per cart line, compounding under bulk carts).
+            $lineItems = (array) $this->input('line_items', []);
+
+            $productIds = array_values(array_filter(array_map(
+                static fn ($line): ?int => isset($line['product_id']) ? (int) $line['product_id'] : null,
+                $lineItems,
+            ), static fn (?int $id): bool => $id !== null));
+
+            $products = $productIds === []
+                ? collect()
+                : Product::query()->whereIn('id', $productIds)->get()->keyBy('id');
+
+            foreach ($lineItems as $index => $line) {
+                $productId = isset($line['product_id']) ? (int) $line['product_id'] : null;
+                if ($productId === null) {
+                    continue;
+                }
+
+                $product = $products->get($productId);
                 if ($product !== null && $product->publish_state !== PublishState::Published) {
                     $validator->errors()->add("line_items.{$index}.product_id", 'Product is not available.');
                 }

@@ -26,10 +26,16 @@ it('rejects illegal quote transitions', function (): void {
         ->and(QuoteState::ProofApproved->canTransitionTo(QuoteState::Draft))->toBeFalse();
 });
 
-it('allows cancellation only from confirmed or procuring', function (): void {
-    expect(QuoteState::Confirmed->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
+it('allows cancellation from any pre-production stage but not once ready', function (): void {
+    expect(QuoteState::Draft->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
+        ->and(QuoteState::Sent->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
+        ->and(QuoteState::Accepted->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
+        ->and(QuoteState::Proofing->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
+        ->and(QuoteState::ProofApproved->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
+        ->and(QuoteState::Confirmed->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
         ->and(QuoteState::Procuring->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
-        ->and(QuoteState::Draft->canTransitionTo(QuoteState::Cancelled))->toBeFalse();
+        ->and(QuoteState::Ready->canTransitionTo(QuoteState::Cancelled))->toBeFalse()
+        ->and(QuoteState::Closed->canTransitionTo(QuoteState::Cancelled))->toBeFalse();
 });
 
 it('treats closed and cancelled as terminal', function (): void {

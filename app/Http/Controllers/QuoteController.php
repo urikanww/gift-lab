@@ -52,7 +52,7 @@ class QuoteController extends Controller
 
     public function show(Request $request, Quote $quote): QuoteResource
     {
-        $this->authorizeQuote($request, $quote);
+        $this->authorize('view', $quote);
 
         return new QuoteResource($quote->load(['lineItems.product', 'proofs']));
     }
@@ -71,14 +71,14 @@ class QuoteController extends Controller
 
     public function send(Request $request, Quote $quote): QuoteResource
     {
-        $this->ensureStaff($request);
+        $this->authorize('manageProduction', $quote);
 
         return new QuoteResource($this->quotes->send($quote));
     }
 
     public function accept(Request $request, Quote $quote): QuoteResource
     {
-        $this->authorizeQuote($request, $quote);
+        $this->authorize('update', $quote);
 
         return new QuoteResource($this->quotes->accept($quote));
     }
@@ -107,19 +107,15 @@ class QuoteController extends Controller
 
     public function procure(Request $request, Quote $quote): QuoteResource
     {
-        $this->ensureStaff($request);
+        $this->authorize('manageProduction', $quote);
 
         return new QuoteResource($this->quotes->procure($quote));
     }
 
-    private function authorizeQuote(Request $request, Quote $quote): void
+    public function cancel(Request $request, Quote $quote): QuoteResource
     {
-        $user = $request->user();
-        abort_unless($user->isStaff() || $user->company_id === $quote->company_id, 403);
-    }
+        $this->authorize('update', $quote);
 
-    private function ensureStaff(Request $request): void
-    {
-        abort_unless($request->user()->isStaff(), 403);
+        return new QuoteResource($this->quotes->cancel($quote, $request->input('reason')));
     }
 }

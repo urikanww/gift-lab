@@ -30,15 +30,16 @@ enum QuoteState: string
     public function nextStates(): array
     {
         return match ($this) {
-            self::Draft => [self::Sent],
-            self::Sent => [self::ChangesRequested, self::Accepted],
-            self::ChangesRequested => [self::Draft],
-            self::Accepted => [self::Proofing],
-            self::Proofing => [self::ProofApproved, self::ChangesRequested],
-            self::ProofApproved => [self::PoIssued],
-            self::PoIssued => [self::Confirmed],
+            self::Draft => [self::Sent, self::Cancelled],
+            self::Sent => [self::ChangesRequested, self::Accepted, self::Cancelled],
+            self::ChangesRequested => [self::Draft, self::Cancelled],
+            self::Accepted => [self::Proofing, self::Cancelled],
+            self::Proofing => [self::ProofApproved, self::ChangesRequested, self::Cancelled],
+            self::ProofApproved => [self::PoIssued, self::Cancelled],
+            self::PoIssued => [self::Confirmed, self::Cancelled],
             self::Confirmed => [self::Procuring, self::Cancelled],
             self::Procuring => [self::Ready, self::Cancelled],
+            // Once on the floor (READY) the order is in production — no cancel edge.
             self::Ready => [self::Closed],
             self::Closed, self::Cancelled => [],
         };

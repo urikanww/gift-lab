@@ -45,6 +45,14 @@ class StripeWebhookController extends Controller
 
             if ($quote !== null) {
                 $payments->confirmPaid($quote, (string) $session->id);
+            } else {
+                // A verified event whose quote can't be resolved means a metadata
+                // regression (missing/renamed quote_id) or a deleted quote — log
+                // it so the silent no-op is visible rather than invisibly dropped.
+                Log::warning('Stripe checkout.session.completed for unknown quote.', [
+                    'quote_id' => $quoteId,
+                    'session_id' => (string) $session->id,
+                ]);
             }
         }
 

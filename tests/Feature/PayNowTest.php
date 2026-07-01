@@ -64,7 +64,8 @@ it('refuses pay-now when B2C is disabled', function (): void {
     $quote = proofApprovedQuote($this->company->id);
 
     Sanctum::actingAs($this->buyer);
-    $this->postJson("/api/quotes/{$quote->id}/pay")->assertStatus(500);
+    // Feature-gated: FeatureNotEnabledException maps to a friendly 409 (not 500).
+    $this->postJson("/api/quotes/{$quote->id}/pay")->assertStatus(409);
 });
 
 it('forbids paying for another company quote', function (): void {

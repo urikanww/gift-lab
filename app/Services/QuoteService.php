@@ -16,10 +16,10 @@ use App\Models\Proof;
 use App\Models\PurchaseOrder;
 use App\Models\Quote;
 use App\Models\Variant;
+use App\Exceptions\DomainRuleException;
 use App\Services\Procurement\ProcurementManager;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 /**
  * Orchestrates the quote spine end to end. Controllers stay thin; every state
@@ -115,7 +115,7 @@ final class QuoteService
     public function amend(Quote $quote, array $lineAmendments, ?float $delivery, ?string $notes): Quote
     {
         if ($quote->state !== QuoteState::Draft) {
-            throw new RuntimeException('Only DRAFT quotes can be amended.');
+            throw new DomainRuleException('Only DRAFT quotes can be amended.');
         }
 
         return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes): Quote {
@@ -194,11 +194,11 @@ final class QuoteService
             if ($quote->state === QuoteState::Accepted) {
                 $previous = $quote->state->value;
                 $quote->transitionTo(QuoteState::Proofing);
-                QuoteStateChanged::dispatch($quote, $previous);
+                DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
             }
 
             if ($quote->state !== QuoteState::Proofing) {
-                throw new RuntimeException('Quote must be ACCEPTED or PROOFING to issue a proof.');
+                throw new DomainRuleException('Quote must be ACCEPTED or PROOFING to issue a proof.');
             }
 
             $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
@@ -211,7 +211,7 @@ final class QuoteService
                 'notes' => $notes,
             ]);
 
-            ProofStatusChanged::dispatch($proof, $quote->company_id);
+            DB::afterCommit(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id));
 
             return $proof;
         });
@@ -237,8 +237,8 @@ final class QuoteService
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::ProofApproved);
 
-            ProofStatusChanged::dispatch($proof, $quote->company_id);
-            QuoteStateChanged::dispatch($quote, $previous);
+            DB::afterCommit(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id));
+            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
 
             return $proof;
         });
@@ -281,11 +281,31 @@ final class QuoteService
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::PoIssued);
             $quote->transitionTo(QuoteState::Confirmed);
-            QuoteStateChanged::dispatch($quote, $previous);
+            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
 
             $this->audit->log($po, 'purchase_order.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
 
             return $po;
+        });
+    }
+
+    /**
+     * Cancel a quote at any pre-production stage (Draft…Procuring). Terminal —
+     * makes the CANCELLED state reachable so a buyer/staff can abandon a quote.
+     * A READY/CLOSED quote is already on the floor and cannot be cancelled (the
+     * state machine has no such edge; transitionTo throws).
+     */
+    public function cancel(Quote $quote, ?string $reason): Quote
+    {
+        return DB::transaction(function () use ($quote, $reason): Quote {
+            $previous = $quote->state->value;
+            $quote->transitionTo(QuoteState::Cancelled);
+
+            $this->audit->log($quote, 'quote.cancelled', ['state' => $previous], ['reason' => $reason]);
+
+            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
+
+            return $quote->fresh(['lineItems']);
         });
     }
 
@@ -302,8 +322,12 @@ final class QuoteService
         }
 
         if ($quote->state !== QuoteState::Procuring) {
-            throw new RuntimeException('Quote must be CONFIRMED or PROCURING to run procurement.');
+            throw new DomainRuleException('Quote must be CONFIRMED or PROCURING to run procurement.');
         }
+
+        // Eager-load product + variant so procureLine()/strategies don't fire a
+        // query per line (N+1) when resolving class and landed cost.
+        $quote->loadMissing('lineItems.product', 'lineItems.variant');
 
         foreach ($quote->lineItems as $line) {
             if ($line->line_state === LineItemState::Pending || $line->line_state === LineItemState::Amended) {
@@ -324,7 +348,7 @@ final class QuoteService
     public function reconfirmLine(LineItem $line, array $decision): LineItem
     {
         if ($line->line_state !== LineItemState::AwaitingReconfirm) {
-            throw new RuntimeException('Line item is not awaiting reconfirmation.');
+            throw new DomainRuleException('Line item is not awaiting reconfirmation.');
         }
 
         DB::transaction(function () use ($line, $decision): void {

@@ -19,7 +19,11 @@ export default function ProtectedRoute({
 
   if (status !== 'ready') return <LoadingState label="Checking session…" />;
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  if (staffOnly && user.role === 'buyer') return <Navigate to="/" replace />;
+  // Staff allowlist mirrors backend User::isStaff() — deny by default so a future
+  // non-staff role can never fall through into a staff-only route.
+  if (staffOnly && user.role !== 'staff_admin' && user.role !== 'superadmin') {
+    return <Navigate to="/" replace />;
+  }
 
   return <>{children}</>;
 }

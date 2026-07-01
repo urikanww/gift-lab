@@ -4,20 +4,31 @@ import { useAuthStore } from '../stores/authStore';
 import { AsyncBoundary } from '../components/ui/States';
 
 export default function CatalogueAdminPage() {
-  const { items, loading, error, fetch, publish, unpublish, setAutoPublish, autoPublishSaving } =
+  const { items, loading, error, fetch, publish, unpublish, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
-  const [autoPublish, setAutoPublishLocal] = useState(false);
+  const [pendingId, setPendingId] = useState<number | null>(null);
 
   useEffect(() => {
     void fetch();
   }, [fetch]);
 
-  const toggleAutoPublish = async () => {
-    const next = !autoPublish;
-    setAutoPublishLocal(next);
-    await setAutoPublish(next);
+  // Toggle reads the store's server-hydrated value; the store only flips
+  // `autoPublish` after the PATCH persists (and sets `error` on failure), so the
+  // checkbox never shows an unsaved change.
+  const toggleAutoPublish = () => void setAutoPublish(!autoPublish);
+
+  // Single-flight guard so a rapid double-click can't fire publish/unpublish
+  // twice on the same row.
+  const runRow = async (id: number, fn: (id: number) => Promise<void>) => {
+    if (pendingId !== null) return;
+    setPendingId(id);
+    try {
+      await fn(id);
+    } finally {
+      setPendingId(null);
+    }
   };
 
   return (
@@ -74,12 +85,22 @@ export default function CatalogueAdminPage() {
                 </td>
                 <td>
                   {it.publish_state === 'READY_TO_APPROVE' && (
-                    <button type="button" className="btn btn--primary" onClick={() => void publish(it.id)}>
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={pendingId !== null}
+                      onClick={() => void runRow(it.id, publish)}
+                    >
                       Publish
                     </button>
                   )}
                   {it.publish_state === 'PUBLISHED' && (
-                    <button type="button" className="btn btn--ghost" onClick={() => void unpublish(it.id)}>
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      disabled={pendingId !== null}
+                      onClick={() => void runRow(it.id, unpublish)}
+                    >
                       Unpublish
                     </button>
                   )}

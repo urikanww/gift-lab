@@ -74,6 +74,23 @@ class Product extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // Cascade soft-deletes to variants (FK cascadeOnDelete only fires on a
+        // hard DELETE), so a soft-deleted product doesn't leave live variants.
+        static::deleting(function (Product $product): void {
+            if ($product->isForceDeleting()) {
+                return;
+            }
+
+            $product->variants()->get()->each->delete();
+        });
+
+        static::restoring(function (Product $product): void {
+            $product->variants()->onlyTrashed()->get()->each->restore();
+        });
+    }
+
     /**
      * @return HasMany<Variant>
      */

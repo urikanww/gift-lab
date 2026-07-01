@@ -56,7 +56,7 @@ export interface Product {
   name: string;
   description: string | null;
   class: ProductClass;
-  base_cost: string;
+  from_price: number;
   currency: string;
   dimensions: Record<string, number | string> | null;
   weight: string | null;

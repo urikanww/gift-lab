@@ -22,8 +22,7 @@ class PayNowController extends Controller
 
     public function pay(Request $request, Quote $quote): JsonResponse
     {
-        $user = $request->user();
-        abort_unless($user->isStaff() || $user->company_id === $quote->company_id, 403);
+        $this->authorize('update', $quote);
 
         $result = $this->payments->payNow($quote);
 

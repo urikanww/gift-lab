@@ -31,7 +31,11 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   updateQty: (key, qty) =>
     set((s) => ({
-      lines: s.lines.map((l) => (l.key === key ? { ...l, qty: Math.max(1, qty) } : l)),
+      // Guard against NaN (an emptied number input sends Number('') === NaN,
+      // and Math.max(1, NaN) === NaN) — floor to a valid integer ≥ 1.
+      lines: s.lines.map((l) =>
+        l.key === key ? { ...l, qty: Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1 } : l,
+      ),
     })),
 
   removeLine: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),

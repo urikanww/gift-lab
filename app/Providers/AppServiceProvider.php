@@ -13,9 +13,13 @@ use App\Services\Payment\FixturePaymentGateway;
 use App\Services\Payment\StripePaymentGateway;
 use App\Services\Procurement\Contracts\MarketplaceRechecker;
 use App\Services\Procurement\FixtureMarketplaceRechecker;
+use App\Models\Quote;
+use App\Policies\QuotePolicy;
 use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\FixtureScraperClient;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -46,17 +50,35 @@ class AppServiceProvider extends ServiceProvider
             return $app->make(StubModel3dApiClient::class);
         });
 
-        // Payments: Stripe when a secret is configured, otherwise a fixture
-        // gateway that auto-succeeds (keeps the pay-now flow exercisable in dev/test).
+        // Payments: Stripe when a secret is configured. The FixturePaymentGateway
+        // auto-succeeds (marks POs PAID with no real charge), so it MUST NEVER be
+        // reachable outside local/testing. In any other environment a missing
+        // STRIPE_SECRET is a hard misconfiguration — fail closed (refuse to
+        // resolve the gateway) rather than silently issuing free orders.
         $this->app->singleton(PaymentGateway::class, function ($app) {
-            return config('services.stripe.secret')
-                ? $app->make(StripePaymentGateway::class)
-                : $app->make(FixturePaymentGateway::class);
+            if (config('services.stripe.secret')) {
+                return $app->make(StripePaymentGateway::class);
+            }
+
+            if (! $app->environment(['local', 'testing'])) {
+                throw new RuntimeException(
+                    'STRIPE_SECRET is not configured. Refusing to fall back to the '
+                    .'auto-succeed FixturePaymentGateway in the "'.$app->environment()
+                    .'" environment — this would mark orders PAID without a real charge. '
+                    .'Set STRIPE_SECRET or disable the B2C pay-now feature.'
+                );
+            }
+
+            return $app->make(FixturePaymentGateway::class);
         });
     }
 
     public function boot(): void
     {
-        //
+        // Central authorization safety net: register QuotePolicy explicitly so
+        // Gate::authorize / $this->authorize('...', $quote) enforces tenancy
+        // isolation for every quote action, instead of relying on scattered
+        // inline abort_unless() checks that a new endpoint could forget.
+        Gate::policy(Quote::class, QuotePolicy::class);
     }
 }

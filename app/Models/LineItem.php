@@ -10,6 +10,7 @@ use Database\Factories\LineItemFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * @property int $id
@@ -24,6 +25,7 @@ class LineItem extends Model
 {
     /** @use HasFactory<LineItemFactory> */
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'quote_id',

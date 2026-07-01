@@ -3,8 +3,9 @@ import { useProcurementStore } from '../stores/procurementStore';
 import { EmptyState } from '../components/ui/States';
 
 export default function ProcurementPage() {
-  const { alerts, subscribe, unsubscribe, reconfirm } = useProcurementStore();
+  const { alerts, error, subscribe, unsubscribe, reconfirm } = useProcurementStore();
   const [amend, setAmend] = useState<Record<number, { qty: number; unit_price: number }>>({});
+  const [pendingId, setPendingId] = useState<number | null>(null);
 
   useEffect(() => {
     subscribe(); // live awaiting-reconfirm alerts via Reverb
@@ -16,6 +17,21 @@ export default function ProcurementPage() {
       const prev = s[id] ?? { qty: 0, unit_price: 0 };
       return { ...s, [id]: { ...prev, [field]: value } };
     });
+
+  // Single-flight guard so rapid double-clicks can't fire a mutation twice.
+  const run = async (
+    lineItemId: number,
+    action: 'amend' | 'approve' | 'drop',
+    payload?: { qty: number; unit_price: number },
+  ) => {
+    if (pendingId !== null) return;
+    setPendingId(lineItemId);
+    try {
+      await reconfirm(lineItemId, action, payload);
+    } finally {
+      setPendingId(null);
+    }
+  };
 
   if (alerts.length === 0) {
     return (
@@ -29,6 +45,12 @@ export default function ProcurementPage() {
     <section>
       <h1>Procurement desk</h1>
       <p className="muted">Resolve lines flagged during the stock/price re-check. One line never blocks the rest.</p>
+
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       <ul className="alerts">
         {alerts.map((a) => (
@@ -64,16 +86,28 @@ export default function ProcurementPage() {
                 <button
                   type="button"
                   className="btn"
-                  disabled={!amend[a.line_item_id]?.qty || !amend[a.line_item_id]?.unit_price}
-                  onClick={() => void reconfirm(a.line_item_id, 'amend', amend[a.line_item_id])}
+                  disabled={
+                    pendingId !== null || !amend[a.line_item_id]?.qty || !amend[a.line_item_id]?.unit_price
+                  }
+                  onClick={() => void run(a.line_item_id, 'amend', amend[a.line_item_id])}
                 >
                   Amend & re-procure
                 </button>
               </div>
-              <button type="button" className="btn btn--primary" onClick={() => void reconfirm(a.line_item_id, 'approve')}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={pendingId !== null}
+                onClick={() => void run(a.line_item_id, 'approve')}
+              >
                 Accept as-is
               </button>
-              <button type="button" className="btn btn--ghost" onClick={() => void reconfirm(a.line_item_id, 'drop')}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={pendingId !== null}
+                onClick={() => void run(a.line_item_id, 'drop')}
+              >
                 Drop line
               </button>
             </div>

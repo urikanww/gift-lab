@@ -53,6 +53,32 @@ class Quote extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // Cascade soft-deletes to children. The FK cascadeOnDelete only fires on
+        // a hard DELETE, so a soft-deleted quote would otherwise leave live line
+        // items / proofs / jobs / POs pointing at a hidden parent (e.g. a
+        // cancelled quote's job lingering on the shared production queue). On a
+        // force-delete the DB-level cascade handles hard removal, so skip here.
+        static::deleting(function (Quote $quote): void {
+            if ($quote->isForceDeleting()) {
+                return;
+            }
+
+            $quote->lineItems()->get()->each->delete();
+            $quote->proofs()->get()->each->delete();
+            $quote->jobs()->get()->each->delete();
+            $quote->purchaseOrders()->get()->each->delete();
+        });
+
+        static::restoring(function (Quote $quote): void {
+            $quote->lineItems()->onlyTrashed()->get()->each->restore();
+            $quote->proofs()->onlyTrashed()->get()->each->restore();
+            $quote->jobs()->onlyTrashed()->get()->each->restore();
+            $quote->purchaseOrders()->onlyTrashed()->get()->each->restore();
+        });
+    }
+
     /**
      * @return BelongsTo<Company, Quote>
      */

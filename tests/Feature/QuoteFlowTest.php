@@ -54,11 +54,12 @@ it('broadcasts a state change when a quote is sent', function (): void {
     Event::assertDispatched(QuoteStateChanged::class);
 });
 
-it('blocks an illegal transition with a server error, leaving state intact', function (): void {
+it('blocks an illegal transition with a friendly 422, leaving state intact', function (): void {
     Sanctum::actingAs($this->staff);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'READY']);
 
-    // READY cannot be "sent"; the guarded transition throws.
-    $this->postJson("/api/quotes/{$quote->id}/send")->assertStatus(500);
+    // READY cannot be "sent"; the guarded transition throws
+    // InvalidStateTransitionException, mapped to a friendly 422 (never a 500).
+    $this->postJson("/api/quotes/{$quote->id}/send")->assertStatus(422);
     expect($quote->fresh()->state->value)->toBe('READY');
 });

@@ -116,7 +116,7 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
           Upload logo
           <input
             type="file"
-            accept="image/png,image/jpeg,image/svg+xml"
+            accept="image/png,image/jpeg"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void handleLogoUpload(file);

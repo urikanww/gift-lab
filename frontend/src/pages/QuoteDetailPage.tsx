@@ -4,6 +4,7 @@ import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
 import { AsyncBoundary } from '../components/ui/States';
 import { safeHref } from '../lib/safeHref';
+import { isStaffRole } from '../lib/roles';
 import type { Proof } from '../types';
 
 export default function QuoteDetailPage() {
@@ -12,7 +13,7 @@ export default function QuoteDetailPage() {
   const { current, loading, error, fetchQuote, send, accept, procure, issueProof, decideProof, issuePurchaseOrder, payNow } =
     useQuoteStore();
   const user = useAuthStore((s) => s.user);
-  const isStaff = user?.role !== 'buyer';
+  const isStaff = isStaffRole(user?.role);
 
   const [artworkRef, setArtworkRef] = useState('');
   const [poRef, setPoRef] = useState('');

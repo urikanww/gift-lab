@@ -8,6 +8,7 @@ use App\Enums\JobState;
 use App\Http\Requests\AdvanceJobRequest;
 use App\Http\Resources\ProductionJobResource;
 use App\Models\ProductionJob;
+use App\Models\Quote;
 use App\Services\QueueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,7 +25,7 @@ class ProductionQueueController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        abort_unless($request->user()->isStaff(), 403);
+        $this->authorize('manageProduction', Quote::class);
 
         return ProductionJobResource::collection($this->queue->queue());
     }

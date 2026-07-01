@@ -13,6 +13,23 @@ declare global {
 
 let echo: Echo<'reverb'> | null = null;
 
+// Reconnect reconciliation: because the write-path UI treats Reverb pushes as
+// the primary update channel, events missed during a socket drop must be
+// reconciled once the socket comes back. Stores register a refetch here; it
+// fires only on a RE-connect (not the first connect).
+type ReconnectHandler = () => void;
+const reconnectHandlers = new Set<ReconnectHandler>();
+let hasConnectedOnce = false;
+
+/**
+ * Register a callback to run when the websocket reconnects after a drop.
+ * Returns an unregister function.
+ */
+export function onEchoReconnect(handler: ReconnectHandler): () => void {
+  reconnectHandlers.add(handler);
+  return () => reconnectHandlers.delete(handler);
+}
+
 /**
  * Lazily construct the Echo client. Private channel auth hits the Laravel
  * broadcasting auth endpoint using the Sanctum session cookie.
@@ -34,6 +51,18 @@ export function getEcho(): Echo<'reverb'> {
     withCredentials: true,
   });
 
+  // Detect reconnects and fan out to registered refetch handlers so views can
+  // reconcile any events missed while the socket was down.
+  const connector = echo.connector as unknown as { pusher?: Pusher };
+  connector.pusher?.connection.bind('state_change', ({ current }: { current: string }) => {
+    if (current === 'connected') {
+      if (hasConnectedOnce) {
+        reconnectHandlers.forEach((handler) => handler());
+      }
+      hasConnectedOnce = true;
+    }
+  });
+
   window.Echo = echo;
   return echo;
 }
@@ -43,4 +72,6 @@ export function disconnectEcho(): void {
   echo?.disconnect();
   echo = null;
   window.Echo = undefined;
+  reconnectHandlers.clear();
+  hasConnectedOnce = false;
 }

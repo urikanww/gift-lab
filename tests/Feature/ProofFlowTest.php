@@ -3,13 +3,13 @@
 declare(strict_types=1);
 
 use App\Events\ProofStatusChanged;
+use App\Exceptions\DomainRuleException;
 use App\Models\Company;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Laravel\Sanctum\Sanctum;
-use LogicException;
 
 beforeEach(function (): void {
     $this->company = Company::factory()->create();
@@ -48,7 +48,7 @@ it('prevents mutating an approved proof', function (): void {
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
     $proof = Proof::factory()->approved()->create(['quote_id' => $quote->id]);
 
-    expect(fn () => $proof->update(['notes' => 'tampered']))->toThrow(LogicException::class);
+    expect(fn () => $proof->update(['notes' => 'tampered']))->toThrow(DomainRuleException::class);
 });
 
 it('lets a buyer request changes without approving', function (): void {

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Floor unit of work. Stored in "production_jobs" (queue table owns "jobs").
@@ -24,6 +25,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class ProductionJob extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'production_jobs';
 
     protected $fillable = [
@@ -86,6 +89,10 @@ class ProductionJob extends Model
         return $query
             ->whereNotNull('ready_at')
             ->whereIn('state', [JobState::Ready->value, JobState::InProduction->value])
+            // Exclude jobs whose quote has been soft-deleted/cancelled — whereHas
+            // respects the parent's SoftDeletes global scope — so a cancelled
+            // order never lingers on the shared production floor queue.
+            ->whereHas('quote')
             ->orderBy('ready_at');
     }
 }

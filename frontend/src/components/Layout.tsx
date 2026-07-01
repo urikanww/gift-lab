@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useCartStore } from '../stores/cartStore';
+import { isStaffRole } from '../lib/roles';
 
 export default function Layout() {
   const { user, logout } = useAuthStore();
@@ -22,7 +23,7 @@ export default function Layout() {
           <NavLink to="/">Catalogue</NavLink>
           <NavLink to="/cart">Cart ({cartCount})</NavLink>
           {user && <NavLink to="/quotes">Quotes</NavLink>}
-          {user?.role !== 'buyer' && user && (
+          {isStaffRole(user?.role) && (
             <>
               <NavLink to="/production-queue">Queue</NavLink>
               <NavLink to="/procurement">Procurement</NavLink>

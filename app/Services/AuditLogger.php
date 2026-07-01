@@ -21,6 +21,11 @@ final class AuditLogger
      */
     public function log(Model $auditable, string $event, ?array $old, ?array $new): AuditLog
     {
+        // Background (console/queue) mutations have no authenticated user or HTTP
+        // request — record an explicit "console" source sentinel instead of a
+        // null that reads like missing data, preserving who/what/where evidence.
+        $inConsole = app()->runningInConsole();
+
         return AuditLog::create([
             'user_id' => Auth::id(),
             'auditable_type' => $auditable::class,
@@ -28,7 +33,7 @@ final class AuditLogger
             'event' => $event,
             'old_values' => $old,
             'new_values' => $new,
-            'ip_address' => Request::ip(),
+            'ip_address' => $inConsole ? 'console' : Request::ip(),
         ]);
     }
 }

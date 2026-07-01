@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueueStore } from '../stores/queueStore';
 import { AsyncBoundary } from '../components/ui/States';
 import type { JobState } from '../types';
@@ -11,12 +11,24 @@ const NEXT_STATE: Partial<Record<JobState, { label: string; to: JobState }>> = {
 
 export default function ProductionQueuePage() {
   const { jobs, loading, error, fetchQueue, advance, subscribe, unsubscribe } = useQueueStore();
+  const [pendingId, setPendingId] = useState<number | null>(null);
 
   useEffect(() => {
     void fetchQueue();
     subscribe(); // live via Reverb; no polling
     return () => unsubscribe();
   }, [fetchQueue, subscribe, unsubscribe]);
+
+  // Single-flight guard against a double-click firing a duplicate advance.
+  const onAdvance = async (jobId: number, to: JobState) => {
+    if (pendingId !== null) return;
+    setPendingId(jobId);
+    try {
+      await advance(jobId, to);
+    } finally {
+      setPendingId(null);
+    }
+  };
 
   return (
     <section>
@@ -57,7 +69,12 @@ export default function ProductionQueuePage() {
                   </td>
                   <td>
                     {next && (
-                      <button type="button" className="btn" onClick={() => void advance(j.id, next.to)}>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={pendingId !== null}
+                        onClick={() => void onAdvance(j.id, next.to)}
+                      >
                         {next.label}
                       </button>
                     )}

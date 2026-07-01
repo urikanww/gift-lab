@@ -7,7 +7,7 @@ namespace App\Events;
 use App\Models\Quote;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -15,7 +15,7 @@ use Illuminate\Queue\SerializesModels;
  * Pushed to the owning company's private channel whenever a quote changes
  * state, so the buyer's screen updates without polling (Reverb-only mandate).
  */
-class QuoteStateChanged implements ShouldBroadcastNow
+class QuoteStateChanged implements ShouldBroadcast
 {
     use Dispatchable;
     use InteractsWithSockets;

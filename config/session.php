@@ -169,7 +169,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Safe default: secure cookies everywhere except local dev. Previously this
+    // defaulted to null when SESSION_SECURE_COOKIE was unset, letting the session
+    // cookie travel over plaintext HTTP in a prod deploy that forgot to set it.
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV') !== 'local'),
 
     /*
     |--------------------------------------------------------------------------

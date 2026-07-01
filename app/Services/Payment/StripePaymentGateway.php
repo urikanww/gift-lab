@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Payment;
 
+use App\Exceptions\PaymentGatewayException;
 use App\Models\Quote;
 use App\Services\Payment\Contracts\PaymentGateway;
+use Illuminate\Support\Facades\Log;
+use Stripe\Exception\ApiErrorException;
 use Stripe\StripeClient;
 
 /**
@@ -27,21 +30,31 @@ final class StripePaymentGateway implements PaymentGateway
      */
     public function createCheckout(Quote $quote): array
     {
-        $session = $this->stripe->checkout->sessions->create([
-            'mode' => 'payment',
-            'client_reference_id' => (string) $quote->id,
-            'metadata' => ['quote_id' => (string) $quote->id],
-            'line_items' => [[
-                'quantity' => 1,
-                'price_data' => [
-                    'currency' => strtolower($quote->currency),
-                    'unit_amount' => (int) round((float) $quote->total * 100), // cents
-                    'product_data' => ['name' => "Gift Lab order #{$quote->id}"],
-                ],
-            ]],
-            'success_url' => rtrim((string) config('app.url'), '/')."/orders/{$quote->id}?paid=1",
-            'cancel_url' => rtrim((string) config('app.url'), '/')."/orders/{$quote->id}?paid=0",
-        ]);
+        try {
+            $session = $this->stripe->checkout->sessions->create([
+                'mode' => 'payment',
+                'client_reference_id' => (string) $quote->id,
+                'metadata' => ['quote_id' => (string) $quote->id],
+                'line_items' => [[
+                    'quantity' => 1,
+                    'price_data' => [
+                        'currency' => strtolower($quote->currency),
+                        'unit_amount' => (int) round((float) $quote->total * 100), // cents
+                        'product_data' => ['name' => "Gift Lab order #{$quote->id}"],
+                    ],
+                ]],
+                'success_url' => rtrim((string) config('app.url'), '/')."/orders/{$quote->id}?paid=1",
+                'cancel_url' => rtrim((string) config('app.url'), '/')."/orders/{$quote->id}?paid=0",
+            ]);
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe checkout session creation failed.', [
+                'quote_id' => $quote->id,
+                'amount' => $quote->total,
+                'stripe_error' => $e->getMessage(),
+            ]);
+
+            throw PaymentGatewayException::checkoutFailed($e);
+        }
 
         return ['id' => $session->id, 'url' => (string) $session->url];
     }

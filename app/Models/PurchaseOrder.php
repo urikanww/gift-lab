@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\PaymentState;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * @property int $id
@@ -16,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class PurchaseOrder extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'quote_id',
         'po_ref',

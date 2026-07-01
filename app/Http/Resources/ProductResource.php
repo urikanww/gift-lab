@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Product;
+use App\Services\PricingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,7 +24,10 @@ class ProductResource extends JsonResource
             'name' => $this->name,
             'description' => $this->description,
             'class' => $this->class->value,
-            'base_cost' => $this->base_cost,
+            // Indicative sell price (qty 1, no variant), NOT the raw pre-margin
+            // supplier cost. base_cost is internal — exposing it on the public
+            // catalogue let anyone back out the margin (business-intel leak).
+            'from_price' => app(PricingService::class)->unitPrice($this->resource, null, 1),
             'currency' => $this->currency,
             'dimensions' => $this->dimensions,
             'weight' => $this->weight,

@@ -8,10 +8,11 @@ use App\Enums\LineItemState;
 use App\Enums\ProcurementOutcome;
 use App\Enums\ProductClass;
 use App\Events\LineItemAwaitingReconfirm;
+use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
 use App\Services\AuditLogger;
 use App\Services\Procurement\Contracts\ProcurementStrategy;
-use InvalidArgumentException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Resolves the per-class procurement strategy and drives the line-item state
@@ -44,30 +45,36 @@ final class ProcurementManager
     public function procureLine(LineItem $lineItem): ProcurementResult
     {
         if ($lineItem->line_state !== LineItemState::Pending && $lineItem->line_state !== LineItemState::Amended) {
-            throw new InvalidArgumentException(
+            throw new DomainRuleException(
                 "Line item {$lineItem->id} is not in a procurable state ({$lineItem->line_state->value})."
             );
         }
 
-        $lineItem->transitionTo(LineItemState::Procuring);
-
         $product = $lineItem->product;
 
         if ($product === null) {
-            throw new InvalidArgumentException("Line item {$lineItem->id} has no product.");
+            throw new DomainRuleException("Line item {$lineItem->id} has no product.");
         }
 
-        $result = $this->strategyFor($product->class)->procure($lineItem);
+        // Per-line atomicity: the chained state-machine transitions (Procuring →
+        // Purchased → Inbound → Received → Ready on success, or → AwaitingReconfirm)
+        // plus the strategy's stock decrement all commit together or not at all.
+        // A failure mid-chain no longer strands the line in an intermediate state.
+        return DB::transaction(function () use ($lineItem, $product): ProcurementResult {
+            $lineItem->transitionTo(LineItemState::Procuring);
 
-        $lineItem->procured_qty = $result->procuredQty;
-        $lineItem->procured_price = $result->procuredPrice;
+            $result = $this->strategyFor($product->class)->procure($lineItem);
 
-        match ($result->outcome) {
-            ProcurementOutcome::Ok => $this->onProcured($lineItem),
-            ProcurementOutcome::QtyShort, ProcurementOutcome::PriceJumped => $this->onReconfirm($lineItem, $result),
-        };
+            $lineItem->procured_qty = $result->procuredQty;
+            $lineItem->procured_price = $result->procuredPrice;
 
-        return $result;
+            match ($result->outcome) {
+                ProcurementOutcome::Ok => $this->onProcured($lineItem),
+                ProcurementOutcome::QtyShort, ProcurementOutcome::PriceJumped => $this->onReconfirm($lineItem, $result),
+            };
+
+            return $result;
+        });
     }
 
     private function onProcured(LineItem $lineItem): void
@@ -96,6 +103,6 @@ final class ProcurementManager
             'procured_price' => $result->procuredPrice,
         ]);
 
-        LineItemAwaitingReconfirm::dispatch($lineItem, $result->outcome->reasonTag());
+        DB::afterCommit(fn () => LineItemAwaitingReconfirm::dispatch($lineItem, $result->outcome->reasonTag()));
     }
 }

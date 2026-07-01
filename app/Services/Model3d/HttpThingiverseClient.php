@@ -8,7 +8,9 @@ use App\Enums\License;
 use App\Enums\Model3dSource;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Live Thingiverse client (public API, free — spec 6.5). Only handles the
@@ -30,9 +32,34 @@ final class HttpThingiverseClient implements Model3dApiClient
         $base = (string) config('services.thingiverse.base_url');
         $token = (string) config('services.thingiverse.token');
 
-        $response = Http::withToken($token)->acceptJson()->get("{$base}/things/{$sourceId}");
+        try {
+            // Explicit connect/request timeouts + bounded retry — Laravel's HTTP
+            // client has NO default request timeout, so without these a hung
+            // upstream would block the caller (and the daily resync worker)
+            // indefinitely. Retry rides out transient blips with backoff.
+            $response = Http::withToken($token)
+                ->acceptJson()
+                ->connectTimeout(5)
+                ->timeout(15)
+                ->retry(2, 500, throw: false)
+                ->get("{$base}/things/{$sourceId}");
+        } catch (Throwable $e) {
+            Log::warning('Thingiverse fetch failed (transport error).', [
+                'source_id' => $sourceId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
 
         if (! $response->successful()) {
+            // Non-2xx (quota, 404, outage): surface a signal instead of a silent
+            // null so upstream failures are visible in logs/metrics.
+            Log::warning('Thingiverse fetch returned non-success status.', [
+                'source_id' => $sourceId,
+                'status' => $response->status(),
+            ]);
+
             return null;
         }
 

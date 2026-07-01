@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api, { ensureCsrf } from '../lib/api';
+import api, { apiError, ensureCsrf } from '../lib/api';
 import { getEcho } from '../lib/echo';
 
 export interface ReconfirmAlert {
@@ -15,6 +15,7 @@ export interface ReconfirmAlert {
 interface ProcurementStoreState {
   alerts: ReconfirmAlert[];
   subscribed: boolean;
+  error: string | null;
   subscribe: () => void;
   unsubscribe: () => void;
   reconfirm: (
@@ -27,6 +28,7 @@ interface ProcurementStoreState {
 export const useProcurementStore = create<ProcurementStoreState>((set, get) => ({
   alerts: [],
   subscribed: false,
+  error: null,
 
   subscribe: () => {
     if (get().subscribed) return;
@@ -47,9 +49,16 @@ export const useProcurementStore = create<ProcurementStoreState>((set, get) => (
   },
 
   reconfirm: async (lineItemId, action, payload) => {
-    await ensureCsrf();
-    await api.post(`/line-items/${lineItemId}/reconfirm`, { action, ...payload });
-    // Once resolved, drop the alert from the desk.
-    set((s) => ({ alerts: s.alerts.filter((a) => a.line_item_id !== lineItemId) }));
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/line-items/${lineItemId}/reconfirm`, { action, ...payload });
+      // Only drop the alert from the desk once the resolution actually persisted
+      // — a rejected request now surfaces `error` and keeps the alert visible
+      // (was an unhandled rejection that left the operator with no feedback).
+      set((s) => ({ alerts: s.alerts.filter((a) => a.line_item_id !== lineItemId) }));
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
   },
 }));

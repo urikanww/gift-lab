@@ -77,12 +77,12 @@ final class QueueService
                 }
 
                 $jobs->push($job);
-                ProductionQueueUpdated::dispatch($job, 'queued');
+                DB::afterCommit(fn () => ProductionQueueUpdated::dispatch($job, 'queued'));
             }
 
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::Ready);
-            QuoteStateChanged::dispatch($quote, $previous);
+            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
         });
 
         return $jobs;
@@ -95,7 +95,10 @@ final class QueueService
      */
     public function queue(): Collection
     {
-        return ProductionJob::query()->queueOrder()->with('quote')->get();
+        // No eager-load: ProductionJobResource emits only quote_id (the FK on the
+        // job row itself) and never reads the quote relation, so with('quote')
+        // was a dead extra whereIn query + hydration on every queue read.
+        return ProductionJob::query()->queueOrder()->get();
     }
 
     /**

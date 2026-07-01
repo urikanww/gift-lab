@@ -10,7 +10,8 @@ use Database\Factories\ProofFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use LogicException;
+use App\Exceptions\DomainRuleException;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Immutable-once-approved proof (spec 6.3). Approval is recorded with
@@ -26,6 +27,7 @@ class Proof extends Model
 {
     /** @use HasFactory<ProofFactory> */
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'quote_id',
@@ -56,7 +58,7 @@ class Proof extends Model
                 : $original === ProofState::Approved->value;
 
             if ($wasApproved) {
-                throw new LogicException(
+                throw new DomainRuleException(
                     "Proof {$proof->id} is APPROVED and immutable; create a new version instead."
                 );
             }

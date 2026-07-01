@@ -15,7 +15,7 @@ const product: Product = {
   name: 'Ceramic Mug',
   description: null,
   class: 'CORE',
-  base_cost: '3.20',
+  from_price: 3.2,
   currency: 'SGD',
   dimensions: null,
   weight: '320',

@@ -11,6 +11,7 @@ use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\ScrapedProductData;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Scraped-UV catalogue lifecycle (spec 6.4): ingest to our own DB, gate on
@@ -32,11 +33,24 @@ final class ScrapedCatalogueService
      */
     public function ingest(ScrapedProductData $data): Product
     {
-        $product = Product::withTrashed()
+        $existing = Product::withTrashed()
             ->where('class', ProductClass::ScrapedUv->value)
             ->where('source_product_id', $data->sourceProductId)
-            ->first()
-            ?? new Product(['class' => ProductClass::ScrapedUv->value]);
+            ->first();
+
+        // Do NOT silently resurrect a soft-deleted (intentionally removed)
+        // listing on re-ingest. A trashed match is skipped and logged; only live
+        // rows are updated, and a genuinely new source id creates a fresh row.
+        if ($existing !== null && $existing->trashed()) {
+            Log::info('Skipped re-ingest of soft-deleted scraped product.', [
+                'product_id' => $existing->id,
+                'source_product_id' => $data->sourceProductId,
+            ]);
+
+            return $existing;
+        }
+
+        $product = $existing ?? new Product(['class' => ProductClass::ScrapedUv->value]);
 
         $this->applyData($product, $data);
         $this->evaluateAndSetState($product);
@@ -85,9 +99,14 @@ final class ScrapedCatalogueService
             $product->publish_state = PublishState::Published;
             $product->cannot_publish_reasons = null;
             $product->save();
+
+            return $product;
         }
 
-        return $product;
+        // Completeness/licence status drifted after the item reached
+        // ReadyToApprove — record the reasons and hold it out of public rather
+        // than trusting the stale state flag.
+        return $this->markCannotPublish($product, $this->gate->reasons($product));
     }
 
     public function unpublish(Product $product): Product
