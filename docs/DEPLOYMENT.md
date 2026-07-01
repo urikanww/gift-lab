@@ -61,34 +61,63 @@ git clone https://github.com/urikanww/gift-lab.git giftlab-src
 # Fresh skeleton, then overlay our source.
 composer create-project laravel/laravel giftlab-app
 cd giftlab-app
-cp -r ../giftlab-src/app/*        app/
-cp -r ../giftlab-src/database/*   database/
-cp -r ../giftlab-src/routes/*     routes/
-cp -r ../giftlab-src/tests/*      tests/
-cp    ../giftlab-src/phpunit.xml  phpunit.xml
 
-# First-party packages.
+# IMPORTANT: remove the skeleton's default migrations and example tests first —
+# our framework migration defines users/cache/jobs/sessions itself, so leaving
+# the defaults in place causes duplicate-table migration failures.
+rm -f database/migrations/*.php
+rm -f tests/Feature/ExampleTest.php tests/Unit/ExampleTest.php tests/Pest.php tests/TestCase.php
+
+# Overlay our source (app/, database/, routes/, tests/, phpunit.xml).
+cp -r ../giftlab-src/app/.               app/
+cp -r ../giftlab-src/database/migrations/. database/migrations/
+cp -r ../giftlab-src/database/factories/.  database/factories/
+cp -r ../giftlab-src/database/seeders/.    database/seeders/
+cp    ../giftlab-src/routes/api.php        routes/api.php
+cp    ../giftlab-src/routes/channels.php   routes/channels.php
+cp -r ../giftlab-src/tests/.              tests/
+cp    ../giftlab-src/phpunit.xml           phpunit.xml
+
+# First-party packages. Do NOT run `install:api` — it publishes a second
+# personal_access_tokens migration that collides with ours. Just require Sanctum;
+# our migration already creates the tokens table.
 composer require laravel/sanctum laravel/reverb
 composer require pestphp/pest pestphp/pest-plugin-laravel --dev --with-all-dependencies
 
-# Install API auth (Sanctum) + broadcasting (keeps our routes/channels.php).
-php artisan install:api --without-migration-prompt
+# Broadcasting config for prod realtime (keeps our routes/channels.php).
 php artisan reverb:install
 ```
 
-Then confirm three wirings (all shipped in this repo — verify, don't recreate):
+Then wire `bootstrap/app.php` — a fresh Laravel skeleton does not register the
+`api`/`channels` route files or stateful Sanctum, so add them:
 
-1. **Stateful SPA** — `bootstrap/app.php` `->withMiddleware()` adds
-   `$middleware->statefulApi();` so the `api` group runs Sanctum's
-   `EnsureFrontendRequestsAreStateful` (cookie auth + CSRF).
-2. **CORS** — `config/cors.php`: `paths` include `api/*`, `sanctum/csrf-cookie`,
-   `broadcasting/auth`; `allowed_origins` = `[env('CORS_ALLOWED_ORIGINS')]`;
-   `supports_credentials => true`.
-3. **Broadcasting auth** — `routes/channels.php` (ours) is loaded; the
-   `/broadcasting/auth` route is behind `auth:sanctum`.
+```php
+->withRouting(
+    web:      __DIR__.'/../routes/web.php',
+    api:      __DIR__.'/../routes/api.php',
+    commands: __DIR__.'/../routes/console.php',
+    channels: __DIR__.'/../routes/channels.php',
+    health:   '/up',
+    apiPrefix: 'api',
+)
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->statefulApi();   // Sanctum cookie auth + CSRF for the SPA
+})
+```
+
+Also set:
+
+- **CORS** — `config/cors.php`: `paths` include `api/*`, `sanctum/csrf-cookie`,
+  `broadcasting/auth`; `allowed_origins` = `[env('CORS_ALLOWED_ORIGINS')]`;
+  `supports_credentials => true`.
+- **Broadcasting auth** — the `/broadcasting/auth` route (added by
+  `reverb:install`) must run behind `auth:sanctum`.
 
 `QuotePolicy` is auto-discovered by Laravel's naming convention — no manual
 registration needed.
+
+> **Verified:** this exact assembly (Laravel 12 + Sanctum + Pest, SQLite) runs
+> the full backend suite green — **35 passed, 99 assertions**.
 
 ## 4. Database
 
