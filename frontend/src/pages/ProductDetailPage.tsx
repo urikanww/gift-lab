@@ -48,7 +48,7 @@ const REVIEWS = [
 const RATING_AVG = 4.8;
 const RATING_COUNT = 128;
 
-/** Static star row. `filled` is a count out of 5; supports halves visually via rounding. */
+/** Static star row. Renders `value` (out of 5) rounded to the nearest whole star. */
 function Stars({ value, className }: { value: number; className?: string }) {
   return (
     <span className={cn('inline-flex text-warning', className)} aria-hidden="true">
@@ -64,6 +64,7 @@ function Stars({ value, className }: { value: number; className?: string }) {
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useOptionalToast();
+  const addLine = useCartStore((s) => s.addLine);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +72,7 @@ export default function ProductDetailPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [selectedPrintMethod, setSelectedPrintMethod] = useState<string | null>(null);
+  const [selectedPrintMethod, setSelectedPrintMethod] = useState<PrintMethod | null>(null);
   const [selectedTierQty, setSelectedTierQty] = useState<number | null>(null);
 
   const [related, setRelated] = useState<Product[]>([]);
@@ -106,12 +107,12 @@ export default function ProductDetailPage() {
 
   // ── Related products (best-effort; failure is non-fatal). ─────────────────
   useEffect(() => {
+    if (!product) return;
     let active = true;
     fetchCatalogue(1)
       .then((res) => {
         if (!active) return;
-        const currentId = product?.id;
-        setRelated(res.data.filter((p) => p.id !== currentId).slice(0, 3));
+        setRelated(res.data.filter((p) => p.id !== product.id).slice(0, 3));
       })
       .catch(() => {
         if (active) setRelated([]);
@@ -197,7 +198,7 @@ export default function ProductDetailPage() {
   const currency = product.currency;
 
   const handleAddSample = () => {
-    useCartStore.getState().addLine(product, selectedVariant, {});
+    addLine(product, selectedVariant, {});
     toast({
       title: 'Sample added to cart',
       description: product.name,
