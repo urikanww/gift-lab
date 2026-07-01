@@ -41,6 +41,15 @@ const sizeClasses: Record<ButtonSize, string> = {
   lg: 'h-12 px-6 text-lg',
 };
 
+/**
+ * Pure class-name builder for button-styled elements. Shared so link-based CTAs
+ * (see LinkButton) render identically to <Button> without forking styling.
+ */
+export function buttonClasses(opts?: { variant?: ButtonVariant; size?: ButtonSize }): string {
+  const { variant = 'primary', size = 'md' } = opts ?? {};
+  return cn(base, variantClasses[variant], sizeClasses[size]);
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant = 'primary',
@@ -68,7 +77,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={loading || undefined}
       whileTap={animate && !isDisabled ? { scale: 0.97 } : undefined}
       transition={springSoft}
-      className={cn(base, variantClasses[variant], sizeClasses[size], fullWidth && 'w-full', className)}
+      className={cn(buttonClasses({ variant, size }), fullWidth && 'w-full', className)}
       {...rest}
     >
       {loading && <Spinner size={size === 'lg' ? 'md' : 'sm'} className="text-current" />}

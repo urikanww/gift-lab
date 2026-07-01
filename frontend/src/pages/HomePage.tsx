@@ -1,105 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, EmptyState, Skeleton } from '../ui';
+import { Badge, Button, EmptyState, LinkButton } from '../ui';
 import { ErrorState } from '../components/ui/States';
-import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
+import { CardSkeleton, ProductCard } from '../components/product/ProductCard';
+import { Motion, fadeInUp, staggerContainer } from '../motion';
 import { fetchCatalogue } from '../lib/catalogue';
 import { CATEGORIES } from '../lib/categories';
-import { safeHref } from '../lib/safeHref';
 import type { Product } from '../types';
 
 const MAX_POPULAR = 8;
-
-/** Shared button-equivalent styling so react-router <Link>s read as CTAs. */
-const ctaBase =
-  'inline-flex items-center justify-center gap-2 h-12 px-6 text-lg font-medium select-none whitespace-nowrap ' +
-  'rounded-md transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 ' +
-  'focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
-
-function HeroCtaPrimary() {
-  return (
-    <Link to="/products" className={`${ctaBase} bg-primary text-primary-fg hover:bg-primary-hover shadow-xs`}>
-      Open the studio
-    </Link>
-  );
-}
-
-function HeroCtaSecondary() {
-  return (
-    <Link
-      to="/products"
-      className={`${ctaBase} bg-surface text-fg border border-border-strong hover:border-fg-subtle`}
-    >
-      Browse products
-    </Link>
-  );
-}
-
-/** External/untrusted image → route through safeHref, monogram fallback. */
-function CardImage({ product }: { product: Product }) {
-  const [failed, setFailed] = useState(false);
-  const href = safeHref(product.image_url);
-
-  if (!href || failed) {
-    return (
-      <div
-        className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-accent-50 font-display text-5xl text-brand-700"
-        aria-hidden="true"
-      >
-        {product.name.charAt(0)}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={href}
-      alt=""
-      className="h-full w-full object-cover transition-transform duration-slow ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-function ProductCard({ product }: { product: Product }) {
-  return (
-    <Motion variants={staggerItem} className="h-full">
-      <Link
-        to={`/products/${product.id}`}
-        className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      >
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-surface-2">
-          <CardImage product={product} />
-        </div>
-        <div className="flex flex-1 flex-col gap-1 p-4">
-          <h3 className="font-display text-lg leading-snug text-fg transition-colors duration-fast group-hover:text-primary">
-            {product.name}
-          </h3>
-          <p className="mt-auto pt-2 text-sm text-fg-muted">
-            <span className="text-2xs uppercase tracking-wide text-fg-subtle">from </span>
-            <span className="font-medium text-fg">
-              {product.currency} {product.from_price.toFixed(2)}
-            </span>
-          </p>
-        </div>
-      </Link>
-    </Motion>
-  );
-}
-
-function CardSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-card">
-      <Skeleton className="aspect-[4/3] w-full rounded-none" />
-      <div className="flex flex-col gap-2 p-4">
-        <Skeleton height={18} width="70%" />
-        <Skeleton height={14} width="40%" />
-      </div>
-    </div>
-  );
-}
 
 const STEPS = [
   {
@@ -131,21 +40,27 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (isActive: () => boolean = () => true) => {
     setLoading(true);
     setError(null);
     try {
       const result = await fetchCatalogue(1);
+      if (!isActive()) return;
       setProducts(result.data.slice(0, MAX_POPULAR));
     } catch {
+      if (!isActive()) return;
       setError('We could not load products right now.');
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void load();
+    let active = true;
+    void load(() => active);
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -180,8 +95,12 @@ export default function HomePage() {
               no account needed until checkout.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <HeroCtaPrimary />
-              <HeroCtaSecondary />
+              <LinkButton to="/products" variant="primary" size="lg">
+                Open the studio
+              </LinkButton>
+              <LinkButton to="/products" variant="outline" size="lg">
+                Browse products
+              </LinkButton>
             </div>
           </div>
 
@@ -272,7 +191,7 @@ export default function HomePage() {
               className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
             >
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} to={`/products/${p.id}`} />
               ))}
             </Motion>
           )}

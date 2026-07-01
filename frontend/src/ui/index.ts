@@ -12,8 +12,11 @@ export type { ClassValue } from './cn';
 export { ThemeProvider, useTheme } from './ThemeProvider';
 export type { Theme } from './ThemeProvider';
 
-export { Button } from './Button';
+export { Button, buttonClasses } from './Button';
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button';
+
+export { LinkButton } from './LinkButton';
+export type { LinkButtonProps } from './LinkButton';
 
 export { Input } from './Input';
 export type { InputProps } from './Input';
