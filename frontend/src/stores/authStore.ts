@@ -1,0 +1,53 @@
+import { create } from 'zustand';
+import api, { apiError, ensureCsrf } from '../lib/api';
+import { disconnectEcho } from '../lib/echo';
+import type { User } from '../types';
+
+interface AuthState {
+  user: User | null;
+  status: 'idle' | 'loading' | 'ready';
+  error: string | null;
+  fetchUser: () => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  status: 'idle',
+  error: null,
+
+  fetchUser: async () => {
+    set({ status: 'loading', error: null });
+    try {
+      const { data } = await api.get<User>('/user');
+      set({ user: data, status: 'ready' });
+    } catch {
+      // 401 is expected for anonymous visitors browsing the public catalogue.
+      set({ user: null, status: 'ready' });
+    }
+  },
+
+  login: async (email, password) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post('/login', { email, password });
+      const { data } = await api.get<User>('/user');
+      set({ user: data, status: 'ready' });
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
+  },
+
+  logout: async () => {
+    try {
+      await api.post('/logout');
+    } finally {
+      disconnectEcho();
+      set({ user: null });
+    }
+  },
+}));

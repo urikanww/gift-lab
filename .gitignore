@@ -1,5 +1,7 @@
 /vendor
 /node_modules
+node_modules/
+frontend/dist
 /public/build
 /public/hot
 /public/storage
@@ -20,3 +22,7 @@ yarn-error.log
 /.vscode
 .DS_Store
 Thumbs.db
+
+frontend/vite.config.js
+frontend/vite.config.d.ts
+*.tsbuildinfo

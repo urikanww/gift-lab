@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\CatalogueController;
+use App\Http\Controllers\PriceEstimateController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Route;
 // Public, no-account catalogue.
 Route::get('/catalogue', [CatalogueController::class, 'index']);
 Route::get('/catalogue/{product}', [CatalogueController::class, 'show']);
+Route::post('/price-estimate', PriceEstimateController::class);
 
 Route::middleware('auth:sanctum')->group(function (): void {
     // Quotes
