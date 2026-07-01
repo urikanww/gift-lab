@@ -120,3 +120,15 @@ export function useToast(): ToastContextValue {
   if (!ctx) throw new Error('useToast must be used within a <ToastProvider>.');
   return ctx;
 }
+
+const NOOP_TOAST: ToastContextValue = { toast: () => -1, dismiss: () => {} };
+
+/**
+ * Like {@link useToast} but degrades to a no-op when rendered outside a
+ * <ToastProvider> instead of throwing. Use in pages whose notifications are a
+ * nice-to-have (e.g. a "sample added" confirmation) so they stay renderable in
+ * isolation (tests, storybook) without every harness wiring up the provider.
+ */
+export function useOptionalToast(): ToastContextValue {
+  return useContext(ToastContext) ?? NOOP_TOAST;
+}

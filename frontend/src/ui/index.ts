@@ -33,7 +33,7 @@ export type { CardProps } from './Card';
 export { Modal } from './Modal';
 export type { ModalProps } from './Modal';
 
-export { ToastProvider, useToast } from './Toast';
+export { ToastProvider, useToast, useOptionalToast } from './Toast';
 export type { ToastOptions, ToastTone } from './Toast';
 
 export { Skeleton, SkeletonText } from './Skeleton';
