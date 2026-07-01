@@ -1,8 +1,19 @@
-import { expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, expect, it } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
+import { useAuthStore } from '../stores/authStore';
+import type { User } from '../types';
 import SiteHeader from './SiteHeader';
+
+const testUser: User = {
+  id: 1,
+  company_id: null,
+  name: 'Ada Buyer',
+  email: 'ada@example.com',
+  role: 'buyer',
+};
 
 function renderHeader() {
   return render(
@@ -10,9 +21,26 @@ function renderHeader() {
   );
 }
 
+afterEach(() => {
+  useAuthStore.setState({ user: null, status: 'idle', error: null });
+});
+
 it('renders brand, primary nav, and a theme toggle', () => {
   renderHeader();
   expect(screen.getByRole('link', { name: /giftlab/i })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: /products/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument();
+});
+
+it('shows Log out in the drawer for a logged-in user and closes on Escape', async () => {
+  const user = userEvent.setup();
+  useAuthStore.setState({ user: testUser, status: 'ready', error: null });
+  renderHeader();
+
+  await user.click(screen.getByRole('button', { name: /open menu/i }));
+  const drawer = screen.getByRole('navigation', { name: /mobile/i });
+  expect(within(drawer).getByRole('button', { name: /log out/i })).toBeInTheDocument();
+
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('navigation', { name: /mobile/i })).not.toBeInTheDocument();
 });

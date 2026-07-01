@@ -1,11 +1,22 @@
-import { useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
 import { useCartStore } from '../stores/cartStore';
 import { CATEGORIES } from '../lib/categories';
-import { Badge, Input, useTheme, cn } from '../ui';
+import { Badge, Button, Input, useTheme, cn } from '../ui';
 import { useReducedMotionSafe } from '../motion';
+import type { User } from '../types';
+
+const FOCUSABLE =
+  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -16,6 +27,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function SiteHeader() {
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const cartCount = useCartStore((s) => s.lines.length);
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -24,6 +36,11 @@ export default function SiteHeader() {
     e.preventDefault();
     const value = new FormData(e.currentTarget).get('q')?.toString().trim() ?? '';
     if (value) navigate(`/products?q=${encodeURIComponent(value)}`);
+  };
+
+  const onLogout = async () => {
+    await logout();
+    navigate('/');
   };
 
   return (
@@ -56,14 +73,19 @@ export default function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
           <CartLink count={cartCount} />
-          <div className="hidden md:block">
+          <div className="hidden md:flex md:items-center md:gap-1">
             <AccountLink user={user} />
+            {user && (
+              <Button variant="ghost" size="sm" onClick={onLogout}>
+                Log out
+              </Button>
+            )}
           </div>
 
           <button
             type="button"
             className="inline-flex h-9 w-9 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
-            aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+            aria-label="Open menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(true)}
           >
@@ -74,7 +96,13 @@ export default function SiteHeader() {
         </div>
       </div>
 
-      <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} user={user} onSearch={onSearch} />
+      <MobileDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        user={user}
+        onSearch={onSearch}
+        onLogout={onLogout}
+      />
     </header>
   );
 }
@@ -128,7 +156,7 @@ function CartLink({ count }: { count: number }) {
   );
 }
 
-function AccountLink({ user, onClick }: { user: unknown; onClick?: () => void }) {
+function AccountLink({ user, onClick }: { user: User | null; onClick?: () => void }) {
   return user ? (
     <NavLink to="/quotes" onClick={onClick} className={navLinkClass}>
       My Orders
@@ -145,27 +173,83 @@ function MobileDrawer({
   onClose,
   user,
   onSearch,
+  onLogout,
 }: {
   open: boolean;
   onClose: () => void;
-  user: unknown;
+  user: User | null;
   onSearch: (e: FormEvent<HTMLFormElement>) => void;
+  onLogout: () => void;
 }) {
   const animate = useReducedMotionSafe();
+  const panelRef = useRef<HTMLElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  // Escape to close + Tab focus trap (mirrors ui/Modal.tsx).
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const nodes = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+        if (!nodes || nodes.length === 0) {
+          e.preventDefault();
+          return;
+        }
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    },
+    [onClose],
+  );
+
+  // On open: remember trigger, lock body scroll, move focus in. On close: restore.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    const { overflow } = document.body.style;
+    document.body.style.overflow = 'hidden';
+
+    const raf = requestAnimationFrame(() => {
+      const nodes = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+      (nodes && nodes.length ? nodes[0] : panelRef.current)?.focus();
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.body.style.overflow = overflow;
+      previouslyFocused.current?.focus?.();
+    };
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && (
-        <>
+        <div className="md:hidden" onKeyDown={handleKeyDown}>
           <motion.div
-            className="fixed inset-0 z-modal bg-black/50 md:hidden"
+            className="fixed inset-0 z-modal bg-black/50"
             initial={animate ? { opacity: 0 } : false}
             animate={{ opacity: 1 }}
             exit={animate ? { opacity: 0 } : undefined}
             onClick={onClose}
+            aria-hidden="true"
           />
           <motion.nav
+            ref={panelRef}
             aria-label="Mobile"
-            className="fixed inset-y-0 right-0 z-modal flex w-72 max-w-[85vw] flex-col gap-1 border-l border-border bg-surface p-4 md:hidden"
+            tabIndex={-1}
+            className="fixed inset-y-0 right-0 z-modal flex w-72 max-w-[85vw] flex-col gap-1 border-l border-border bg-surface p-4 focus:outline-none"
             initial={animate ? { x: '100%' } : false}
             animate={{ x: 0 }}
             exit={animate ? { x: '100%' } : undefined}
@@ -197,11 +281,24 @@ function MobileDrawer({
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
-            <div className="mt-2 border-t border-border pt-3">
+            <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3">
               <AccountLink user={user} onClick={onClose} />
+              {user && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  fullWidth
+                  onClick={() => {
+                    onClose();
+                    onLogout();
+                  }}
+                >
+                  Log out
+                </Button>
+              )}
             </div>
           </motion.nav>
-        </>
+        </div>
       )}
     </AnimatePresence>
   );
