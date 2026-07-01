@@ -1,9 +1,14 @@
 import axios, { AxiosError } from 'axios';
 
+// Resolve the API origin from env, falling back to the local dev host. Without a
+// fallback, a missing VITE_API_URL silently produces `undefined/api/...` requests
+// that 404 against the SPA dev server instead of hitting the backend.
+const API_ORIGIN = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+
 // Sanctum SPA cookie auth: withCredentials + XSRF cookie/header. The API and
 // SPA must share a top-level domain in production for the cookie to apply.
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  baseURL: `${API_ORIGIN}/api`,
   withCredentials: true,
   withXSRFToken: true,
   headers: {
@@ -19,7 +24,7 @@ let csrfInitialized = false;
  */
 export async function ensureCsrf(): Promise<void> {
   if (csrfInitialized) return;
-  await axios.get(`${import.meta.env.VITE_API_URL}/sanctum/csrf-cookie`, {
+  await axios.get(`${API_ORIGIN}/sanctum/csrf-cookie`, {
     withCredentials: true,
   });
   csrfInitialized = true;

@@ -13,6 +13,8 @@ frontend/dist
 /.env
 /.env.backup
 /.env.production
+frontend/.env
+frontend/.env.local
 /.phpunit.cache
 /.phpunit.result.cache
 Homestead.json
