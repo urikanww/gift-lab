@@ -72,8 +72,8 @@
   --color-primary-hover: #e82d50;
   --color-primary-fg: #ffffff;
 
-  --color-success: var(--accent-500);
-  --color-success-bg: var(--accent-50);
+  --color-success: #1f8f63; /* jade — success / commerce (decoupled from accent) */
+  --color-success-bg: #edf9f2;
   --color-danger: #c23b3b;
   --color-danger-bg: #fbeceb;
   --color-warning: #b7791f;
@@ -137,8 +137,8 @@
   --color-primary-hover: #ff6382;
   --color-primary-fg: #ffffff;
 
-  --color-success: var(--accent-400);
-  --color-success-bg: rgba(106, 75, 255, 0.18);
+  --color-success: #37ad7b; /* jade — success / commerce (decoupled from accent) */
+  --color-success-bg: rgba(31, 143, 99, 0.16);
   --color-danger: #ff6b6b;
   --color-danger-bg: rgba(255, 77, 109, 0.16);
   --color-warning: #e0b25a;

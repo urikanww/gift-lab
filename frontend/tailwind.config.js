@@ -33,7 +33,7 @@ export default {
           700: 'var(--accent-700)',
           800: 'var(--accent-800)',
           900: 'var(--accent-900)',
-          DEFAULT: 'var(--color-success)',
+          DEFAULT: 'var(--accent-500)',
         },
         ink: {
           0: 'var(--ink-0)',
