@@ -6,11 +6,14 @@ import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanv
 import { useCartStore } from '../stores/cartStore';
 import { uploadArtwork } from '../lib/uploadArtwork';
 import type { Product, Variant } from '../types';
+import { Button, Select, Badge, Card, useToast } from '../ui';
+import { Motion, fadeInUp } from '../motion';
 
 export default function ProductDesignerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const addLine = useCartStore((s) => s.addLine);
+  const { toast } = useToast();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,6 +47,11 @@ export default function ProductDesignerPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  const handleCapture = (art: CapturedArtwork) => {
+    setArtwork(art);
+    toast({ title: 'Design saved', description: 'Your layout is ready to add to the order.', tone: 'success' });
+  };
+
   const addToCart = async () => {
     if (!product) return;
     setUploadError(null);
@@ -57,13 +65,16 @@ export default function ProductDesignerPage() {
       try {
         customization.artwork_ref = await uploadArtwork(artwork.dataUrl);
       } catch (err) {
-        setUploadError(apiError(err) || 'We couldn’t upload your artwork. Please try again.');
+        const message = apiError(err) || 'We couldn’t upload your artwork. Please try again.';
+        setUploadError(message);
+        toast({ title: 'Upload failed', description: message, tone: 'danger' });
         return;
       } finally {
         setUploading(false);
       }
     }
     addLine(product, selectedVariant, customization);
+    toast({ title: 'Added to cart', description: product.name, tone: 'success' });
     navigate('/cart');
   };
 
@@ -76,47 +87,76 @@ export default function ProductDesignerPage() {
       onRetry={load}
     >
       {product && (
-        <section className="designer-page">
-          <div>
-            <h1>{product.name}</h1>
-            <p className="muted">{product.description}</p>
-            {product.creator_credit && <p className="credit">Design by {product.creator_credit}</p>}
-
-            {product.variants && product.variants.length > 0 && (
-              <label className="field">
-                Variant
-                <select
-                  value={variantId ?? ''}
-                  onChange={(e) => setVariantId(Number(e.target.value))}
-                >
-                  {product.variants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {Object.values(v.attributes).join(' / ')} {v.in_stock ? '' : '(made to order)'}
-                    </option>
-                  ))}
-                </select>
-              </label>
+        <Motion
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          className="mx-auto flex w-full max-w-5xl flex-col gap-6"
+        >
+          {/* Header */}
+          <header className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="brand" size="sm">
+                Design studio
+              </Badge>
+              {product.print_method && (
+                <Badge tone="neutral" size="sm">
+                  {product.print_method}
+                </Badge>
+              )}
+            </div>
+            <h1 className="font-display text-3xl leading-tight sm:text-4xl">{product.name}</h1>
+            {product.description && <p className="max-w-2xl text-fg-muted">{product.description}</p>}
+            {product.creator_credit && (
+              <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
             )}
+          </header>
+
+          {/* Variant picker */}
+          {product.variants && product.variants.length > 0 && (
+            <Card padding="sm" className="max-w-xs">
+              <Select
+                label="Variant"
+                value={variantId ?? ''}
+                onChange={(e) => setVariantId(Number(e.target.value))}
+              >
+                {product.variants.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {Object.values(v.attributes).join(' / ')} {v.in_stock ? '' : '(made to order)'}
+                  </option>
+                ))}
+              </Select>
+            </Card>
+          )}
+
+          {/* Configurator */}
+          <DesignerCanvas onCapture={handleCapture} />
+
+          {/* Sticky action bar */}
+          <div className="sticky bottom-4 z-raised">
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                {artwork ? (
+                  <Badge tone="success" dot size="md">
+                    Design captured
+                  </Badge>
+                ) : (
+                  <span className="text-fg-muted">Add a logo or text, then choose “Use this design”.</span>
+                )}
+              </div>
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                {uploadError && (
+                  <p className="text-sm text-danger" role="alert">
+                    {uploadError}
+                  </p>
+                )}
+                <Button onClick={addToCart} disabled={!product || uploading} loading={uploading} size="lg">
+                  {uploading ? 'Uploading…' : 'Add to cart'}
+                </Button>
+              </div>
+            </div>
           </div>
-
-          <DesignerCanvas onCapture={setArtwork} />
-
-          <div className="designer-page__footer">
-            {artwork ? (
-              <span className="ok">Design captured ✓</span>
-            ) : (
-              <span className="muted">Add a logo or text, then “Use this design”.</span>
-            )}
-            <button type="button" className="btn btn--primary" onClick={addToCart} disabled={!product || uploading}>
-              {uploading ? 'Uploading…' : 'Add to cart'}
-            </button>
-            {uploadError && (
-              <p className="error" role="alert">
-                {uploadError}
-              </p>
-            )}
-          </div>
-        </section>
+        </Motion>
       )}
     </AsyncBoundary>
   );

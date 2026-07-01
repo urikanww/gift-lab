@@ -2,18 +2,54 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
-import { AsyncBoundary } from '../components/ui/States';
+import { Badge, Button, Card, Input, Skeleton, useToast } from '../ui';
+import { EmptyState as LegacyEmpty, ErrorState } from '../components/ui/States';
+import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
 import { isStaffRole } from '../lib/roles';
-import type { Proof } from '../types';
+import { humanizeState, lineStateTone, proofStateTone, quoteStateTone } from '../lib/quoteStatus';
+import type { LineItem, Proof, Quote, QuoteState } from '../types';
+
+/** Ordered happy-path lifecycle used to render the status timeline. */
+const TIMELINE: QuoteState[] = [
+  'DRAFT',
+  'SENT',
+  'ACCEPTED',
+  'PROOFING',
+  'PROOF_APPROVED',
+  'PO_ISSUED',
+  'CONFIRMED',
+  'PROCURING',
+  'READY',
+];
+
+function timelineIndex(state: QuoteState): number {
+  const i = TIMELINE.indexOf(state);
+  if (i !== -1) return i;
+  // Off-path states (CHANGES_REQUESTED, CLOSED, CANCELLED) — treat as end/first.
+  if (state === 'CLOSED') return TIMELINE.length - 1;
+  return 0;
+}
 
 export default function QuoteDetailPage() {
   const { id } = useParams();
   const quoteId = Number(id);
-  const { current, loading, error, fetchQuote, send, accept, procure, issueProof, decideProof, issuePurchaseOrder, payNow } =
-    useQuoteStore();
+  const {
+    current,
+    loading,
+    error,
+    fetchQuote,
+    send,
+    accept,
+    procure,
+    issueProof,
+    decideProof,
+    issuePurchaseOrder,
+    payNow,
+  } = useQuoteStore();
   const user = useAuthStore((s) => s.user);
   const isStaff = isStaffRole(user?.role);
+  const { toast } = useToast();
 
   const [artworkRef, setArtworkRef] = useState('');
   const [poRef, setPoRef] = useState('');
@@ -23,10 +59,13 @@ export default function QuoteDetailPage() {
     void fetchQuote(quoteId);
   }, [quoteId, fetchQuote]);
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, successMsg?: string) => {
     setBusy(true);
     try {
       await fn();
+      if (successMsg && !useQuoteStore.getState().error) {
+        toast({ title: successMsg, tone: 'success' });
+      }
     } finally {
       setBusy(false);
     }
@@ -35,201 +74,422 @@ export default function QuoteDetailPage() {
   const latestOpenProof = (proofs: Proof[] | undefined): Proof | null =>
     proofs?.find((p) => p.state === 'SENT') ?? null;
 
+  if (loading && !current) return <QuoteDetailSkeleton />;
+  if (error) return <ErrorState message={error} onRetry={() => fetchQuote(quoteId)} />;
+  if (!current) return <LegacyEmpty title="Quote not found." />;
+
+  const quote = current;
+
   return (
-    <AsyncBoundary
-      loading={loading && !current}
-      error={error}
-      isEmpty={!current}
-      emptyTitle="Quote not found."
-      onRetry={() => fetchQuote(quoteId)}
-    >
-      {current && (
-        <section className="quote-detail">
-          <header className="quote-detail__head">
-            <h1>Quote #{current.id}</h1>
-            <span className={`badge badge--${current.state.toLowerCase()}`}>{current.state}</span>
-          </header>
+    <Motion variants={staggerContainer} initial="hidden" animate="visible">
+      <section className="flex flex-col gap-6" aria-labelledby="quote-heading">
+        {/* Header */}
+        <Motion variants={staggerItem}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 id="quote-heading" className="font-display text-3xl text-fg">
+                Quote #{quote.id}
+              </h1>
+              {quote.created_at && (
+                <p className="mt-1 text-sm text-fg-muted">
+                  Created {new Date(quote.created_at).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <Badge tone={quoteStateTone(quote.state)} size="md" dot>
+              {humanizeState(quote.state)}
+            </Badge>
+          </div>
+        </Motion>
 
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Unit</th>
-                <th>Line</th>
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {current.line_items?.map((li) => (
-                <tr key={li.id}>
-                  <td>{li.product?.name ?? `Product #${li.product_id}`}</td>
-                  <td>{li.qty}</td>
-                  <td>
-                    {li.currency} {li.unit_price}
-                  </td>
-                  <td>
-                    {li.currency} {li.line_total}
-                  </td>
-                  <td>
-                    <span className={`badge badge--${li.line_state.toLowerCase()}`}>{li.line_state}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Status timeline */}
+        <Motion variants={staggerItem}>
+          <StatusTimeline state={quote.state} />
+        </Motion>
 
-          <ul className="totals">
-            <li>
-              <span>Subtotal</span>
-              <span>
-                {current.currency} {current.subtotal}
-              </span>
-            </li>
-            <li>
-              <span>Delivery</span>
-              <span>
-                {current.currency} {current.delivery}
-              </span>
-            </li>
-            <li className="totals__grand">
-              <span>Total</span>
-              <span>
-                {current.currency} {current.total}
-              </span>
-            </li>
-          </ul>
+        {/* Line items */}
+        <Motion variants={staggerItem}>
+          <Card padding="none" className="overflow-hidden">
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="font-display text-xl text-fg">Items</h2>
+            </div>
+            <LineItemList items={quote.line_items} />
+            <PricingSummary quote={quote} />
+          </Card>
+        </Motion>
 
-          <section className="proofs">
-            <h2>Proofs</h2>
-            {current.proofs && current.proofs.length > 0 ? (
-              <ul className="proof-list">
-                {current.proofs.map((p) => (
-                  <li key={p.id}>
-                    <span>
-                      v{p.version} — <span className={`badge badge--${p.state.toLowerCase()}`}>{p.state}</span>
+        {/* Proofs */}
+        <Motion variants={staggerItem}>
+          <Card padding="lg" aria-labelledby="proofs-heading">
+            <h2 id="proofs-heading" className="font-display text-xl text-fg">
+              Proofs
+            </h2>
+            {quote.proofs && quote.proofs.length > 0 ? (
+              <ul className="mt-4 flex flex-col divide-y divide-border">
+                {quote.proofs.map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+                    <span className="flex items-center gap-3">
+                      <span className="font-medium text-fg">v{p.version}</span>
+                      <Badge tone={proofStateTone(p.state)} size="sm">
+                        {humanizeState(p.state)}
+                      </Badge>
                     </span>
                     {safeHref(p.artwork_version_ref) ? (
-                      <a href={safeHref(p.artwork_version_ref)} target="_blank" rel="noreferrer">
+                      <a
+                        href={safeHref(p.artwork_version_ref)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                      >
                         View artwork
                       </a>
                     ) : (
-                      <span className="muted">{p.artwork_version_ref}</span>
+                      <span className="text-sm text-fg-subtle">{p.artwork_version_ref}</span>
                     )}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="muted">No proofs issued yet.</p>
+              <p className="mt-3 text-sm text-fg-muted">No proofs issued yet.</p>
             )}
 
             {/* Buyer sign-off on the open proof (gate 1). */}
-            {!isStaff && latestOpenProof(current.proofs) && (
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  disabled={busy}
-                  onClick={() => run(() => decideProof(latestOpenProof(current.proofs)!.id, 'approve', null))}
-                >
-                  Approve proof
-                </button>
-                <button
-                  type="button"
-                  className="btn"
+            {!isStaff && latestOpenProof(quote.proofs) && (
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button
+                  variant="primary"
+                  loading={busy}
                   disabled={busy}
                   onClick={() =>
-                    run(() => decideProof(latestOpenProof(current.proofs)!.id, 'request_changes', 'Please revise.'))
+                    run(
+                      () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
+                      'Proof approved',
+                    )
+                  }
+                >
+                  Approve proof
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    run(
+                      () =>
+                        decideProof(latestOpenProof(quote.proofs)!.id, 'request_changes', 'Please revise.'),
+                      'Changes requested',
+                    )
                   }
                 >
                   Request changes
-                </button>
+                </Button>
               </div>
             )}
-          </section>
+          </Card>
+        </Motion>
 
-          {/* Buyer action: accept a sent quote. */}
-          {!isStaff && current.state === 'SENT' && (
-            <div className="actions">
-              <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => accept(current.id))}>
-                Accept quote
-              </button>
-            </div>
-          )}
-
-          {/* Buyer action: B2C pay-now on a proof-approved quote (if enabled). */}
-          {!isStaff && current.state === 'PROOF_APPROVED' && (
-            <div className="actions">
-              <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => payNow(current.id))}>
-                Pay now
-              </button>
-            </div>
-          )}
-
-          {/* Staff workflow controls. */}
-          {isStaff && (
-            <section className="staff-actions">
-              <h2>Staff actions</h2>
-
-              {current.state === 'DRAFT' && (
-                <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => send(current.id))}>
-                  Send to buyer
-                </button>
-              )}
-
-              {(current.state === 'ACCEPTED' || current.state === 'PROOFING') && (
-                <div className="inline-form">
-                  <input
-                    type="text"
-                    placeholder="Artwork ref (object-store key)"
-                    value={artworkRef}
-                    onChange={(e) => setArtworkRef(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={busy || !artworkRef}
-                    onClick={() => run(async () => {
-                      await issueProof(current.id, artworkRef, null);
-                      setArtworkRef('');
-                    })}
+        {/* Buyer actions */}
+        {!isStaff && (quote.state === 'SENT' || quote.state === 'PROOF_APPROVED') && (
+          <Motion variants={staggerItem}>
+            <Card padding="lg">
+              <h2 className="font-display text-xl text-fg">Next step</h2>
+              {quote.state === 'SENT' && (
+                <div className="mt-4">
+                  <p className="mb-3 text-sm text-fg-muted">
+                    Review the pricing above, then accept to move into proofing.
+                  </p>
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() => run(() => accept(quote.id), 'Quote accepted')}
                   >
-                    Issue proof
-                  </button>
+                    Accept quote
+                  </Button>
                 </div>
               )}
-
-              {current.state === 'PROOF_APPROVED' && (
-                <div className="inline-form">
-                  <input
-                    type="text"
-                    placeholder="PO reference"
-                    value={poRef}
-                    onChange={(e) => setPoRef(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={busy || !poRef}
-                    onClick={() => run(async () => {
-                      await issuePurchaseOrder(current.id, poRef, null);
-                      setPoRef('');
-                    })}
+              {quote.state === 'PROOF_APPROVED' && (
+                <div className="mt-4">
+                  <p className="mb-3 text-sm text-fg-muted">Your proof is approved. Pay now to confirm production.</p>
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() => run(() => payNow(quote.id))}
                   >
-                    Issue PO
-                  </button>
+                    Pay now
+                  </Button>
                 </div>
               )}
+            </Card>
+          </Motion>
+        )}
 
-              {current.state === 'CONFIRMED' && (
-                <button type="button" className="btn btn--primary" disabled={busy} onClick={() => run(() => procure(current.id))}>
-                  Run procurement
-                </button>
-              )}
-            </section>
-          )}
-        </section>
-      )}
-    </AsyncBoundary>
+        {/* Staff workflow controls */}
+        {isStaff && (
+          <Motion variants={staggerItem}>
+            <Card padding="lg" aria-labelledby="staff-heading">
+              <h2 id="staff-heading" className="font-display text-xl text-fg">
+                Staff actions
+              </h2>
+
+              <div className="mt-4">
+                {quote.state === 'DRAFT' && (
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() => run(() => send(quote.id), 'Sent to buyer')}
+                  >
+                    Send to buyer
+                  </Button>
+                )}
+
+                {(quote.state === 'ACCEPTED' || quote.state === 'PROOFING') && (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <Input
+                        label="Artwork reference"
+                        placeholder="object-store key"
+                        value={artworkRef}
+                        onChange={(e) => setArtworkRef(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      variant="primary"
+                      loading={busy}
+                      disabled={busy || !artworkRef}
+                      onClick={() =>
+                        run(async () => {
+                          await issueProof(quote.id, artworkRef, null);
+                          setArtworkRef('');
+                        }, 'Proof issued')
+                      }
+                    >
+                      Issue proof
+                    </Button>
+                  </div>
+                )}
+
+                {quote.state === 'PROOF_APPROVED' && (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <Input
+                        label="PO reference"
+                        placeholder="PO number"
+                        value={poRef}
+                        onChange={(e) => setPoRef(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      variant="primary"
+                      loading={busy}
+                      disabled={busy || !poRef}
+                      onClick={() =>
+                        run(async () => {
+                          await issuePurchaseOrder(quote.id, poRef, null);
+                          setPoRef('');
+                        }, 'Purchase order issued')
+                      }
+                    >
+                      Issue PO
+                    </Button>
+                  </div>
+                )}
+
+                {quote.state === 'CONFIRMED' && (
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() => run(() => procure(quote.id), 'Procurement started')}
+                  >
+                    Run procurement
+                  </Button>
+                )}
+
+                {!['DRAFT', 'ACCEPTED', 'PROOFING', 'PROOF_APPROVED', 'CONFIRMED'].includes(quote.state) && (
+                  <p className="text-sm text-fg-muted">No staff action available for this state.</p>
+                )}
+              </div>
+            </Card>
+          </Motion>
+        )}
+      </section>
+    </Motion>
+  );
+}
+
+function StatusTimeline({ state }: { state: QuoteState }) {
+  const cancelled = state === 'CANCELLED';
+  const currentIdx = timelineIndex(state);
+
+  if (cancelled) {
+    return (
+      <Card padding="md">
+        <div className="flex items-center gap-2">
+          <Badge tone="danger" dot>
+            Cancelled
+          </Badge>
+          <span className="text-sm text-fg-muted">This quote was cancelled.</span>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card padding="md">
+      <ol className="flex flex-wrap items-center gap-x-2 gap-y-3">
+        {TIMELINE.map((step, i) => {
+          const done = i < currentIdx;
+          const active = i === currentIdx;
+          return (
+            <li key={step} className="flex items-center gap-2">
+              <span
+                className={
+                  'flex h-6 w-6 items-center justify-center rounded-full text-2xs font-semibold ' +
+                  (active
+                    ? 'bg-primary text-primary-fg'
+                    : done
+                      ? 'bg-success text-white'
+                      : 'bg-surface-2 text-fg-subtle')
+                }
+                aria-hidden="true"
+              >
+                {done ? '✓' : i + 1}
+              </span>
+              <span
+                className={
+                  'text-xs ' + (active ? 'font-semibold text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle')
+                }
+              >
+                {humanizeState(step)}
+                {active && <span className="sr-only"> (current status)</span>}
+              </span>
+              {i < TIMELINE.length - 1 && <span className="mx-1 h-px w-4 bg-border" aria-hidden="true" />}
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
+function LineItemList({ items }: { items: LineItem[] | undefined }) {
+  if (!items || items.length === 0) {
+    return <p className="px-5 py-6 text-sm text-fg-muted">No items on this quote.</p>;
+  }
+  return (
+    <>
+      {/* Desktop table */}
+      <table className="hidden w-full text-left text-sm md:table">
+        <thead>
+          <tr className="border-b border-border text-xs uppercase tracking-wide text-fg-subtle">
+            <th scope="col" className="px-5 py-3 font-medium">
+              Item
+            </th>
+            <th scope="col" className="px-5 py-3 text-right font-medium">
+              Qty
+            </th>
+            <th scope="col" className="px-5 py-3 text-right font-medium">
+              Unit
+            </th>
+            <th scope="col" className="px-5 py-3 text-right font-medium">
+              Line total
+            </th>
+            <th scope="col" className="px-5 py-3 font-medium">
+              Status
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((li) => (
+            <tr key={li.id} className="border-b border-border last:border-0">
+              <td className="px-5 py-4 text-fg">{li.product?.name ?? `Product #${li.product_id}`}</td>
+              <td className="px-5 py-4 text-right tabular-nums text-fg">{li.qty}</td>
+              <td className="px-5 py-4 text-right tabular-nums text-fg-muted">
+                {li.currency} {li.unit_price}
+              </td>
+              <td className="px-5 py-4 text-right tabular-nums text-fg">
+                {li.currency} {li.line_total}
+              </td>
+              <td className="px-5 py-4">
+                <Badge tone={lineStateTone(li.line_state)} size="sm">
+                  {humanizeState(li.line_state)}
+                </Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Mobile stacked */}
+      <ul className="flex flex-col divide-y divide-border md:hidden">
+        {items.map((li) => (
+          <li key={li.id} className="flex flex-col gap-2 px-5 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <span className="font-medium text-fg">{li.product?.name ?? `Product #${li.product_id}`}</span>
+              <Badge tone={lineStateTone(li.line_state)} size="sm">
+                {humanizeState(li.line_state)}
+              </Badge>
+            </div>
+            <div className="flex justify-between text-sm text-fg-muted">
+              <span>
+                {li.qty} × {li.currency} {li.unit_price}
+              </span>
+              <span className="tabular-nums text-fg">
+                {li.currency} {li.line_total}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function PricingSummary({ quote }: { quote: Quote }) {
+  return (
+    <div className="border-t border-border bg-surface-2/50 px-5 py-4">
+      <dl className="ml-auto flex max-w-xs flex-col gap-2">
+        <div className="flex justify-between text-sm">
+          <dt className="text-fg-muted">Subtotal</dt>
+          <dd className="tabular-nums text-fg">
+            {quote.currency} {quote.subtotal}
+          </dd>
+        </div>
+        <div className="flex justify-between text-sm">
+          <dt className="text-fg-muted">Delivery</dt>
+          <dd className="tabular-nums text-fg">
+            {quote.currency} {quote.delivery}
+          </dd>
+        </div>
+        <div className="mt-1 flex items-baseline justify-between border-t border-border pt-2">
+          <dt className="font-medium text-fg">Total</dt>
+          <dd className="font-display text-xl text-fg">
+            {quote.currency} {quote.total}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function QuoteDetailSkeleton() {
+  return (
+    <div className="flex flex-col gap-6" aria-hidden="true">
+      <div className="flex items-center justify-between">
+        <Skeleton width="10rem" height="2rem" />
+        <Skeleton width="6rem" height="1.75rem" />
+      </div>
+      <Card padding="md">
+        <Skeleton height="1.5rem" />
+      </Card>
+      <Card padding="lg">
+        <Skeleton height="1.25rem" width="8rem" />
+        <Skeleton className="mt-4" height="1rem" />
+        <Skeleton className="mt-2" height="1rem" width="80%" />
+        <Skeleton className="mt-2" height="1rem" width="60%" />
+      </Card>
+    </div>
   );
 }

@@ -1,9 +1,39 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useCartStore } from '../stores/cartStore';
 import { useAuthStore } from '../stores/authStore';
 import { useQuoteStore } from '../stores/quoteStore';
-import { EmptyState, ErrorState } from '../components/ui/States';
+import { Button, Card, EmptyState, Modal, Skeleton, useToast } from '../ui';
+import { ErrorState } from '../components/ui/States';
+import {
+  Motion,
+  fadeInUp,
+  springSoft,
+  staggerContainer,
+  staggerItem,
+  useReducedMotionSafe,
+} from '../motion';
+import type { CartLine } from '../types';
+
+/** Layout-animated exit/enter for cart rows — the signature moment. */
+const rowVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0 },
+  exit: { opacity: 0, x: -24, transition: { duration: 0.18 } },
+};
+
+function customizationLabel(line: CartLine): string {
+  const { logo_size, name_text } = line.customization;
+  const parts: string[] = [];
+  if (logo_size) parts.push(`Logo ${logo_size}`);
+  if (name_text) parts.push(`“${name_text}”`);
+  return parts.length ? parts.join(' · ') : 'Blank';
+}
+
+function optionsLabel(line: CartLine): string {
+  return line.variant ? Object.values(line.variant.attributes).join(' / ') : '—';
+}
 
 export default function CartPage() {
   const { lines, estimate, estimating, estimateError, updateQty, removeLine, refreshEstimate, clear } =
@@ -11,14 +41,20 @@ export default function CartPage() {
   const user = useAuthStore((s) => s.user);
   const createQuote = useQuoteStore((s) => s.createQuote);
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const animate = useReducedMotionSafe();
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [celebrating, setCelebrating] = useState<number | null>(null);
 
   // Live estimate is event-driven (debounced on cart change) — never polled.
   useEffect(() => {
     const t = setTimeout(() => void refreshEstimate(), 400);
     return () => clearTimeout(t);
   }, [lines, refreshEstimate]);
+
+  const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
 
   const requestQuote = async () => {
     if (!user) {
@@ -34,102 +70,289 @@ export default function CartPage() {
     const quote = await createQuote(user.company_id, lines, null);
     setSubmitting(false);
     if (quote) {
-      clear();
-      navigate(`/quotes/${quote.id}`);
+      // Celebratory confirmation before we clear + route away.
+      setCelebrating(quote.id);
     } else {
       setSubmitError('Could not create the quote. Please review your cart and try again.');
     }
   };
 
+  const finishCelebration = () => {
+    const id = celebrating;
+    setCelebrating(null);
+    clear();
+    toast({ title: 'Quote requested', description: `Quote #${id} is on its way.`, tone: 'success' });
+    if (id) navigate(`/quotes/${id}`);
+  };
+
   if (lines.length === 0) {
     return (
-      <EmptyState title="Your cart is empty.">
-        <p className="muted">Browse the catalogue and customise a product to get started.</p>
-      </EmptyState>
+      <Motion variants={fadeInUp} initial="hidden" animate="visible">
+        <EmptyState
+          icon={<CartGlyph />}
+          title="Your cart is empty"
+          description="Browse the catalogue and customise a product to start your gift order."
+          action={
+            <Button variant="primary" onClick={() => navigate('/catalogue')}>
+              Browse catalogue
+            </Button>
+          }
+        />
+      </Motion>
     );
   }
 
   return (
-    <section className="cart">
-      <h1>Your cart</h1>
+    <section aria-labelledby="cart-heading">
+      <Motion variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
+        <h1 id="cart-heading" className="font-display text-3xl text-fg">
+          Your cart
+        </h1>
+        <p className="mt-1 text-sm text-fg-muted">
+          {lines.length} {lines.length === 1 ? 'item' : 'items'} · {totalUnits}{' '}
+          {totalUnits === 1 ? 'unit' : 'units'}
+        </p>
+      </Motion>
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Options</th>
-            <th>Customisation</th>
-            <th>Qty</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l) => (
-            <tr key={l.key}>
-              <td>{l.product.name}</td>
-              <td>{l.variant ? Object.values(l.variant.attributes).join(' / ') : '—'}</td>
-              <td>
-                {l.customization.logo_size ? `Logo ${l.customization.logo_size}` : ''}
-                {l.customization.name_text ? ` “${l.customization.name_text}”` : ''}
-                {!l.customization.logo_size && !l.customization.name_text ? 'Blank' : ''}
-              </td>
-              <td>
-                <input
-                  type="number"
-                  min={1}
-                  value={l.qty}
-                  onChange={(e) => updateQty(l.key, Number(e.target.value))}
-                  className="qty-input"
-                />
-              </td>
-              <td>
-                <button type="button" className="btn btn--ghost" onClick={() => removeLine(l.key)}>
-                  Remove
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="grid gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
+        {/* Line items */}
+        <Motion
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="flex flex-col gap-3"
+        >
+          <AnimatePresence initial={false} mode="popLayout">
+            {lines.map((l) => (
+              <motion.div
+                key={l.key}
+                layout={animate}
+                variants={rowVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                transition={springSoft}
+              >
+                <Card padding="none" className="overflow-hidden">
+                  <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-lg text-fg">{l.product.name}</h2>
+                      <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
+                        <div className="flex gap-1">
+                          <dt className="text-fg-subtle">Options:</dt>
+                          <dd>{optionsLabel(l)}</dd>
+                        </div>
+                        <div className="flex gap-1">
+                          <dt className="text-fg-subtle">Finish:</dt>
+                          <dd>{customizationLabel(l)}</dd>
+                        </div>
+                      </dl>
+                    </div>
 
-      <div className="cart__summary">
-        <h3>Estimate</h3>
-        {estimateError ? (
-          <ErrorState message={estimateError} onRetry={refreshEstimate} />
-        ) : estimating ? (
-          <p className="muted">Recalculating…</p>
-        ) : estimate ? (
-          <ul className="totals">
-            <li>
-              <span>Subtotal</span>
-              <span>
-                {estimate.currency} {estimate.subtotal.toFixed(2)}
-              </span>
-            </li>
-            <li>
-              <span>Delivery</span>
-              <span>
-                {estimate.currency} {estimate.delivery.toFixed(2)}
-              </span>
-            </li>
-            <li className="totals__grand">
-              <span>Estimated total</span>
-              <span>
-                {estimate.currency} {estimate.total.toFixed(2)}
-              </span>
-            </li>
-          </ul>
-        ) : (
-          <p className="muted">Add items to see an estimate.</p>
-        )}
-        <p className="fineprint">Estimate only. Final pricing is confirmed on your formal quote.</p>
+                    <div className="flex items-center justify-between gap-4 sm:justify-end">
+                      <QuantityControl
+                        qty={l.qty}
+                        onChange={(next) => updateQty(l.key, next)}
+                        label={`Quantity for ${l.product.name}`}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeLine(l.key)}
+                        aria-label={`Remove ${l.product.name} from cart`}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
 
-        {submitError && <ErrorState message={submitError} />}
+          <div className="flex justify-end pt-1">
+            <Button variant="ghost" size="sm" onClick={clear}>
+              Clear cart
+            </Button>
+          </div>
+        </Motion>
 
-        <button type="button" className="btn btn--primary" onClick={requestQuote} disabled={submitting}>
-          {submitting ? 'Requesting…' : 'Request a quote'}
-        </button>
+        {/* Summary */}
+        <Motion variants={staggerItem} className="lg:sticky lg:top-6">
+          <Card padding="lg" aria-labelledby="estimate-heading">
+            <h2 id="estimate-heading" className="font-display text-xl text-fg">
+              Estimate
+            </h2>
+
+            <div className="mt-4" aria-live="polite">
+              {estimateError ? (
+                <ErrorState message={estimateError} onRetry={refreshEstimate} />
+              ) : estimating ? (
+                <div className="flex flex-col gap-3">
+                  <Skeleton height="1rem" />
+                  <Skeleton height="1rem" width="70%" />
+                  <Skeleton height="1.5rem" width="55%" />
+                </div>
+              ) : estimate ? (
+                <dl className="flex flex-col gap-3">
+                  <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
+                  <SummaryRow label="Delivery" value={`${estimate.currency} ${estimate.delivery.toFixed(2)}`} />
+                  <div className="my-1 border-t border-border" />
+                  <div className="flex items-baseline justify-between">
+                    <dt className="font-medium text-fg">Estimated total</dt>
+                    <dd className="font-display text-2xl text-fg">
+                      {estimate.currency} {estimate.total.toFixed(2)}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="text-sm text-fg-muted">Add items to see an estimate.</p>
+              )}
+            </div>
+
+            <p className="mt-4 text-xs text-fg-subtle">
+              Estimate only. Final pricing is confirmed on your formal quote.
+            </p>
+
+            {submitError && (
+              <div className="mt-4">
+                <ErrorState message={submitError} />
+              </div>
+            )}
+
+            <Button
+              variant="primary"
+              fullWidth
+              className="mt-5"
+              onClick={requestQuote}
+              loading={submitting}
+              disabled={submitting}
+            >
+              {submitting ? 'Requesting…' : 'Request a quote'}
+            </Button>
+          </Card>
+        </Motion>
       </div>
+
+      {/* Celebratory quote-request confirmation. */}
+      <Modal
+        open={celebrating !== null}
+        onClose={finishCelebration}
+        title="Quote requested!"
+        description="We’ve received your request and will confirm formal pricing shortly."
+        hideClose
+        size="sm"
+        footer={
+          <Button variant="primary" onClick={finishCelebration}>
+            View quote
+          </Button>
+        }
+      >
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <SuccessBurst />
+          <p className="text-sm text-fg-muted">
+            Quote{celebrating ? ` #${celebrating}` : ''} has been created. You can track its status any time
+            from your quotes.
+          </p>
+        </div>
+      </Modal>
     </section>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between text-sm">
+      <dt className="text-fg-muted">{label}</dt>
+      <dd className="tabular-nums text-fg">{value}</dd>
+    </div>
+  );
+}
+
+/** Accessible +/- quantity stepper wired to the cart store's clamped updateQty. */
+function QuantityControl({
+  qty,
+  onChange,
+  label,
+}: {
+  qty: number;
+  onChange: (next: number) => void;
+  label: string;
+}) {
+  return (
+    <div
+      className="inline-flex items-center rounded-md border border-border-strong bg-surface"
+      role="group"
+      aria-label={label}
+    >
+      <StepButton onClick={() => onChange(qty - 1)} disabled={qty <= 1} aria-label="Decrease quantity">
+        <span aria-hidden="true">−</span>
+      </StepButton>
+      <input
+        type="number"
+        min={1}
+        value={qty}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={label}
+        className="h-9 w-12 border-x border-border bg-transparent text-center text-sm tabular-nums text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      />
+      <StepButton onClick={() => onChange(qty + 1)} aria-label="Increase quantity">
+        <span aria-hidden="true">+</span>
+      </StepButton>
+    </div>
+  );
+}
+
+function StepButton({
+  children,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      className="flex h-9 w-9 items-center justify-center text-fg-muted transition-colors duration-fast ease-standard hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-40 disabled:pointer-events-none"
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CartGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3 4h2l2.4 12.3a1 1 0 0 0 1 .7h8.7a1 1 0 0 0 1-.8L21 8H6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="9" cy="20" r="1.2" fill="currentColor" />
+      <circle cx="18" cy="20" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Small celebratory checkmark that pops in (reduced-motion safe via <Motion> springs baked in Modal). */
+function SuccessBurst() {
+  const animate = useReducedMotionSafe();
+  return (
+    <motion.div
+      className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"
+      initial={animate ? { scale: 0.4, opacity: 0 } : false}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 480, damping: 18 }}
+    >
+      <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" aria-hidden="true">
+        <path
+          d="M5 13l4 4L19 7"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </motion.div>
   );
 }

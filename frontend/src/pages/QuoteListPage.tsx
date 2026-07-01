@@ -1,76 +1,200 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useQuoteStore } from '../stores/quoteStore';
-import { AsyncBoundary } from '../components/ui/States';
+import { Badge, Button, Card, EmptyState, Skeleton } from '../ui';
+import { ErrorState } from '../components/ui/States';
+import {
+  Motion,
+  fadeInUp,
+  staggerContainer,
+  staggerItem,
+  useReducedMotionSafe,
+} from '../motion';
+import { humanizeState, quoteStateTone } from '../lib/quoteStatus';
+import type { Quote } from '../types';
+
+function formatDate(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleDateString() : '—';
+}
 
 export default function QuoteListPage() {
   const { quotes, loading, error, page, lastPage, fetchQuotes } = useQuoteStore();
+  const navigate = useNavigate();
+  const shouldAnimate = useReducedMotionSafe();
 
   useEffect(() => {
     void fetchQuotes(1);
   }, [fetchQuotes]);
 
   return (
-    <section>
-      <h1>Quotes</h1>
-      <AsyncBoundary
-        loading={loading}
-        error={error}
-        isEmpty={quotes.length === 0}
-        emptyTitle="No quotes yet."
-        onRetry={fetchQuotes}
-      >
-        <table className="table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>State</th>
-              <th>Total</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {quotes.map((q) => (
-              <tr key={q.id}>
-                <td>
-                  <Link to={`/quotes/${q.id}`}>Quote #{q.id}</Link>
-                </td>
-                <td>
-                  <span className={`badge badge--${q.state.toLowerCase()}`}>{q.state}</span>
-                </td>
-                <td>
-                  {q.currency} {q.total}
-                </td>
-                <td>{q.created_at ? new Date(q.created_at).toLocaleDateString() : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <section aria-labelledby="quotes-heading">
+      <Motion variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
+        <h1 id="quotes-heading" className="font-display text-3xl text-fg">
+          Quotes
+        </h1>
+        <p className="mt-1 text-sm text-fg-muted">Track your gift orders from request through production.</p>
+      </Motion>
 
-        {lastPage > 1 && (
-          <nav className="pager" aria-label="Pagination">
-            <button
-              type="button"
-              className="btn"
-              disabled={loading || page <= 1}
-              onClick={() => void fetchQuotes(page - 1)}
-            >
-              Previous
-            </button>
-            <span className="pager__status">
-              Page {page} of {lastPage}
-            </span>
-            <button
-              type="button"
-              className="btn"
-              disabled={loading || page >= lastPage}
-              onClick={() => void fetchQuotes(page + 1)}
-            >
-              Next
-            </button>
-          </nav>
-        )}
-      </AsyncBoundary>
+      {loading ? (
+        <QuoteListSkeleton />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => fetchQuotes(page)} />
+      ) : quotes.length === 0 ? (
+        <EmptyState
+          title="No quotes yet"
+          description="Once you request a quote from your cart, it will appear here."
+          action={
+            <Button variant="primary" onClick={() => navigate('/catalogue')}>
+              Browse catalogue
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          {/* Desktop: table. Mobile: stacked cards. */}
+          <div className="hidden md:block">
+            <Card padding="none" className="overflow-hidden">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border text-xs uppercase tracking-wide text-fg-subtle">
+                    <th scope="col" className="px-5 py-3 font-medium">
+                      Quote
+                    </th>
+                    <th scope="col" className="px-5 py-3 font-medium">
+                      Status
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-right font-medium">
+                      Total
+                    </th>
+                    <th scope="col" className="px-5 py-3 font-medium">
+                      Created
+                    </th>
+                  </tr>
+                </thead>
+                <motion.tbody
+                  variants={shouldAnimate ? staggerContainer : undefined}
+                  initial={shouldAnimate ? 'hidden' : false}
+                  animate="visible"
+                >
+                  {quotes.map((q) => (
+                    <QuoteRow key={q.id} quote={q} animate={shouldAnimate} />
+                  ))}
+                </motion.tbody>
+              </table>
+            </Card>
+          </div>
+
+          <Motion
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            className="flex flex-col gap-3 md:hidden"
+          >
+            {quotes.map((q) => (
+              <QuoteCard key={q.id} quote={q} />
+            ))}
+          </Motion>
+
+          {lastPage > 1 && (
+            <nav className="mt-6 flex items-center justify-between gap-4" aria-label="Pagination">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading || page <= 1}
+                onClick={() => void fetchQuotes(page - 1)}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-fg-muted" aria-live="polite">
+                Page {page} of {lastPage}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading || page >= lastPage}
+                onClick={() => void fetchQuotes(page + 1)}
+              >
+                Next
+              </Button>
+            </nav>
+          )}
+        </>
+      )}
     </section>
+  );
+}
+
+function QuoteRow({ quote, animate }: { quote: Quote; animate: boolean }) {
+  const navigate = useNavigate();
+  return (
+    <motion.tr
+      variants={animate ? staggerItem : undefined}
+      className="cursor-pointer border-b border-border last:border-0 transition-colors duration-fast ease-standard hover:bg-surface-2"
+      onClick={() => navigate(`/quotes/${quote.id}`)}
+    >
+      <td className="px-5 py-4">
+        <Link
+          to={`/quotes/${quote.id}`}
+          className="font-medium text-fg hover:text-primary focus-visible:outline-none focus-visible:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Quote #{quote.id}
+        </Link>
+      </td>
+      <td className="px-5 py-4">
+        <Badge tone={quoteStateTone(quote.state)} dot>
+          {humanizeState(quote.state)}
+        </Badge>
+      </td>
+      <td className="px-5 py-4 text-right tabular-nums text-fg">
+        {quote.currency} {quote.total}
+      </td>
+      <td className="px-5 py-4 text-fg-muted">{formatDate(quote.created_at)}</td>
+    </motion.tr>
+  );
+}
+
+function QuoteCard({ quote }: { quote: Quote }) {
+  const navigate = useNavigate();
+  return (
+    <Motion variants={staggerItem}>
+      <Card interactive padding="md" onClick={() => navigate(`/quotes/${quote.id}`)}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Link
+              to={`/quotes/${quote.id}`}
+              className="font-display text-lg text-fg focus-visible:outline-none focus-visible:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Quote #{quote.id}
+            </Link>
+            <p className="mt-0.5 text-xs text-fg-muted">{formatDate(quote.created_at)}</p>
+          </div>
+          <Badge tone={quoteStateTone(quote.state)} dot>
+            {humanizeState(quote.state)}
+          </Badge>
+        </div>
+        <p className="mt-3 font-medium tabular-nums text-fg">
+          {quote.currency} {quote.total}
+        </p>
+      </Card>
+    </Motion>
+  );
+}
+
+function QuoteListSkeleton() {
+  return (
+    <div className="flex flex-col gap-3" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i} padding="md">
+          <div className="flex items-center justify-between gap-4">
+            <Skeleton width="8rem" height="1.25rem" />
+            <Skeleton width="5rem" height="1.5rem" />
+          </div>
+          <Skeleton className="mt-3" width="6rem" height="1rem" />
+        </Card>
+      ))}
+    </div>
   );
 }
