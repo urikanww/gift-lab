@@ -1,0 +1,104 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Enums\License;
+use App\Enums\PrintMethod;
+use App\Enums\ProductClass;
+use App\Enums\PublishState;
+use App\Enums\StockMode;
+use Database\Factories\ProductFactory;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+/**
+ * @property int $id
+ * @property ProductClass $class
+ * @property PublishState $publish_state
+ * @property PrintMethod|null $print_method
+ */
+class Product extends Model
+{
+    /** @use HasFactory<ProductFactory> */
+    use HasFactory;
+    use SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'description',
+        'class',
+        'base_cost',
+        'currency',
+        'dimensions',
+        'weight',
+        'print_method',
+        'publish_state',
+        'cannot_publish_reasons',
+        'stock_mode',
+        'image_url',
+        'source_url',
+        'source_product_id',
+        'stock_estimate',
+        'is_printable',
+        'model3d_id',
+        'license',
+        'creator_credit',
+        'model_file_ref',
+        'created_by',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'class' => ProductClass::class,
+            'base_cost' => 'decimal:2',
+            'dimensions' => 'array',
+            'weight' => 'decimal:3',
+            'print_method' => PrintMethod::class,
+            'publish_state' => PublishState::class,
+            'cannot_publish_reasons' => 'array',
+            'stock_mode' => StockMode::class,
+            'stock_estimate' => 'integer',
+            'is_printable' => 'boolean',
+            'license' => License::class,
+        ];
+    }
+
+    /**
+     * @return HasMany<Variant>
+     */
+    public function variants(): HasMany
+    {
+        return $this->hasMany(Variant::class);
+    }
+
+    /**
+     * @return BelongsTo<Model3D, Product>
+     */
+    public function model3d(): BelongsTo
+    {
+        return $this->belongsTo(Model3D::class, 'model3d_id');
+    }
+
+    /**
+     * Only publicly browsable products (no-account catalogue).
+     *
+     * @param  Builder<Product>  $query
+     * @return Builder<Product>
+     */
+    public function scopePublished(Builder $query): Builder
+    {
+        return $query->where('publish_state', PublishState::Published->value);
+    }
+
+    protected static function newFactory(): ProductFactory
+    {
+        return ProductFactory::new();
+    }
+}
