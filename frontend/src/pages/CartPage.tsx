@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCartStore } from '../stores/cartStore';
-import { useAuthStore } from '../stores/authStore';
-import { useQuoteStore } from '../stores/quoteStore';
-import { Button, Card, EmptyState, Modal, Skeleton, useToast } from '../ui';
+import { Button, Card, EmptyState, LinkButton, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import {
   Motion,
@@ -38,15 +36,8 @@ function optionsLabel(line: CartLine): string {
 export default function CartPage() {
   const { lines, estimate, estimating, estimateError, updateQty, removeLine, refreshEstimate, clear } =
     useCartStore();
-  const user = useAuthStore((s) => s.user);
-  const createQuote = useQuoteStore((s) => s.createQuote);
   const navigate = useNavigate();
-  const { toast } = useToast();
   const animate = useReducedMotionSafe();
-
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [celebrating, setCelebrating] = useState<number | null>(null);
 
   // Live estimate is event-driven (debounced on cart change) — never polled.
   useEffect(() => {
@@ -55,35 +46,6 @@ export default function CartPage() {
   }, [lines, refreshEstimate]);
 
   const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
-
-  const requestQuote = async () => {
-    if (!user) {
-      navigate('/login', { state: { from: '/cart' } });
-      return;
-    }
-    if (user.company_id === null) {
-      setSubmitError('Your account is not linked to a company. Contact your administrator.');
-      return;
-    }
-    setSubmitting(true);
-    setSubmitError(null);
-    const quote = await createQuote(user.company_id, lines, null);
-    setSubmitting(false);
-    if (quote) {
-      // Celebratory confirmation before we clear + route away.
-      setCelebrating(quote.id);
-    } else {
-      setSubmitError('Could not create the quote. Please review your cart and try again.');
-    }
-  };
-
-  const finishCelebration = () => {
-    const id = celebrating;
-    setCelebrating(null);
-    clear();
-    toast({ title: 'Quote requested', description: `Quote #${id} is on its way.`, tone: 'success' });
-    if (id) navigate(`/quotes/${id}`);
-  };
 
   if (lines.length === 0) {
     return (
@@ -214,48 +176,12 @@ export default function CartPage() {
               Estimate only. Final pricing is confirmed on your formal quote.
             </p>
 
-            {submitError && (
-              <div className="mt-4">
-                <ErrorState message={submitError} />
-              </div>
-            )}
-
-            <Button
-              variant="primary"
-              fullWidth
-              className="mt-5"
-              onClick={requestQuote}
-              loading={submitting}
-              disabled={submitting}
-            >
-              {submitting ? 'Requesting…' : 'Request a quote'}
-            </Button>
+            <LinkButton to="/checkout" variant="primary" className="mt-5 w-full">
+              Proceed to checkout
+            </LinkButton>
           </Card>
         </Motion>
       </div>
-
-      {/* Celebratory quote-request confirmation. */}
-      <Modal
-        open={celebrating !== null}
-        onClose={finishCelebration}
-        title="Quote requested!"
-        description="We’ve received your request and will confirm formal pricing shortly."
-        hideClose
-        size="sm"
-        footer={
-          <Button variant="primary" onClick={finishCelebration}>
-            View quote
-          </Button>
-        }
-      >
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
-          <SuccessBurst />
-          <p className="text-sm text-fg-muted">
-            Quote{celebrating ? ` #${celebrating}` : ''} has been created. You can track its status any time
-            from your quotes.
-          </p>
-        </div>
-      </Modal>
     </section>
   );
 }
@@ -331,28 +257,5 @@ function CartGlyph() {
       <circle cx="9" cy="20" r="1.2" fill="currentColor" />
       <circle cx="18" cy="20" r="1.2" fill="currentColor" />
     </svg>
-  );
-}
-
-/** Small celebratory checkmark that pops in (reduced-motion safe via <Motion> springs baked in Modal). */
-function SuccessBurst() {
-  const animate = useReducedMotionSafe();
-  return (
-    <motion.div
-      className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"
-      initial={animate ? { scale: 0.4, opacity: 0 } : false}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 480, damping: 18 }}
-    >
-      <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" aria-hidden="true">
-        <path
-          d="M5 13l4 4L19 7"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </motion.div>
   );
 }

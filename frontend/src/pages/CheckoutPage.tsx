@@ -1,0 +1,300 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { useCartStore } from '../stores/cartStore';
+import { useAuthStore } from '../stores/authStore';
+import { useQuoteStore } from '../stores/quoteStore';
+import { Button, Card, EmptyState, LinkButton, Modal, Skeleton, useOptionalToast } from '../ui';
+import { ErrorState } from '../components/ui/States';
+import { Motion, fadeInUp, staggerItem, useReducedMotionSafe } from '../motion';
+import type { CartLine } from '../types';
+
+function customizationLabel(line: CartLine): string {
+  const { logo_size, name_text } = line.customization;
+  const parts: string[] = [];
+  if (logo_size) parts.push(`Logo ${logo_size}`);
+  if (name_text) parts.push(`“${name_text}”`);
+  return parts.length ? parts.join(' · ') : 'Blank';
+}
+
+function optionsLabel(line: CartLine): string {
+  return line.variant ? Object.values(line.variant.attributes).join(' / ') : '—';
+}
+
+/**
+ * Storefront-styled checkout: a thin, celebratory wrapper over the existing B2B
+ * quote flow. It does NOT introduce a guest-checkout or direct-order endpoint —
+ * "Place order" simply creates the DRAFT quote via useQuoteStore().createQuote,
+ * exactly as the cart used to. Login is required first; because the cart is
+ * client-side Zustand it survives the /login redirect, so the user returns here
+ * and can finish. Everything after DRAFT (send → accept → proofing → pay) stays
+ * on /quotes/:id.
+ */
+export default function CheckoutPage() {
+  const { lines, estimate, estimating, estimateError, refreshEstimate, clear } = useCartStore();
+  const user = useAuthStore((s) => s.user);
+  const createQuote = useQuoteStore((s) => s.createQuote);
+  const navigate = useNavigate();
+  const { toast } = useOptionalToast();
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [celebrating, setCelebrating] = useState<number | null>(null);
+
+  // Refresh the estimate on mount / whenever the cart changes.
+  useEffect(() => {
+    void refreshEstimate();
+  }, [lines, refreshEstimate]);
+
+  const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
+
+  const placeOrder = async () => {
+    // Login gate — should be unreachable while anonymous (button is not
+    // rendered), but guard defensively before touching the write path.
+    if (!user) {
+      navigate('/login', { state: { from: '/checkout' } });
+      return;
+    }
+    if (user.company_id === null) {
+      setSubmitError('Your account is not linked to a company. Contact your administrator.');
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    const quote = await createQuote(user.company_id, lines, null);
+    setSubmitting(false);
+    if (quote) {
+      setCelebrating(quote.id);
+    } else {
+      setSubmitError('Could not place your order. Please review your cart and try again.');
+    }
+  };
+
+  const finishCelebration = () => {
+    const id = celebrating;
+    setCelebrating(null);
+    clear();
+    toast({ title: 'Order placed', description: `Quote #${id} is on its way.`, tone: 'success' });
+    if (id) navigate(`/quotes/${id}`);
+  };
+
+  if (lines.length === 0) {
+    return (
+      <Motion variants={fadeInUp} initial="hidden" animate="visible">
+        <EmptyState
+          icon={<CartGlyph />}
+          title="Your cart is empty"
+          description="Browse the catalogue and customise a product to start your gift order."
+          action={
+            <LinkButton to="/products" variant="primary">
+              Browse products
+            </LinkButton>
+          }
+        />
+      </Motion>
+    );
+  }
+
+  return (
+    <section aria-labelledby="checkout-heading">
+      <Motion variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
+        <h1 id="checkout-heading" className="font-display text-3xl text-fg">
+          Checkout
+        </h1>
+        <p className="mt-1 text-sm text-fg-muted">
+          Review your order and place your quote request.
+        </p>
+      </Motion>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
+        {/* Order details + place-order / login gate */}
+        <div className="flex flex-col gap-6">
+          <Card padding="lg" aria-labelledby="items-heading">
+            <h2 id="items-heading" className="font-display text-xl text-fg">
+              Order summary
+            </h2>
+            <ul className="mt-4 flex flex-col divide-y divide-border">
+              {lines.map((l) => (
+                <li key={l.key} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h3 className="min-w-0 truncate font-display text-lg text-fg">{l.product.name}</h3>
+                    <span className="shrink-0 text-sm tabular-nums text-fg-muted">× {l.qty}</span>
+                  </div>
+                  <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
+                    <div className="flex gap-1">
+                      <dt className="text-fg-subtle">Options:</dt>
+                      <dd>{optionsLabel(l)}</dd>
+                    </div>
+                    <div className="flex gap-1">
+                      <dt className="text-fg-subtle">Finish:</dt>
+                      <dd>{customizationLabel(l)}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          {user ? (
+            <Card padding="lg" aria-labelledby="place-heading">
+              <h2 id="place-heading" className="font-display text-xl text-fg">
+                Place your order
+              </h2>
+              <p className="mt-1 text-sm text-fg-muted">
+                We’ll create a draft quote and confirm formal pricing shortly. No payment is taken now.
+              </p>
+
+              {submitError && (
+                <div className="mt-4">
+                  <ErrorState message={submitError} />
+                </div>
+              )}
+
+              <Button
+                variant="primary"
+                fullWidth
+                className="mt-5"
+                onClick={placeOrder}
+                loading={submitting}
+                disabled={submitting}
+              >
+                {submitting ? 'Placing order…' : 'Place order'}
+              </Button>
+            </Card>
+          ) : (
+            <Card padding="lg" aria-labelledby="login-heading">
+              <h2 id="login-heading" className="font-display text-xl text-fg">
+                Log in to place your order
+              </h2>
+              <p className="mt-1 text-sm text-fg-muted">
+                Your cart is saved. Sign in to your company account and you’ll come right back here to finish.
+              </p>
+              <LinkButton
+                to="/login"
+                state={{ from: '/checkout' }}
+                variant="primary"
+                className="mt-5 w-full"
+              >
+                Log in
+              </LinkButton>
+            </Card>
+          )}
+        </div>
+
+        {/* Estimate summary */}
+        <Motion variants={staggerItem} className="lg:sticky lg:top-6">
+          <Card padding="lg" aria-labelledby="estimate-heading">
+            <h2 id="estimate-heading" className="font-display text-xl text-fg">
+              Estimate
+            </h2>
+            <p className="mt-1 text-sm text-fg-muted">
+              {lines.length} {lines.length === 1 ? 'item' : 'items'} · {totalUnits}{' '}
+              {totalUnits === 1 ? 'unit' : 'units'}
+            </p>
+
+            <div className="mt-4" aria-live="polite">
+              {estimateError ? (
+                <ErrorState message={estimateError} onRetry={refreshEstimate} />
+              ) : estimating ? (
+                <div className="flex flex-col gap-3">
+                  <Skeleton height="1rem" />
+                  <Skeleton height="1rem" width="70%" />
+                  <Skeleton height="1.5rem" width="55%" />
+                </div>
+              ) : estimate ? (
+                <dl className="flex flex-col gap-3">
+                  <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
+                  <SummaryRow label="Delivery" value={`${estimate.currency} ${estimate.delivery.toFixed(2)}`} />
+                  <div className="my-1 border-t border-border" />
+                  <div className="flex items-baseline justify-between">
+                    <dt className="font-medium text-fg">Estimated total</dt>
+                    <dd className="font-display text-2xl text-fg">
+                      {estimate.currency} {estimate.total.toFixed(2)}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="text-sm text-fg-muted">Add items to see an estimate.</p>
+              )}
+            </div>
+
+            <p className="mt-4 text-xs text-fg-subtle">
+              Estimate only. Final pricing is confirmed on your formal quote.
+            </p>
+          </Card>
+        </Motion>
+      </div>
+
+      {/* Celebratory confirmation before we clear + route to the quote. */}
+      <Modal
+        open={celebrating !== null}
+        onClose={finishCelebration}
+        title="Order placed!"
+        description="We’ve received your request and will confirm formal pricing shortly."
+        hideClose
+        size="sm"
+        footer={
+          <Button variant="primary" onClick={finishCelebration}>
+            View quote
+          </Button>
+        }
+      >
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <SuccessBurst />
+          <p className="text-sm text-fg-muted">
+            Quote{celebrating ? ` #${celebrating}` : ''} has been created. You can track its status any time
+            from your quotes.
+          </p>
+        </div>
+      </Modal>
+    </section>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between text-sm">
+      <dt className="text-fg-muted">{label}</dt>
+      <dd className="tabular-nums text-fg">{value}</dd>
+    </div>
+  );
+}
+
+function CartGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3 4h2l2.4 12.3a1 1 0 0 0 1 .7h8.7a1 1 0 0 0 1-.8L21 8H6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="9" cy="20" r="1.2" fill="currentColor" />
+      <circle cx="18" cy="20" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Small celebratory checkmark that pops in (reduced-motion aware). */
+function SuccessBurst() {
+  const animate = useReducedMotionSafe();
+  return (
+    <motion.div
+      className="flex h-16 w-16 items-center justify-center rounded-full bg-success-bg text-success"
+      initial={animate ? { scale: 0.4, opacity: 0 } : false}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 480, damping: 18 }}
+    >
+      <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" aria-hidden="true">
+        <path
+          d="M5 13l4 4L19 7"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </motion.div>
+  );
+}
