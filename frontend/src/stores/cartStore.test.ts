@@ -77,4 +77,16 @@ describe('cartStore', () => {
     expect(post).not.toHaveBeenCalled();
     expect(useCartStore.getState().estimate).toBeNull();
   });
+
+  it('addLine stores the requested quantity (default 1)', () => {
+    useCartStore.setState({ lines: [] });
+    const product = { id: 9, name: 'Mug', from_price: 5, currency: 'SGD' } as any;
+
+    useCartStore.getState().addLine(product, null, {}, 50);
+    useCartStore.getState().addLine(product, null, {});
+
+    const lines = useCartStore.getState().lines;
+    expect(lines[0].qty).toBe(50);
+    expect(lines[1].qty).toBe(1);
+  });
 });

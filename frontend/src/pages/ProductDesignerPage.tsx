@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
 import Model3dPersonalizer, { type Model3dCustomization } from '../components/Model3dPersonalizer';
 import { useCartStore } from '../stores/cartStore';
 import { uploadArtwork } from '../lib/uploadArtwork';
-import type { Product, Variant } from '../types';
+import type { PriceEstimate, Product, Variant } from '../types';
 import { Button, Select, Badge, Card, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
+
+const QTY_OPTIONS = [1, 25, 50, 100, 250, 500];
 
 export default function ProductDesignerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialName = searchParams.get('name')?.slice(0, 24) ?? '';
   const addLine = useCartStore((s) => s.addLine);
   const { toast } = useToast();
 
@@ -26,6 +30,8 @@ export default function ProductDesignerPage() {
   // flat face — the placement mockup is a producible production step.
   const [model3dOptions, setModel3dOptions] = useState<Model3dCustomization | null>(null);
   const is3d = product?.class === 'MODEL_3D';
+  const [qty, setQty] = useState(50);
+  const [estimate, setEstimate] = useState<{ unit: number; total: number; currency: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +50,29 @@ export default function ProductDesignerPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live quote: re-estimate whenever qty, variant or captured artwork changes.
+  // Event-driven single POST per change — never polled.
+  useEffect(() => {
+    if (!product) return;
+    let active = true;
+    api
+      .post<PriceEstimate>('/price-estimate', {
+        line_items: [
+          { product_id: product.id, variant_id: variantId, qty, has_customization: !!artwork },
+        ],
+      })
+      .then(({ data }) => {
+        if (!active) return;
+        setEstimate({ unit: data.lines[0]?.unit_price ?? 0, total: data.total, currency: data.currency });
+      })
+      .catch(() => {
+        if (active) setEstimate(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [product, variantId, qty, artwork]);
 
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === variantId) ?? null,
@@ -84,7 +113,7 @@ export default function ProductDesignerPage() {
         setUploading(false);
       }
     }
-    addLine(product, selectedVariant, customization);
+    addLine(product, selectedVariant, customization, qty);
     toast({ title: 'Added to cart', description: product.name, tone: 'success' });
     navigate('/cart');
   };
@@ -144,7 +173,7 @@ export default function ProductDesignerPage() {
               places logo/text on the canvas over the product photo (3D items
               are UV-decorated after printing) */}
           {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
-          <DesignerCanvas backgroundUrl={product.image_url} onCapture={handleCapture} />
+          <DesignerCanvas backgroundUrl={product.image_url} onCapture={handleCapture} initialNameText={initialName} />
 
           {/* Sticky action bar */}
           <div className="sticky bottom-4 z-raised">
@@ -162,7 +191,28 @@ export default function ProductDesignerPage() {
                   </span>
                 )}
               </div>
-              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="w-28">
+                  <Select label="Quantity" value={qty} onChange={(e) => setQty(Number(e.target.value))}>
+                    {QTY_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} pcs
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {estimate && (
+                  <p className="text-sm text-fg-muted" role="status" aria-live="polite">
+                    <span className="font-semibold text-fg">
+                      {estimate.currency} {estimate.unit.toFixed(2)}
+                    </span>{' '}
+                    / unit ·{' '}
+                    <span className="font-semibold text-fg">
+                      {estimate.currency} {estimate.total.toFixed(2)}
+                    </span>{' '}
+                    for {qty}
+                  </p>
+                )}
                 {uploadError && (
                   <p className="text-sm text-danger" role="alert">
                     {uploadError}

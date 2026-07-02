@@ -12,7 +12,7 @@ interface CartState {
   estimate: PriceEstimate | null;
   estimating: boolean;
   estimateError: string | null;
-  addLine: (product: Product, variant: Variant | null, customization: Customization) => void;
+  addLine: (product: Product, variant: Variant | null, customization: Customization, qty?: number) => void;
   updateQty: (key: string, qty: number) => void;
   removeLine: (key: string) => void;
   clear: () => void;
@@ -30,9 +30,10 @@ export const useCartStore = create<CartState>()(
       estimating: false,
       estimateError: null,
 
-      addLine: (product, variant, customization) => {
+      addLine: (product, variant, customization, qty = 1) => {
         const key = `${product.id}:${variant?.id ?? 0}:${Date.now()}`;
-        set((s) => ({ lines: [...s.lines, { key, product, variant, qty: 1, customization }] }));
+        const safeQty = Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1;
+        set((s) => ({ lines: [...s.lines, { key, product, variant, qty: safeQty, customization }] }));
       },
 
       updateQty: (key, qty) =>

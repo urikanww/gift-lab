@@ -23,6 +23,8 @@ interface DesignerCanvasProps {
    */
   backgroundUrl?: string | null;
   onCapture: (artwork: CapturedArtwork) => void;
+  /** Pre-seeded from the PDP "see your name on it" teaser (?name=…). */
+  initialNameText?: string;
 }
 
 const LOGO_SIZES = ['S', 'M', 'L'] as const;
@@ -34,13 +36,19 @@ const LOGO_SIZE_LABELS: Record<LogoSize, string> = {
   L: 'Large',
 };
 
-export default function DesignerCanvas({ width = 500, height = 380, backgroundUrl, onCapture }: DesignerCanvasProps) {
+export default function DesignerCanvas({
+  width = 500,
+  height = 380,
+  backgroundUrl,
+  onCapture,
+  initialNameText,
+}: DesignerCanvasProps) {
   const elRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<Canvas | null>(null);
   const [ready, setReady] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
-  const [nameText, setNameText] = useState('');
+  const [nameText, setNameText] = useState(initialNameText ?? '');
   const [logoSize, setLogoSize] = useState<LogoSize>('M');
   const [objectCount, setObjectCount] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
@@ -99,6 +107,16 @@ export default function DesignerCanvas({ width = 500, height = 380, backgroundUr
       canvasRef.current = null;
     };
   }, [dims.w, dims.h]);
+
+  // Auto-place the name carried over from the product page — once, after the
+  // canvas is live, so the buyer lands with their personalization already on.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!ready || seededRef.current || !initialNameText) return;
+    seededRef.current = true;
+    applyNameText();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   // Backdrop <img> load state — hide it (and fall back to the plain stage)
   // if the image 404s.
