@@ -1,8 +1,12 @@
 import api from './api';
 import type { Paginated, Product, PriceEstimate } from '../types';
 
-export function fetchCatalogue(page = 1): Promise<Paginated<Product>> {
-  return api.get<Paginated<Product>>('/catalogue', { params: { page } }).then((r) => r.data);
+export function fetchCatalogue(page = 1, productClass = ''): Promise<Paginated<Product>> {
+  // Category filtering is server-side: the catalogue paginates at 24/page, so a
+  // client-side filter over one loaded page silently hides matches on later pages.
+  const params: Record<string, string | number> = { page };
+  if (productClass) params.class = productClass;
+  return api.get<Paginated<Product>>('/catalogue', { params }).then((r) => r.data);
 }
 
 export function fetchProduct(id: number | string): Promise<Product> {

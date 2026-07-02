@@ -31,11 +31,14 @@ export default function CataloguePage() {
     parseClass(searchParams.get('class')),
   );
 
-  const load = async (target = 1) => {
+  // Category filtering is server-side (the catalogue paginates at 24/page, so
+  // filtering only the loaded page would hide matches on later pages). `cls`
+  // defaults to the current filter so pagination stays within the category.
+  const load = async (target = 1, cls: '' | ProductClass = classFilter) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCatalogue(target);
+      const data = await fetchCatalogue(target, cls);
       setProducts(data.data);
       setPage(data.meta?.current_page ?? target);
       setLastPage(data.meta?.last_page ?? 1);
@@ -48,6 +51,7 @@ export default function CataloguePage() {
 
   useEffect(() => {
     void load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setQueryParam = (next: string) => {
@@ -74,28 +78,19 @@ export default function CataloguePage() {
       },
       { replace: true },
     );
+    void load(1, next);
   };
 
-  // Categories present on the current page — client-side refinement over the
-  // loaded set (no API contract change).
-  const classesOnPage = useMemo(() => {
-    const set = new Set<ProductClass>();
-    products.forEach((p) => {
-      if (p.class && CLASS_KEYS.has(p.class)) set.add(p.class);
-    });
-    return Array.from(set);
-  }, [products]);
-
+  // Text search stays client-side over the loaded (already class-scoped) page.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      if (classFilter && p.class !== classFilter) return false;
       if (q && !p.name.toLowerCase().includes(q) && !(p.creator_credit ?? '').toLowerCase().includes(q)) {
         return false;
       }
       return true;
     });
-  }, [products, query, classFilter]);
+  }, [products, query]);
 
   const hasActiveFilter = query.trim() !== '' || classFilter !== '';
   const clearFilters = () => {
@@ -110,6 +105,7 @@ export default function CataloguePage() {
       },
       { replace: true },
     );
+    void load(1, '');
   };
 
   return (
@@ -164,9 +160,9 @@ export default function CataloguePage() {
               onChange={(e) => setClassParam(e.target.value as '' | ProductClass)}
             >
               <option value="">All categories</option>
-              {classesOnPage.map((c) => (
-                <option key={c} value={c}>
-                  {categoryLabel(c)}
+              {CATEGORIES.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {categoryLabel(c.key)}
                 </option>
               ))}
             </Select>
@@ -229,7 +225,9 @@ export default function CataloguePage() {
             ))}
           </Motion>
 
-          {lastPage > 1 && !hasActiveFilter && (
+          {/* Class filtering is server-side, so pagination remains valid with a
+              category selected; only a client-side text query disables it. */}
+          {lastPage > 1 && query.trim() === '' && (
             <nav className="flex items-center justify-center gap-4" aria-label="Pagination">
               <Button
                 variant="outline"
