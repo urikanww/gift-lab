@@ -107,18 +107,23 @@ class PullModel3dCatalogue extends Command
                 continue;
             }
 
-            // IP/trademark screen BEFORE ingest — a CC licence doesn't clear
-            // trademarks, and flagged items should never enter the catalogue
-            // pipeline at all.
+            // IP/trademark screen — a CC licence doesn't clear trademarks.
+            // Flagged items still flow IN (owner decision: full visibility),
+            // but are held in the admin gate as CANNOT_PUBLISH with the flag
+            // reason shown; staff decide, nothing flagged auto-publishes.
             $verdict = app(IpScreenService::class)->screen($data->name, $data->description);
-            if ($verdict['flagged']) {
-                $skipped++;
-                $this->line("  skip  [{$source->value}] {$id} {$data->name} [IP: {$verdict['reason']}]");
-
-                continue;
-            }
 
             ['product' => $product] = $service->ingest($data);
+
+            if ($verdict['flagged']) {
+                $product->publish_state = PublishState::CannotPublish;
+                $product->cannot_publish_reasons = array_values(array_unique(array_merge(
+                    (array) ($product->cannot_publish_reasons ?? []),
+                    ['ip_flag:'.$verdict['reason']],
+                )));
+                $product->save();
+                $this->line("  hold  [{$source->value}] {$id} {$data->name} [IP: {$verdict['reason']}] → gate");
+            }
 
             $reasons = (array) ($product->cannot_publish_reasons ?? []);
             $licenceBlocked = array_intersect($reasons, ['license_blocked', 'missing_credit']) !== [];
