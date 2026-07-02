@@ -46,3 +46,21 @@ it('shows Log out in the drawer for a logged-in user and closes on Escape', asyn
     expect(screen.queryByRole('navigation', { name: /mobile/i })).not.toBeInTheDocument(),
   );
 });
+
+it('shows ops navigation links for staff roles', () => {
+  useAuthStore.setState({
+    user: { ...testUser, role: 'staff_admin', company_id: null },
+    status: 'ready',
+    error: null,
+  });
+  renderHeader();
+
+  expect(screen.getByRole('link', { name: /catalogue gate/i })).toHaveAttribute('href', '/catalogue-admin');
+  expect(screen.getByRole('link', { name: /production/i })).toHaveAttribute('href', '/production-queue');
+  expect(screen.getByRole('link', { name: /procurement/i })).toHaveAttribute('href', '/procurement');
+});
+
+it('hides ops navigation from buyers and anonymous visitors', () => {
+  renderHeader();
+  expect(screen.queryByRole('link', { name: /catalogue gate/i })).not.toBeInTheDocument();
+});

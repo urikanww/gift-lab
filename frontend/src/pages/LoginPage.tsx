@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { isStaffRole } from '../lib/roles';
 import { Button, Card, Input } from '../ui';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 
@@ -12,7 +13,7 @@ export default function LoginPage() {
   const { login, error } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as LocationState | null)?.from ?? '/quotes';
+  const from = (location.state as LocationState | null)?.from;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +25,12 @@ export default function LoginPage() {
     setSubmitting(true);
     const ok = await login(email, password);
     setSubmitting(false);
-    if (ok) navigate(from, { replace: true });
+    if (ok) {
+      // Role-aware landing: staff manage the catalogue gate; buyers see their
+      // quotes. An explicit `from` (bounced off a protected route) still wins.
+      const role = useAuthStore.getState().user?.role;
+      navigate(from ?? (isStaffRole(role) ? '/catalogue-admin' : '/quotes'), { replace: true });
+    }
   };
 
   return (

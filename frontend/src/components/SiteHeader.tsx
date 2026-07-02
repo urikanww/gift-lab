@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
 import { useCartStore } from '../stores/cartStore';
 import { CATEGORIES } from '../lib/categories';
+import { isStaffRole } from '../lib/roles';
 import { Badge, Button, Input, useTheme, cn } from '../ui';
 import { useReducedMotionSafe } from '../motion';
 import type { User } from '../types';
@@ -64,6 +65,20 @@ export default function SiteHeader() {
               <span aria-hidden="true">{c.icon}</span> {c.label}
             </NavLink>
           ))}
+          {isStaffRole(user?.role) && (
+            <>
+              <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+              <NavLink to="/catalogue-admin" className={navLinkClass}>
+                Catalogue Gate
+              </NavLink>
+              <NavLink to="/production-queue" className={navLinkClass}>
+                Production
+              </NavLink>
+              <NavLink to="/procurement" className={navLinkClass}>
+                Procurement
+              </NavLink>
+            </>
+          )}
         </nav>
 
         <form onSubmit={onSearch} role="search" className="hidden lg:block lg:w-56">
@@ -282,6 +297,19 @@ function MobileDrawer({
               </NavLink>
             ))}
             <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3">
+              {isStaffRole(user?.role) && (
+                <>
+                  <NavLink to="/catalogue-admin" onClick={onClose} className={navLinkClass}>
+                    Catalogue Gate
+                  </NavLink>
+                  <NavLink to="/production-queue" onClick={onClose} className={navLinkClass}>
+                    Production
+                  </NavLink>
+                  <NavLink to="/procurement" onClick={onClose} className={navLinkClass}>
+                    Procurement
+                  </NavLink>
+                </>
+              )}
               <AccountLink user={user} onClick={onClose} />
               {user && (
                 <Button
