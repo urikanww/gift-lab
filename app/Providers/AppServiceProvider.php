@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Services\Model3d\CompositeModel3dApiClient;
 use App\Services\Model3d\Contracts\Model3dApiClient;
+use App\Services\Model3d\HttpCults3dClient;
 use App\Services\Model3d\HttpThingiverseClient;
 use App\Services\Model3d\StubModel3dApiClient;
 use App\Services\Payment\Contracts\PaymentGateway;
@@ -38,16 +39,25 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(StubModel3dApiClient::class);
         $this->app->singleton(Model3dApiClient::class, function ($app) {
-            // With a Thingiverse token, route THINGIVERSE to the live client and
-            // fall through to the stub for other sources; otherwise all stub.
+            // Route each source with credentials to its live client; the stub
+            // stays last so uncredentialed sources fall through to fixtures.
+            $clients = [];
+
             if (config('services.thingiverse.token')) {
-                return new CompositeModel3dApiClient([
-                    $app->make(HttpThingiverseClient::class),
-                    $app->make(StubModel3dApiClient::class),
-                ]);
+                $clients[] = $app->make(HttpThingiverseClient::class);
             }
 
-            return $app->make(StubModel3dApiClient::class);
+            if (config('services.cults3d.username') && config('services.cults3d.token')) {
+                $clients[] = $app->make(HttpCults3dClient::class);
+            }
+
+            if ($clients === []) {
+                return $app->make(StubModel3dApiClient::class);
+            }
+
+            $clients[] = $app->make(StubModel3dApiClient::class);
+
+            return new CompositeModel3dApiClient($clients);
         });
 
         // Payments: Stripe when a secret is configured. The FixturePaymentGateway

@@ -42,7 +42,9 @@ return [
         'base_url' => env('THINGIVERSE_BASE_URL', 'https://api.thingiverse.com'),
     ],
     'cults3d' => [
+        'username' => env('CULTS3D_USERNAME'),
         'token' => env('CULTS3D_TOKEN'),
+        'base_url' => env('CULTS3D_BASE_URL', 'https://cults3d.com/graphql'),
     ],
 
     // Stripe (B2C "pay now"). Without a secret key the fixture gateway is used.
