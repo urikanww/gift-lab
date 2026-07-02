@@ -20,6 +20,11 @@ it('classifies product names into marketplace categories', function (string $nam
     ['Bamboo Coaster', 'home'],
     ['Enamel Keychain', 'accessories'],
     ['Articulated Dragon Fidget', 'toys'],
+    // Plural tolerance — ordinary catalogue names are often pluralized.
+    ['Ceramic Mugs Set', 'drinkware'],
+    ['Enamel Pins', 'accessories'],
+    // 'glass' must NOT pluralize into eyewear.
+    ['Reading Glasses', 'accessories'],
 ]);
 
 it('falls back by product class when no keyword matches', function (): void {
@@ -28,4 +33,10 @@ it('falls back by product class when no keyword matches', function (): void {
     expect($classifier->classify('Mystery Object', ProductClass::Model3d))->toBe('toys')
         ->and($classifier->classify('Mystery Object', ProductClass::Core))->toBe('accessories')
         ->and($classifier->classify('Mystery Object', ProductClass::ScrapedUv))->toBe('accessories');
+});
+
+it('keeps every keyword group inside the public CATEGORIES list', function (): void {
+    $reflection = new ReflectionClassConstant(CategoryClassifier::class, 'KEYWORDS');
+
+    expect(array_keys($reflection->getValue()))->toBe(CategoryClassifier::CATEGORIES);
 });

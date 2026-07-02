@@ -34,7 +34,11 @@ class CategoryClassifier
     {
         foreach (self::KEYWORDS as $category => $keywords) {
             foreach ($keywords as $keyword) {
-                if (preg_match('/\b'.preg_quote($keyword, '/').'\b/i', $name) === 1) {
+                // Tolerate simple plurals ("Mugs", "Pins") — except 'glass',
+                // where +s would wrongly capture eyewear ("Reading Glasses").
+                $plural = $keyword === 'glass' ? '' : 's?';
+
+                if (preg_match('/\b'.preg_quote($keyword, '/').$plural.'\b/i', $name) === 1) {
                     return $category;
                 }
             }
