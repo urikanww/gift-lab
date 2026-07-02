@@ -31,7 +31,7 @@ describe('CataloguePage', () => {
 
     await waitFor(() => expect(screen.getByText('Ceramic Mug')).toBeInTheDocument());
     expect(screen.getByText(/SGD 3.20/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Ceramic Mug/i })).toHaveAttribute('href', '/products/1');
+    expect(screen.getAllByRole('link', { name: /Ceramic Mug/i })[0]).toHaveAttribute('href', '/products/1');
   });
 
   it('shows an empty state when there are no products', async () => {
