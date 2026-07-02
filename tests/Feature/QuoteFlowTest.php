@@ -74,6 +74,17 @@ it('includes the company name on quote listings for staff', function (): void {
         ->assertJsonPath('data.0.company_name', 'Acme Gifts Pte Ltd');
 });
 
+it('survives a soft-deleted company on staff quote listings', function (): void {
+    $company = Company::factory()->create(['name' => 'Ghost Co']);
+    Quote::factory()->create(['company_id' => $company->id]);
+    $company->delete();
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->getJson('/api/quotes')
+        ->assertOk()
+        ->assertJsonPath('data.0.company_name', null);
+});
+
 it('omits the company name on buyer quote listings', function (): void {
     $company = Company::factory()->create();
     Quote::factory()->create(['company_id' => $company->id]);
