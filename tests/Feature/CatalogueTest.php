@@ -83,3 +83,40 @@ it('keeps an explicitly set category instead of reclassifying', function (): voi
 
     expect($product->fresh()->category)->toBe('home');
 });
+
+it('filters the catalogue by marketplace category', function (): void {
+    Product::factory()->create(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
+    Product::factory()->create(['name' => 'Canvas Tote Bag', 'publish_state' => 'PUBLISHED']);
+
+    $response = $this->getJson('/api/catalogue?category=drinkware');
+
+    $response->assertOk();
+    $names = collect($response->json('data'))->pluck('name');
+    expect($names)->toContain('Ceramic Mug 11oz')
+        ->and($names)->not->toContain('Canvas Tote Bag');
+});
+
+it('exposes the marketplace category on the product resource', function (): void {
+    Product::factory()->create(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
+
+    $this->getJson('/api/catalogue')
+        ->assertOk()
+        ->assertJsonPath('data.0.category', 'drinkware');
+});
+
+it('sorts the catalogue by newest first when requested', function (): void {
+    Product::factory()->create(['name' => 'Old Mug', 'publish_state' => 'PUBLISHED', 'created_at' => now()->subDay()]);
+    Product::factory()->create(['name' => 'New Mug', 'publish_state' => 'PUBLISHED', 'created_at' => now()]);
+
+    $response = $this->getJson('/api/catalogue?sort=newest');
+
+    expect($response->json('data.0.name'))->toBe('New Mug');
+});
+
+it('sorts the catalogue by price', function (): void {
+    Product::factory()->create(['name' => 'Pricey Mug', 'base_cost' => 50, 'publish_state' => 'PUBLISHED']);
+    Product::factory()->create(['name' => 'Cheap Mug', 'base_cost' => 1, 'publish_state' => 'PUBLISHED']);
+
+    expect($this->getJson('/api/catalogue?sort=price_asc')->json('data.0.name'))->toBe('Cheap Mug')
+        ->and($this->getJson('/api/catalogue?sort=price_desc')->json('data.0.name'))->toBe('Pricey Mug');
+});

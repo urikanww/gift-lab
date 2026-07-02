@@ -22,21 +22,37 @@ class CatalogueController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        $products = Product::query()
+        // `sort=price_*` orders by base_cost: the public from_price is a
+        // monotonic margin over base_cost, so relative order is preserved
+        // without leaking the internal cost itself.
+        $sort = $request->string('sort')->toString();
+
+        $query = Product::query()
             ->published()
             ->when(
                 $request->filled('class'),
                 fn ($q) => $q->where('class', $request->string('class')->toString())
             )
             ->when(
+                $request->filled('category'),
+                fn ($q) => $q->where('category', $request->string('category')->toString())
+            )
+            ->when(
                 $request->filled('q'),
                 fn ($q) => $q->where('name', 'like', '%'.$request->string('q')->toString().'%')
             )
-            ->with('variants')
-            ->orderBy('name')
-            ->paginate(24);
+            ->with('variants');
 
-        return ProductResource::collection($products);
+        match ($sort) {
+            'price_asc' => $query->orderBy('base_cost')->orderBy('name'),
+            'price_desc' => $query->orderByDesc('base_cost')->orderBy('name'),
+            'newest' => $query->orderByDesc('created_at')->orderBy('name'),
+            default => $query->orderBy('name'),
+        };
+
+        return ProductResource::collection(
+            $query->paginate(24)->appends($request->query())
+        );
     }
 
     /**

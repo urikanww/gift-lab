@@ -26,6 +26,8 @@ class ProductResource extends JsonResource
             'slug' => $this->slug,
             'description' => $this->description,
             'class' => $this->class->value,
+            // Public marketplace category (how buyers browse) — see CategoryClassifier.
+            'category' => $this->category,
             // Indicative sell price (qty 1, no variant), NOT the raw pre-margin
             // supplier cost. base_cost is internal — exposing it on the public
             // catalogue let anyone back out the margin (business-intel leak).

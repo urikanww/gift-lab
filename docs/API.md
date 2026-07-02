@@ -29,8 +29,10 @@ latter two). Rate limits: login 6/min, public 60/min, authenticated 120/min.
 
 ## Public catalogue (no account) · throttle 60/min
 
-### `GET /catalogue?q=&class=&page=`
+### `GET /catalogue?q=&category=&class=&sort=&page=`
 Only `PUBLISHED` products. `200` → paginated `ProductResource`.
+`category` = marketplace category slug (`drinkware|bags|stationery|apparel|tech|home|accessories|toys`).
+`sort` = `name` (default) | `newest` | `price_asc` | `price_desc` (price sorts use `base_cost`, monotonic with the public price).
 
 ### `GET /catalogue/{product}`
 `200` → `ProductResource` (with `variants`). `404` if not published.
