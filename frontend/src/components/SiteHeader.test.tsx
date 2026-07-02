@@ -79,3 +79,14 @@ it('labels the quotes link "Quotes" for staff and "My Orders" for buyers', () =>
   expect(screen.getByRole('link', { name: 'Quotes' })).toHaveAttribute('href', '/quotes');
   expect(screen.queryByRole('link', { name: /my orders/i })).not.toBeInTheDocument();
 });
+
+it('opens the categories menu with marketplace category links', async () => {
+  const user = userEvent.setup();
+  renderHeader();
+
+  await user.click(screen.getByRole('button', { name: /categories/i }));
+
+  const link = screen.getByRole('link', { name: /drinkware/i });
+  expect(link).toHaveAttribute('href', '/products?category=drinkware');
+  expect(screen.getByRole('link', { name: /toys & figurines/i })).toBeInTheDocument();
+});

@@ -60,11 +60,7 @@ export default function SiteHeader() {
           <NavLink to="/products" end className={navLinkClass}>
             Products
           </NavLink>
-          {CATEGORIES.map((c) => (
-            <NavLink key={c.key} to={`/products?class=${c.key}`} className={navLinkClass}>
-              <span aria-hidden="true">{c.icon}</span> {c.label}
-            </NavLink>
-          ))}
+          <CategoriesMenu />
           {isStaffRole(user?.role) && (
             <>
               <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -119,6 +115,65 @@ export default function SiteHeader() {
         onLogout={onLogout}
       />
     </header>
+  );
+}
+
+function CategoriesMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on any click outside the menu (standard disclosure pattern).
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          'rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          open ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
+        )}
+      >
+        Categories <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-modal mt-1 grid w-[28rem] grid-cols-2 gap-1 rounded-lg border border-border bg-surface p-2 shadow-lg">
+          {CATEGORIES.map((c) => (
+            <Link
+              key={c.key}
+              to={`/products?category=${c.key}`}
+              onClick={() => setOpen(false)}
+              className="flex items-start gap-2.5 rounded-md px-3 py-2 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden="true" className="text-lg leading-6">
+                {c.icon}
+              </span>
+              <span>
+                <span className="block text-sm font-medium text-fg">{c.label}</span>
+                <span className="block text-xs text-fg-muted">{c.blurb}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -292,7 +347,7 @@ function MobileDrawer({
               Products
             </NavLink>
             {CATEGORIES.map((c) => (
-              <NavLink key={c.key} to={`/products?class=${c.key}`} onClick={onClose} className={navLinkClass}>
+              <NavLink key={c.key} to={`/products?category=${c.key}`} onClick={onClose} className={navLinkClass}>
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
