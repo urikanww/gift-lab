@@ -1,119 +1,41 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import api, { apiError } from '../lib/api';
-import { safeHref } from '../lib/safeHref';
-import { Badge, Button, EmptyState, Input, Select, Skeleton } from '../ui';
+import { useSearchParams } from 'react-router-dom';
+import { apiError } from '../lib/api';
+import { fetchCatalogue } from '../lib/catalogue';
+import { CATEGORIES, categoryLabel } from '../lib/categories';
+import { Badge, Button, EmptyState, Input, Select } from '../ui';
 import { ErrorState } from '../components/ui/States';
-import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
-import type { Paginated, Product, ProductClass } from '../types';
+import { ProductCard, CardSkeleton } from '../components/product/ProductCard';
+import { Motion, fadeInUp, staggerContainer } from '../motion';
+import type { Product, ProductClass } from '../types';
 
-/**
- * Scraped image URLs are external and untrusted: route through safeHref (drops
- * javascript:/data: etc.), fall back to a monogram placeholder on load error,
- * and suppress the referrer on the outbound request.
- */
-function CardImage({ product }: { product: Product }) {
-  const [failed, setFailed] = useState(false);
-  const href = safeHref(product.image_url);
+const CLASS_KEYS = new Set<ProductClass>(CATEGORIES.map((c) => c.key));
 
-  if (!href || failed) {
-    return (
-      <div
-        className="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-100 to-accent-50 font-display text-5xl text-brand-700"
-        aria-hidden="true"
-      >
-        {product.name.charAt(0)}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={href}
-      alt=""
-      className="h-full w-full object-cover transition-transform duration-slow ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-const CLASS_LABELS: Record<ProductClass, string> = {
-  CORE: 'Core',
-  SCRAPED_UV: 'UV Print',
-  MODEL_3D: '3D Printed',
-};
-
-const CLASS_TONE: Record<ProductClass, 'brand' | 'info' | 'success'> = {
-  CORE: 'brand',
-  SCRAPED_UV: 'info',
-  MODEL_3D: 'success',
-};
-
-function ProductCard({ product }: { product: Product }) {
-  return (
-    <Motion variants={staggerItem} className="h-full">
-      <Link
-        to={`/catalogue/${product.id}`}
-        className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      >
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-surface-2">
-          <CardImage product={product} />
-          {product.class && CLASS_LABELS[product.class] && (
-            <div className="absolute left-3 top-3">
-              <Badge tone={CLASS_TONE[product.class]} size="sm">
-                {CLASS_LABELS[product.class]}
-              </Badge>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-1 flex-col gap-1 p-4">
-          <h3 className="font-display text-lg leading-snug text-fg transition-colors duration-fast group-hover:text-primary">
-            {product.name}
-          </h3>
-          {product.creator_credit && (
-            <p className="text-xs text-fg-subtle">by {product.creator_credit}</p>
-          )}
-          <p className="mt-auto pt-2 text-sm text-fg-muted">
-            <span className="text-2xs uppercase tracking-wide text-fg-subtle">from </span>
-            <span className="font-medium text-fg">
-              {product.currency} {product.from_price.toFixed(2)}
-            </span>
-          </p>
-        </div>
-      </Link>
-    </Motion>
-  );
-}
-
-function CardSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-card">
-      <Skeleton className="aspect-[4/3] w-full rounded-none" />
-      <div className="flex flex-col gap-2 p-4">
-        <Skeleton height={18} width="70%" />
-        <Skeleton height={14} width="40%" />
-      </div>
-    </div>
-  );
+function parseClass(value: string | null): '' | ProductClass {
+  return value && CLASS_KEYS.has(value as ProductClass) ? (value as ProductClass) : '';
 }
 
 export default function CataloguePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
 
-  const [query, setQuery] = useState('');
-  const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
+  // Initialize filter state from URL params (?q=, ?class=). Unknown class values
+  // are ignored. Filtering/search stays client-side over the loaded page.
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
+  const [classFilter, setClassFilter] = useState<'' | ProductClass>(() =>
+    parseClass(searchParams.get('class')),
+  );
 
   const load = async (target = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.get<Paginated<Product>>('/catalogue', { params: { page: target } });
+      const data = await fetchCatalogue(target);
       setProducts(data.data);
       setPage(data.meta?.current_page ?? target);
       setLastPage(data.meta?.last_page ?? 1);
@@ -128,12 +50,38 @@ export default function CataloguePage() {
     void load(1);
   }, []);
 
+  const setQueryParam = (next: string) => {
+    setQuery(next);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next.trim()) params.set('q', next);
+        else params.delete('q');
+        return params;
+      },
+      { replace: true },
+    );
+  };
+
+  const setClassParam = (next: '' | ProductClass) => {
+    setClassFilter(next);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next) params.set('class', next);
+        else params.delete('class');
+        return params;
+      },
+      { replace: true },
+    );
+  };
+
   // Categories present on the current page — client-side refinement over the
   // loaded set (no API contract change).
   const classesOnPage = useMemo(() => {
     const set = new Set<ProductClass>();
     products.forEach((p) => {
-      if (p.class && CLASS_LABELS[p.class]) set.add(p.class);
+      if (p.class && CLASS_KEYS.has(p.class)) set.add(p.class);
     });
     return Array.from(set);
   }, [products]);
@@ -153,6 +101,15 @@ export default function CataloguePage() {
   const clearFilters = () => {
     setQuery('');
     setClassFilter('');
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete('q');
+        params.delete('class');
+        return params;
+      },
+      { replace: true },
+    );
   };
 
   return (
@@ -196,7 +153,7 @@ export default function CataloguePage() {
               label="Search catalogue"
               placeholder="Search by name or maker…"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => setQueryParam(e.target.value)}
               leadingIcon={<SearchIcon />}
             />
           </div>
@@ -204,12 +161,12 @@ export default function CataloguePage() {
             <Select
               label="Category"
               value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value as '' | ProductClass)}
+              onChange={(e) => setClassParam(e.target.value as '' | ProductClass)}
             >
               <option value="">All categories</option>
               {classesOnPage.map((c) => (
                 <option key={c} value={c}>
-                  {CLASS_LABELS[c]}
+                  {categoryLabel(c)}
                 </option>
               ))}
             </Select>
@@ -268,7 +225,7 @@ export default function CataloguePage() {
             className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
           >
             {filtered.map((p) => (
-              <ProductCard key={p.id} product={p} />
+              <ProductCard key={p.id} product={p} to={`/products/${p.id}`} showMeta />
             ))}
           </Motion>
 
