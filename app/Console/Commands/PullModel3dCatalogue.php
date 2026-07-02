@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Enums\Model3dSource;
 use App\Enums\PublishState;
+use App\Models\LineItem;
 use App\Models\Product;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\IpScreenService;
@@ -136,6 +137,16 @@ class PullModel3dCatalogue extends Command
                 // blow up the next sweep that meets the same source id.
                 // Items blocked only on missing_model_file are KEPT — staff can
                 // attach the file manually (e.g. Cults3D has no download API).
+                // A product referenced by order lines can't be hard-deleted (FK)
+                // — that history must survive, so it stays as a CANNOT_PUBLISH
+                // row in the gate instead.
+                if (LineItem::query()->where('product_id', $product->id)->exists()) {
+                    $skipped++;
+                    $this->line("  hold  [{$source->value}] {$id} {$data->name} [{$data->license}] → gate (has order history)");
+
+                    continue;
+                }
+
                 $product->forceDelete();
                 $product->model3d?->forceDelete();
                 $skipped++;
