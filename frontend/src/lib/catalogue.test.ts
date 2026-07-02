@@ -21,6 +21,17 @@ describe('catalogue lib', () => {
     expect(api.get).toHaveBeenCalledWith('/catalogue', { params: { page: 1 } });
   });
 
+  it('fetchCatalogue drops sort=name and whitespace-only q, trims a real q', async () => {
+    (api.get as any).mockResolvedValue({ data: { data: [], current_page: 1, last_page: 1 } });
+
+    // 'name' is the backend default order; whitespace-only q is noise.
+    await fetchCatalogue({ sort: 'name', q: '  ' });
+    expect(api.get).toHaveBeenLastCalledWith('/catalogue', { params: { page: 1 } });
+
+    await fetchCatalogue({ q: ' mug ' });
+    expect(api.get).toHaveBeenLastCalledWith('/catalogue', { params: { page: 1, q: 'mug' } });
+  });
+
   it('fetchProduct hits the show route and unwraps the resource envelope', async () => {
     (api.get as any).mockResolvedValue({ data: { data: { id: 5, name: 'A5' } } });
     const p = await fetchProduct(5);
