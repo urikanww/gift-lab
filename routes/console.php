@@ -20,3 +20,24 @@ Schedule::command('catalogue:resync-scraped')
     ->dailyAt('03:00')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Daily MODEL_3D licence re-check (creator can re-licence/delete upstream —
+// drifted items are pulled from public for re-review).
+Schedule::command('catalogue:resync-3d')
+    ->dailyAt('03:30')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Nightly discovery sweep: new licence-cleared 3D models flow in from the
+// configured keyword list; every item still passes the full publish gate.
+Schedule::command('catalogue:discover-3d')
+    ->dailyAt('04:00')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Slicer sweep after discovery: measures real grams/print-minutes for any
+// unverified 3D item (no-op until SLICER_BINARY is configured).
+Schedule::command('catalogue:slice-pending')
+    ->dailyAt('04:30')
+    ->onOneServer()
+    ->withoutOverlapping();

@@ -34,7 +34,10 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,
 // Public, no-account catalogue (browse + live estimate).
 Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/catalogue', [CatalogueController::class, 'index']);
-    Route::get('/catalogue/{product}', [CatalogueController::class, 'show']);
+    // {key} = slug (canonical, user-friendly) or numeric id (legacy links).
+    Route::get('/catalogue/{key}', [CatalogueController::class, 'show']);
+    // 3D model stream for the interactive viewer (published MODEL_3D only).
+    Route::get('/catalogue/{key}/model', [CatalogueController::class, 'model']);
     Route::post('/price-estimate', PriceEstimateController::class);
     // Designer artwork upload (account-free designer, spec 6.1).
     Route::post('/uploads/artwork', [UploadController::class, 'artwork']);
@@ -74,5 +77,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index']);
     Route::post('/admin/products/{product}/publish', [AdminCatalogueController::class, 'publish']);
     Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish']);
+    Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
+    Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 });

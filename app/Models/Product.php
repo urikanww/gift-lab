@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -31,6 +32,7 @@ class Product extends Model
 
     protected $fillable = [
         'name',
+        'slug',
         'description',
         'class',
         'base_cost',
@@ -53,6 +55,8 @@ class Product extends Model
         'filament_material',
         'filament_color',
         'est_grams',
+        'est_print_minutes',
+        'estimates_verified',
         'created_by',
     ];
 
@@ -71,11 +75,36 @@ class Product extends Model
             'is_printable' => 'boolean',
             'license' => License::class,
             'est_grams' => 'decimal:3',
+            'est_print_minutes' => 'decimal:1',
+            'estimates_verified' => 'boolean',
         ];
     }
 
     protected static function booted(): void
     {
+        // Public URL slug: generated once from the name, then stable across
+        // renames so shared/bookmarked links never break. Collisions get the
+        // shortest unique numeric suffix.
+        static::saving(function (Product $product): void {
+            if ($product->slug !== null && $product->slug !== '') {
+                return;
+            }
+
+            $base = Str::slug((string) $product->name) ?: 'product';
+            $slug = $base;
+            $i = 2;
+
+            while (static::withTrashed()->where('slug', $slug)->when(
+                $product->id !== null,
+                fn ($q) => $q->whereKeyNot($product->id),
+            )->exists()) {
+                $slug = "{$base}-{$i}";
+                $i++;
+            }
+
+            $product->slug = $slug;
+        });
+
         // Cascade soft-deletes to variants (FK cascadeOnDelete only fires on a
         // hard DELETE), so a soft-deleted product doesn't leave live variants.
         static::deleting(function (Product $product): void {

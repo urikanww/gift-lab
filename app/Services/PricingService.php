@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\ProductClass;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\Variant;
@@ -16,18 +17,49 @@ use App\Models\Variant;
 final class PricingService
 {
     /**
+     * Per-unit landed (production) cost by product class. MODEL_3D has no
+     * sourced blank — its landed cost is filament consumed plus machine time,
+     * both from config (minutes-per-gram is the proxy until a slicer
+     * integration supplies measured print times). Everything else is the
+     * blank cost plus the variant delta.
+     */
+    public function landedCost(Product $product, ?Variant $variant): float
+    {
+        if ($product->class === ProductClass::Model3d) {
+            $grams = (float) ($product->est_grams ?? 0);
+            $filamentPerGram = (float) PricingConfig::value('print_cost', 'filament_per_gram', 0);
+            $machineRate = (float) PricingConfig::value('print_cost', 'machine_rate_per_min', 0);
+
+            // Slicer-measured print time when available; grams-based proxy
+            // otherwise.
+            $minutes = $product->est_print_minutes !== null
+                ? (float) $product->est_print_minutes
+                : $grams * (float) PricingConfig::value('print_cost', 'minutes_per_gram', 0);
+
+            return $grams * $filamentPerGram + $minutes * $machineRate;
+        }
+
+        return (float) $product->base_cost + (float) ($variant?->price_delta ?? 0);
+    }
+
+    /**
      * Price a single line's per-unit price (excludes flat per-line fees).
      */
     public function unitPrice(Product $product, ?Variant $variant, int $qty): float
     {
-        $blankCost = (float) $product->base_cost + (float) ($variant?->price_delta ?? 0);
+        $landed = $this->landedCost($product, $variant);
 
         $marginPct = (float) PricingConfig::value('margin', 'default_pct', 0);
-        $marged = $blankCost * (1 + $marginPct / 100);
+        $marged = $landed * (1 + $marginPct / 100);
 
-        $printCosts = (array) PricingConfig::value('print_cost', 'per_unit', []);
-        $method = $product->print_method?->value;
-        $printPerUnit = (float) ($printCosts[$method] ?? 0);
+        // MODEL_3D machine time is already inside landed cost — the flat
+        // per-unit print fee applies only to decorate-a-blank methods.
+        $printPerUnit = 0.0;
+        if ($product->class !== ProductClass::Model3d) {
+            $printCosts = (array) PricingConfig::value('print_cost', 'per_unit', []);
+            $method = $product->print_method?->value;
+            $printPerUnit = (float) ($printCosts[$method] ?? 0);
+        }
 
         $unit = $marged + $printPerUnit;
 
@@ -49,6 +81,9 @@ final class PricingService
     public function quoteTotals(array $lines): array
     {
         $customizationFee = (float) PricingConfig::value('fee', 'customization_flat', 0);
+        // Per-unit component for work repeated on every piece (e.g. embossed
+        // personalisation adds print time per unit, unlike a one-off UV setup).
+        $customizationPerUnit = (float) PricingConfig::value('fee', 'customization_per_unit', 0);
         $setupFee = (float) PricingConfig::value('fee', 'setup_fee', 0);
 
         $priced = [];
@@ -60,7 +95,7 @@ final class PricingService
             $lineTotal = $unit * $line['qty'];
 
             if ($line['has_customization']) {
-                $lineTotal += $customizationFee;
+                $lineTotal += $customizationFee + $customizationPerUnit * $line['qty'];
             }
 
             $lineTotal = round($lineTotal, 2);
@@ -89,14 +124,19 @@ final class PricingService
     {
         $table = (array) PricingConfig::value('delivery', 'table', []);
 
+        $last = 0.0;
+
         foreach ($table as $tier) {
+            $last = round((float) $tier['price'], 2);
             $max = $tier['max_weight_g'] ?? null;
             if ($max === null || $totalWeightG <= (float) $max) {
-                return round((float) $tier['price'], 2);
+                return $last;
             }
         }
 
-        return 0.0;
+        // Heavier than every configured tier: charge the heaviest tier rather
+        // than falling through to free shipping on a misconfigured table.
+        return $last;
     }
 
     /**

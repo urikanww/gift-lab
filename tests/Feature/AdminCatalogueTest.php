@@ -40,6 +40,75 @@ it('refuses to publish a CANNOT_PUBLISH item', function (): void {
     $this->postJson("/api/admin/products/{$product->id}/publish")->assertStatus(422);
 });
 
+it('verifies MODEL_3D estimates and clears the unverified hold', function (): void {
+    $product = Product::factory()->model3d()->create([
+        'publish_state' => 'READY_TO_APPROVE',
+        'model_file_ref' => 'models3d/x.stl',
+        'license' => 'CC0',
+        'estimates_verified' => false,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/verify-estimates", [
+        'filament_material' => 'PETG',
+        'filament_color' => 'White',
+        'est_grams' => 62.5,
+    ])
+        ->assertOk()
+        ->assertJsonPath('estimates_verified', true);
+
+    $product->refresh();
+    expect((bool) $product->estimates_verified)->toBeTrue()
+        ->and((float) $product->est_grams)->toBe(62.5);
+});
+
+it('attaches a model file and clears the missing_model_file hold', function (): void {
+    Illuminate\Support\Facades\Storage::fake('local');
+
+    $product = Product::factory()->model3d()->create([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'cannot_publish_reasons' => ['missing_model_file'],
+        'model_file_ref' => 'https://cults3d.com/thing/x',
+        'license' => 'CC0',
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/model-file", [
+        'file' => Illuminate\Http\UploadedFile::fake()->create('widget.stl', 12),
+    ])->assertOk();
+
+    $product->refresh();
+    expect($product->model_file_ref)->toBe("models3d/manual-{$product->id}.stl")
+        ->and($product->cannot_publish_reasons ?? [])->not->toContain('missing_model_file')
+        ->and(Illuminate\Support\Facades\Storage::disk('local')->exists($product->model_file_ref))->toBeTrue();
+});
+
+it('rejects a non-model file upload', function (): void {
+    $product = Product::factory()->model3d()->create(['license' => 'CC0']);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/model-file", [
+        'file' => Illuminate\Http\UploadedFile::fake()->create('evil.php', 1),
+    ])->assertStatus(422);
+});
+
+it('streams the model file for a published 3D product and hides unpublished ones', function (): void {
+    Illuminate\Support\Facades\Storage::fake('local');
+    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid x');
+
+    $published = Product::factory()->model3d()->create([
+        'publish_state' => 'PUBLISHED',
+        'model_file_ref' => 'models3d/pub.stl',
+    ]);
+    $hidden = Product::factory()->model3d()->create([
+        'publish_state' => 'READY_TO_APPROVE',
+        'model_file_ref' => 'models3d/pub.stl',
+    ]);
+
+    $this->get("/api/catalogue/{$published->slug}/model")->assertOk();
+    $this->get("/api/catalogue/{$hidden->slug}/model")->assertNotFound();
+});
+
 it('forbids non-staff from the admin catalogue', function (): void {
     $buyer = User::factory()->create(['role' => 'buyer']);
     Sanctum::actingAs($buyer);

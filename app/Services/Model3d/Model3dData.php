@@ -25,6 +25,19 @@ final readonly class Model3dData
         public float $estGrams,
         public ?string $imageUrl = null,
         public ?string $description = null,
+        /**
+         * Direct, authenticated-fetchable URL of the printable model file
+         * (STL/3MF/OBJ). Null when the source exposes no file download API
+         * (e.g. Cults3D) — the item then blocks on `missing_model_file`
+         * until staff attach the file manually.
+         */
+        public ?string $downloadUrl = null,
+        /**
+         * Original filename of the downloadable file (source of the extension
+         * when the download URL itself carries none, e.g. Thingiverse's
+         * /download:{id} URLs).
+         */
+        public ?string $downloadFileName = null,
     ) {
     }
 }

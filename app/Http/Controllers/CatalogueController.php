@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ProductClass;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Public, no-account catalogue (spec 6.1). Only PUBLISHED products are exposed;
@@ -36,12 +39,53 @@ class CatalogueController extends Controller
         return ProductResource::collection($products);
     }
 
-    public function show(Product $product): ProductResource|JsonResponse
+    /**
+     * Resolve by slug (public, user-friendly URLs — no id enumeration);
+     * numeric ids still resolve so pre-slug links and stored cart lines
+     * keep working.
+     */
+    public function show(string $key): ProductResource|JsonResponse
     {
-        if (! $product->publish_state->isPublic()) {
+        $product = Product::query()->where('slug', $key)->first();
+
+        if ($product === null && ctype_digit($key)) {
+            $product = Product::find((int) $key);
+        }
+
+        if ($product === null || ! $product->publish_state->isPublic()) {
             return response()->json(['message' => 'Product not available.'], 404);
         }
 
         return new ProductResource($product->load('variants'));
+    }
+
+    /**
+     * Stream the 3D model file for the interactive viewer. Published
+     * MODEL_3D items only; CC0/CC-BY permits redistribution and CC-BY
+     * credit is displayed alongside the viewer. Cache-friendly (immutable
+     * per slug — slugs are stable).
+     */
+    public function model(string $key): StreamedResponse|JsonResponse
+    {
+        $product = Product::query()->where('slug', $key)->first()
+            ?? (ctype_digit($key) ? Product::find((int) $key) : null);
+
+        $ref = (string) ($product?->model_file_ref ?? '');
+
+        if (
+            $product === null
+            || ! $product->publish_state->isPublic()
+            || $product->class !== ProductClass::Model3d
+            || $ref === ''
+            || str_starts_with($ref, 'http')
+            || ! Storage::disk('local')->exists($ref)
+        ) {
+            return response()->json(['message' => 'Model not available.'], 404);
+        }
+
+        return Storage::disk('local')->response($ref, basename($ref), [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
     }
 }

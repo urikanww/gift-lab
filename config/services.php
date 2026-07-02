@@ -47,6 +47,40 @@ return [
         'base_url' => env('CULTS3D_BASE_URL', 'https://cults3d.com/graphql'),
     ],
 
+    // Headless slicer (PrusaSlicer CLI). When a binary path is set, ingested
+    // 3D models are sliced for real grams/print-minutes and auto-verified;
+    // without it the manual staff verification flow applies.
+    'slicer' => [
+        'binary' => env('SLICER_BINARY', ''),
+        'timeout' => env('SLICER_TIMEOUT', 300),
+    ],
+
+    // Anthropic (LLM IP/trademark screen at catalogue ingest). Optional —
+    // without a key only the free keyword blocklist runs.
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY', ''),
+        'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+    ],
+
+    // Shopee Affiliate Open API (SCRAPED_UV feed — permitted product data,
+    // not scraping). When credentials are present the live client is bound.
+    'shopee_affiliate' => [
+        'app_id' => env('SHOPEE_AFFILIATE_APP_ID'),
+        'secret' => env('SHOPEE_AFFILIATE_SECRET'),
+        'base_url' => env('SHOPEE_AFFILIATE_BASE_URL', 'https://open-api.affiliate.shopee.sg/graphql'),
+    ],
+
+    // Lazada Open Platform affiliate feed (second SCRAPED_UV source). The
+    // search/detail API paths are configurable — Lazada scopes endpoints per
+    // affiliate program; confirm them in your program's API console.
+    'lazada_affiliate' => [
+        'app_key' => env('LAZADA_AFFILIATE_APP_KEY'),
+        'secret' => env('LAZADA_AFFILIATE_SECRET'),
+        'base_url' => env('LAZADA_AFFILIATE_BASE_URL', 'https://api.lazada.sg/rest'),
+        'search_path' => env('LAZADA_AFFILIATE_SEARCH_PATH', '/marketing/product/search'),
+        'item_path' => env('LAZADA_AFFILIATE_ITEM_PATH', '/marketing/product/detail'),
+    ],
+
     // Stripe (B2C "pay now"). Without a secret key the fixture gateway is used.
     'stripe' => [
         'secret' => env('STRIPE_SECRET'),

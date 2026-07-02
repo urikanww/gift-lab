@@ -43,6 +43,21 @@ it('blocks a non-commercial licence', function (): void {
     expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
 });
 
+it('blocks a no-derivatives licence despite the attribution label', function (): void {
+    fakeThing('Creative Commons - Attribution - No Derivatives');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
+});
+
+it('blocks a share-alike licence despite the attribution label', function (): void {
+    fakeThing('Creative Commons - Attribution - Share Alike');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
+});
+
+it('blocks an unknown licence label', function (): void {
+    fakeThing('All Rights Reserved');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
+});
+
 it('returns null for a non-Thingiverse source', function (): void {
     expect($this->client->fetch(Model3dSource::Cults3d, '1'))->toBeNull();
 });

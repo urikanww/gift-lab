@@ -22,6 +22,8 @@ class ProductResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            // Canonical public URL key — frontends should link by slug, not id.
+            'slug' => $this->slug,
             'description' => $this->description,
             'class' => $this->class->value,
             // Indicative sell price (qty 1, no variant), NOT the raw pre-margin
@@ -36,6 +38,11 @@ class ProductResource extends JsonResource
             'image_url' => $this->image_url,
             'is_printable' => $this->is_printable,
             'creator_credit' => $this->creator_credit,
+            // Interactive viewer availability: we hold a local model file
+            // (never exposes the storage path itself).
+            'has_model' => $this->class === \App\Enums\ProductClass::Model3d
+                && (string) $this->model_file_ref !== ''
+                && ! str_starts_with((string) $this->model_file_ref, 'http'),
             'variants' => VariantResource::collection($this->whenLoaded('variants')),
         ];
     }

@@ -64,6 +64,7 @@ final class HttpThingiverseClient implements Model3dApiClient
         }
 
         $data = $response->json();
+        $file = $this->printableFile($base, $token, $sourceId);
 
         return new Model3dData(
             source: Model3dSource::Thingiverse,
@@ -79,11 +80,71 @@ final class HttpThingiverseClient implements Model3dApiClient
             description: isset($data['description'])
                 ? Str::limit(trim(strip_tags((string) $data['description'])), 500)
                 : null,
+            downloadUrl: $file['url'] ?? null,
+            downloadFileName: $file['name'] ?? null,
         );
     }
 
     /**
+     * Resolve the direct download URL + filename of the thing's first
+     * printable file (STL preferred, then 3MF/OBJ) via /things/{id}/files.
+     * Null on any failure — the ingest gate then blocks the item on
+     * `missing_model_file` instead of publishing something we cannot produce.
+     *
+     * @return array{url: string, name: string}|null
+     */
+    private function printableFile(string $base, string $token, string $sourceId): ?array
+    {
+        try {
+            $response = Http::withToken($token)
+                ->acceptJson()
+                ->connectTimeout(5)
+                ->timeout(15)
+                ->retry(2, 500, throw: false)
+                ->get("{$base}/things/{$sourceId}/files");
+        } catch (Throwable $e) {
+            Log::warning('Thingiverse files fetch failed (transport error).', [
+                'source_id' => $sourceId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            Log::warning('Thingiverse files fetch returned non-success status.', [
+                'source_id' => $sourceId,
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        $files = collect((array) $response->json());
+
+        foreach (['stl', '3mf', 'obj'] as $extension) {
+            $match = $files->first(fn ($file): bool => is_array($file)
+                && str_ends_with(Str::lower((string) ($file['name'] ?? '')), ".{$extension}")
+                && ! empty($file['download_url']));
+
+            if ($match !== null) {
+                return [
+                    'url' => (string) $match['download_url'],
+                    'name' => (string) $match['name'],
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Map a Thingiverse licence label onto our License enum value string.
+     * Restrictive markers (NC/ND/SA) must be checked before the generic
+     * "attribution" match: "Attribution - Share Alike" and "Attribution -
+     * No Derivatives" contain "attribution" but are not plain CC-BY — SA
+     * imposes share-alike obligations and ND forbids the derivative works
+     * our personalisation flow produces.
      */
     private function mapLicense(string $label): string
     {
@@ -92,6 +153,8 @@ final class HttpThingiverseClient implements Model3dApiClient
         return match (true) {
             str_contains($l, 'public domain') => License::Cc0->value,
             str_contains($l, 'non-commercial') => License::Blocked->value, // NC is not commercial-OK
+            str_contains($l, 'no derivative') => License::Blocked->value, // ND forbids customisation
+            str_contains($l, 'share alike') => License::Blocked->value, // SA obligations don't fit resale
             str_contains($l, 'attribution') => License::CcBy->value,
             default => License::Blocked->value,
         };

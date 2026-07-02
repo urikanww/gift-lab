@@ -26,8 +26,14 @@ class PricingConfigSeeder extends Seeder
             ['margin', 'default_pct', 35, 'Default gross margin %', false],
             ['margin', 'floor_pct', 12, 'Hard margin floor % (amendments cannot price below landed cost + this)', false],
             ['fee', 'customization_flat', 8.00, 'Flat customization fee per line', true],
+            ['fee', 'customization_per_unit', 0.00, 'Per-unit customization fee (repeated work, e.g. embossed personalisation)', true],
             ['fee', 'setup_fee', 25.00, 'One-off artwork setup fee per quote', true],
             ['print_cost', 'per_unit', ['UV' => 1.50, 'FDM' => 3.00, 'RESIN' => 5.00], 'Per-unit print cost by method', true],
+            // MODEL_3D landed-cost inputs (filament + machine time). minutes_per_gram
+            // is a proxy until a slicer integration supplies measured print times.
+            ['print_cost', 'filament_per_gram', 0.06, 'Filament cost per gram', true],
+            ['print_cost', 'minutes_per_gram', 2.0, 'Estimated print minutes per gram', false],
+            ['print_cost', 'machine_rate_per_min', 0.08, 'Machine time rate per minute', true],
             ['threshold', 'bulk_qty', 50, 'Quantity at/above which bulk pricing applies', false],
             ['threshold', 'bulk_discount_pct', 10, 'Discount % applied at bulk quantity', false],
             ['delivery', 'table', [
@@ -40,6 +46,10 @@ class PricingConfigSeeder extends Seeder
             // Phase 2 catalogue-breadth controls.
             ['catalogue', 'auto_publish', false, 'Auto-publish complete scraped/3D items', false],
             ['catalogue', 'drift_pct', 10, 'Price drift % that pulls a scraped item for re-review', false],
+            ['catalogue', 'discovery_keywords', ['phone stand', 'desk organizer', 'cable holder', 'name plate', 'keychain'], 'Keywords swept nightly by catalogue:discover-3d', false],
+            // Trademark keyword blocklist (layer 1 of the IP screen; the LLM
+            // screen is layer 2). CC licences do not clear trademarks.
+            ['catalogue', 'ip_blocklist', ['pokemon', 'pikachu', 'disney', 'mickey', 'marvel', 'star wars', 'nintendo', 'mario', 'zelda', 'lego', 'hello kitty', 'harry potter', 'minion', 'batman', 'superman', 'groot', 'baby yoda', 'mandalorian'], 'IP/trademark keyword blocklist for 3D ingest', false],
             ['catalogue', 'price_jump_pct', 10, 'Re-check price jump % tolerated before PRICE_JUMPED', false],
         ];
 

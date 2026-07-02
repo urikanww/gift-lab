@@ -57,7 +57,9 @@ class AmendQuoteRequest extends FormRequest
                     continue;
                 }
 
-                $landedCost = (float) $line->product->base_cost + (float) ($line->variant->price_delta ?? 0);
+                // Class-aware landed cost — MODEL_3D has no blank; its cost is
+                // filament + machine time (PricingService::landedCost).
+                $landedCost = $pricing->landedCost($line->product, $line->variant);
 
                 if (! $pricing->isAboveMarginFloor((float) $lineInput['unit_price'], $landedCost)) {
                     $validator->errors()->add(

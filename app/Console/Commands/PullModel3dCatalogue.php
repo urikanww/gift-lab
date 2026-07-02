@@ -8,7 +8,9 @@ use App\Enums\Model3dSource;
 use App\Enums\PublishState;
 use App\Models\Product;
 use App\Services\Model3d\Contracts\Model3dApiClient;
+use App\Services\Model3d\IpScreenService;
 use App\Services\Model3d\Model3dCatalogueService;
+use App\Services\Model3d\SlicerService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -105,14 +107,30 @@ class PullModel3dCatalogue extends Command
                 continue;
             }
 
+            // IP/trademark screen BEFORE ingest — a CC licence doesn't clear
+            // trademarks, and flagged items should never enter the catalogue
+            // pipeline at all.
+            $verdict = app(IpScreenService::class)->screen($data->name, $data->description);
+            if ($verdict['flagged']) {
+                $skipped++;
+                $this->line("  skip  [{$source->value}] {$id} {$data->name} [IP: {$verdict['reason']}]");
+
+                continue;
+            }
+
             ['product' => $product] = $service->ingest($data);
 
-            if ($product->publish_state === PublishState::CannotPublish) {
+            $reasons = (array) ($product->cannot_publish_reasons ?? []);
+            $licenceBlocked = array_intersect($reasons, ['license_blocked', 'missing_credit']) !== [];
+
+            if ($product->publish_state === PublishState::CannotPublish && $licenceBlocked) {
                 // Licence not commercial-OK — remove the blocked rows again so a
                 // discovery sweep doesn't fill the gate with unusable items.
                 // Hard delete: model3ds has a unique(source, source_id) index and
                 // ingest() ignores trashed rows, so a soft-deleted leftover would
                 // blow up the next sweep that meets the same source id.
+                // Items blocked only on missing_model_file are KEPT — staff can
+                // attach the file manually (e.g. Cults3D has no download API).
                 $product->forceDelete();
                 $product->model3d?->forceDelete();
                 $skipped++;
@@ -123,11 +141,15 @@ class PullModel3dCatalogue extends Command
 
             $this->mirrorImage($product);
 
+            // Measured grams/print-minutes when a slicer is configured —
+            // auto-verifies estimates so the item can publish untouched.
+            app(SlicerService::class)->measure($product);
+            $product->refresh();
+
             if ($this->option('publish') && $product->publish_state === PublishState::ReadyToApprove) {
-                // Licence gate already passed in ingest(); --publish is the
-                // operator's explicit approval, replacing the admin-gate click.
-                $product->publish_state = PublishState::Published;
-                $product->save();
+                // --publish is the operator's explicit approval, replacing the
+                // admin-gate click; publish() re-runs the full gate.
+                $product = $service->publish($product);
             }
 
             $ingested++;

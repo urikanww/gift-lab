@@ -16,8 +16,11 @@ use App\Services\Procurement\Contracts\MarketplaceRechecker;
 use App\Services\Procurement\FixtureMarketplaceRechecker;
 use App\Models\Quote;
 use App\Policies\QuotePolicy;
+use App\Services\Scraper\CompositeScraperClient;
 use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\FixtureScraperClient;
+use App\Services\Scraper\HttpLazadaAffiliateClient;
+use App\Services\Scraper\HttpShopeeAffiliateClient;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
@@ -32,7 +35,25 @@ class AppServiceProvider extends ServiceProvider
         // in here. Singletons so tests can seed deterministic data on the same
         // instance the services resolve.
         $this->app->singleton(FixtureScraperClient::class);
-        $this->app->singleton(ScraperClient::class, fn ($app) => $app->make(FixtureScraperClient::class));
+        $this->app->singleton(ScraperClient::class, function ($app) {
+            // Route per marketplace: source ids prefixed "lazada:" go to the
+            // Lazada client, everything else to Shopee. Each feed activates
+            // only when its credentials are provisioned; with neither set the
+            // fixture serves everything (tests/dev).
+            $shopee = config('services.shopee_affiliate.app_id') && config('services.shopee_affiliate.secret')
+                ? $app->make(HttpShopeeAffiliateClient::class)
+                : null;
+
+            $lazada = config('services.lazada_affiliate.app_key') && config('services.lazada_affiliate.secret')
+                ? $app->make(HttpLazadaAffiliateClient::class)
+                : null;
+
+            if ($shopee === null && $lazada === null) {
+                return $app->make(FixtureScraperClient::class);
+            }
+
+            return new CompositeScraperClient($shopee, $lazada, $app->make(FixtureScraperClient::class));
+        });
 
         $this->app->singleton(FixtureMarketplaceRechecker::class);
         $this->app->singleton(MarketplaceRechecker::class, fn ($app) => $app->make(FixtureMarketplaceRechecker::class));
