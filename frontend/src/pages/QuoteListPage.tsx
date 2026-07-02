@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuoteStore } from '../stores/quoteStore';
+import { useAuthStore } from '../stores/authStore';
+import { isStaffRole } from '../lib/roles';
 import { Badge, Button, Card, EmptyState, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import {
@@ -22,6 +24,7 @@ export default function QuoteListPage() {
   const { quotes, loading, error, page, lastPage, fetchQuotes } = useQuoteStore();
   const navigate = useNavigate();
   const shouldAnimate = useReducedMotionSafe();
+  const staff = isStaffRole(useAuthStore((s) => s.user?.role));
 
   useEffect(() => {
     void fetchQuotes(1);
@@ -33,7 +36,11 @@ export default function QuoteListPage() {
         <h1 id="quotes-heading" className="font-display text-3xl text-fg">
           Quotes
         </h1>
-        <p className="mt-1 text-sm text-fg-muted">Track your gift orders from request through production.</p>
+        <p className="mt-1 text-sm text-fg-muted">
+          {staff
+            ? 'All customer quotes, newest first — across every company.'
+            : 'Track your gift orders from request through production.'}
+        </p>
       </Motion>
 
       {loading ? (
@@ -43,11 +50,17 @@ export default function QuoteListPage() {
       ) : quotes.length === 0 ? (
         <EmptyState
           title="No quotes yet"
-          description="Once you request a quote from your cart, it will appear here."
+          description={
+            staff
+              ? 'Customer quote requests will appear here as they come in.'
+              : 'Once you request a quote from your cart, it will appear here.'
+          }
           action={
-            <Button variant="primary" onClick={() => navigate('/catalogue')}>
-              Browse catalogue
-            </Button>
+            staff ? undefined : (
+              <Button variant="primary" onClick={() => navigate('/products')}>
+                Browse catalogue
+              </Button>
+            )
           }
         />
       ) : (
@@ -61,6 +74,11 @@ export default function QuoteListPage() {
                     <th scope="col" className="px-5 py-3 font-medium">
                       Quote
                     </th>
+                    {staff && (
+                      <th scope="col" className="px-5 py-3 font-medium">
+                        Company
+                      </th>
+                    )}
                     <th scope="col" className="px-5 py-3 font-medium">
                       Status
                     </th>
@@ -78,7 +96,7 @@ export default function QuoteListPage() {
                   animate="visible"
                 >
                   {quotes.map((q) => (
-                    <QuoteRow key={q.id} quote={q} animate={shouldAnimate} />
+                    <QuoteRow key={q.id} quote={q} animate={shouldAnimate} showCompany={staff} />
                   ))}
                 </motion.tbody>
               </table>
@@ -92,7 +110,7 @@ export default function QuoteListPage() {
             className="flex flex-col gap-3 md:hidden"
           >
             {quotes.map((q) => (
-              <QuoteCard key={q.id} quote={q} />
+              <QuoteCard key={q.id} quote={q} showCompany={staff} />
             ))}
           </Motion>
 
@@ -125,7 +143,15 @@ export default function QuoteListPage() {
   );
 }
 
-function QuoteRow({ quote, animate }: { quote: Quote; animate: boolean }) {
+function QuoteRow({
+  quote,
+  animate,
+  showCompany,
+}: {
+  quote: Quote;
+  animate: boolean;
+  showCompany: boolean;
+}) {
   const navigate = useNavigate();
   return (
     <motion.tr
@@ -142,6 +168,11 @@ function QuoteRow({ quote, animate }: { quote: Quote; animate: boolean }) {
           Quote #{quote.id}
         </Link>
       </td>
+      {showCompany && (
+        <td className="px-5 py-4 text-fg-muted">
+          {quote.company_name ?? `Company #${quote.company_id}`}
+        </td>
+      )}
       <td className="px-5 py-4">
         <Badge tone={quoteStateTone(quote.state)} dot>
           {humanizeState(quote.state)}
@@ -155,7 +186,7 @@ function QuoteRow({ quote, animate }: { quote: Quote; animate: boolean }) {
   );
 }
 
-function QuoteCard({ quote }: { quote: Quote }) {
+function QuoteCard({ quote, showCompany }: { quote: Quote; showCompany: boolean }) {
   const navigate = useNavigate();
   return (
     <Motion variants={staggerItem}>
@@ -170,6 +201,11 @@ function QuoteCard({ quote }: { quote: Quote }) {
               Quote #{quote.id}
             </Link>
             <p className="mt-0.5 text-xs text-fg-muted">{formatDate(quote.created_at)}</p>
+            {showCompany && (
+              <p className="mt-0.5 text-xs text-fg-muted">
+                {quote.company_name ?? `Company #${quote.company_id}`}
+              </p>
+            )}
           </div>
           <Badge tone={quoteStateTone(quote.state)} dot>
             {humanizeState(quote.state)}

@@ -63,3 +63,22 @@ it('blocks an illegal transition with a friendly 422, leaving state intact', fun
     $this->postJson("/api/quotes/{$quote->id}/send")->assertStatus(422);
     expect($quote->fresh()->state->value)->toBe('READY');
 });
+
+it('includes the company name on quote listings for staff', function (): void {
+    $company = Company::factory()->create(['name' => 'Acme Gifts Pte Ltd']);
+    Quote::factory()->create(['company_id' => $company->id]);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->getJson('/api/quotes')
+        ->assertOk()
+        ->assertJsonPath('data.0.company_name', 'Acme Gifts Pte Ltd');
+});
+
+it('omits the company name on buyer quote listings', function (): void {
+    $company = Company::factory()->create();
+    Quote::factory()->create(['company_id' => $company->id]);
+    Sanctum::actingAs(User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']));
+
+    $response = $this->getJson('/api/quotes')->assertOk();
+    expect($response->json('data.0'))->not->toHaveKey('company_name');
+});

@@ -174,7 +174,7 @@ function CartLink({ count }: { count: number }) {
 function AccountLink({ user, onClick }: { user: User | null; onClick?: () => void }) {
   return user ? (
     <NavLink to="/quotes" onClick={onClick} className={navLinkClass}>
-      My Orders
+      {isStaffRole(user.role) ? 'Quotes' : 'My Orders'}
     </NavLink>
   ) : (
     <NavLink to="/login" onClick={onClick} className={navLinkClass}>

@@ -110,6 +110,8 @@ export interface Proof {
 export interface Quote {
   id: number;
   company_id: number;
+  /** Only present on staff listings (relation-loaded server-side). */
+  company_name?: string;
   state: QuoteState;
   currency: string;
   subtotal: string;

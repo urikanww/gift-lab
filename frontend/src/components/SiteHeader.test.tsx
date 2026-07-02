@@ -67,3 +67,15 @@ it('hides ops navigation from buyers and anonymous visitors', () => {
   renderHeader();
   expect(screen.queryByRole('link', { name: /catalogue gate/i })).not.toBeInTheDocument();
 });
+
+it('labels the quotes link "Quotes" for staff and "My Orders" for buyers', () => {
+  useAuthStore.setState({
+    user: { ...testUser, role: 'staff_admin', company_id: null },
+    status: 'ready',
+    error: null,
+  });
+  renderHeader();
+
+  expect(screen.getByRole('link', { name: 'Quotes' })).toHaveAttribute('href', '/quotes');
+  expect(screen.queryByRole('link', { name: /my orders/i })).not.toBeInTheDocument();
+});

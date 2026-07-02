@@ -21,6 +21,8 @@ class QuoteResource extends JsonResource
         return [
             'id' => $this->id,
             'company_id' => $this->company_id,
+            // Present only when the relation is loaded (staff listings).
+            'company_name' => $this->whenLoaded('company', fn () => $this->company->name),
             'state' => $this->state->value,
             'currency' => $this->currency,
             'subtotal' => $this->subtotal,

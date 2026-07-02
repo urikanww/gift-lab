@@ -31,6 +31,8 @@ class QuoteController extends Controller
 
         $quotes = Quote::query()
             ->when(! $user->isStaff(), fn ($q) => $q->where('company_id', $user->company_id))
+            // Staff see all companies — load the name so the UI can label rows.
+            ->when($user->isStaff(), fn ($q) => $q->with('company'))
             ->latest()
             ->paginate(20);
 
