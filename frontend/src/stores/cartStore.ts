@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import api, { apiError } from '../lib/api';
 import type { CartLine, Customization, PriceEstimate, Product, Variant } from '../types';
 
@@ -18,49 +19,60 @@ interface CartState {
   refreshEstimate: () => Promise<void>;
 }
 
-export const useCartStore = create<CartState>((set, get) => ({
-  lines: [],
-  estimate: null,
-  estimating: false,
-  estimateError: null,
+// Cart survives reloads/direct links via localStorage. Only the lines are
+// persisted — the estimate is server-derived and re-fetched, so a stale price
+// is never rehydrated.
+export const useCartStore = create<CartState>()(
+  persist(
+    (set, get) => ({
+      lines: [],
+      estimate: null,
+      estimating: false,
+      estimateError: null,
 
-  addLine: (product, variant, customization) => {
-    const key = `${product.id}:${variant?.id ?? 0}:${Date.now()}`;
-    set((s) => ({ lines: [...s.lines, { key, product, variant, qty: 1, customization }] }));
-  },
+      addLine: (product, variant, customization) => {
+        const key = `${product.id}:${variant?.id ?? 0}:${Date.now()}`;
+        set((s) => ({ lines: [...s.lines, { key, product, variant, qty: 1, customization }] }));
+      },
 
-  updateQty: (key, qty) =>
-    set((s) => ({
-      // Guard against NaN (an emptied number input sends Number('') === NaN,
-      // and Math.max(1, NaN) === NaN) — floor to a valid integer ≥ 1.
-      lines: s.lines.map((l) =>
-        l.key === key ? { ...l, qty: Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1 } : l,
-      ),
-    })),
-
-  removeLine: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
-
-  clear: () => set({ lines: [], estimate: null, estimateError: null }),
-
-  refreshEstimate: async () => {
-    const { lines } = get();
-    if (lines.length === 0) {
-      set({ estimate: null, estimateError: null });
-      return;
-    }
-    set({ estimating: true, estimateError: null });
-    try {
-      const { data } = await api.post<PriceEstimate>('/price-estimate', {
-        line_items: lines.map((l) => ({
-          product_id: l.product.id,
-          variant_id: l.variant?.id ?? null,
-          qty: l.qty,
-          has_customization: hasCustomization(l.customization),
+      updateQty: (key, qty) =>
+        set((s) => ({
+          // Guard against NaN (an emptied number input sends Number('') === NaN,
+          // and Math.max(1, NaN) === NaN) — floor to a valid integer ≥ 1.
+          lines: s.lines.map((l) =>
+            l.key === key ? { ...l, qty: Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1 } : l,
+          ),
         })),
-      });
-      set({ estimate: data, estimating: false });
-    } catch (err) {
-      set({ estimating: false, estimateError: apiError(err) });
-    }
-  },
-}));
+
+      removeLine: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
+
+      clear: () => set({ lines: [], estimate: null, estimateError: null }),
+
+      refreshEstimate: async () => {
+        const { lines } = get();
+        if (lines.length === 0) {
+          set({ estimate: null, estimateError: null });
+          return;
+        }
+        set({ estimating: true, estimateError: null });
+        try {
+          const { data } = await api.post<PriceEstimate>('/price-estimate', {
+            line_items: lines.map((l) => ({
+              product_id: l.product.id,
+              variant_id: l.variant?.id ?? null,
+              qty: l.qty,
+              has_customization: hasCustomization(l.customization),
+            })),
+          });
+          set({ estimate: data, estimating: false });
+        } catch (err) {
+          set({ estimating: false, estimateError: apiError(err) });
+        }
+      },
+    }),
+    {
+      name: 'giftlab-cart',
+      partialize: (s) => ({ lines: s.lines }),
+    },
+  ),
+);
