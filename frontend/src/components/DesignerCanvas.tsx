@@ -248,7 +248,7 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
                 className={cn(
                   'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed',
                   'border-border-strong bg-surface-2/50 px-3 py-4 text-center transition-colors duration-fast ease-standard',
-                  'hover:border-primary hover:bg-brand-50 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-bg',
+                  'hover:border-primary hover:bg-surface-2 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-bg',
                 )}
               >
                 <UploadIcon />
