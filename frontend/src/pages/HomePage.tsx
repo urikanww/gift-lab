@@ -83,7 +83,7 @@ export default function HomePage() {
             </Button>
           </form>
           <div className="mt-3 flex flex-wrap gap-1.5 text-sm">
-            <span className="text-fg-subtle">Popular:</span>
+            <span className="text-fg-subtle">Browse:</span>
             {CATEGORIES.slice(0, 4).map((c) => (
               <Link
                 key={c.key}
@@ -123,7 +123,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── New arrivals — horizontal snap rail ───────────────────────────── */}
+      {/* ── New arrivals — horizontal snap rail. Hidden entirely when there
+             is nothing to show (a bare heading over a blank rail reads as
+             broken; the load error is already surfaced in the section below). */}
+      {(loading || fresh.length > 0) && (
       <section aria-labelledby="home-new">
         <div className="flex items-end justify-between gap-4">
           <h2 id="home-new" className="font-display text-xl text-fg sm:text-2xl">
@@ -156,12 +159,14 @@ export default function HomePage() {
           ) : null}
         </div>
       </section>
+      )}
 
-      {/* ── Popular right now — dense grid ────────────────────────────────── */}
+      {/* ── Featured gifts — dense grid. Backend has no popularity signal yet;
+             this is the name-ordered first page, so the label stays honest. */}
       <section aria-labelledby="home-popular">
         <div className="flex items-end justify-between gap-4">
           <h2 id="home-popular" className="font-display text-xl text-fg sm:text-2xl">
-            Popular right now
+            Featured gifts
           </h2>
           <Link
             to="/products"
