@@ -47,3 +47,49 @@ it('fails open with a warning when the LLM call errors', function (): void {
 
     expect($this->screen->screen('Plain vase', null)['flagged'])->toBeFalse();
 });
+
+it('screens via OpenAI when selected as provider', function (): void {
+    config()->set('services.ip_screen.provider', 'openai');
+    config()->set('services.openai.key', 'sk-openai-test');
+    Http::fake([
+        'api.openai.com/*' => Http::response([
+            'choices' => [['message' => ['content' => '{"ip_flag": true, "reason": "branded character"}']]],
+        ], 200),
+    ]);
+
+    $verdict = $this->screen->screen('Famous plumber figurine', 'Jumping character.');
+
+    expect($verdict['flagged'])->toBeTrue()
+        ->and($verdict['reason'])->toBe('branded character');
+    Http::assertSent(fn ($request): bool => str_contains($request->url(), 'api.openai.com/v1/chat/completions')
+        && $request->hasHeader('Authorization', 'Bearer sk-openai-test'));
+});
+
+it('screens via Ollama when selected as provider', function (): void {
+    config()->set('services.ip_screen.provider', 'ollama');
+    config()->set('services.ollama.base_url', 'http://localhost:11434');
+    Http::fake([
+        'localhost:11434/*' => Http::response([
+            'message' => ['content' => '{"ip_flag": false, "reason": "generic item"}'],
+        ], 200),
+    ]);
+
+    expect($this->screen->screen('Hexagon planter', null)['flagged'])->toBeFalse();
+});
+
+it('runs blocklist-only when the selected provider has no credentials', function (): void {
+    config()->set('services.ip_screen.provider', 'openai');
+    config()->set('services.openai.key', '');
+    Http::fake();
+
+    expect($this->screen->screen('Plain pen holder', null)['flagged'])->toBeFalse();
+    Http::assertNothingSent();
+});
+
+it('runs blocklist-only on an unknown provider', function (): void {
+    config()->set('services.ip_screen.provider', 'geminix');
+    Http::fake();
+
+    expect($this->screen->screen('Plain pen holder', null)['flagged'])->toBeFalse();
+    Http::assertNothingSent();
+});

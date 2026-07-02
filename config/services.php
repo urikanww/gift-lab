@@ -53,13 +53,29 @@ return [
     'slicer' => [
         'binary' => env('SLICER_BINARY', ''),
         'timeout' => env('SLICER_TIMEOUT', 300),
+        // Used when the slicer profile carries no filament density (the
+        // console default) — grams = volume [cm3] × density. PLA ≈ 1.24.
+        'density_g_cm3' => env('SLICER_FILAMENT_DENSITY', 1.24),
     ],
 
-    // Anthropic (LLM IP/trademark screen at catalogue ingest). Optional —
-    // without a key only the free keyword blocklist runs.
+    // LLM IP/trademark screen at catalogue ingest (layer 2; the keyword
+    // blocklist always runs). Provider is selectable; whichever provider is
+    // chosen, missing credentials degrade to blocklist-only.
+    'ip_screen' => [
+        'provider' => env('IP_SCREEN_PROVIDER', 'anthropic'), // anthropic | openai | ollama
+    ],
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY', ''),
         'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+    ],
+    'openai' => [
+        'key' => env('OPENAI_API_KEY', ''),
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+    ],
+    'ollama' => [
+        'base_url' => env('OLLAMA_BASE_URL', ''),
+        'model' => env('OLLAMA_MODEL', 'llama3.2'),
     ],
 
     // Shopee Affiliate Open API (SCRAPED_UV feed — permitted product data,

@@ -50,6 +50,23 @@ it('measures grams and minutes from the sliced G-code and auto-verifies', functi
         ->and((bool) $product->is_printable)->toBeTrue();
 });
 
+it('computes grams from volume when the profile has no filament density', function (): void {
+    // The PrusaSlicer console default profile emits "total filament used [g] = 0.00"
+    // (density 0) plus the volume line — grams must come from cm3 × density.
+    config()->set('services.slicer.binary', 'prusa-slicer');
+    config()->set('services.slicer.density_g_cm3', 1.24);
+    Process::fake(['*' => Process::result(output: 'ok')]);
+
+    $product = sliceableProduct();
+    file_put_contents(
+        Storage::disk('local')->path('models3d/thing-1.stl.gcode'),
+        "G1 X0\n; filament used [cm3] = 10.45\n; total filament used [g] = 0.00\n; estimated printing time (normal mode) = 39m 32s\n",
+    );
+
+    expect($this->slicer->measure($product))->toBeTrue();
+    expect((float) $product->refresh()->est_grams)->toBe(13.0); // 10.45 × 1.24
+});
+
 it('flags the product not printable when slicing fails', function (): void {
     config()->set('services.slicer.binary', 'prusa-slicer');
     Process::fake(['*' => Process::result(output: '', errorOutput: 'Objects could not fit on the bed', exitCode: 1)]);

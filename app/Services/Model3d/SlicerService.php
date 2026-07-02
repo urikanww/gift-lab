@@ -48,7 +48,6 @@ final class SlicerService
         $result = Process::timeout((int) config('services.slicer.timeout', 300))->run([
             (string) config('services.slicer.binary'),
             '--export-gcode',
-            '--load-defaults',
             '--output', $output,
             $input,
         ]);
@@ -88,8 +87,11 @@ final class SlicerService
     }
 
     /**
-     * Read "filament used [g]" and "estimated printing time" from the G-code
-     * footer comments PrusaSlicer emits.
+     * Read filament use and print time from the G-code footer comments
+     * PrusaSlicer emits. Grams come from "(total) filament used [g]" when the
+     * profile carries a filament density; the default console profile has
+     * density 0 (grams line reads 0.00), so fall back to the volume line
+     * ("filament used [cm3]") times a configurable density (PLA ≈ 1.24 g/cm³).
      *
      * @return array{0: float, 1: float}|null [grams, minutes]
      */
@@ -107,7 +109,17 @@ final class SlicerService
         $tail = (string) stream_get_contents($handle);
         fclose($handle);
 
-        if (! preg_match('/^; filament used \[g\] = ([\d.]+)/m', $tail, $g)) {
+        $grams = 0.0;
+        if (preg_match('/^; (?:total )?filament used \[g\] = ([\d.]+)/m', $tail, $g)) {
+            $grams = (float) $g[1];
+        }
+
+        if ($grams <= 0 && preg_match('/^; filament used \[cm3\] = ([\d.]+)/m', $tail, $v)) {
+            $density = (float) config('services.slicer.density_g_cm3', 1.24);
+            $grams = (float) $v[1] * $density;
+        }
+
+        if ($grams <= 0) {
             return null;
         }
 
@@ -120,7 +132,7 @@ final class SlicerService
             return null;
         }
 
-        return [round((float) $g[1], 1), round($minutes, 1)];
+        return [round($grams, 1), round($minutes, 1)];
     }
 
     /**
