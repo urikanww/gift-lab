@@ -121,8 +121,10 @@ export default function SiteHeader() {
 function CategoriesMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Close on any click outside the menu (standard disclosure pattern).
+  // Close on any click outside the menu (standard disclosure pattern). Focus
+  // is NOT restored here — the user clicked elsewhere on purpose.
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
@@ -137,10 +139,15 @@ function CategoriesMenu() {
       ref={ref}
       className="relative"
       onKeyDown={(e) => {
-        if (e.key === 'Escape') setOpen(false);
+        if (e.key === 'Escape') {
+          setOpen(false);
+          // Keyboard dismissal returns focus to the trigger (mirrors Modal).
+          buttonRef.current?.focus();
+        }
       }}
     >
       <button
+        ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-haspopup="true"
@@ -154,7 +161,7 @@ function CategoriesMenu() {
         Categories <span aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-modal mt-1 grid w-[28rem] grid-cols-2 gap-1 rounded-lg border border-border bg-surface p-2 shadow-lg">
+        <div className="absolute left-0 top-full z-dropdown mt-1 grid w-[28rem] grid-cols-2 gap-1 rounded-lg border border-border bg-surface p-2 shadow-lg">
           {CATEGORIES.map((c) => (
             <Link
               key={c.key}
