@@ -75,6 +75,10 @@ final class HttpThingiverseClient implements Model3dApiClient
             filamentMaterial: 'PLA',
             filamentColor: 'Black',
             estGrams: 50.0,
+            imageUrl: $data['thumbnail'] ?? $data['default_image']['url'] ?? null,
+            description: isset($data['description'])
+                ? Str::limit(trim(strip_tags((string) $data['description'])), 500)
+                : null,
         );
     }
 

@@ -50,6 +50,8 @@ final class Model3dCatalogueService
             $product->class = ProductClass::Model3d;
             $product->model3d_id = $model->id;
             $product->name = $data->name;
+            $product->image_url = $data->imageUrl;
+            $product->description = $data->description;
             $product->base_cost = 0; // cost is filament + print, priced dynamically
             $product->print_method = PrintMethod::Fdm;
             $product->stock_mode = 'MAKE_TO_ORDER';

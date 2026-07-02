@@ -23,6 +23,8 @@ final readonly class Model3dData
         public string $filamentMaterial,
         public string $filamentColor,
         public float $estGrams,
+        public ?string $imageUrl = null,
+        public ?string $description = null,
     ) {
     }
 }
