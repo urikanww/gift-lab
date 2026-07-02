@@ -44,7 +44,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchCatalogue(1);
+      const result = await fetchCatalogue({});
       if (!isActive()) return;
       setProducts(result.data.slice(0, MAX_POPULAR));
     } catch {

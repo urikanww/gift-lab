@@ -58,6 +58,8 @@ export interface Product {
   slug?: string | null;
   description: string | null;
   class: ProductClass;
+  /** Public marketplace category slug (drinkware, bags, …); null pre-backfill. */
+  category?: string | null;
   from_price: number;
   currency: string;
   dimensions: Record<string, number | string> | null;

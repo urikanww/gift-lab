@@ -7,12 +7,12 @@ import { Badge, Button, EmptyState, Input, Select } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { ProductCard, CardSkeleton } from '../components/product/ProductCard';
 import { Motion, fadeInUp, staggerContainer } from '../motion';
-import type { Product, ProductClass } from '../types';
+import type { Product } from '../types';
 
-const CLASS_KEYS = new Set<ProductClass>(CATEGORIES.map((c) => c.key));
+const CLASS_KEYS = new Set<string>(CATEGORIES.map((c) => c.key));
 
-function parseClass(value: string | null): '' | ProductClass {
-  return value && CLASS_KEYS.has(value as ProductClass) ? (value as ProductClass) : '';
+function parseClass(value: string | null): string {
+  return value && CLASS_KEYS.has(value) ? value : '';
 }
 
 export default function CataloguePage() {
@@ -27,18 +27,18 @@ export default function CataloguePage() {
   // Initialize filter state from URL params (?q=, ?class=). Unknown class values
   // are ignored. Filtering/search stays client-side over the loaded page.
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
-  const [classFilter, setClassFilter] = useState<'' | ProductClass>(() =>
+  const [classFilter, setClassFilter] = useState<string>(() =>
     parseClass(searchParams.get('class')),
   );
 
   // Category filtering is server-side (the catalogue paginates at 24/page, so
   // filtering only the loaded page would hide matches on later pages). `cls`
   // defaults to the current filter so pagination stays within the category.
-  const load = async (target = 1, cls: '' | ProductClass = classFilter) => {
+  const load = async (target = 1, cls: string = classFilter) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCatalogue(target, cls);
+      const data = await fetchCatalogue({ page: target, category: cls || undefined });
       setProducts(data.data);
       setPage(data.meta?.current_page ?? target);
       setLastPage(data.meta?.last_page ?? 1);
@@ -67,7 +67,7 @@ export default function CataloguePage() {
     );
   };
 
-  const setClassParam = (next: '' | ProductClass) => {
+  const setClassParam = (next: string) => {
     setClassFilter(next);
     setSearchParams(
       (prev) => {
@@ -157,7 +157,7 @@ export default function CataloguePage() {
             <Select
               label="Category"
               value={classFilter}
-              onChange={(e) => setClassParam(e.target.value as '' | ProductClass)}
+              onChange={(e) => setClassParam(e.target.value)}
             >
               <option value="">All categories</option>
               {CATEGORIES.map((c) => (

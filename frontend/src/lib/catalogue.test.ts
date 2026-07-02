@@ -7,10 +7,18 @@ vi.mock('./api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 describe('catalogue lib', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('fetchCatalogue passes page param', async () => {
+  it('fetchCatalogue passes page, category, q and sort params', async () => {
     (api.get as any).mockResolvedValue({ data: { data: [], current_page: 1, last_page: 1 } });
-    await fetchCatalogue(2);
-    expect(api.get).toHaveBeenCalledWith('/catalogue', { params: { page: 2 } });
+    await fetchCatalogue({ page: 2, category: 'drinkware', q: 'mug', sort: 'newest' });
+    expect(api.get).toHaveBeenCalledWith('/catalogue', {
+      params: { page: 2, category: 'drinkware', q: 'mug', sort: 'newest' },
+    });
+  });
+
+  it('fetchCatalogue omits empty params and defaults page to 1', async () => {
+    (api.get as any).mockResolvedValue({ data: { data: [], current_page: 1, last_page: 1 } });
+    await fetchCatalogue();
+    expect(api.get).toHaveBeenCalledWith('/catalogue', { params: { page: 1 } });
   });
 
   it('fetchProduct hits the show route and unwraps the resource envelope', async () => {

@@ -114,7 +114,7 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!product) return;
     let active = true;
-    fetchCatalogue(1)
+    fetchCatalogue({})
       .then((res) => {
         if (!active) return;
         setRelated(res.data.filter((p) => p.id !== product.id).slice(0, 3));

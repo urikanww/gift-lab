@@ -1,11 +1,24 @@
 import api from './api';
 import type { Paginated, Product, PriceEstimate } from '../types';
 
-export function fetchCatalogue(page = 1, productClass = ''): Promise<Paginated<Product>> {
-  // Category filtering is server-side: the catalogue paginates at 24/page, so a
-  // client-side filter over one loaded page silently hides matches on later pages.
-  const params: Record<string, string | number> = { page };
-  if (productClass) params.class = productClass;
+export type CatalogueSort = 'name' | 'newest' | 'price_asc' | 'price_desc';
+
+export interface CatalogueQuery {
+  page?: number;
+  /** Marketplace category slug (see lib/categories.ts). */
+  category?: string;
+  /** Server-side name search — keeps pagination valid across all pages. */
+  q?: string;
+  sort?: CatalogueSort;
+}
+
+export function fetchCatalogue(query: CatalogueQuery = {}): Promise<Paginated<Product>> {
+  // All filtering/sorting is server-side: the catalogue paginates at 24/page,
+  // so client-side filtering over one loaded page would hide later-page matches.
+  const params: Record<string, string | number> = { page: query.page ?? 1 };
+  if (query.category) params.category = query.category;
+  if (query.q?.trim()) params.q = query.q.trim();
+  if (query.sort && query.sort !== 'name') params.sort = query.sort;
   return api.get<Paginated<Product>>('/catalogue', { params }).then((r) => r.data);
 }
 
