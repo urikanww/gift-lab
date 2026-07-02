@@ -65,3 +65,21 @@ it('returns a live price estimate without an account', function (): void {
         ->assertJsonPath('currency', 'SGD');
     expect((float) $response->json('total'))->toBeGreaterThan(0.0);
 });
+
+it('auto-assigns a marketplace category on save', function (): void {
+    $mug = Product::factory()->create(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
+    $tote = Product::factory()->create(['name' => 'Canvas Tote Bag', 'publish_state' => 'PUBLISHED']);
+
+    expect($mug->category)->toBe('drinkware')
+        ->and($tote->category)->toBe('bags');
+});
+
+it('keeps an explicitly set category instead of reclassifying', function (): void {
+    $product = Product::factory()->create([
+        'name' => 'Ceramic Mug 11oz',
+        'category' => 'home',
+        'publish_state' => 'PUBLISHED',
+    ]);
+
+    expect($product->fresh()->category)->toBe('home');
+});

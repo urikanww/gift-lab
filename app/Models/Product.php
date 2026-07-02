@@ -21,6 +21,7 @@ use Illuminate\Support\Str;
 /**
  * @property int $id
  * @property ProductClass $class
+ * @property string|null $category
  * @property PublishState $publish_state
  * @property PrintMethod|null $print_method
  */
@@ -35,6 +36,7 @@ class Product extends Model
         'slug',
         'description',
         'class',
+        'category',
         'base_cost',
         'currency',
         'dimensions',
@@ -103,6 +105,15 @@ class Product extends Model
             }
 
             $product->slug = $slug;
+        });
+
+        // Marketplace category: assigned once from the name when absent, kept
+        // when set explicitly (admin/seed overrides win over the classifier).
+        static::saving(function (Product $product): void {
+            if ($product->category === null || $product->category === '') {
+                $product->category = app(\App\Services\Catalogue\CategoryClassifier::class)
+                    ->classify((string) $product->name, $product->class);
+            }
         });
 
         // Cascade soft-deletes to variants (FK cascadeOnDelete only fires on a

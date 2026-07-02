@@ -38,56 +38,57 @@ class CoreCatalogueSeeder extends Seeder
     {
         $now = now();
 
-        // [name, base_cost, print_method, dims(mm), weight(g), variants[[color,size,stock,delta]]]
+        // [name, base_cost, print_method, dims(mm), weight(g), category, variants[[color,size,stock,delta]]]
         $catalogue = [
-            ['Ceramic Mug 11oz', 3.20, 'UV', ['l' => 95, 'w' => 82, 'h' => 95], 320, [
+            ['Ceramic Mug 11oz', 3.20, 'UV', ['l' => 95, 'w' => 82, 'h' => 95], 320, 'drinkware', [
                 ['White', 'STD', 240, 0.00],
                 ['Black', 'STD', 180, 0.50],
             ]],
-            ['Stainless Tumbler 500ml', 6.80, 'UV', ['l' => 70, 'w' => 70, 'h' => 220], 260, [
+            ['Stainless Tumbler 500ml', 6.80, 'UV', ['l' => 70, 'w' => 70, 'h' => 220], 260, 'drinkware', [
                 ['Silver', '500ml', 150, 0.00],
                 ['Matte Black', '500ml', 120, 1.20],
             ]],
-            ['Canvas Tote Bag', 2.10, 'UV', ['l' => 380, 'w' => 10, 'h' => 420], 140, [
+            ['Canvas Tote Bag', 2.10, 'UV', ['l' => 380, 'w' => 10, 'h' => 420], 140, 'bags', [
                 ['Natural', 'STD', 400, 0.00],
                 ['Navy', 'STD', 220, 0.30],
             ]],
-            ['Bamboo Coaster', 1.40, 'UV', ['l' => 100, 'w' => 100, 'h' => 8], 60, [
+            ['Bamboo Coaster', 1.40, 'UV', ['l' => 100, 'w' => 100, 'h' => 8], 60, 'home', [
                 ['Natural', 'Round', 500, 0.00],
                 ['Natural', 'Square', 480, 0.00],
             ]],
-            ['A5 Hardcover Notebook', 4.50, 'UV', ['l' => 148, 'w' => 15, 'h' => 210], 300, [
+            ['A5 Hardcover Notebook', 4.50, 'UV', ['l' => 148, 'w' => 15, 'h' => 210], 300, 'stationery', [
                 ['Kraft', 'A5', 300, 0.00],
                 ['Black', 'A5', 260, 0.40],
             ]],
-            ['Ballpoint Pen (Metal)', 0.90, 'UV', ['l' => 140, 'w' => 12, 'h' => 12], 25, [
+            ['Ballpoint Pen (Metal)', 0.90, 'UV', ['l' => 140, 'w' => 12, 'h' => 12], 25, 'stationery', [
                 ['Silver', 'STD', 1000, 0.00],
                 ['Gold', 'STD', 600, 0.15],
             ]],
-            ['Glass Water Bottle 600ml', 5.40, 'UV', ['l' => 72, 'w' => 72, 'h' => 240], 420, [
+            ['Glass Water Bottle 600ml', 5.40, 'UV', ['l' => 72, 'w' => 72, 'h' => 240], 420, 'drinkware', [
                 ['Clear', '600ml', 180, 0.00],
             ]],
-            ['Cotton T-Shirt', 3.80, 'UV', ['l' => 300, 'w' => 5, 'h' => 400], 180, [
+            ['Cotton T-Shirt', 3.80, 'UV', ['l' => 300, 'w' => 5, 'h' => 400], 180, 'apparel', [
                 ['White', 'M', 260, 0.00],
                 ['White', 'L', 240, 0.00],
                 ['Black', 'M', 200, 0.60],
                 ['Black', 'L', 190, 0.60],
             ]],
-            ['Silicone Phone Grip', 0.70, 'UV', ['l' => 40, 'w' => 40, 'h' => 10], 15, [
+            ['Silicone Phone Grip', 0.70, 'UV', ['l' => 40, 'w' => 40, 'h' => 10], 15, 'tech', [
                 ['White', 'STD', 800, 0.00],
                 ['Black', 'STD', 750, 0.00],
             ]],
-            ['Enamel Keychain', 1.10, 'UV', ['l' => 50, 'w' => 30, 'h' => 4], 20, [
+            ['Enamel Keychain', 1.10, 'UV', ['l' => 50, 'w' => 30, 'h' => 4], 20, 'accessories', [
                 ['Gold', 'STD', 500, 0.00],
                 ['Silver', 'STD', 520, 0.00],
             ]],
         ];
 
-        foreach ($catalogue as [$name, $baseCost, $method, $dims, $weight, $variants]) {
+        foreach ($catalogue as [$name, $baseCost, $method, $dims, $weight, $category, $variants]) {
             $productId = DB::table('products')->insertGetId([
                 'name' => $name,
                 'description' => $name.' — blank core stock, decorate via UV print.',
                 'class' => 'CORE',
+                'category' => $category,
                 'base_cost' => $baseCost,
                 'currency' => 'SGD',
                 'dimensions' => json_encode($dims + ['unit' => 'mm']),
