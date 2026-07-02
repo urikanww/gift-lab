@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   EmptyState,
+  Input,
   LinkButton,
   Skeleton,
   Spinner,
@@ -77,8 +78,8 @@ export default function ProductDetailPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [selectedPrintMethod, setSelectedPrintMethod] = useState<PrintMethod | null>(null);
   const [selectedTierQty, setSelectedTierQty] = useState<number | null>(null);
+  const [previewName, setPreviewName] = useState('');
 
   const [related, setRelated] = useState<Product[]>([]);
 
@@ -96,7 +97,6 @@ export default function ProductDetailPage() {
         if (!active) return;
         setProduct(p);
         setSelectedVariantId(p.variants?.[0]?.id ?? null);
-        setSelectedPrintMethod(p.print_method ?? null);
       })
       .catch(() => {
         if (!active) return;
@@ -212,7 +212,7 @@ export default function ProductDetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-16">
+    <div className="flex flex-col gap-10">
       {/* ── Two-column: gallery + info ────────────────────────────────────── */}
       <div className="grid items-start gap-8 md:grid-cols-2 md:gap-12">
         {/* LEFT — gallery (sticky only at md+). */}
@@ -226,6 +226,15 @@ export default function ProductDetailPage() {
             )}
             <div className="group relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-surface-2">
               <CardImage product={product} />
+              {previewName && (
+                <span
+                  data-testid="name-preview-overlay"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded bg-black/35 px-3 py-1 font-display text-2xl text-white drop-shadow-md backdrop-blur-[2px]"
+                >
+                  {previewName}
+                </span>
+              )}
               {product.class === 'MODEL_3D' && !product.has_model && (
                 <div className="absolute left-3 top-3">
                   <Badge tone="success" size="sm" dot>
@@ -271,7 +280,14 @@ export default function ProductDetailPage() {
                   </Link>
                 </li>
                 <li aria-hidden="true">/</li>
-                <li>{categoryLabel(product.class)}</li>
+                <li>
+                  <Link
+                    to={`/products?category=${product.category ?? ''}`}
+                    className="hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+                  >
+                    {categoryLabel(product.category)}
+                  </Link>
+                </li>
                 <li aria-hidden="true">/</li>
                 <li className="text-fg" aria-current="page">
                   {product.name}
@@ -334,36 +350,20 @@ export default function ProductDetailPage() {
             </Motion>
           )}
 
-          {/* Print method (presentational) */}
-          {(product.print_method || product.class !== 'CORE') && (
-            <Motion variants={staggerItem} className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-fg">Print method</span>
-              <div className="flex flex-wrap gap-2">
-                {(product.print_method
-                  ? [product.print_method]
-                  : (['UV', 'FDM', 'RESIN'] as PrintMethod[])
-                ).map((m) => {
-                  const active = selectedPrintMethod === m;
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setSelectedPrintMethod(m)}
-                      aria-pressed={active}
-                      className={cn(
-                        'rounded-lg border px-3 py-1.5 text-sm transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-                        active
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-surface text-fg-muted hover:border-primary/50 hover:text-fg',
-                      )}
-                    >
-                      {PRINT_METHOD_LABELS[m]}
-                    </button>
-                  );
-                })}
-              </div>
-            </Motion>
-          )}
+          {/* Live personalization teaser — the marketplace hook: type a name,
+              see it on the product, then carry it into the studio. */}
+          <Motion variants={staggerItem} className="flex flex-col gap-2 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
+            <Input
+              label="See your name on it"
+              placeholder="Type a name — watch the photo"
+              value={previewName}
+              maxLength={24}
+              onChange={(e) => setPreviewName(e.target.value)}
+            />
+            <p className="text-xs text-fg-muted">
+              Your text appears on the product photo instantly and comes with you into the studio.
+            </p>
+          </Motion>
 
           {/* Quantity tier pricing */}
           <Motion variants={staggerItem} className="flex flex-col gap-2">
@@ -406,7 +406,7 @@ export default function ProductDetailPage() {
           {/* CTAs */}
           <Motion variants={staggerItem} className="flex flex-col gap-3 sm:flex-row">
             <LinkButton
-              to={designPath(product)}
+              to={`${designPath(product)}${previewName ? `?name=${encodeURIComponent(previewName)}` : ''}`}
               variant="primary"
               size="lg"
               className="w-full sm:w-auto"
@@ -444,7 +444,7 @@ export default function ProductDetailPage() {
         </h2>
         <Card padding="md">
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-            <SpecRow label="Category" value={categoryLabel(product.class)} />
+            <SpecRow label="Category" value={categoryLabel(product.category)} />
             {product.print_method && (
               <SpecRow label="Print method" value={PRINT_METHOD_LABELS[product.print_method]} />
             )}
