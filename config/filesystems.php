@@ -56,6 +56,10 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            // Hard scope: every read/write on this disk is prefixed with the
+            // DO Spaces folder (GIFT_LAB). Nothing the app stores can land
+            // outside that folder, per ops policy.
+            'root' => env('DO_STORAGE_FOLDER', 'GIFT_LAB'),
             'throw' => false,
             'report' => false,
         ],
