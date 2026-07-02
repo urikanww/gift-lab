@@ -15,6 +15,7 @@ frontend/dist
 /.env.production
 frontend/.env
 frontend/.env.local
+.superpowers/
 /.phpunit.cache
 /.phpunit.result.cache
 Homestead.json
