@@ -31,7 +31,7 @@ export default function ProductDesignerPage() {
   const [model3dOptions, setModel3dOptions] = useState<Model3dCustomization | null>(null);
   const is3d = product?.class === 'MODEL_3D';
   const [qty, setQty] = useState(50);
-  const [estimate, setEstimate] = useState<{ unit: number; total: number; currency: string } | null>(null);
+  const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,7 +64,13 @@ export default function ProductDesignerPage() {
       })
       .then(({ data }) => {
         if (!active) return;
-        setEstimate({ unit: data.lines[0]?.unit_price ?? 0, total: data.total, currency: data.currency });
+        // Line total, NOT data.total — the order total bakes in delivery and
+        // setup fee, so "unit × qty" would visibly fail to reconcile here.
+        setEstimate({
+          unit: data.lines[0]?.unit_price ?? 0,
+          lineTotal: data.lines[0]?.line_total ?? 0,
+          currency: data.currency,
+        });
       })
       .catch(() => {
         if (active) setEstimate(null);
@@ -193,7 +199,7 @@ export default function ProductDesignerPage() {
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
                 <div className="w-28">
-                  <Select label="Quantity" value={qty} onChange={(e) => setQty(Number(e.target.value))}>
+                  <Select label="Quantity" value={String(qty)} onChange={(e) => setQty(Number(e.target.value))}>
                     {QTY_OPTIONS.map((n) => (
                       <option key={n} value={n}>
                         {n} pcs
@@ -208,7 +214,7 @@ export default function ProductDesignerPage() {
                     </span>{' '}
                     / unit ·{' '}
                     <span className="font-semibold text-fg">
-                      {estimate.currency} {estimate.total.toFixed(2)}
+                      {estimate.currency} {estimate.lineTotal.toFixed(2)}
                     </span>{' '}
                     for {qty}
                   </p>
