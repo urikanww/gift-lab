@@ -27,5 +27,15 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
+        <!-- Keep tests hermetic: blank live-integration credentials so the
+             fixture/stub bindings are always used, regardless of .env. -->
+        <env name="STRIPE_KEY" value=""/>
+        <env name="STRIPE_SECRET" value=""/>
+        <env name="STRIPE_WEBHOOK_SECRET" value=""/>
+        <env name="THINGIVERSE_TOKEN" value=""/>
+        <env name="CULTS3D_TOKEN" value=""/>
+        <env name="FILESYSTEM_DISK" value="local"/>
+        <env name="AWS_ACCESS_KEY_ID" value=""/>
+        <env name="AWS_SECRET_ACCESS_KEY" value=""/>
     </php>
 </phpunit>
