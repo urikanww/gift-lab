@@ -92,6 +92,10 @@ export default function ProductDetailPage() {
     setLoading(true);
     setError(null);
     setProduct(null);
+    // Per-product UI state must not leak across same-route navigation
+    // (related-product clicks reuse this component instance).
+    setPreviewName('');
+    setSelectedTierQty(null);
     fetchProduct(id ?? '')
       .then((p) => {
         if (!active) return;
