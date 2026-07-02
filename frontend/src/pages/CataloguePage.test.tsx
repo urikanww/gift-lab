@@ -63,6 +63,46 @@ describe('CataloguePage', () => {
     );
   });
 
+  it('ignores a stale pagination response after filters change mid-flight', async () => {
+    let resolveNext: (v: unknown) => void = () => {};
+    get
+      // Initial load: two pages available so pagination renders.
+      .mockResolvedValueOnce({
+        data: {
+          data: [{ id: 1, name: 'First Mug', from_price: 3, currency: 'SGD', image_url: null }],
+          meta: { current_page: 1, last_page: 2, total: 30 },
+        },
+      })
+      // Pagination to page 2: held open to simulate a slow response.
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNext = resolve; }))
+      // Category-filtered reload fired while page 2 is still in flight.
+      .mockResolvedValueOnce({
+        data: {
+          data: [{ id: 2, name: 'Fresh Tote', from_price: 4, currency: 'SGD', image_url: null }],
+          meta: { current_page: 1, last_page: 1, total: 1 },
+        },
+      });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('First Mug')).toBeInTheDocument());
+
+    screen.getByRole('button', { name: /next/i }).click();
+    // While the page-2 request is in flight, switch category.
+    screen.getByRole('button', { name: /bags/i }).click();
+    await waitFor(() => expect(screen.getByText('Fresh Tote')).toBeInTheDocument());
+
+    // The superseded pagination response must NOT clobber the fresh result.
+    resolveNext({
+      data: {
+        data: [{ id: 3, name: 'Stale Mug', from_price: 5, currency: 'SGD', image_url: null }],
+        meta: { current_page: 2, last_page: 2, total: 30 },
+      },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(screen.queryByText('Stale Mug')).not.toBeInTheDocument();
+    expect(screen.getByText('Fresh Tote')).toBeInTheDocument();
+  });
+
   it('offers marketplace sort options', async () => {
     get.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, total: 0 } } });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiError } from '../lib/api';
 import { fetchCatalogue, productPath, type CatalogueSort } from '../lib/catalogue';
@@ -38,31 +38,37 @@ export default function CataloguePage() {
   const [lastPage, setLastPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const load = async (target: number, isActive: () => boolean = () => true) => {
+  // Monotonic request token: only the latest initiated load may commit state,
+  // so pagination and debounced search can never clobber each other.
+  const requestSeq = useRef(0);
+
+  const load = async (target: number) => {
+    const seq = ++requestSeq.current;
+    const isCurrent = () => seq === requestSeq.current;
     setLoading(true);
     setError(null);
     try {
       const data = await fetchCatalogue({ page: target, category: category || undefined, q: query, sort });
-      if (!isActive()) return;
+      if (!isCurrent()) return;
       setProducts(data.data);
       setPage(data.meta?.current_page ?? target);
       setLastPage(data.meta?.last_page ?? 1);
       setTotal(data.meta?.total ?? data.data.length);
     } catch (err) {
-      if (isActive()) setError(apiError(err));
+      if (isCurrent()) setError(apiError(err));
     } finally {
-      if (isActive()) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
 
   // Server-side search/filter/sort: reload page 1 whenever any input changes.
   // Text input is debounced so we don't fire a request per keystroke.
   useEffect(() => {
-    let active = true;
-    const timer = setTimeout(() => void load(1, () => active), query ? 250 : 0);
+    const timer = setTimeout(() => void load(1), query ? 250 : 0);
     return () => {
-      active = false;
       clearTimeout(timer);
+      // Invalidate any in-flight load from the superseded filter state.
+      requestSeq.current++;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, category, sort]);
@@ -88,7 +94,7 @@ export default function CataloguePage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-2xl text-fg sm:text-3xl">Marketplace</h1>
-          <p className="text-sm text-fg-muted" role="status">
+          <p className="text-sm text-fg-muted">
             {loading ? 'Loading…' : `${total} customisable gift${total === 1 ? '' : 's'}`}
           </p>
         </div>
@@ -120,7 +126,7 @@ export default function CataloguePage() {
       </div>
 
       {/* ── Category chip rail (sticky, horizontally scrollable) ─────────── */}
-      <div className="sticky top-16 z-raised -mx-4 border-y border-border bg-bg/85 px-4 py-2 backdrop-blur-md">
+      <div className="sticky top-16 z-sticky -mx-4 border-y border-border bg-bg/85 px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6">
         <div
           className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="group"
