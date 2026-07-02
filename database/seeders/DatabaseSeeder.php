@@ -8,8 +8,8 @@ use Illuminate\Database\Seeder;
 
 /**
  * Root seeder. Order matters: staff users and pricing config first (referenced
- * by later flows), then the CORE catalogue spine. SCRAPED_UV / MODEL_3D
- * catalogue and filament stock are Phase 2 and not seeded here.
+ * by later flows), then the CORE catalogue spine and starter filament stock.
+ * SCRAPED_UV / MODEL_3D catalogue items flow in via the discovery commands.
  */
 class DatabaseSeeder extends Seeder
 {
@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             AdminUserSeeder::class,
             PricingConfigSeeder::class,
             CoreCatalogueSeeder::class,
+            FilamentSeeder::class,
         ]);
     }
 }

@@ -21,34 +21,35 @@ gates hold anything unverified for a single staff click).
 No code changes needed for any of these — each integration switches from
 fixture to live automatically when its credentials appear.
 
-## 2. Business numbers to set (superadmin dashboard / pricing config)
+## 2. Business numbers — ✅ SET (2026-07-02, owner-confirmed)
 
-Seeded defaults are placeholders — set your real costs:
-
-| Config key | Seeded | Meaning |
+| Config key | Value | Decision |
 |---|---|---|
-| `print_cost.filament_per_gram` | 0.06 | Filament cost per gram (SGD) |
-| `print_cost.minutes_per_gram` | 2.0 | Print-time proxy until slicer integration |
-| `print_cost.machine_rate_per_min` | 0.08 | Machine time rate (SGD/min) |
-| `fee.customization_per_unit` | 0.00 | Per-unit personalisation fee (e.g. embossed text) |
-| `margin.default_pct` / `margin.floor_pct` | 35 / 12 | Confirm they match your economics |
-| `delivery.table` | 4 tiers | Confirm courier rates |
+| `margin.default_pct` | **50** | Corporate-gift midpoint |
+| `print_cost.filament_per_gram` | **0.05** | Premium PLA + waste allowance |
+| `print_cost.machine_rate_per_min` | **0.08** | S$4.80/hr |
+| `print_cost.minutes_per_gram` | 2.0 | Proxy until slicer runs |
+| `delivery.table` | S$5/12/30/60 | Kept — handling buffer over courier rates |
+| `fee.customization_per_unit` | 0.00 | Raise when UV-decorate volume warrants |
+| `margin.floor_pct` | 12 | Unchanged |
 
-## 3. Catalogue decisions
+Note: the seeder is now **insert-only** — deploy-time re-seeds never clobber
+values tuned in the dashboard. Tune anytime via superadmin.
 
-1. **Discovery keywords** — `catalogue.discovery_keywords` config. Seeded:
-   phone stand, desk organizer, cable holder, name plate, keychain.
-   Edit to match your gift catalogue strategy; swept nightly at 04:00.
-2. **Auto-publish toggle** — `catalogue.auto_publish` (superadmin endpoint).
-   Safe to enable: licence gate + IP screen + local-file gate +
-   verified-estimates gate all enforce before anything goes public. With
-   `SLICER_BINARY` configured, estimates verify themselves — zero-touch
-   publish. Without it, each 3D item needs one staff click (the inline
-   "Verify estimates" form on the Catalogue gate page).
-   Also review the **IP blocklist** (`catalogue.ip_blocklist`, 18 seeded
-   franchise terms) for brands relevant to your market.
-3. **Filament stock** — enter real spools (material/colour/grams) so 3D
-   procurement decrements against reality.
+## 3. Catalogue decisions — ✅ SET (2026-07-02, owner-confirmed)
+
+1. **Discovery keywords** — expanded to 12 corporate-gift terms (phone stand,
+   desk organizer, cable holder, name plate, keychain, pen holder, card
+   holder, coaster, headphone stand, plant pot, luggage tag, bag hook).
+   Swept nightly 04:00; edit anytime via config.
+2. **Auto-publish** — **ON**. Gates enforce licence + IP blocklist + local
+   file + verified estimates before anything goes public. Until
+   `SLICER_BINARY` lands, each 3D item needs one staff verify click.
+3. **Filament stock** — starter set entered via `FilamentSeeder` (create-only,
+   never resets live stock): PLA × Black/White/Grey, 1000 g each, reorder at
+   200 g. Designer colour options aligned to these three — add spool rows
+   before offering more colours.
+4. **IP blocklist** — 18 seeded franchise terms kept; review for your market.
 
 ## 4. Deploy steps (each release)
 
@@ -60,6 +61,16 @@ php artisan db:seed --class=PricingConfigSeeder   # idempotent, adds new config 
 Cron/scheduler already covers: scraped resync 03:00, 3D licence re-check
 03:30, 3D discovery 04:00, slicer sweep 04:30 (all `onOneServer` +
 `withoutOverlapping`).
+
+## 4b. Ops decisions (spec §8) — decided 2026-07-02
+
+| Decision | Status |
+|---|---|
+| Proof production owner + SLA | **Owner + one staff member** (staff name TBD — fill in below). Set an explicit SLA (suggest 1 business day) once the staff member is named |
+| Admin-gate + procurement ops owner | Same pair as above |
+| Real product photos for catalogue | **Still open** — current CORE images are stock photos; scraped/3D images come from sources. Shoot or source real product photography before launch marketing |
+
+> Staff member: ______________________ (name/email) — update this line.
 
 ## 5. Legal / compliance (read once)
 

@@ -12,7 +12,9 @@ export interface Model3dCustomization {
   filament_color: string;
 }
 
-const FILAMENT_COLORS = ['Black', 'White', 'Grey', 'Red', 'Blue', 'Green', 'Orange', 'Yellow'];
+// Keep aligned with FilamentSeeder / actual spool inventory — offering a
+// colour with no spool row goes QTY_SHORT at procurement.
+const FILAMENT_COLORS = ['Black', 'White', 'Grey'];
 
 interface Props {
   onChange: (customization: Model3dCustomization) => void;

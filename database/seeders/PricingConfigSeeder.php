@@ -23,7 +23,7 @@ class PricingConfigSeeder extends Seeder
 
         $rows = [
             // group, key, value (json-encoded), label, is_money
-            ['margin', 'default_pct', 35, 'Default gross margin %', false],
+            ['margin', 'default_pct', 50, 'Default gross margin %', false],
             ['margin', 'floor_pct', 12, 'Hard margin floor % (amendments cannot price below landed cost + this)', false],
             ['fee', 'customization_flat', 8.00, 'Flat customization fee per line', true],
             ['fee', 'customization_per_unit', 0.00, 'Per-unit customization fee (repeated work, e.g. embossed personalisation)', true],
@@ -31,7 +31,7 @@ class PricingConfigSeeder extends Seeder
             ['print_cost', 'per_unit', ['UV' => 1.50, 'FDM' => 3.00, 'RESIN' => 5.00], 'Per-unit print cost by method', true],
             // MODEL_3D landed-cost inputs (filament + machine time). minutes_per_gram
             // is a proxy until a slicer integration supplies measured print times.
-            ['print_cost', 'filament_per_gram', 0.06, 'Filament cost per gram', true],
+            ['print_cost', 'filament_per_gram', 0.05, 'Filament cost per gram', true],
             ['print_cost', 'minutes_per_gram', 2.0, 'Estimated print minutes per gram', false],
             ['print_cost', 'machine_rate_per_min', 0.08, 'Machine time rate per minute', true],
             ['threshold', 'bulk_qty', 50, 'Quantity at/above which bulk pricing applies', false],
@@ -46,7 +46,7 @@ class PricingConfigSeeder extends Seeder
             // Phase 2 catalogue-breadth controls.
             ['catalogue', 'auto_publish', false, 'Auto-publish complete scraped/3D items', false],
             ['catalogue', 'drift_pct', 10, 'Price drift % that pulls a scraped item for re-review', false],
-            ['catalogue', 'discovery_keywords', ['phone stand', 'desk organizer', 'cable holder', 'name plate', 'keychain'], 'Keywords swept nightly by catalogue:discover-3d', false],
+            ['catalogue', 'discovery_keywords', ['phone stand', 'desk organizer', 'cable holder', 'name plate', 'keychain', 'pen holder', 'card holder', 'coaster', 'headphone stand', 'plant pot', 'luggage tag', 'bag hook'], 'Keywords swept nightly by catalogue:discover-3d', false],
             // Trademark keyword blocklist (layer 1 of the IP screen; the LLM
             // screen is layer 2). CC licences do not clear trademarks.
             ['catalogue', 'ip_blocklist', ['pokemon', 'pikachu', 'disney', 'mickey', 'marvel', 'star wars', 'nintendo', 'mario', 'zelda', 'lego', 'hello kitty', 'harry potter', 'minion', 'batman', 'superman', 'groot', 'baby yoda', 'mandalorian'], 'IP/trademark keyword blocklist for 3D ingest', false],
@@ -54,17 +54,29 @@ class PricingConfigSeeder extends Seeder
         ];
 
         foreach ($rows as [$group, $key, $value, $label, $isMoney]) {
-            DB::table('pricing_configs')->updateOrInsert(
-                ['group' => $group, 'key' => $key],
-                [
-                    'value' => json_encode($value),
-                    'label' => $label,
-                    'is_money' => $isMoney,
-                    'currency' => 'SGD',
-                    'updated_at' => $now,
-                    'created_at' => $now,
-                ],
-            );
+            // Insert-only: a deploy-time re-seed must never clobber values the
+            // superadmin tuned in the dashboard (margins, auto-publish toggle,
+            // keyword lists). New config keys are added; existing rows are
+            // left untouched.
+            $exists = DB::table('pricing_configs')
+                ->where('group', $group)
+                ->where('key', $key)
+                ->exists();
+
+            if ($exists) {
+                continue;
+            }
+
+            DB::table('pricing_configs')->insert([
+                'group' => $group,
+                'key' => $key,
+                'value' => json_encode($value),
+                'label' => $label,
+                'is_money' => $isMoney,
+                'currency' => 'SGD',
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]);
         }
     }
 }

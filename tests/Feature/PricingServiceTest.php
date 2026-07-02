@@ -11,18 +11,18 @@ beforeEach(function (): void {
 });
 
 it('prices a unit as marged blank cost plus per-method print cost', function (): void {
-    // base 10 + 35% margin = 13.50; + UV print 1.50 = 15.00 (below bulk qty).
+    // base 10 + 50% margin = 15.00; + UV print 1.50 = 16.50 (below bulk qty).
     $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
 
-    expect($this->pricing->unitPrice($product, null, 1))->toBe(15.00);
+    expect($this->pricing->unitPrice($product, null, 1))->toBe(16.50);
 });
 
 it('applies the bulk discount at or above the configured threshold', function (): void {
     $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
 
     $unit = $this->pricing->unitPrice($product, null, 50); // bulk_qty default 50
-    // 15.00 * (1 - 10%) = 13.50
-    expect($unit)->toBe(13.50);
+    // 16.50 * (1 - 10%) = 14.85
+    expect($unit)->toBe(14.85);
 });
 
 it('computes delivery from the weight table', function (): void {
@@ -39,8 +39,8 @@ it('enforces the margin floor over landed cost', function (): void {
 });
 
 it('prices a MODEL_3D unit from filament grams and machine time, not base cost', function (): void {
-    // landed = 50g × 0.06 + 50g × 2.0 min/g × 0.08/min = 3.00 + 8.00 = 11.00
-    // unit = 11.00 × 1.35 margin = 14.85 (flat FDM per-unit fee must NOT stack).
+    // landed = 50g × 0.05 + 50g × 2.0 min/g × 0.08/min = 2.50 + 8.00 = 10.50
+    // unit = 10.50 × 1.50 margin = 15.75 (flat FDM per-unit fee must NOT stack).
     $product = Product::factory()->create([
         'class' => 'MODEL_3D',
         'base_cost' => 0,
@@ -48,8 +48,8 @@ it('prices a MODEL_3D unit from filament grams and machine time, not base cost',
         'est_grams' => 50,
     ]);
 
-    expect($this->pricing->unitPrice($product, null, 1))->toBe(14.85)
-        ->and($this->pricing->landedCost($product, null))->toBe(11.00);
+    expect($this->pricing->unitPrice($product, null, 1))->toBe(15.75)
+        ->and($this->pricing->landedCost($product, null))->toBe(10.50);
 });
 
 it('charges the heaviest delivery tier when weight exceeds every tier', function (): void {
