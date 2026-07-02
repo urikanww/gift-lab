@@ -132,6 +132,36 @@ final class Model3dCatalogueService
     }
 
     /**
+     * Post-slicer auto-publish: once measurements verify the estimates, run
+     * the gate again so a fully cleared item publishes without a staff click
+     * (when the auto-publish toggle is on). Items held for IP review keep
+     * their hold — only an explicit staff publish overrides an ip_flag.
+     */
+    public function autoPublishIfCleared(Product $product): Product
+    {
+        $ipHeld = collect((array) ($product->cannot_publish_reasons ?? []))
+            ->contains(fn ($reason): bool => str_starts_with((string) $reason, 'ip_flag'));
+
+        if ($ipHeld) {
+            return $product;
+        }
+
+        [$state, $reasons] = $this->gate(
+            $product->license ?? License::Blocked,
+            $product->creator_credit,
+            $this->existingLocalFile($product) !== null,
+            (bool) $product->estimates_verified,
+        );
+
+        $product->publish_state = $state;
+        $product->cannot_publish_reasons = $reasons;
+        $product->save();
+        $this->syncModelState($product);
+
+        return $product;
+    }
+
+    /**
      * Re-evaluate the publish gate against the product's current facts
      * (after staff attach a file, fix credit, etc.) without publishing.
      */
