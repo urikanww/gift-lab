@@ -14,6 +14,26 @@ use Illuminate\Support\Facades\DB;
  */
 class CoreCatalogueSeeder extends Seeder
 {
+    /**
+     * Curated royalty-free product photography (Unsplash/Pexels CDN), keyed by
+     * product name. Also used by DemoStorefrontSeeder to backfill databases
+     * seeded before images were added.
+     *
+     * @var array<string, string>
+     */
+    public const IMAGES = [
+        'Ceramic Mug 11oz' => 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=1200&q=80',
+        'Stainless Tumbler 500ml' => 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=1200&q=80',
+        'Canvas Tote Bag' => 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=1200&q=80',
+        'Bamboo Coaster' => 'https://images.unsplash.com/photo-1605883705077-8d3d3cebe78c?w=1200&q=80',
+        'A5 Hardcover Notebook' => 'https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=1200&q=80',
+        'Ballpoint Pen (Metal)' => 'https://images.unsplash.com/photo-1583485088034-697b5bc54ccd?w=1200&q=80',
+        'Glass Water Bottle 600ml' => 'https://images.unsplash.com/photo-1523362628745-0c100150b504?w=1200&q=80',
+        'Cotton T-Shirt' => 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1200&q=80',
+        'Silicone Phone Grip' => 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=1200&q=80',
+        'Enamel Keychain' => 'https://images.pexels.com/photos/842528/pexels-photo-842528.jpeg?auto=compress&cs=tinysrgb&w=1200',
+    ];
+
     public function run(): void
     {
         $now = now();
@@ -75,6 +95,7 @@ class CoreCatalogueSeeder extends Seeder
                 'print_method' => $method,
                 'publish_state' => 'PUBLISHED',
                 'stock_mode' => 'STOCKED',
+                'image_url' => self::IMAGES[$name] ?? null,
                 'is_printable' => true,
                 'created_by' => null,
                 'updated_at' => $now,
