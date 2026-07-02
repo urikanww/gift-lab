@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import HomePage from './pages/HomePage';
 import CataloguePage from './pages/CataloguePage';
+import ProductDetailPage from './pages/ProductDetailPage';
 import ProductDesignerPage from './pages/ProductDesignerPage';
 import CartPage from './pages/CartPage';
+import CheckoutPage from './pages/CheckoutPage';
 import QuoteListPage from './pages/QuoteListPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import ProductionQueuePage from './pages/ProductionQueuePage';
@@ -14,6 +17,11 @@ import LoginPage from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
 import { useQuoteStore } from './stores/quoteStore';
 import { ThemeProvider, ToastProvider } from './ui';
+
+function RedirectCatalogueToProduct() {
+  const { id } = useParams();
+  return <Navigate to={`/products/${id}`} replace />;
+}
 
 export default function App() {
   const { user, status, fetchUser } = useAuthStore();
@@ -43,10 +51,15 @@ export default function App() {
         <BrowserRouter>
           <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<CataloguePage />} />
-          <Route path="catalogue/:id" element={<ProductDesignerPage />} />
+          <Route index element={<HomePage />} />
+          <Route path="products" element={<CataloguePage />} />
+          <Route path="products/:id" element={<ProductDetailPage />} />
+          <Route path="design/:id" element={<ProductDesignerPage />} />
           <Route path="cart" element={<CartPage />} />
+          <Route path="checkout" element={<CheckoutPage />} />
           <Route path="login" element={<LoginPage />} />
+          <Route path="catalogue" element={<Navigate to="/products" replace />} />
+          <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
           <Route
             path="quotes"
             element={
