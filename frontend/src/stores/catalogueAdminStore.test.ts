@@ -21,6 +21,11 @@ const item: AdminCatalogueItem = {
   creator_credit: null,
   image_url: null,
   source_url: 'https://shopee.example/p/1',
+  filament_material: null,
+  filament_color: null,
+  est_grams: null,
+  estimates_verified: false,
+  model_file_ref: null,
 };
 
 beforeEach(() => {

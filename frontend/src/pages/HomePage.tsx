@@ -4,7 +4,7 @@ import { Badge, Button, EmptyState, LinkButton } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { CardSkeleton, ProductCard } from '../components/product/ProductCard';
 import { Motion, fadeInUp, staggerContainer } from '../motion';
-import { fetchCatalogue } from '../lib/catalogue';
+import { fetchCatalogue, productPath } from '../lib/catalogue';
 import { CATEGORIES } from '../lib/categories';
 import type { Product } from '../types';
 
@@ -191,7 +191,7 @@ export default function HomePage() {
               className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
             >
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} to={`/products/${p.id}`} />
+                <ProductCard key={p.id} product={p} to={productPath(p)} />
               ))}
             </Motion>
           )}

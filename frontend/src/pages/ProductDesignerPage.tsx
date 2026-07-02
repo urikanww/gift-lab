@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
+import Model3dPersonalizer, { type Model3dCustomization } from '../components/Model3dPersonalizer';
 import { useCartStore } from '../stores/cartStore';
 import { uploadArtwork } from '../lib/uploadArtwork';
 import type { Product, Variant } from '../types';
@@ -20,6 +21,11 @@ export default function ProductDesignerPage() {
   const [error, setError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<number | null>(null);
   const [artwork, setArtwork] = useState<CapturedArtwork | null>(null);
+  // MODEL_3D items add a filament-colour choice; logo/text placement uses the
+  // shared canvas because the item is FDM-printed then UV-decorated on its
+  // flat face — the placement mockup is a producible production step.
+  const [model3dOptions, setModel3dOptions] = useState<Model3dCustomization | null>(null);
+  const is3d = product?.class === 'MODEL_3D';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +61,12 @@ export default function ProductDesignerPage() {
   const addToCart = async () => {
     if (!product) return;
     setUploadError(null);
-    const customization = { ...(artwork?.customization ?? {}) };
+    // 3D lines carry both the filament colour and any canvas artwork; UV/CORE
+    // lines carry artwork only.
+    const customization: Record<string, unknown> = {
+      ...(is3d ? (model3dOptions ?? { filament_color: 'Black' }) : {}),
+      ...(artwork?.customization ?? {}),
+    };
     // Persist the captured artwork server-side; store the returned ref (not the
     // large data URL) on the cart line. On failure, surface an error and ABORT —
     // previously the failure was swallowed and the line was added with no
@@ -129,8 +140,11 @@ export default function ProductDesignerPage() {
             </Card>
           )}
 
-          {/* Configurator */}
-          <DesignerCanvas onCapture={handleCapture} />
+          {/* Configurator — 3D items pick a filament colour, then everyone
+              places logo/text on the canvas over the product photo (3D items
+              are UV-decorated after printing) */}
+          {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
+          <DesignerCanvas backgroundUrl={product.image_url} onCapture={handleCapture} />
 
           {/* Sticky action bar */}
           <div className="sticky bottom-4 z-raised">
@@ -141,7 +155,11 @@ export default function ProductDesignerPage() {
                     Design captured
                   </Badge>
                 ) : (
-                  <span className="text-fg-muted">Add a logo or text, then choose “Use this design”.</span>
+                  <span className="text-fg-muted">
+                    {is3d
+                      ? 'Pick a colour, place your design, then choose “Use this design” — or add to cart plain.'
+                      : 'Add a logo or text, then choose “Use this design”.'}
+                  </span>
                 )}
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">

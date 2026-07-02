@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiError } from '../lib/api';
-import { fetchCatalogue } from '../lib/catalogue';
+import { fetchCatalogue, productPath } from '../lib/catalogue';
 import { CATEGORIES, categoryLabel } from '../lib/categories';
 import { Badge, Button, EmptyState, Input, Select } from '../ui';
 import { ErrorState } from '../components/ui/States';
@@ -221,7 +221,7 @@ export default function CataloguePage() {
             className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
           >
             {filtered.map((p) => (
-              <ProductCard key={p.id} product={p} to={`/products/${p.id}`} showMeta />
+              <ProductCard key={p.id} product={p} to={productPath(p)} showMeta />
             ))}
           </Motion>
 

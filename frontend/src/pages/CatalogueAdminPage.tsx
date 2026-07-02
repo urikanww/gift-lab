@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
 import { safeHref } from '../lib/safeHref';
-import { Badge, Button, Card, EmptyState, Select, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Select, Skeleton, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import type { AdminCatalogueItem, ProductClass, PublishState } from '../types';
@@ -46,6 +46,105 @@ function ItemThumb({ item }: { item: AdminCatalogueItem }) {
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
+  );
+}
+
+/**
+ * Inline production tools for a MODEL_3D row: confirm filament estimates
+ * (clears the estimates_unverified hold) and attach the printable model file
+ * (clears missing_model_file — e.g. Cults3D has no download API).
+ */
+function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
+  const { verifyEstimates, uploadModelFile } = useCatalogueAdminStore();
+  const { toast } = useToast();
+  const fileInput = useRef<HTMLInputElement | null>(null);
+
+  const [material, setMaterial] = useState(item.filament_material ?? 'PLA');
+  const [color, setColor] = useState(item.filament_color ?? 'Black');
+  const [grams, setGrams] = useState(item.est_grams ?? '');
+  const [busy, setBusy] = useState<'verify' | 'upload' | null>(null);
+
+  const needsFile = item.cannot_publish_reasons?.includes('missing_model_file') ?? false;
+  const needsVerify = !item.estimates_verified && !needsFile;
+
+  if (!needsFile && !needsVerify) return null;
+
+  const submitVerify = async () => {
+    const value = Number(grams);
+    if (!Number.isFinite(value) || value <= 0) {
+      toast({ title: 'Enter the filament grams per unit', tone: 'danger' });
+      return;
+    }
+    setBusy('verify');
+    const ok = await verifyEstimates(item.id, {
+      filament_material: material.trim(),
+      filament_color: color.trim(),
+      est_grams: value,
+    });
+    setBusy(null);
+    toast(
+      ok
+        ? { title: 'Estimates verified', description: item.name, tone: 'success' }
+        : { title: 'Could not verify estimates', tone: 'danger' },
+    );
+  };
+
+  const submitFile = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy('upload');
+    const ok = await uploadModelFile(item.id, file);
+    setBusy(null);
+    toast(
+      ok
+        ? { title: 'Model file attached', description: file.name, tone: 'success' }
+        : { title: 'Could not attach model file', tone: 'danger' },
+    );
+  };
+
+  return (
+    <div className="col-span-full flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3 sm:flex-row sm:items-end">
+      {needsVerify && (
+        <>
+          <div className="w-full sm:w-36">
+            <Input label="Material" value={material} onChange={(e) => setMaterial(e.target.value)} />
+          </div>
+          <div className="w-full sm:w-36">
+            <Input label="Colour" value={color} onChange={(e) => setColor(e.target.value)} />
+          </div>
+          <div className="w-full sm:w-32">
+            <Input
+              label="Grams / unit"
+              inputMode="decimal"
+              value={grams}
+              onChange={(e) => setGrams(e.target.value)}
+            />
+          </div>
+          <Button size="sm" loading={busy === 'verify'} disabled={busy !== null} onClick={() => void submitVerify()}>
+            Verify estimates
+          </Button>
+        </>
+      )}
+      {needsFile && (
+        <>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".stl,.3mf,.obj"
+            className="hidden"
+            onChange={(e) => void submitFile(e.target.files?.[0])}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy === 'upload'}
+            disabled={busy !== null}
+            onClick={() => fileInput.current?.click()}
+          >
+            Attach model file (.stl / .3mf / .obj)
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -284,6 +383,8 @@ export default function CatalogueAdminPage() {
                     </Button>
                   )}
                 </div>
+
+                {it.class === 'MODEL_3D' && <Model3dRowTools item={it} />}
               </Motion>
             ))}
           </Motion>

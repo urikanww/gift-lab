@@ -12,6 +12,11 @@ interface CatalogueAdminState {
   publish: (id: number) => Promise<void>;
   unpublish: (id: number) => Promise<void>;
   setAutoPublish: (enabled: boolean) => Promise<boolean>;
+  verifyEstimates: (
+    id: number,
+    estimates: { filament_material: string; filament_color: string; est_grams: number },
+  ) => Promise<boolean>;
+  uploadModelFile: (id: number, file: File) => Promise<boolean>;
 }
 
 export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => ({
@@ -57,6 +62,38 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
       await get().fetch();
     } catch (err) {
       set({ error: apiError(err) });
+    }
+  },
+
+  // Both return success so the row UI can close its inline form only when the
+  // change persisted.
+  verifyEstimates: async (id, estimates) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/admin/products/${id}/verify-estimates`, estimates);
+      await get().fetch();
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
+  },
+
+  uploadModelFile: async (id, file) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const form = new FormData();
+      form.append('file', file);
+      await api.post(`/admin/products/${id}/model-file`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await get().fetch();
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
     }
   },
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Badge,
@@ -13,11 +13,16 @@ import {
 } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { CardImage, ProductCard } from '../components/product/ProductCard';
+
+// three.js is heavy — load the viewer only on MODEL_3D pages that have a file.
+const ModelViewer = lazy(() => import('../components/ModelViewer'));
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import {
+  designPath,
   fetchCatalogue,
   fetchProduct,
   fetchTierPrices,
+  productPath,
   type TierPrice,
 } from '../lib/catalogue';
 import { categoryLabel } from '../lib/categories';
@@ -213,9 +218,15 @@ export default function ProductDetailPage() {
         {/* LEFT — gallery (sticky only at md+). */}
         <div className="self-start md:sticky md:top-20">
           <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-4">
+            {/* Interactive 3D model when we hold the file; static image otherwise */}
+            {product.has_model && (
+              <Suspense fallback={<div className="h-[360px] w-full animate-pulse rounded-lg border border-border bg-surface-2" />}>
+                <ModelViewer productKey={product.slug ?? String(product.id)} />
+              </Suspense>
+            )}
             <div className="group relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-surface-2">
               <CardImage product={product} />
-              {product.class === 'MODEL_3D' && (
+              {product.class === 'MODEL_3D' && !product.has_model && (
                 <div className="absolute left-3 top-3">
                   <Badge tone="success" size="sm" dot>
                     3D preview available
@@ -395,7 +406,7 @@ export default function ProductDetailPage() {
           {/* CTAs */}
           <Motion variants={staggerItem} className="flex flex-col gap-3 sm:flex-row">
             <LinkButton
-              to={`/design/${product.id}`}
+              to={designPath(product)}
               variant="primary"
               size="lg"
               className="w-full sm:w-auto"
@@ -484,7 +495,7 @@ export default function ProductDetailPage() {
             className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
           >
             {related.map((p) => (
-              <ProductCard key={p.id} product={p} to={`/products/${p.id}`} showMeta />
+              <ProductCard key={p.id} product={p} to={productPath(p)} showMeta />
             ))}
           </Motion>
         </section>

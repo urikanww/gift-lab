@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Canvas, FabricImage, IText, type FabricObject } from 'fabric';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Customization } from '../types';
@@ -16,6 +16,12 @@ export interface CapturedArtwork {
 interface DesignerCanvasProps {
   width?: number;
   height?: number;
+  /**
+   * Product photo shown behind the design so the buyer sees placement in
+   * context. Display-only: stripped from the print export — the artwork file
+   * must contain ONLY the layers to be printed, never the product photo.
+   */
+  backgroundUrl?: string | null;
   onCapture: (artwork: CapturedArtwork) => void;
 }
 
@@ -28,7 +34,7 @@ const LOGO_SIZE_LABELS: Record<LogoSize, string> = {
   L: 'Large',
 };
 
-export default function DesignerCanvas({ width = 500, height = 380, onCapture }: DesignerCanvasProps) {
+export default function DesignerCanvas({ width = 500, height = 380, backgroundUrl, onCapture }: DesignerCanvasProps) {
   const elRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<Canvas | null>(null);
@@ -64,8 +70,13 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
 
   useEffect(() => {
     if (!elRef.current) return;
+    // Transparent canvas: the product-photo backdrop is a DOM <img> layered
+    // BEHIND this element (never drawn into it), so no CORS requirement on
+    // the image host and no canvas-taint risk for toDataURL. The export is a
+    // transparent PNG containing only the design layers — exactly the print
+    // artwork.
     const canvas = new Canvas(elRef.current, {
-      backgroundColor: '#ffffff',
+      backgroundColor: '',
       preserveObjectStacking: true,
     });
     canvas.setDimensions({ width: dims.w, height: dims.h });
@@ -88,6 +99,11 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
       canvasRef.current = null;
     };
   }, [dims.w, dims.h]);
+
+  // Backdrop <img> load state — hide it (and fall back to the plain stage)
+  // if the image 404s.
+  const [backdropOk, setBackdropOk] = useState(true);
+  useEffect(() => setBackdropOk(true), [backgroundUrl]);
 
   const sizeToScale = (size: LogoSize): number => ({ S: 0.4, M: 0.7, L: 1.0 })[size];
 
@@ -157,6 +173,9 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
     // of the responsive on-screen size, so a phone-sized preview still produces the
     // same high-res print file as a desktop one.
     const multiplier = (width * 4) / dims.w;
+    // Transparent-background PNG of only the design layers — the product
+    // photo lives in a DOM layer behind the canvas and is never exported
+    // (spec 7: the artwork IS the production file, not a product mockup).
     const dataUrl = canvas.toDataURL({ format: 'png', multiplier });
     const layout = canvas.toJSON();
     onCapture({
@@ -173,20 +192,51 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
 
   const isEmpty = ready && objectCount === 0;
 
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = Array.from(e.dataTransfer.files).find((f) =>
+      ['image/png', 'image/jpeg'].includes(f.type),
+    );
+    if (file) void handleLogoUpload(file);
+  };
+
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* Canvas stage */}
       <div ref={stageRef} className="min-w-0 flex-1">
         <div
           className={cn(
-            'group relative mx-auto max-w-full overflow-hidden rounded-lg border border-border',
+            'group relative mx-auto max-w-full overflow-hidden rounded-lg border',
             'bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:20px_20px]',
             'shadow-card',
+            dragOver ? 'border-primary ring-2 ring-ring' : 'border-border',
           )}
           style={{ width: dims.w }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
         >
+          {/* Product-photo backdrop: DOM layer under the fabric canvas — never
+              drawn into it (no CORS requirement, no export taint) */}
+          {backgroundUrl && backdropOk && (
+            <img
+              src={backgroundUrl}
+              alt=""
+              aria-hidden="true"
+              referrerPolicy="no-referrer"
+              onError={() => setBackdropOk(false)}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            />
+          )}
+
           {/* fabric mounts here — DO NOT alter the element wiring */}
-          <canvas ref={elRef} className="block touch-none" aria-label="Design canvas" />
+          <canvas ref={elRef} className="relative block touch-none" aria-label="Design canvas" />
 
           {/* Loading skeleton while fabric initialises */}
           {!ready && (
@@ -211,8 +261,12 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
                 >
                   <PlusIcon />
                 </span>
-                <p className="text-sm font-medium text-fg-muted">Your canvas is blank</p>
-                <p className="text-xs text-fg-subtle">Upload a logo or add text to start designing.</p>
+                <p className={cn('text-sm font-medium', backgroundUrl ? 'rounded bg-surface/80 px-2 py-0.5 text-fg' : 'text-fg-muted')}>
+                  {backgroundUrl ? 'Place your design on the product' : 'Start your design'}
+                </p>
+                <p className={cn('text-xs', backgroundUrl ? 'rounded bg-surface/80 px-2 py-0.5 text-fg-muted' : 'text-fg-subtle')}>
+                  Drag &amp; drop a logo here, upload one, or add text.
+                </p>
               </Motion>
             )}
           </AnimatePresence>

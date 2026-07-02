@@ -12,8 +12,18 @@ export function fetchCatalogue(page = 1, productClass = ''): Promise<Paginated<P
 export function fetchProduct(id: number | string): Promise<Product> {
   // The show endpoint wraps the product in a Laravel resource envelope
   // ({ data: {...} }), unlike the paginated index. Unwrap to the Product.
+  // Accepts a slug (canonical) or a numeric id (legacy links).
   return api.get<{ data: Product }>(`/catalogue/${id}`).then((r) => r.data.data);
 }
+
+/** Canonical public route key: slug when present, id as legacy fallback. */
+export function productKey(p: Pick<Product, 'id' | 'slug'>): string {
+  return p.slug ?? String(p.id);
+}
+
+export const productPath = (p: Pick<Product, 'id' | 'slug'>) => `/products/${productKey(p)}`;
+
+export const designPath = (p: Pick<Product, 'id' | 'slug'>) => `/design/${productKey(p)}`;
 
 export interface TierPrice {
   qty: number;

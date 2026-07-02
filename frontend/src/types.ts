@@ -54,6 +54,8 @@ export interface Variant {
 export interface Product {
   id: number;
   name: string;
+  /** Canonical public URL key — link by slug, never by numeric id. */
+  slug?: string | null;
   description: string | null;
   class: ProductClass;
   from_price: number;
@@ -65,6 +67,8 @@ export interface Product {
   image_url: string | null;
   is_printable: boolean;
   creator_credit: string | null;
+  /** True when an interactive 3D model stream is available for this item. */
+  has_model?: boolean;
   variants?: Variant[];
 }
 
@@ -164,6 +168,11 @@ export interface AdminCatalogueItem {
   creator_credit: string | null;
   image_url: string | null;
   source_url: string | null;
+  filament_material: string | null;
+  filament_color: string | null;
+  est_grams: string | null;
+  estimates_verified: boolean;
+  model_file_ref: string | null;
 }
 
 export interface Paginated<T> {
