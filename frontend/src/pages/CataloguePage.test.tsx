@@ -47,4 +47,30 @@ describe('CataloguePage', () => {
   // components/ui/States.test.tsx. A page-level rejected-fetch test is omitted
   // here because it trips jsdom/vitest's unhandled-rejection detector even
   // though the component catches correctly (no unhandled path exists in prod).
+
+  it('shows the marketplace category rail and filters on click', async () => {
+    get.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, total: 0 } } });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /drinkware/i })).toBeInTheDocument());
+    get.mockClear();
+    screen.getByRole('button', { name: /drinkware/i }).click();
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith('/catalogue', {
+        params: expect.objectContaining({ category: 'drinkware' }),
+      }),
+    );
+  });
+
+  it('offers marketplace sort options', async () => {
+    get.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, total: 0 } } });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/sort/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('option', { name: /price: low to high/i })).toBeInTheDocument();
+  });
 });

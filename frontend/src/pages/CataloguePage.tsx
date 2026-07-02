@@ -1,233 +1,181 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiError } from '../lib/api';
-import { fetchCatalogue, productPath } from '../lib/catalogue';
-import { CATEGORIES, categoryLabel } from '../lib/categories';
-import { Badge, Button, EmptyState, Input, Select } from '../ui';
+import { fetchCatalogue, productPath, type CatalogueSort } from '../lib/catalogue';
+import { CATEGORIES } from '../lib/categories';
+import { Button, EmptyState, Input, Select, cn } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { ProductCard, CardSkeleton } from '../components/product/ProductCard';
-import { Motion, fadeInUp, staggerContainer } from '../motion';
+import { Motion, staggerContainer } from '../motion';
 import type { Product } from '../types';
 
-const CLASS_KEYS = new Set<string>(CATEGORIES.map((c) => c.key));
+const SORTS: { value: CatalogueSort; label: string }[] = [
+  { value: 'name', label: 'Name (A–Z)' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'price_asc', label: 'Price: low to high' },
+  { value: 'price_desc', label: 'Price: high to low' },
+];
 
-function parseClass(value: string | null): string {
-  return value && CLASS_KEYS.has(value) ? value : '';
-}
+const CATEGORY_KEYS = new Set(CATEGORIES.map((c) => c.key));
+const SORT_KEYS = new Set<string>(SORTS.map((s) => s.value));
+
+const GRID = 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
 
 export default function CataloguePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // URL is the single source of truth for all filters (shareable/bookmarkable).
+  const query = searchParams.get('q') ?? '';
+  const rawCategory = searchParams.get('category');
+  const category = rawCategory && CATEGORY_KEYS.has(rawCategory) ? rawCategory : '';
+  const rawSort = searchParams.get('sort');
+  const sort: CatalogueSort = rawSort && SORT_KEYS.has(rawSort) ? (rawSort as CatalogueSort) : 'name';
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  // Initialize filter state from URL params (?q=, ?class=). Unknown class values
-  // are ignored. Filtering/search stays client-side over the loaded page.
-  const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
-  const [classFilter, setClassFilter] = useState<string>(() =>
-    parseClass(searchParams.get('class')),
-  );
-
-  // Category filtering is server-side (the catalogue paginates at 24/page, so
-  // filtering only the loaded page would hide matches on later pages). `cls`
-  // defaults to the current filter so pagination stays within the category.
-  const load = async (target = 1, cls: string = classFilter) => {
+  const load = async (target: number, isActive: () => boolean = () => true) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCatalogue({ page: target, category: cls || undefined });
+      const data = await fetchCatalogue({ page: target, category: category || undefined, q: query, sort });
+      if (!isActive()) return;
       setProducts(data.data);
       setPage(data.meta?.current_page ?? target);
       setLastPage(data.meta?.last_page ?? 1);
+      setTotal(data.meta?.total ?? data.data.length);
     } catch (err) {
-      setError(apiError(err));
+      if (isActive()) setError(apiError(err));
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 
+  // Server-side search/filter/sort: reload page 1 whenever any input changes.
+  // Text input is debounced so we don't fire a request per keystroke.
   useEffect(() => {
-    void load(1);
+    let active = true;
+    const timer = setTimeout(() => void load(1, () => active), query ? 250 : 0);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [query, category, sort]);
 
-  const setQueryParam = (next: string) => {
-    setQuery(next);
+  const setParam = (key: string, value: string) => {
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
-        if (next.trim()) params.set('q', next);
-        else params.delete('q');
+        if (value) params.set(key, value);
+        else params.delete(key);
         return params;
       },
       { replace: true },
     );
   };
 
-  const setClassParam = (next: string) => {
-    setClassFilter(next);
-    setSearchParams(
-      (prev) => {
-        const params = new URLSearchParams(prev);
-        if (next) params.set('class', next);
-        else params.delete('class');
-        return params;
-      },
-      { replace: true },
-    );
-    void load(1, next);
-  };
-
-  // Text search stays client-side over the loaded (already class-scoped) page.
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return products.filter((p) => {
-      if (q && !p.name.toLowerCase().includes(q) && !(p.creator_credit ?? '').toLowerCase().includes(q)) {
-        return false;
-      }
-      return true;
-    });
-  }, [products, query]);
-
-  const hasActiveFilter = query.trim() !== '' || classFilter !== '';
-  const clearFilters = () => {
-    setQuery('');
-    setClassFilter('');
-    setSearchParams(
-      (prev) => {
-        const params = new URLSearchParams(prev);
-        params.delete('q');
-        params.delete('class');
-        return params;
-      },
-      { replace: true },
-    );
-    void load(1, '');
-  };
+  const hasActiveFilter = query.trim() !== '' || category !== '' || sort !== 'name';
+  const clearFilters = () => setSearchParams({}, { replace: true });
 
   return (
-    <div className="flex flex-col gap-10">
-      {/* Signature hero — editorial, warm, scroll-stopping. */}
-      <Motion
-        variants={fadeInUp}
-        initial="hidden"
-        animate="visible"
-        className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-brand-50 via-surface to-accent-50 px-6 py-12 sm:px-10 sm:py-16"
-      >
-        <div
-          className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-brand-100/50 blur-3xl"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-accent-100/40 blur-3xl"
-          aria-hidden="true"
-        />
-        <div className="relative max-w-2xl">
-          <Badge tone="brand" size="sm" dot>
-            Custom gifting, made effortless
-          </Badge>
-          <h1 className="mt-4 font-display text-4xl leading-tight text-fg sm:text-5xl">
-            Gifts worth remembering,
-            <br className="hidden sm:block" /> crafted to your brand.
-          </h1>
-          <p className="mt-4 max-w-xl text-base text-fg-muted sm:text-lg">
-            Browse our boutique of customisable pieces — UV-printed, 3D-crafted and
-            core essentials. No account needed until you request a quote.
+    <div className="flex flex-col gap-5">
+      {/* ── Slim toolbar: title + count + search + sort ──────────────────── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-display text-2xl text-fg sm:text-3xl">Marketplace</h1>
+          <p className="text-sm text-fg-muted" role="status">
+            {loading ? 'Loading…' : `${total} customisable gift${total === 1 ? '' : 's'}`}
           </p>
         </div>
-      </Motion>
-
-      {/* Sticky filter bar */}
-      <div className="sticky top-16 z-raised -mx-4 border-y border-border bg-bg/85 px-4 py-3 backdrop-blur-md sm:top-20">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="sm:w-64">
             <Input
               type="search"
-              label="Search catalogue"
-              placeholder="Search by name or maker…"
+              label="Search"
+              placeholder="Search all gifts…"
               value={query}
-              onChange={(e) => setQueryParam(e.target.value)}
-              leadingIcon={<SearchIcon />}
+              onChange={(e) => setParam('q', e.target.value)}
             />
           </div>
-          <div className="sm:w-56">
-            <Select
-              label="Category"
-              value={classFilter}
-              onChange={(e) => setClassParam(e.target.value)}
-            >
-              <option value="">All categories</option>
-              {CATEGORIES.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {categoryLabel(c.key)}
+          <div className="sm:w-48">
+            <Select label="Sort by" value={sort} onChange={(e) => setParam('sort', e.target.value)}>
+              {SORTS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
                 </option>
               ))}
             </Select>
           </div>
           {hasActiveFilter && (
-            <Button variant="ghost" size="md" onClick={clearFilters} className="sm:mb-0">
+            <Button variant="ghost" size="md" onClick={clearFilters}>
               Clear
             </Button>
           )}
         </div>
       </div>
 
-      {/* Async surface: bespoke skeleton grid on load, error/empty gated below. */}
+      {/* ── Category chip rail (sticky, horizontally scrollable) ─────────── */}
+      <div className="sticky top-16 z-raised -mx-4 border-y border-border bg-bg/85 px-4 py-2 backdrop-blur-md">
+        <div
+          className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="Shop by category"
+        >
+          <CategoryChip label="All" active={category === ''} onClick={() => setParam('category', '')} />
+          {CATEGORIES.map((c) => (
+            <CategoryChip
+              key={c.key}
+              icon={c.icon}
+              label={c.label}
+              active={category === c.key}
+              onClick={() => setParam('category', c.key)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Results ──────────────────────────────────────────────────────── */}
       {loading ? (
         <>
           <span className="sr-only" role="status" aria-live="polite">
             Loading catalogue…
           </span>
-          <div
-            className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-            aria-hidden="true"
-          >
-            {Array.from({ length: 8 }).map((_, i) => (
+          <div className={GRID} aria-hidden="true">
+            {Array.from({ length: 10 }).map((_, i) => (
               <CardSkeleton key={i} />
             ))}
           </div>
         </>
       ) : error ? (
-        <ErrorState message={error} onRetry={() => load(page)} />
+        <ErrorState message={error} onRetry={() => void load(page)} />
       ) : products.length === 0 ? (
         <EmptyState
-          title="No products published yet"
-          description="Our makers are hard at work. Check back soon for new customisable gifts."
-          action={
-            <Button variant="outline" onClick={() => load(page)}>
-              Refresh
-            </Button>
+          title={hasActiveFilter ? 'Nothing matches your filters' : 'No products published yet'}
+          description={
+            hasActiveFilter
+              ? 'Try a different keyword or category to see more gifts.'
+              : 'Our makers are hard at work. Check back soon for new customisable gifts.'
           }
-        />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title="Nothing matches your search"
-          description="Try a different keyword or clear the filters to see the full catalogue."
           action={
-            <Button variant="outline" onClick={clearFilters}>
-              Clear filters
+            <Button variant="outline" onClick={hasActiveFilter ? clearFilters : () => void load(1)}>
+              {hasActiveFilter ? 'Clear filters' : 'Refresh'}
             </Button>
           }
         />
       ) : (
         <>
-          <Motion
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-            className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-          >
-            {filtered.map((p) => (
+          <Motion variants={staggerContainer} initial="hidden" animate="visible" className={GRID}>
+            {products.map((p) => (
               <ProductCard key={p.id} product={p} to={productPath(p)} showMeta />
             ))}
           </Motion>
 
-          {/* Class filtering is server-side, so pagination remains valid with a
-              category selected; only a client-side text query disables it. */}
-          {lastPage > 1 && query.trim() === '' && (
+          {lastPage > 1 && (
             <nav className="flex items-center justify-center gap-4" aria-label="Pagination">
               <Button
                 variant="outline"
@@ -256,11 +204,32 @@ export default function CataloguePage() {
   );
 }
 
-function SearchIcon() {
+function CategoryChip({
+  label,
+  icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
-      <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="m13.5 13.5 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+        active
+          ? 'border-primary bg-primary text-primary-fg'
+          : 'border-border bg-surface text-fg-muted hover:border-primary/50 hover:text-fg',
+      )}
+    >
+      {icon && <span aria-hidden="true">{icon}</span>}
+      {label}
+    </button>
   );
 }
