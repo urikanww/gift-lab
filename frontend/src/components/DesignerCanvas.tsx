@@ -30,6 +30,7 @@ const LOGO_SIZE_LABELS: Record<LogoSize, string> = {
 
 export default function DesignerCanvas({ width = 500, height = 380, onCapture }: DesignerCanvasProps) {
   const elRef = useRef<HTMLCanvasElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<Canvas | null>(null);
   const [ready, setReady] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
@@ -40,13 +41,34 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
   const [captured, setCaptured] = useState(false);
   const animate = useReducedMotionSafe();
 
+  // Responsive stage: the fabric canvas keeps true pixel dimensions (so pointer
+  // math + export resolution stay correct), but on narrow viewports we clamp the
+  // width to the available container so it never overflows 360px. Height tracks
+  // the same aspect ratio as the requested width/height.
+  const aspect = height / width;
+  const [dims, setDims] = useState({ w: width, h: height });
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => {
+      const available = el.clientWidth;
+      const w = available > 0 ? Math.min(width, available) : width;
+      setDims({ w: Math.round(w), h: Math.round(w * aspect) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [width, aspect]);
+
   useEffect(() => {
     if (!elRef.current) return;
     const canvas = new Canvas(elRef.current, {
       backgroundColor: '#ffffff',
       preserveObjectStacking: true,
     });
-    canvas.setDimensions({ width, height });
+    canvas.setDimensions({ width: dims.w, height: dims.h });
     canvasRef.current = canvas;
 
     // Keep our chrome (empty-state hint, layer count, contextual layer tools) in
@@ -65,7 +87,7 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
       void canvas.dispose();
       canvasRef.current = null;
     };
-  }, [width, height]);
+  }, [dims.w, dims.h]);
 
   const sizeToScale = (size: LogoSize): number => ({ S: 0.4, M: 0.7, L: 1.0 })[size];
 
@@ -83,8 +105,8 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
 
     const img = await FabricImage.fromURL(dataUrl);
     const scale = sizeToScale(logoSize);
-    img.scaleToWidth(width * 0.4 * scale);
-    img.set({ left: width / 2, top: height / 2, originX: 'center', originY: 'center' });
+    img.scaleToWidth(dims.w * 0.4 * scale);
+    img.set({ left: dims.w / 2, top: dims.h / 2, originX: 'center', originY: 'center' });
     canvas.add(img);
     canvas.setActiveObject(img);
     canvas.requestRenderAll();
@@ -96,8 +118,8 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
     const canvas = canvasRef.current;
     if (!canvas || !nameText) return;
     const text = new IText(nameText, {
-      left: width / 2,
-      top: height - 60,
+      left: dims.w / 2,
+      top: dims.h - 60,
       originX: 'center',
       fontSize: 28,
       fill: '#111111',
@@ -131,8 +153,11 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
   const capture = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // multiplier=4 gives print-resolution output from the on-screen preview.
-    const dataUrl = canvas.toDataURL({ format: 'png', multiplier: 4 });
+    // Export at a fixed print resolution (4× the requested design width) regardless
+    // of the responsive on-screen size, so a phone-sized preview still produces the
+    // same high-res print file as a desktop one.
+    const multiplier = (width * 4) / dims.w;
+    const dataUrl = canvas.toDataURL({ format: 'png', multiplier });
     const layout = canvas.toJSON();
     onCapture({
       dataUrl,
@@ -151,21 +176,21 @@ export default function DesignerCanvas({ width = 500, height = 380, onCapture }:
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* Canvas stage */}
-      <div className="flex-1">
+      <div ref={stageRef} className="min-w-0 flex-1">
         <div
           className={cn(
-            'group relative mx-auto w-full max-w-full overflow-hidden rounded-lg border border-border',
+            'group relative mx-auto max-w-full overflow-hidden rounded-lg border border-border',
             'bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:20px_20px]',
             'shadow-card',
           )}
-          style={{ maxWidth: width }}
+          style={{ width: dims.w }}
         >
           {/* fabric mounts here — DO NOT alter the element wiring */}
           <canvas ref={elRef} className="block touch-none" aria-label="Design canvas" />
 
           {/* Loading skeleton while fabric initialises */}
           {!ready && (
-            <div className="absolute inset-0" style={{ width, height }} aria-hidden="true">
+            <div className="absolute inset-0" style={{ width: dims.w, height: dims.h }} aria-hidden="true">
               <Skeleton className="h-full w-full" />
             </div>
           )}
