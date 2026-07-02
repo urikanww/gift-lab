@@ -21,8 +21,11 @@ function renderHeader() {
   );
 }
 
+// Replace-mode reset so no per-test state (e.g. a staff-role user) leaks —
+// same idiom as LoginPage.test.tsx.
+const initialStore = useAuthStore.getState();
 afterEach(() => {
-  useAuthStore.setState({ user: null, status: 'idle', error: null });
+  useAuthStore.setState(initialStore, true);
 });
 
 it('renders brand, primary nav, and a theme toggle', () => {
