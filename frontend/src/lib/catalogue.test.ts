@@ -13,8 +13,8 @@ describe('catalogue lib', () => {
     expect(api.get).toHaveBeenCalledWith('/catalogue', { params: { page: 2 } });
   });
 
-  it('fetchProduct hits the show route', async () => {
-    (api.get as any).mockResolvedValue({ data: { id: 5, name: 'A5' } });
+  it('fetchProduct hits the show route and unwraps the resource envelope', async () => {
+    (api.get as any).mockResolvedValue({ data: { data: { id: 5, name: 'A5' } } });
     const p = await fetchProduct(5);
     expect(api.get).toHaveBeenCalledWith('/catalogue/5');
     expect(p.id).toBe(5);

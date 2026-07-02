@@ -6,7 +6,9 @@ export function fetchCatalogue(page = 1): Promise<Paginated<Product>> {
 }
 
 export function fetchProduct(id: number | string): Promise<Product> {
-  return api.get<Product>(`/catalogue/${id}`).then((r) => r.data);
+  // The show endpoint wraps the product in a Laravel resource envelope
+  // ({ data: {...} }), unlike the paginated index. Unwrap to the Product.
+  return api.get<{ data: Product }>(`/catalogue/${id}`).then((r) => r.data.data);
 }
 
 export interface TierPrice {
