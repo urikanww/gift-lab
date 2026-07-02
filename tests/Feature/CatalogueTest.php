@@ -114,9 +114,22 @@ it('sorts the catalogue by newest first when requested', function (): void {
 });
 
 it('sorts the catalogue by price', function (): void {
-    Product::factory()->create(['name' => 'Pricey Mug', 'base_cost' => 50, 'publish_state' => 'PUBLISHED']);
-    Product::factory()->create(['name' => 'Cheap Mug', 'base_cost' => 1, 'publish_state' => 'PUBLISHED']);
+    // Names chosen so alphabetical order disagrees with price order — a
+    // regression to name-only ordering fails this test.
+    Product::factory()->create(['name' => 'Aardvark Mug', 'base_cost' => 50, 'publish_state' => 'PUBLISHED']);
+    Product::factory()->create(['name' => 'Middling Mug', 'base_cost' => 20, 'publish_state' => 'PUBLISHED']);
+    Product::factory()->create(['name' => 'Zebra Mug', 'base_cost' => 1, 'publish_state' => 'PUBLISHED']);
 
-    expect($this->getJson('/api/catalogue?sort=price_asc')->json('data.0.name'))->toBe('Cheap Mug')
-        ->and($this->getJson('/api/catalogue?sort=price_desc')->json('data.0.name'))->toBe('Pricey Mug');
+    expect(collect($this->getJson('/api/catalogue?sort=price_asc')->json('data'))->pluck('name')->all())
+        ->toBe(['Zebra Mug', 'Middling Mug', 'Aardvark Mug'])
+        ->and(collect($this->getJson('/api/catalogue?sort=price_desc')->json('data'))->pluck('name')->all())
+        ->toBe(['Aardvark Mug', 'Middling Mug', 'Zebra Mug']);
+});
+
+it('falls back to name order for an unknown sort value', function (): void {
+    Product::factory()->create(['name' => 'Zebra Mug', 'publish_state' => 'PUBLISHED']);
+    Product::factory()->create(['name' => 'Aardvark Mug', 'publish_state' => 'PUBLISHED']);
+
+    expect(collect($this->getJson('/api/catalogue?sort=garbage')->json('data'))->pluck('name')->all())
+        ->toBe(['Aardvark Mug', 'Zebra Mug']);
 });
