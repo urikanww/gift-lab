@@ -82,13 +82,13 @@ export default function HomePage() {
               Search
             </Button>
           </form>
-          <div className="mt-3 flex flex-wrap gap-1.5 text-sm">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
             <span className="text-fg-subtle">Browse:</span>
             {CATEGORIES.slice(0, 4).map((c) => (
               <Link
                 key={c.key}
                 to={`/products?category=${c.key}`}
-                className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex min-h-[44px] items-center rounded px-1.5 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {c.label}
               </Link>
@@ -134,7 +134,7 @@ export default function HomePage() {
           </h2>
           <Link
             to="/products?sort=newest"
-            className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             View all
           </Link>
@@ -170,7 +170,7 @@ export default function HomePage() {
           </h2>
           <Link
             to="/products"
-            className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             View all
           </Link>

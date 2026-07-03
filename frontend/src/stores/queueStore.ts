@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
-import { getEcho, onEchoReconnect } from '../lib/echo';
+import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
 import type { JobState, ProductionJob } from '../types';
 
 // Unregister handle for the reconnect-refetch subscription.
 let offReconnect: (() => void) | null = null;
+let queueChannel: ReturnType<typeof joinSharedPrivate> | null = null;
+let queueUpdatedListener: ((e: QueueUpdatedPayload) => void) | null = null;
 
 interface QueueUpdatedPayload {
   job_id: number;
@@ -71,28 +73,29 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
     if (get().subscribed) return;
     // Reconcile the queue after a socket reconnect (events missed while down).
     offReconnect = onEchoReconnect(() => void get().fetchQueue());
-    getEcho()
-      .private('staff.queue')
-      .listen('.production-queue.updated', (e: QueueUpdatedPayload) => {
-        set((s) => {
-          const existing = s.jobs.find((j) => j.id === e.job_id);
-          if (e.action === 'closed') {
-            return { jobs: s.jobs.filter((j) => j.id !== e.job_id) };
-          }
-          const next: ProductionJob = {
-            id: e.job_id,
-            quote_id: e.quote_id,
-            track: e.track,
-            state: e.state,
-            ready_at: e.ready_at,
-            artwork_ref: existing?.artwork_ref ?? null,
-            print_method: existing?.print_method ?? null,
-            qty: e.qty,
-          };
-          const others = s.jobs.filter((j) => j.id !== e.job_id);
-          return { jobs: sortQueue([...others, next]) };
-        });
+
+    queueUpdatedListener = (e: QueueUpdatedPayload) => {
+      set((s) => {
+        const existing = s.jobs.find((j) => j.id === e.job_id);
+        if (e.action === 'closed') {
+          return { jobs: s.jobs.filter((j) => j.id !== e.job_id) };
+        }
+        const next: ProductionJob = {
+          id: e.job_id,
+          quote_id: e.quote_id,
+          track: e.track,
+          state: e.state,
+          ready_at: e.ready_at,
+          artwork_ref: existing?.artwork_ref ?? null,
+          print_method: existing?.print_method ?? null,
+          qty: e.qty,
+        };
+        const others = s.jobs.filter((j) => j.id !== e.job_id);
+        return { jobs: sortQueue([...others, next]) };
       });
+    };
+    queueChannel = joinSharedPrivate('staff.queue');
+    queueChannel.listen('.production-queue.updated', queueUpdatedListener);
     set({ subscribed: true });
   },
 
@@ -100,7 +103,12 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
     if (!get().subscribed) return;
     offReconnect?.();
     offReconnect = null;
-    getEcho().leave('staff.queue');
+    if (queueUpdatedListener) {
+      queueChannel?.stopListening('.production-queue.updated', queueUpdatedListener);
+      queueUpdatedListener = null;
+    }
+    queueChannel = null;
+    leaveSharedPrivate('staff.queue');
     set({ subscribed: false });
   },
 }));
