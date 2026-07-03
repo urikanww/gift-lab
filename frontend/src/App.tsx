@@ -1,31 +1,62 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleLayout from './components/RoleLayout';
-import HomePage from './pages/HomePage';
-import CataloguePage from './pages/CataloguePage';
-import ProductDetailPage from './pages/ProductDetailPage';
-import ProductDesignerPage from './pages/ProductDesignerPage';
-import CartPage from './pages/CartPage';
-import CheckoutPage from './pages/CheckoutPage';
-import TrackPage from './pages/TrackPage';
-import BrandKitPage from './pages/BrandKitPage';
-import KitBuilderPage from './pages/KitBuilderPage';
-import QuoteListPage from './pages/QuoteListPage';
-import QuoteDetailPage from './pages/QuoteDetailPage';
-import ProductionQueuePage from './pages/ProductionQueuePage';
-import ProcurementPage from './pages/ProcurementPage';
-import CatalogueAdminPage from './pages/CatalogueAdminPage';
-import DashboardPage from './pages/DashboardPage';
-import LoginPage from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
 import { useQuoteStore } from './stores/quoteStore';
-import { ThemeProvider, ToastProvider } from './ui';
+import { Spinner, ThemeProvider, ToastProvider } from './ui';
+
+// Route components are code-split so the heavy designer (fabric.js) and the
+// staff-only console pages never land in the initial entry chunk. Each route is
+// fetched on demand behind the shared <Suspense> fallback below.
+const HomePage = lazy(() => import('./pages/HomePage'));
+const CataloguePage = lazy(() => import('./pages/CataloguePage'));
+const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
+const ProductDesignerPage = lazy(() => import('./pages/ProductDesignerPage'));
+const CartPage = lazy(() => import('./pages/CartPage'));
+const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
+const TrackPage = lazy(() => import('./pages/TrackPage'));
+const BrandKitPage = lazy(() => import('./pages/BrandKitPage'));
+const KitBuilderPage = lazy(() => import('./pages/KitBuilderPage'));
+const QuoteListPage = lazy(() => import('./pages/QuoteListPage'));
+const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
+const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
+const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
+const CatalogueAdminPage = lazy(() => import('./pages/CatalogueAdminPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function RedirectCatalogueToProduct() {
   const { id } = useParams();
   return <Navigate to={`/products/${id}`} replace />;
+}
+
+/** Shared fallback for lazily-loaded routes. */
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[40vh] w-full items-center justify-center text-fg-muted" role="status">
+      <Spinner size="lg" label="Loading…" />
+    </div>
+  );
+}
+
+/**
+ * Route-level boundary rendered inside each shell. A crash in one route falls
+ * back here — keeping the surrounding layout (header/nav) intact — instead of
+ * bubbling to the app-root boundary and blanking the whole shell. Also provides
+ * the <Suspense> fallback while the lazy route chunk loads.
+ */
+function RouteBoundary() {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
+    </ErrorBoundary>
+  );
 }
 
 export default function App() {
@@ -58,19 +89,21 @@ export default function App() {
         >
           <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<HomePage />} />
-          <Route path="products" element={<CataloguePage />} />
-          <Route path="products/:id" element={<ProductDetailPage />} />
-          <Route path="design/:id" element={<ProductDesignerPage />} />
-          <Route path="cart" element={<CartPage />} />
-          <Route path="checkout" element={<CheckoutPage />} />
-          <Route path="track" element={<TrackPage />} />
-          <Route path="kits" element={<KitBuilderPage />} />
-          <Route path="login" element={<LoginPage />} />
-          <Route path="catalogue" element={<Navigate to="/products" replace />} />
-          <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+          <Route element={<RouteBoundary />}>
+            <Route index element={<HomePage />} />
+            <Route path="products" element={<CataloguePage />} />
+            <Route path="products/:id" element={<ProductDetailPage />} />
+            <Route path="design/:id" element={<ProductDesignerPage />} />
+            <Route path="cart" element={<CartPage />} />
+            <Route path="checkout" element={<CheckoutPage />} />
+            <Route path="track" element={<TrackPage />} />
+            <Route path="kits" element={<KitBuilderPage />} />
+            <Route path="login" element={<LoginPage />} />
+            <Route path="catalogue" element={<Navigate to="/products" replace />} />
+            <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
+        </Route>
 
           {/* Authenticated area under ONE RoleLayout parent (staff → console shell,
               buyers → shopfront). Keeping every staff destination under this single
@@ -85,13 +118,15 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="quotes" element={<QuoteListPage />} />
-            <Route path="quotes/:id" element={<QuoteDetailPage />} />
-            <Route path="brand-kit" element={<BrandKitPage />} />
-            <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
-            <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
-            <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
-            <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
+            <Route element={<RouteBoundary />}>
+              <Route path="quotes" element={<QuoteListPage />} />
+              <Route path="quotes/:id" element={<QuoteDetailPage />} />
+              <Route path="brand-kit" element={<BrandKitPage />} />
+              <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
+              <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
+              <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
+              <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>
