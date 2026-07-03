@@ -10,14 +10,17 @@ import type { JobState } from '../types';
 const NEXT_STATE: Partial<Record<JobState, { label: string; to: JobState }>> = {
   READY: { label: 'Start production', to: 'IN_PRODUCTION' },
   IN_PRODUCTION: { label: 'Mark shipped', to: 'SHIPPED' },
-  SHIPPED: { label: 'Close', to: 'CLOSED' },
+  // CLOSED is the buyer-facing "Delivered" stage (Quote::trackingStage maps a
+  // closed job to DELIVERED). Label the action for that outcome, not the raw
+  // state name, so the floor control reads as the handover it triggers.
+  SHIPPED: { label: 'Mark delivered', to: 'CLOSED' },
 };
 
 const STATE_META: Record<JobState, { label: string; tone: BadgeTone }> = {
   READY: { label: 'Ready', tone: 'info' },
   IN_PRODUCTION: { label: 'In production', tone: 'warning' },
   SHIPPED: { label: 'Shipped', tone: 'brand' },
-  CLOSED: { label: 'Closed', tone: 'success' },
+  CLOSED: { label: 'Delivered', tone: 'success' },
 };
 
 function QueueSkeleton() {
