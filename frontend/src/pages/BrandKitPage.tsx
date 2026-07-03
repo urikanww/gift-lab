@@ -127,7 +127,7 @@ export default function BrandKitPage() {
                 type="button"
                 aria-label={`Remove ${c}`}
                 onClick={() => setColors((list) => list.filter((x) => x !== c))}
-                className="text-fg-subtle hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 ×
               </button>

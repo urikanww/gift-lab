@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { Badge, Button, cn } from '../ui';
+
+const FOCUSABLE =
+  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 interface NavItem {
   to: string;
@@ -102,30 +105,106 @@ export default function StaffLayout() {
         </main>
       </div>
 
-      {drawer && (
-        <div className="fixed inset-0 z-modal md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDrawer(false)} aria-hidden="true" />
-          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col gap-4 border-r border-border bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-display text-lg font-semibold text-fg">Menu</span>
-              <button
-                type="button"
-                onClick={() => setDrawer(false)}
-                aria-label="Close menu"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
-                  <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-            <NavList onNavigate={() => setDrawer(false)} />
-            <Button variant="ghost" size="sm" className="min-h-[44px] justify-start" onClick={onLogout}>
-              Log out
-            </Button>
-          </div>
+      <StaffDrawer open={drawer} onClose={() => setDrawer(false)} onLogout={onLogout} />
+    </div>
+  );
+}
+
+/**
+ * Mobile staff navigation drawer. Mirrors the accessible pattern in
+ * SiteHeader's MobileDrawer / ui.Modal: role="dialog" aria-modal, Escape to
+ * close, Tab focus trap, body scroll lock, and focus restored to the trigger.
+ */
+function StaffDrawer({
+  open,
+  onClose,
+  onLogout,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onLogout: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const nodes = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+        if (!nodes || nodes.length === 0) {
+          e.preventDefault();
+          return;
+        }
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    },
+    [onClose],
+  );
+
+  // On open: remember trigger, lock body scroll, move focus in. On close: restore.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    const { overflow } = document.body.style;
+    document.body.style.overflow = 'hidden';
+
+    const raf = requestAnimationFrame(() => {
+      const nodes = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
+      (nodes && nodes.length ? nodes[0] : panelRef.current)?.focus();
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.body.style.overflow = overflow;
+      previouslyFocused.current?.focus?.();
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-modal md:hidden" onKeyDown={handleKeyDown}>
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Staff menu"
+        tabIndex={-1}
+        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col gap-4 border-r border-border bg-surface p-4 focus:outline-none"
+      >
+        <div className="flex items-center justify-between">
+          <span className="font-display text-lg font-semibold text-fg">Menu</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-      )}
+        <NavList onNavigate={onClose} />
+        <Button variant="ghost" size="sm" className="min-h-[44px] justify-start" onClick={onLogout}>
+          Log out
+        </Button>
+      </div>
     </div>
   );
 }
