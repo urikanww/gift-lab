@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { AxiosError } from 'axios';
 import api, { apiError } from '../lib/api';
 import { getEcho } from '../lib/echo';
 import { Badge, Button, Card, Input, cn } from '../ui';
@@ -66,7 +67,16 @@ export default function TrackPage() {
       });
       setResult(data);
     } catch (err) {
-      setError(apiError(err) || 'No order matches those details.');
+      // 404 (generic anti-enumeration miss) and 422 (validation jargon) both
+      // just mean "not found" to a visitor — always show the friendly line.
+      // Keep the server's message only where it carries real signal (429
+      // throttle, 5xx outage).
+      const status = err instanceof AxiosError ? err.response?.status : undefined;
+      if (status === 404 || status === 422) {
+        setError('No order matches those details.');
+      } else {
+        setError(apiError(err) || 'No order matches those details.');
+      }
     } finally {
       setBusy(false);
     }

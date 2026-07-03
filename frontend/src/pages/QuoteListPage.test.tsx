@@ -62,6 +62,8 @@ it('shows the company column and staff copy for staff', () => {
   // Rendered in both the desktop table and the mobile card list.
   expect(screen.getAllByText('Acme Gifts Pte Ltd').length).toBeGreaterThanOrEqual(1);
   expect(screen.getByText(/across every company/i)).toBeInTheDocument();
+  // Staff keep the operational "Quotes" title.
+  expect(screen.getByRole('heading', { name: 'Quotes' })).toBeInTheDocument();
 });
 
 it('hides the company column and keeps buyer copy for buyers', () => {
@@ -77,4 +79,7 @@ it('hides the company column and keeps buyer copy for buyers', () => {
   expect(screen.queryByText('Company')).not.toBeInTheDocument();
   expect(screen.queryByText('Acme Gifts Pte Ltd')).not.toBeInTheDocument();
   expect(screen.getByText(/track your gift orders/i)).toBeInTheDocument();
+  // Buyers arrive via the "My Orders" nav item — the title matches it.
+  expect(screen.getByRole('heading', { name: 'My Orders' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Quotes' })).not.toBeInTheDocument();
 });

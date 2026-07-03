@@ -27,6 +27,41 @@ const STATE_LABELS: Record<PublishState, string> = {
   CANNOT_PUBLISH: 'Cannot publish',
 };
 
+/**
+ * Human labels for the machine reason tokens emitted by the backend gates
+ * (CompletenessGate + Model3dCatalogueService + resync commands). Unknown or
+ * future tokens fall back to a prettified form so a raw enum never renders.
+ */
+const BLOCKER_LABELS: Record<string, string> = {
+  missing_model_file: 'No printable model file',
+  estimates_unverified: 'Filament estimates unverified',
+  missing_price: 'No price from source',
+  missing_dimensions: 'Missing dimensions or weight',
+  not_printable: 'No print method set',
+  stock_unreadable: 'Stock level unreadable',
+  source_dead: 'Source listing gone',
+  'needs_re-review': 'Needs re-review',
+  license_blocked: 'Licence blocks commercial use',
+  missing_credit: 'Creator credit missing',
+};
+
+function blockerLabel(token: string): string {
+  const known = BLOCKER_LABELS[token];
+  if (known) return known;
+  if (token.startsWith('ip_flag:')) return `IP flag: ${token.slice('ip_flag:'.length)}`;
+  // Fallback prettifier: snake/kebab token → sentence case.
+  const pretty = token.replace(/[_-]+/g, ' ').trim();
+  return pretty.charAt(0).toUpperCase() + pretty.slice(1);
+}
+
+/** Mirrors the render condition of Model3dRowTools (inline fix available). */
+function hasInlineTools(item: AdminCatalogueItem): boolean {
+  return (
+    item.class === 'MODEL_3D' &&
+    ((item.cannot_publish_reasons?.includes('missing_model_file') ?? false) || !item.estimates_verified)
+  );
+}
+
 function ItemThumb({ item }: { item: AdminCatalogueItem }) {
   const [failed, setFailed] = useState(false);
   const href = safeHref(item.image_url);
@@ -352,7 +387,7 @@ export default function CatalogueAdminPage() {
                   {it.cannot_publish_reasons?.length ? (
                     it.cannot_publish_reasons.map((r) => (
                       <Badge key={r} tone="warning" size="sm">
-                        {r}
+                        {blockerLabel(r)}
                       </Badge>
                     ))
                   ) : (
@@ -381,6 +416,20 @@ export default function CatalogueAdminPage() {
                     >
                       Unpublish
                     </Button>
+                  )}
+                  {/* No-action states: tell the staffer what unblocks the row
+                      instead of leaving a dead-end empty cell. */}
+                  {it.publish_state === 'PENDING' && (
+                    <span className="text-xs text-fg-subtle md:text-right">
+                      No action needed — resolves on next catalogue sync.
+                    </span>
+                  )}
+                  {it.publish_state === 'CANNOT_PUBLISH' && (
+                    <span className="text-xs text-fg-subtle md:text-right">
+                      {hasInlineTools(it)
+                        ? 'Use the tools below to clear the blockers.'
+                        : 'Fix the blockers at the source — re-checked on next sync.'}
+                    </span>
                   )}
                 </div>
 

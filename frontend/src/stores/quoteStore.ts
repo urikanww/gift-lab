@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
-import { getEcho, onEchoReconnect } from '../lib/echo';
+import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
 import type { CartLine, Paginated, Proof, Quote, QuoteState } from '../types';
 
 // Unregister handle for the reconnect-refetch subscription.
@@ -43,7 +43,8 @@ interface QuoteStoreState {
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
   decideProof: (proofId: number, decision: 'approve' | 'request_changes', notes: string | null) => Promise<void>;
   issuePurchaseOrder: (id: number, poRef: string, terms: string | null) => Promise<void>;
-  payNow: (id: number) => Promise<void>;
+  /** Resolves true when payment was captured immediately (no redirect). */
+  payNow: (id: number) => Promise<boolean>;
   subscribeCompany: (companyId: number) => void;
   unsubscribeCompany: () => void;
 }
@@ -182,17 +183,19 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await ensureCsrf();
       const { data } = await api.post<{ checkout_url: string; paid: boolean }>(`/quotes/${id}/pay`);
       if (data.paid) {
-        // Fixture/dev: captured immediately — refresh to show production status.
+        // Fixture/dev: captured immediately — refresh to show production status
+        // and report success so the caller can confirm (no redirect happens).
         await get().fetchQuote(id);
-      } else {
-        // Stripe: redirect to hosted checkout.
-        window.location.href = data.checkout_url;
+        return true;
       }
+      // Stripe: redirect to hosted checkout.
+      window.location.href = data.checkout_url;
     } catch (err) {
       // Payment provider / gateway failure: surface friendly copy so the pay
       // button never freezes on an unhandled rejection.
       set({ error: apiError(err) });
     }
+    return false;
   },
 
   subscribeCompany: (companyId) => {
@@ -207,9 +210,9 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       if (current) void get().fetchQuote(current.id);
     });
 
-    const echo = getEcho();
-    echo
-      .private(`company.${companyId}`)
+    // Shared refcounted membership: other stores may listen on the same
+    // company channel, so never tear it down directly (see lib/echo).
+    joinSharedPrivate(`company.${companyId}`)
       .listen('.quote.state-changed', (e: QuoteStateChangedPayload) => {
         set((s) => ({
           quotes: s.quotes.map((q) =>
@@ -237,7 +240,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     if (companyId !== null) {
       offReconnect?.();
       offReconnect = null;
-      getEcho().leave(`company.${companyId}`);
+      leaveSharedPrivate(`company.${companyId}`);
       set({ subscribedCompany: null });
     }
   },
