@@ -1,9 +1,10 @@
 import type { CartLine } from '../../types';
 
-/** Human label for a cart line's customization (logo size). */
+/** Human label for a cart line's customization (filament colour + logo size). */
 export function customizationLabel(line: CartLine): string {
-  const { logo_size } = line.customization;
+  const { logo_size, filament_color } = line.customization;
   const parts: string[] = [];
+  if (filament_color) parts.push(`${filament_color} filament`);
   if (logo_size) parts.push(`Logo ${logo_size}`);
   return parts.length ? parts.join(' · ') : 'Blank';
 }

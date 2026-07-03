@@ -58,7 +58,7 @@ function Stars({ value, className }: { value: number; className?: string }) {
   return (
     <span className={cn('inline-flex text-warning', className)} aria-hidden="true">
       {Array.from({ length: 5 }).map((_, i) => (
-        <span key={i} className={i < Math.round(value) ? 'text-warning' : 'text-fg-subtle/40'}>
+        <span key={i} className={i < Math.round(value) ? 'text-warning' : 'text-fg-subtle/50'}>
           ★
         </span>
       ))}
@@ -330,7 +330,7 @@ export default function ProductDetailPage() {
                       className={cn(
                         'rounded-full border px-3 py-1.5 text-sm capitalize transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
                         active
-                          ? 'border-primary bg-primary/10 text-primary'
+                          ? 'border-primary bg-primary/10 font-medium text-fg'
                           : 'border-border bg-surface text-fg-muted hover:border-primary/50 hover:text-fg',
                       )}
                     >

@@ -77,6 +77,8 @@ export interface Product {
 export interface Customization {
   logo_size?: string | null;
   artwork_ref?: string | null;
+  /** MODEL_3D filament colour chosen in the designer (Black/White/Grey). */
+  filament_color?: string | null;
 }
 
 export interface LineItem {
