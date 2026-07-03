@@ -76,9 +76,10 @@ export default function HomePage() {
                 type="search"
                 aria-label="Search gifts"
                 placeholder="Search mugs, totes, figurines…"
+                className="min-h-[44px]"
               />
             </div>
-            <Button type="submit" variant="primary" size="md">
+            <Button type="submit" variant="primary" size="md" className="min-h-[44px]">
               Search
             </Button>
           </form>

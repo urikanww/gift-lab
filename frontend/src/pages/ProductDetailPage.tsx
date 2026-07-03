@@ -147,7 +147,7 @@ export default function ProductDetailPage() {
     return () => {
       active = false;
     };
-  }, [product, selectedVariantId]);
+  }, [product?.id, selectedVariantId]);
 
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === selectedVariantId) ?? null,
@@ -490,10 +490,10 @@ export default function ProductDetailPage() {
       {/* Mobile sticky action bar — the in-flow CTAs sit far below the fold on a
           phone, so mirror them in a fixed bar. Hidden at md+ where CTAs are visible. */}
       <div className="fixed inset-x-0 bottom-0 z-raised flex gap-2 border-t border-border bg-surface/95 p-3 backdrop-blur-md md:hidden">
-        <LinkButton to={designPath(product)} variant="primary" size="md" className="flex-1">
+        <LinkButton to={designPath(product)} variant="primary" size="md" className="min-h-[44px] flex-1">
           Customize
         </LinkButton>
-        <Button variant="outline" size="md" onClick={handleAddSample} className="flex-1">
+        <Button variant="outline" size="md" onClick={handleAddSample} className="min-h-[44px] flex-1">
           Add sample
         </Button>
       </div>
