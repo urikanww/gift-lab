@@ -35,19 +35,27 @@ class DashboardMetrics
     /** @return array<string,mixed> */
     public function snapshot(bool $includeValue): array
     {
+        // Counts are identical for staff and superadmin, so cache them under ONE
+        // key (no staff/super split — that recomputed the same pipeline/production/
+        // queues twice). Only valueBooked differs, so it gets its own key and is
+        // computed/cached solely for superadmins.
         $counts = Cache::remember(
-            'dashboard.metrics.v1'.($includeValue ? '.super' : ''),
+            'dashboard.metrics.v1',
             45,
             fn (): array => [
                 'pipeline' => $this->pipeline(),
                 'production' => $this->production(),
                 'queues' => $this->queues(),
-                'valueBooked' => $includeValue ? $this->valueBooked() : null,
             ],
         );
 
+        $valueBooked = $includeValue
+            ? Cache::remember('dashboard.metrics.v1.value', 45, fn (): array => $this->valueBooked())
+            : null;
+
         return [
             ...$counts,
+            'valueBooked' => $valueBooked,
             'atRisk' => $this->atRisk(),
             'activity' => $this->activity(),
         ];

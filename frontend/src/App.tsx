@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
-import StaffLayout from './components/StaffLayout';
 import RoleLayout from './components/RoleLayout';
 import HomePage from './pages/HomePage';
 import CataloguePage from './pages/CataloguePage';
@@ -73,7 +72,12 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
 
-          {/* Shared authenticated routes: staff render in the console shell, buyers in Layout. */}
+          {/* Authenticated area under ONE RoleLayout parent (staff → console shell,
+              buyers → shopfront). Keeping every staff destination under this single
+              parent means StaffLayout mounts once per session — navigating between
+              /quotes and /dashboard no longer remounts the shell or refetches the
+              dashboard. Staff-only pages carry their own staffOnly guard so buyers
+              (who resolve to Layout here) are redirected away. */}
           <Route
             element={
               <ProtectedRoute>
@@ -84,20 +88,10 @@ export default function App() {
             <Route path="quotes" element={<QuoteListPage />} />
             <Route path="quotes/:id" element={<QuoteDetailPage />} />
             <Route path="brand-kit" element={<BrandKitPage />} />
-          </Route>
-
-          {/* Staff-only console. */}
-          <Route
-            element={
-              <ProtectedRoute staffOnly>
-                <StaffLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="production-queue" element={<ProductionQueuePage />} />
-            <Route path="procurement" element={<ProcurementPage />} />
-            <Route path="catalogue-admin" element={<CatalogueAdminPage />} />
+            <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
+            <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
+            <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
+            <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
           </Route>
         </Routes>
       </BrowserRouter>
