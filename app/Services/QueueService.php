@@ -12,6 +12,7 @@ use App\Events\ProductionQueueUpdated;
 use App\Events\QuoteStateChanged;
 use App\Models\ProductionJob;
 use App\Models\Quote;
+use App\Support\Broadcasting;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -82,12 +83,12 @@ final class QueueService
                 }
 
                 $jobs->push($job);
-                DB::afterCommit(fn () => ProductionQueueUpdated::dispatch($job, 'queued'));
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($job, 'queued')));
             }
 
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::Ready);
-            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
         });
 
         return $jobs;
@@ -136,14 +137,35 @@ final class QueueService
             JobState::Ready => 'queued',
         };
 
-        ProductionQueueUpdated::dispatch($job, $action);
+        Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($job, $action));
 
-        // A job advance leaves the quote in READY, so no QuoteStateChanged fires
-        // — push the tracker update directly (IN_PRODUCTION/SHIPPED/DELIVERED
-        // are the stages buyers watch most).
+        // When the final job for a quote closes, close the quote too
+        // (READY -> CLOSED). Without this edge the tracker's DELIVERED stage —
+        // which keys off QuoteState::Closed — was unreachable: no other code
+        // path ever performed the READY->CLOSED transition.
         $job->loadMissing('quote');
-        if ($job->quote !== null) {
-            OrderTrackingUpdated::dispatch($job->quote);
+        if ($target === JobState::Closed
+            && $job->quote !== null
+            && $job->quote->state === QuoteState::Ready
+        ) {
+            $allClosed = $job->quote->jobs()
+                ->where('state', '!=', JobState::Closed->value)
+                ->doesntExist();
+
+            if ($allClosed) {
+                $previous = $job->quote->state->value;
+                $job->quote->transitionTo(QuoteState::Closed);
+                Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($job->quote, $previous));
+            }
+        }
+
+        // A job advance normally leaves the quote in READY, so no
+        // QuoteStateChanged fires — push the tracker update directly
+        // (IN_PRODUCTION/SHIPPED/DELIVERED are the stages buyers watch most).
+        // The QuoteStateChanged above already mirrors onto the tracker for the
+        // closing case, so avoid a duplicate there.
+        if ($job->quote !== null && $job->quote->state !== QuoteState::Closed) {
+            Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($job->quote));
         }
 
         return $job;

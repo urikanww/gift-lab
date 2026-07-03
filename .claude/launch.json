@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "reverb",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["artisan", "reverb:start", "--port=8080"],
+      "port": 8080
     }
   ]
 }

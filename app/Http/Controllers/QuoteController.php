@@ -41,8 +41,15 @@ class QuoteController extends Controller
 
     public function store(StoreQuoteRequest $request): JsonResponse
     {
+        $companyId = (int) $request->integer('company_id');
+
+        // Defense-in-depth: tenancy is validated in StoreQuoteRequest, but the
+        // policy is an independent net so no future entry point can create a
+        // cross-company quote by bypassing the FormRequest.
+        $this->authorize('create', [Quote::class, $companyId]);
+
         $quote = $this->quotes->create(
-            (int) $request->integer('company_id'),
+            $companyId,
             $request->array('line_items'),
             $request->input('notes'),
         );

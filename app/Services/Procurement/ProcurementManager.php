@@ -12,6 +12,7 @@ use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
 use App\Services\AuditLogger;
 use App\Services\Procurement\Contracts\ProcurementStrategy;
+use App\Support\Broadcasting;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -103,6 +104,6 @@ final class ProcurementManager
             'procured_price' => $result->procuredPrice,
         ]);
 
-        DB::afterCommit(fn () => LineItemAwaitingReconfirm::dispatch($lineItem, $result->outcome->reasonTag()));
+        DB::afterCommit(fn () => Broadcasting::dispatch(fn () => LineItemAwaitingReconfirm::dispatch($lineItem, $result->outcome->reasonTag())));
     }
 }

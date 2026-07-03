@@ -18,6 +18,7 @@ use App\Models\Quote;
 use App\Models\Variant;
 use App\Exceptions\DomainRuleException;
 use App\Services\Procurement\ProcurementManager;
+use App\Support\Broadcasting;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -171,7 +172,7 @@ final class QuoteService
         $quote->save();
         $quote->transitionTo(QuoteState::Sent);
 
-        QuoteStateChanged::dispatch($quote, $previous);
+        Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
 
         return $quote;
     }
@@ -180,7 +181,7 @@ final class QuoteService
     {
         $previous = $quote->state->value;
         $quote->transitionTo(QuoteState::Accepted);
-        QuoteStateChanged::dispatch($quote, $previous);
+        Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
 
         return $quote;
     }
@@ -195,7 +196,7 @@ final class QuoteService
             if ($quote->state === QuoteState::Accepted) {
                 $previous = $quote->state->value;
                 $quote->transitionTo(QuoteState::Proofing);
-                DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
             }
 
             if ($quote->state !== QuoteState::Proofing) {
@@ -212,7 +213,7 @@ final class QuoteService
                 'notes' => $notes,
             ]);
 
-            DB::afterCommit(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id));
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
 
             return $proof;
         });
@@ -238,8 +239,8 @@ final class QuoteService
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::ProofApproved);
 
-            DB::afterCommit(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id));
-            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $proof;
         });
@@ -256,7 +257,7 @@ final class QuoteService
         }
         $proof->transitionTo(ProofState::ChangesRequested);
 
-        ProofStatusChanged::dispatch($proof, $proof->quote->company_id);
+        Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $proof->quote->company_id));
 
         return $proof;
     }
@@ -282,7 +283,7 @@ final class QuoteService
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::PoIssued);
             $quote->transitionTo(QuoteState::Confirmed);
-            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             $this->audit->log($po, 'purchase_order.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
 
@@ -304,7 +305,7 @@ final class QuoteService
 
             $this->audit->log($quote, 'quote.cancelled', ['state' => $previous], ['reason' => $reason]);
 
-            DB::afterCommit(fn () => QuoteStateChanged::dispatch($quote, $previous));
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $quote->fresh(['lineItems']);
         });
@@ -319,7 +320,7 @@ final class QuoteService
         if ($quote->state === QuoteState::Confirmed) {
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::Procuring);
-            QuoteStateChanged::dispatch($quote, $previous);
+            Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
         }
 
         if ($quote->state !== QuoteState::Procuring) {
