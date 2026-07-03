@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { Card, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
+import { humanizeState } from '../lib/quoteStatus';
 
 const PIPELINE_ORDER = [
   'DRAFT', 'SENT', 'CHANGES_REQUESTED', 'ACCEPTED', 'PROOFING', 'PROOF_APPROVED',
@@ -60,7 +61,7 @@ export default function DashboardPage() {
             const n = data.pipeline[s] ?? 0;
             return (
               <div key={s} className="flex items-center gap-3 text-sm">
-                <span className="w-40 shrink-0 text-fg-muted">{s}</span>
+                <span className="w-40 shrink-0 text-fg-muted">{humanizeState(s)}</span>
                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-surface-2">
                   <div className="h-full rounded-full bg-primary" style={{ width: `${(n / maxPipe) * 100}%` }} />
                 </div>
@@ -75,7 +76,7 @@ export default function DashboardPage() {
         <h2 className="font-display text-xl text-fg">Production health</h2>
         <Card padding="md" className="flex flex-wrap gap-6 text-sm">
           {Object.entries(data.production.byState).map(([k, v]) => (
-            <div key={k}><span className="text-fg-muted">{k}: </span><span className="font-semibold text-fg">{v}</span></div>
+            <div key={k}><span className="text-fg-muted">{humanizeState(k)}: </span><span className="font-semibold text-fg">{v}</span></div>
           ))}
           <div><span className="text-fg-muted">WIP: </span><span className="font-semibold text-fg">{data.production.wip}</span></div>
           <div><span className="text-fg-muted">Overdue: </span><span className="font-semibold text-danger">{data.production.overdue}</span></div>

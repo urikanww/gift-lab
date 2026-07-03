@@ -71,8 +71,14 @@ export default function QuoteDetailPage() {
   const { toast } = useToast();
 
   const [artworkRef, setArtworkRef] = useState('');
+  const [artworkRefError, setArtworkRefError] = useState<string | undefined>();
   const [poRef, setPoRef] = useState('');
+  const [poRefError, setPoRefError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  // "Request changes" inline reveal: let the buyer say WHAT to change instead
+  // of firing a canned note.
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [changeNotes, setChangeNotes] = useState('');
 
   useEffect(() => {
     void fetchQuote(quoteId);
@@ -92,6 +98,24 @@ export default function QuoteDetailPage() {
 
   const latestOpenProof = (proofs: Proof[] | undefined): Proof | null =>
     proofs?.find((p) => p.state === 'SENT') ?? null;
+
+  // Light client-side validation for the staff free-text refs — catches the
+  // obvious mistakes (blank, spaces in a storage key, runaway length) before a
+  // round-trip; the backend remains the authority.
+  const validateArtworkRef = (value: string): string | undefined => {
+    const v = value.trim();
+    if (!v) return 'Enter the object-store key for the artwork.';
+    if (/\s/.test(v)) return 'Storage keys cannot contain spaces.';
+    if (v.length > 1024) return 'Storage key is too long (max 1024 characters).';
+    return undefined;
+  };
+
+  const validatePoRef = (value: string): string | undefined => {
+    const v = value.trim();
+    if (!v) return 'Enter the PO number.';
+    if (v.length > 64) return 'PO reference is too long (max 64 characters).';
+    return undefined;
+  };
 
   if (loading && !current) return <QuoteDetailSkeleton />;
   if (error) return <ErrorState message={error} onRetry={() => fetchQuote(quoteId)} />;
@@ -193,33 +217,75 @@ export default function QuoteDetailPage() {
 
             {/* Buyer sign-off on the open proof (gate 1). */}
             {!isStaff && latestOpenProof(quote.proofs) && (
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button
-                  variant="primary"
-                  loading={busy}
-                  disabled={busy}
-                  onClick={() =>
-                    run(
-                      () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
-                      'Proof approved',
-                    )
-                  }
-                >
-                  Approve proof
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() =>
-                    run(
-                      () =>
-                        decideProof(latestOpenProof(quote.proofs)!.id, 'request_changes', 'Please revise.'),
-                      'Changes requested',
-                    )
-                  }
-                >
-                  Request changes
-                </Button>
+              <div className="mt-5 flex flex-col gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
+                        'Proof approved',
+                      )
+                    }
+                  >
+                    Approve proof
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy || changesOpen}
+                    onClick={() => setChangesOpen(true)}
+                  >
+                    Request changes
+                  </Button>
+                </div>
+
+                {/* Inline reveal: capture WHAT to change before sending. */}
+                {changesOpen && (
+                  <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3">
+                    <label htmlFor="change-notes" className="text-sm font-medium text-fg">
+                      What should we change?{' '}
+                      <span className="font-normal text-fg-muted">(optional)</span>
+                    </label>
+                    <textarea
+                      id="change-notes"
+                      rows={3}
+                      maxLength={2000}
+                      value={changeNotes}
+                      onChange={(e) => setChangeNotes(e.target.value)}
+                      placeholder="e.g. Move the logo up and use the darker blue from our brand kit."
+                      className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-fg placeholder:text-fg-subtle transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+                    />
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        variant="primary"
+                        loading={busy}
+                        disabled={busy}
+                        onClick={() =>
+                          run(async () => {
+                            // API requires a note with request_changes — fall
+                            // back to a generic one if the buyer left it blank.
+                            await decideProof(
+                              latestOpenProof(quote.proofs)!.id,
+                              'request_changes',
+                              changeNotes.trim() || 'Please revise.',
+                            );
+                            if (!useQuoteStore.getState().error) {
+                              setChangesOpen(false);
+                              setChangeNotes('');
+                            }
+                          }, 'Changes requested')
+                        }
+                      >
+                        Send request
+                      </Button>
+                      <Button variant="ghost" disabled={busy} onClick={() => setChangesOpen(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -252,7 +318,16 @@ export default function QuoteDetailPage() {
                     variant="primary"
                     loading={busy}
                     disabled={busy}
-                    onClick={() => run(() => payNow(quote.id))}
+                    onClick={() =>
+                      run(async () => {
+                        // Only toast on immediate capture — the Stripe path
+                        // redirects away, so feedback there would be lost.
+                        const paid = await payNow(quote.id);
+                        if (paid && !useQuoteStore.getState().error) {
+                          toast({ title: 'Payment received', tone: 'success' });
+                        }
+                      })
+                    }
                   >
                     Pay now
                   </Button>
@@ -301,19 +376,28 @@ export default function QuoteDetailPage() {
                         label="Artwork reference"
                         placeholder="object-store key"
                         value={artworkRef}
-                        onChange={(e) => setArtworkRef(e.target.value)}
+                        error={artworkRefError}
+                        onChange={(e) => {
+                          setArtworkRef(e.target.value);
+                          setArtworkRefError(undefined);
+                        }}
                       />
                     </div>
                     <Button
                       variant="primary"
                       loading={busy}
                       disabled={busy || !artworkRef}
-                      onClick={() =>
-                        run(async () => {
-                          await issueProof(quote.id, artworkRef, null);
+                      onClick={() => {
+                        const err = validateArtworkRef(artworkRef);
+                        if (err) {
+                          setArtworkRefError(err);
+                          return;
+                        }
+                        void run(async () => {
+                          await issueProof(quote.id, artworkRef.trim(), null);
                           setArtworkRef('');
-                        }, 'Proof issued')
-                      }
+                        }, 'Proof issued');
+                      }}
                     >
                       Issue proof
                     </Button>
@@ -327,19 +411,28 @@ export default function QuoteDetailPage() {
                         label="PO reference"
                         placeholder="PO number"
                         value={poRef}
-                        onChange={(e) => setPoRef(e.target.value)}
+                        error={poRefError}
+                        onChange={(e) => {
+                          setPoRef(e.target.value);
+                          setPoRefError(undefined);
+                        }}
                       />
                     </div>
                     <Button
                       variant="primary"
                       loading={busy}
                       disabled={busy || !poRef}
-                      onClick={() =>
-                        run(async () => {
-                          await issuePurchaseOrder(quote.id, poRef, null);
+                      onClick={() => {
+                        const err = validatePoRef(poRef);
+                        if (err) {
+                          setPoRefError(err);
+                          return;
+                        }
+                        void run(async () => {
+                          await issuePurchaseOrder(quote.id, poRef.trim(), null);
                           setPoRef('');
-                        }, 'Purchase order issued')
-                      }
+                        }, 'Purchase order issued');
+                      }}
                     >
                       Issue PO
                     </Button>

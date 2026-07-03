@@ -185,7 +185,8 @@ export default function CataloguePage() {
             <nav className="flex items-center justify-center gap-4" aria-label="Pagination">
               <Button
                 variant="outline"
-                size="sm"
+                size="md"
+                className="min-h-[44px]"
                 disabled={loading || page <= 1}
                 onClick={() => void load(page - 1)}
               >
@@ -196,7 +197,8 @@ export default function CataloguePage() {
               </span>
               <Button
                 variant="outline"
-                size="sm"
+                size="md"
+                className="min-h-[44px]"
                 disabled={loading || page >= lastPage}
                 onClick={() => void load(page + 1)}
               >
@@ -227,7 +229,7 @@ function CategoryChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast',
+        'flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         active
           ? 'border-primary bg-primary text-primary-fg'

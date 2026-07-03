@@ -7,7 +7,10 @@ use App\Models\Company;
 use App\Models\Product;
 use App\Models\Quote;
 use App\Models\User;
+use App\Models\Variant;
+use App\Services\QuoteService;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -35,6 +38,36 @@ it('lets a buyer create a draft quote priced from config', function (): void {
     expect((float) $response->json('data.total'))->toBeGreaterThan(0.0);
     $this->assertDatabaseCount('line_items', 1);
 });
+
+it('creates a multi-line quote with batched product/variant lookups', function (): void {
+    Sanctum::actingAs($this->buyer);
+    $second = Product::factory()->create(['base_cost' => 6, 'print_method' => 'UV', 'publish_state' => 'PUBLISHED']);
+    $variant = Variant::factory()->create(['product_id' => $second->id, 'price_delta' => 1.50]);
+
+    $response = $this->postJson('/api/quotes', [
+        'company_id' => $this->company->id,
+        'line_items' => [
+            ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 3],
+            ['product_id' => $second->id, 'variant_id' => $variant->id, 'qty' => 5],
+            ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 2],
+        ],
+    ]);
+
+    $response->assertCreated()->assertJsonPath('data.state', 'DRAFT');
+    $this->assertDatabaseCount('line_items', 3);
+    expect((float) $response->json('data.total'))->toBeGreaterThan(0.0)
+        // Line 2 resolved its variant from the batched lookup and priced it.
+        ->and($response->json('data.line_items.1.variant_id'))->toBe($variant->id)
+        ->and((float) $response->json('data.line_items.1.unit_price'))->toBeGreaterThan(0.0);
+});
+
+it('still raises model-not-found (404) when a line references a missing product id', function (): void {
+    // The FormRequest's exists rule catches this over HTTP; the service must
+    // keep the same findOrFail semantics now that lookups are batched.
+    app(QuoteService::class)->create($this->company->id, [
+        ['product_id' => 999999, 'variant_id' => null, 'qty' => 1, 'customization' => null],
+    ], null);
+})->throws(ModelNotFoundException::class);
 
 it('persists the need-by deadline and returns it on fetch', function (): void {
     Sanctum::actingAs($this->buyer);

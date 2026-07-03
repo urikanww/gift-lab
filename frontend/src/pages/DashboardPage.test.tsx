@@ -25,6 +25,16 @@ describe('DashboardPage', () => {
     expect(screen.getAllByText(/at.risk|overdue/i).length).toBeGreaterThan(0);
   });
 
+  it('humanizes raw enum states in the pipeline and production health', () => {
+    renderPage();
+    // Pipeline rows: SENT → "Sent" (no raw enum tokens).
+    expect(screen.getAllByText('Sent').length).toBeGreaterThan(0);
+    expect(screen.queryByText('SENT')).not.toBeInTheDocument();
+    // Production byState: IN_PRODUCTION → "In production".
+    expect(screen.getByText(/^In production:/)).toBeInTheDocument();
+    expect(screen.queryByText(/IN_PRODUCTION/)).not.toBeInTheDocument();
+  });
+
   it('shows an error state', () => {
     useDashboardStore.setState({ data: null, loading: false, error: 'boom' });
     renderPage();

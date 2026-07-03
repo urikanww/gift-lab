@@ -74,7 +74,7 @@ export default function SiteHeader() {
             <>
               <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
               <NavLink to="/catalogue-admin" className={navLinkClass}>
-                Catalogue Gate
+                Catalogue gate
               </NavLink>
               <NavLink to="/production-queue" className={navLinkClass}>
                 Production
@@ -162,7 +162,7 @@ function CategoriesMenu() {
         aria-haspopup="true"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
+          'flex min-h-[44px] items-center rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           open ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
         )}
@@ -374,7 +374,7 @@ function MobileDrawer({
               {isStaffRole(user?.role) && (
                 <>
                   <NavLink to="/catalogue-admin" onClick={onClose} className={navLinkClass}>
-                    Catalogue Gate
+                    Catalogue gate
                   </NavLink>
                   <NavLink to="/production-queue" onClick={onClose} className={navLinkClass}>
                     Production

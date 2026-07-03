@@ -677,7 +677,7 @@ function IconButton({
         whileTap={animate ? { scale: 0.9 } : undefined}
         transition={springSoft}
         className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-full text-fg transition-colors duration-fast ease-standard',
+          'flex h-10 w-10 items-center justify-center rounded-full text-fg transition-colors duration-fast ease-standard',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg',
           tone === 'danger' ? 'hover:bg-danger-bg hover:text-danger' : 'hover:bg-surface-2',
         )}

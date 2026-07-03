@@ -133,3 +133,26 @@ it('falls back to name order for an unknown sort value', function (): void {
     expect(collect($this->getJson('/api/catalogue?sort=garbage')->json('data'))->pluck('name')->all())
         ->toBe(['Aardvark Mug', 'Zebra Mug']);
 });
+
+it('seeds the CORE catalogue with self-hosted image urls', function (): void {
+    (new Database\Seeders\CoreCatalogueSeeder())->run();
+
+    expect(Product::query()->where('class', 'CORE')->count())->toBe(10)
+        ->and(Product::query()->where('class', 'CORE')->whereNull('image_url')->count())->toBe(0)
+        ->and(Product::query()->where('name', 'Ceramic Mug 11oz')->value('image_url'))
+        ->toEndWith('storage/products/core-1.jpg');
+});
+
+it('re-runs the CORE seeder idempotently, backfilling missing image urls', function (): void {
+    $seeder = new Database\Seeders\CoreCatalogueSeeder();
+    $seeder->run();
+
+    // Simulate a database seeded before the local images landed.
+    Product::query()->where('class', 'CORE')->update(['image_url' => null]);
+
+    $seeder->run();
+
+    // No duplicated products; every CORE row points back at its local image.
+    expect(Product::query()->where('class', 'CORE')->count())->toBe(10)
+        ->and(Product::query()->where('class', 'CORE')->whereNull('image_url')->count())->toBe(0);
+});

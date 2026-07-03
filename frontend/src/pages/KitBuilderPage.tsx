@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { fetchCatalogue } from '../lib/catalogue';
 import { fetchBrandKit, type BrandKit } from '../lib/brandKit';
@@ -27,6 +27,9 @@ export default function KitBuilderPage() {
   const { toast } = useToast();
   const addLine = useCartStore((s) => s.addLine);
   const companyId = useAuthStore((s) => s.user?.company_id ?? null);
+  // Only flag the login gate once the auth probe has settled — avoids flashing
+  // the note at signed-in users while /user is still in flight.
+  const needsLogin = useAuthStore((s) => s.status === 'ready' && s.user === null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,6 +241,21 @@ export default function KitBuilderPage() {
           <Button size="lg" onClick={() => void addKitToCart()} loading={adding} disabled={adding || tray.length === 0}>
             Add kit to cart
           </Button>
+
+          {/* Surface the auth gate up front — placing the order requires an
+              account, so don't let checkout be the first place they learn it. */}
+          {needsLogin && (
+            <p className="text-xs text-fg-muted">
+              You can build your kit now — you’ll need to{' '}
+              <Link
+                to="/login"
+                className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+              >
+                log in
+              </Link>{' '}
+              before placing the order.
+            </p>
+          )}
         </Card>
       </aside>
     </div>

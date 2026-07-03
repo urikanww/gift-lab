@@ -19,6 +19,7 @@ use App\Models\Variant;
 use App\Exceptions\DomainRuleException;
 use App\Services\Procurement\ProcurementManager;
 use App\Support\Broadcasting;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -46,10 +47,32 @@ final class QuoteService
     public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null): Quote
     {
         return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy): Quote {
+            // Batch-load products/variants once (two queries) instead of one
+            // query per line — same pattern as PriceEstimateController.
+            $productIds = array_values(array_unique(array_map(
+                static fn (array $spec): int => (int) $spec['product_id'],
+                $lineSpecs,
+            )));
+            $variantIds = array_values(array_filter(array_unique(array_map(
+                static fn (array $spec): ?int => isset($spec['variant_id']) ? (int) $spec['variant_id'] : null,
+                $lineSpecs,
+            )), static fn (?int $id): bool => $id !== null));
+
+            $products = $productIds === []
+                ? collect()
+                : Product::query()->whereIn('id', $productIds)->get()->keyBy('id');
+            $variants = $variantIds === []
+                ? collect()
+                : Variant::query()->whereIn('id', $variantIds)->get()->keyBy('id');
+
             $resolved = [];
             foreach ($lineSpecs as $spec) {
-                $product = Product::findOrFail($spec['product_id']);
-                $variant = isset($spec['variant_id']) ? Variant::find($spec['variant_id']) : null;
+                $product = $products->get((int) $spec['product_id']);
+                if ($product === null) {
+                    // Preserve findOrFail semantics: a bad product id still 404s.
+                    throw (new ModelNotFoundException())->setModel(Product::class, [(int) $spec['product_id']]);
+                }
+                $variant = isset($spec['variant_id']) ? $variants->get((int) $spec['variant_id']) : null;
                 $customization = $spec['customization'] ?? null;
 
                 $resolved[] = [
