@@ -7,13 +7,11 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
 import { useCartStore } from '../stores/cartStore';
 import { CATEGORIES } from '../lib/categories';
 import { isStaffRole } from '../lib/roles';
 import { Badge, Button, Input, useTheme, cn } from '../ui';
-import { useReducedMotionSafe } from '../motion';
 import type { User } from '../types';
 
 const FOCUSABLE =
@@ -269,7 +267,6 @@ function MobileDrawer({
   onSearch: (e: FormEvent<HTMLFormElement>) => void;
   onLogout: () => void;
 }) {
-  const animate = useReducedMotionSafe();
   const panelRef = useRef<HTMLElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -321,28 +318,21 @@ function MobileDrawer({
     };
   }, [open]);
 
+  if (!open) return null;
+
   return (
-    <AnimatePresence>
-      {open && (
-        <div className="md:hidden" onKeyDown={handleKeyDown}>
-          <motion.div
-            className="fixed inset-0 z-modal bg-black/50"
-            initial={animate ? { opacity: 0 } : false}
-            animate={{ opacity: 1 }}
-            exit={animate ? { opacity: 0 } : undefined}
-            onClick={onClose}
-            aria-hidden="true"
-          />
-          <motion.nav
-            ref={panelRef}
-            aria-label="Mobile"
-            tabIndex={-1}
-            className="fixed inset-y-0 right-0 z-modal flex w-72 max-w-[85vw] flex-col gap-1 border-l border-border bg-surface p-4 focus:outline-none"
-            initial={animate ? { x: '100%' } : false}
-            animate={{ x: 0 }}
-            exit={animate ? { x: '100%' } : undefined}
-            transition={{ duration: 0.24, ease: [0.2, 0, 0, 1] }}
-          >
+    <div className="md:hidden" onKeyDown={handleKeyDown}>
+      <div
+        className="fixed inset-0 z-modal bg-black/50 motion-safe:animate-fadeIn"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <nav
+        ref={panelRef}
+        aria-label="Mobile"
+        tabIndex={-1}
+        className="fixed inset-y-0 right-0 z-modal flex w-72 max-w-[85vw] translate-x-0 flex-col gap-1 border-l border-border bg-surface p-4 focus:outline-none motion-safe:animate-drawerIn"
+      >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-display text-lg font-semibold text-fg">Menu</span>
               <button
@@ -409,9 +399,7 @@ function MobileDrawer({
                 </Button>
               )}
             </div>
-          </motion.nav>
-        </div>
-      )}
-    </AnimatePresence>
+      </nav>
+    </div>
   );
 }

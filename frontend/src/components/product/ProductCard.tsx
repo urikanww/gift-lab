@@ -102,7 +102,7 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
           <Link
             to={designPath(product)}
             aria-label={`Personalize ${product.name}`}
-            className="pointer-events-none absolute inset-x-2 bottom-2 z-raised translate-y-1 rounded-md bg-primary/95 px-3 py-1.5 text-center text-xs font-semibold text-primary-fg opacity-0 shadow-md transition-all duration-base group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:group-hover:translate-y-0"
+            className="pointer-events-none absolute inset-x-2 bottom-2 z-raised translate-y-1 rounded-md bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-fg opacity-0 shadow-md ring-1 ring-black/10 transition-all duration-base group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:group-hover:translate-y-0"
           >
             🎨 Personalize now
           </Link>

@@ -160,9 +160,19 @@ export default {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        drawerIn: {
+          from: { transform: 'translateX(100%)' },
+          to: { transform: 'translateX(0)' },
+        },
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
       },
       animation: {
         shimmer: 'shimmer 1.6s var(--ease-in-out) infinite',
+        drawerIn: 'drawerIn 240ms var(--ease-out) both',
+        fadeIn: 'fadeIn 200ms var(--ease-out) both',
       },
     },
   },
