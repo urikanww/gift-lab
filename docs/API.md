@@ -16,14 +16,21 @@ latter two). Rate limits: login 6/min, public 60/min, authenticated 120/min.
 ```json
 { "email": "buyer@acme.com", "password": "secret", "remember": false }
 ```
-`200` → `{ "user": { "id", "name", "email", "role", "company_id" } }`
+`200`:
+```json
+{ "user": { "id": 1, "company_id": 1, "name": "Jane Buyer", "email": "buyer@acme.com",
+            "role": "buyer",
+            "company": { "id": 1, "name": "Acme Gifts Pte Ltd", "address": "1 Raffles Pl" } } }
+```
+`company` is `null` for staff users without a company. No other user fields are
+exposed (no timestamps / `email_verified_at`).
 `422` → uniform invalid-credentials error (no user enumeration).
 
 ### `POST /logout` · auth
 `204`. Invalidates session, rotates CSRF token.
 
 ### `GET /user` · auth
-`200` → current user object.
+`200` → the same trimmed user object (unwrapped).
 
 ---
 
@@ -175,7 +182,7 @@ on realtime).
 
 ## State machines (authoritative)
 
-- **Quote**: `DRAFT→SENT→(CHANGES_REQUESTED→DRAFT)*→ACCEPTED→PROOFING→PROOF_APPROVED→PO_ISSUED→CONFIRMED→PROCURING→READY→CLOSED`; `CONFIRMED|PROCURING→CANCELLED`.
+- **Quote**: `DRAFT→SENT→(CHANGES_REQUESTED→DRAFT)*→ACCEPTED→PROOFING→PROOF_APPROVED→PO_ISSUED→CONFIRMED→PROCURING→READY→CLOSED`; any pre-production state (`DRAFT`…`PROCURING`) `→CANCELLED` — once `READY`/`CLOSED` there is no cancel edge.
 - **LineItem**: `PENDING→PROCURING→{PURCHASED→INBOUND→RECEIVED→READY | AWAITING_RECONFIRM→(AMENDED→PROCURING | approve→…→READY | DROPPED)}`.
 - **Proof**: `SENT→{APPROVED(terminal) | CHANGES_REQUESTED}`.
 - **Job**: `READY→IN_PRODUCTION→SHIPPED→CLOSED`.
