@@ -30,7 +30,7 @@ function renderLogin() {
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/catalogue-admin" element={<div>GATE PAGE</div>} />
+          <Route path="/dashboard" element={<div>DASHBOARD PAGE</div>} />
           <Route path="/quotes" element={<div>QUOTES PAGE</div>} />
         </Routes>
       </MemoryRouter>
@@ -45,18 +45,18 @@ async function submitCredentials() {
   await user.click(screen.getByRole('button', { name: /sign in/i }));
 }
 
-it('lands staff on the catalogue gate after sign-in', async () => {
+it('lands staff on the dashboard after sign-in', async () => {
   stubLoginAs('staff_admin');
   renderLogin();
   await submitCredentials();
-  await waitFor(() => expect(screen.getByText('GATE PAGE')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('DASHBOARD PAGE')).toBeInTheDocument());
 });
 
-it('lands superadmin on the catalogue gate after sign-in', async () => {
+it('lands superadmin on the dashboard after sign-in', async () => {
   stubLoginAs('superadmin');
   renderLogin();
   await submitCredentials();
-  await waitFor(() => expect(screen.getByText('GATE PAGE')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('DASHBOARD PAGE')).toBeInTheDocument());
 });
 
 it('lands buyers on their quotes after sign-in', async () => {

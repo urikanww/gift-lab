@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import StaffLayout from './components/StaffLayout';
+import RoleLayout from './components/RoleLayout';
 import HomePage from './pages/HomePage';
 import CataloguePage from './pages/CataloguePage';
 import ProductDetailPage from './pages/ProductDetailPage';
@@ -16,6 +18,7 @@ import QuoteDetailPage from './pages/QuoteDetailPage';
 import ProductionQueuePage from './pages/ProductionQueuePage';
 import ProcurementPage from './pages/ProcurementPage';
 import CatalogueAdminPage from './pages/CatalogueAdminPage';
+import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
 import { useQuoteStore } from './stores/quoteStore';
@@ -51,7 +54,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <BrowserRouter>
+        <BrowserRouter
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<HomePage />} />
@@ -65,55 +70,34 @@ export default function App() {
           <Route path="login" element={<LoginPage />} />
           <Route path="catalogue" element={<Navigate to="/products" replace />} />
           <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
-          <Route
-            path="quotes"
-            element={
-              <ProtectedRoute>
-                <QuoteListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="brand-kit"
-            element={
-              <ProtectedRoute>
-                <BrandKitPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="quotes/:id"
-            element={
-              <ProtectedRoute>
-                <QuoteDetailPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="production-queue"
-            element={
-              <ProtectedRoute staffOnly>
-                <ProductionQueuePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="procurement"
-            element={
-              <ProtectedRoute staffOnly>
-                <ProcurementPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="catalogue-admin"
-            element={
-              <ProtectedRoute staffOnly>
-                <CatalogueAdminPage />
-              </ProtectedRoute>
-            }
-          />
             <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+
+          {/* Shared authenticated routes: staff render in the console shell, buyers in Layout. */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <RoleLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="quotes" element={<QuoteListPage />} />
+            <Route path="quotes/:id" element={<QuoteDetailPage />} />
+            <Route path="brand-kit" element={<BrandKitPage />} />
+          </Route>
+
+          {/* Staff-only console. */}
+          <Route
+            element={
+              <ProtectedRoute staffOnly>
+                <StaffLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="production-queue" element={<ProductionQueuePage />} />
+            <Route path="procurement" element={<ProcurementPage />} />
+            <Route path="catalogue-admin" element={<CatalogueAdminPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
