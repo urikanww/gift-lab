@@ -95,6 +95,13 @@ export default function QuoteDetailPage() {
                   Created {new Date(quote.created_at).toLocaleDateString()}
                 </p>
               )}
+              {quote.tracking_code && (
+                <p className="mt-1 text-sm text-fg-muted">
+                  Tracking code{' '}
+                  <span className="font-mono font-semibold text-fg">{quote.tracking_code}</span>
+                  <span className="text-fg-subtle"> — share to track without an account at /track</span>
+                </p>
+              )}
             </div>
             <Badge tone={quoteStateTone(quote.state)} size="md" dot>
               {humanizeState(quote.state)}

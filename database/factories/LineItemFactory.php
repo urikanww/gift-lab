@@ -28,7 +28,6 @@ class LineItemFactory extends Factory
             'currency' => 'SGD',
             'customization' => [
                 'logo_size' => 'M',
-                'name_text' => null,
                 'artwork_ref' => null,
             ],
             'line_state' => 'PENDING',

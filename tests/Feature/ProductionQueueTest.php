@@ -67,6 +67,38 @@ it('orders the shared queue FCFS by readiness', function (): void {
     expect($ordered->first()->id)->toBe($earlyJobs->first()->id);
 });
 
+it('requires a consignment ref to mark a job shipped', function (): void {
+    $job = $this->queue->buildJobsForQuote(readyQuoteWithProof())->first();
+    $this->queue->advance($job, App\Enums\JobState::InProduction);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/production-jobs/{$job->id}/advance", ['state' => 'SHIPPED'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['consignment_ref']);
+
+    expect($job->fresh()->state->value)->toBe('IN_PRODUCTION'); // unchanged
+});
+
+it('marks a job shipped with a consignment ref and audit-logs the transition', function (): void {
+    $job = $this->queue->buildJobsForQuote(readyQuoteWithProof())->first();
+    $this->queue->advance($job, App\Enums\JobState::InProduction);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/production-jobs/{$job->id}/advance", [
+        'state' => 'SHIPPED',
+        'consignment_ref' => 'SP123456789SG',
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.consignment_ref', 'SP123456789SG');
+
+    expect($job->fresh()->consignment_ref)->toBe('SP123456789SG')
+        ->and(
+            App\Models\AuditLog::where('event', 'production_job.advanced')
+                ->whereJsonContains('new_values->state', 'SHIPPED')
+                ->exists()
+        )->toBeTrue();
+});
+
 it('restricts the queue endpoint to staff', function (): void {
     $buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
 

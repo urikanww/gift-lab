@@ -36,7 +36,6 @@ class StoreQuoteRequest extends FormRequest
             'line_items.*.qty' => ['required', 'integer', 'min:1', 'max:100000'],
             'line_items.*.customization' => ['nullable', 'array'],
             'line_items.*.customization.logo_size' => ['nullable', 'string', 'max:20'],
-            'line_items.*.customization.name_text' => ['nullable', 'string', 'max:255'],
             'line_items.*.customization.artwork_ref' => ['nullable', 'string', 'max:2048'],
         ];
     }

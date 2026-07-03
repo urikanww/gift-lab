@@ -33,7 +33,8 @@ class ProductionQueueController extends Controller
     public function advance(AdvanceJobRequest $request, ProductionJob $job): ProductionJobResource
     {
         $target = JobState::from($request->string('state')->toString());
-        $job = $this->queue->advance($job, $target);
+        $consignmentRef = $request->input('consignment_ref');
+        $job = $this->queue->advance($job, $target, $consignmentRef !== null ? (string) $consignmentRef : null);
 
         return new ProductionJobResource($job);
     }

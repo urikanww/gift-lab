@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\JobState;
 use App\Enums\QuoteState;
 use App\Exceptions\InvalidStateTransitionException;
 use Database\Factories\QuoteFactory;
@@ -27,8 +28,21 @@ class Quote extends Model
     use HasFactory;
     use SoftDeletes;
 
+    /** Crockford-style base32 without ambiguous glyphs (I, L, O, U). */
+    private const TRACKING_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+    /** Ordered, buyer-facing tracking stages (CANCELLED handled separately). */
+    public const TRACKING_STAGE_LABELS = [
+        'REVIEW' => 'In review',
+        'CONFIRMED' => 'Confirmed',
+        'IN_PRODUCTION' => 'In production',
+        'SHIPPED' => 'Shipped',
+        'DELIVERED' => 'Delivered',
+    ];
+
     protected $fillable = [
         'company_id',
+        'tracking_code',
         'state',
         'currency',
         'subtotal',
@@ -55,6 +69,18 @@ class Quote extends Model
 
     protected static function booted(): void
     {
+        // Assign an opaque tracking code before insert (unless one was set
+        // explicitly, e.g. a backfill/import). Loops on the unlikely collision.
+        static::creating(function (Quote $quote): void {
+            if (empty($quote->tracking_code)) {
+                do {
+                    $code = self::generateTrackingCode();
+                } while (self::withTrashed()->where('tracking_code', $code)->exists());
+
+                $quote->tracking_code = $code;
+            }
+        });
+
         // Cascade soft-deletes to children. The FK cascadeOnDelete only fires on
         // a hard DELETE, so a soft-deleted quote would otherwise leave live line
         // items / proofs / jobs / POs pointing at a hidden parent (e.g. a
@@ -141,6 +167,64 @@ class Quote extends Model
             ->where('state', \App\Enums\ProofState::Approved->value)
             ->latest('version')
             ->first();
+    }
+
+    public static function generateTrackingCode(): string
+    {
+        $out = 'GL-';
+        for ($i = 0; $i < 6; $i++) {
+            $out .= self::TRACKING_ALPHABET[random_int(0, 31)];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Coarse, buyer-facing stage for the public tracking page. Honest by
+     * construction: on the floor (READY) we report the LEAST-progressed job, so
+     * "Shipped" never shows while any part is still printing. Codes map to
+     * labels in the tracking response.
+     */
+    public function trackingStage(): string
+    {
+        if ($this->state === QuoteState::Cancelled) {
+            return 'CANCELLED';
+        }
+
+        if ($this->state === QuoteState::Closed) {
+            return 'DELIVERED';
+        }
+
+        if ($this->state === QuoteState::Ready) {
+            $states = $this->jobs()->pluck('state');
+
+            if ($states->isNotEmpty()) {
+                if ($states->every(fn ($s): bool => $s === JobState::Closed->value)) {
+                    return 'DELIVERED';
+                }
+
+                $shippedOrClosed = [JobState::Shipped->value, JobState::Closed->value];
+                if ($states->every(fn ($s): bool => in_array($s, $shippedOrClosed, true))) {
+                    return 'SHIPPED';
+                }
+            }
+
+            return 'IN_PRODUCTION';
+        }
+
+        return match ($this->state) {
+            QuoteState::ProofApproved, QuoteState::PoIssued,
+            QuoteState::Confirmed, QuoteState::Procuring => 'CONFIRMED',
+            default => 'REVIEW',
+        };
+    }
+
+    /** Human label for the current tracking stage. */
+    public function trackingStageLabel(): string
+    {
+        $stage = $this->trackingStage();
+
+        return $stage === 'CANCELLED' ? 'Cancelled' : (self::TRACKING_STAGE_LABELS[$stage] ?? $stage);
     }
 
     protected static function newFactory(): QuoteFactory

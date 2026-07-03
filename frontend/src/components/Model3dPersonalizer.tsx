@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, Select } from '../ui';
 
 /**
- * Filament colour choice for MODEL_3D products. Logo/text placement happens
+ * Filament colour choice for MODEL_3D products. Logo placement happens
  * on the shared DesignerCanvas (the item is FDM-printed, then UV-decorated
  * on its flat face — a real production step, so the placement mockup the
  * customer approves is producible).

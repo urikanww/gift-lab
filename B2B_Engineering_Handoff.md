@@ -46,7 +46,7 @@ Fields listed are the minimum; add audit columns (`created_at`, `updated_at`, `c
 - `price_snapshot_at` (freeze timestamp — see §6.4), `amended_by`, `amendment_log[]`
 
 ### LineItem
-- `id`, `quote_id`, `product_id`/`variant_id`, `qty`, `unit_price`, `customization` (`{logo_size, name_text, artwork_ref}`)
+- `id`, `quote_id`, `product_id`/`variant_id`, `qty`, `unit_price`, `customization` (`{logo_size, artwork_ref}`)
 - `line_state` (see §5.2), `procured_qty`, `procured_price`
 
 ### Proof

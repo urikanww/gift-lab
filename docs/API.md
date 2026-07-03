@@ -70,7 +70,7 @@ Live designer estimate (event-driven; **never polled**). Indicative only.
 { "company_id": 1, "notes": null,
   "line_items": [
     { "product_id": 1, "variant_id": 5, "qty": 50,
-      "customization": { "logo_size": "M", "name_text": "Acme", "artwork_ref": "s3://…" } }
+      "customization": { "logo_size": "M", "artwork_ref": "s3://…" } }
   ] }
 ```
 `201` → `QuoteResource` (state `DRAFT`). Buyer `company_id` must equal their own (else `422`).

@@ -35,6 +35,7 @@ class ProductionJob extends Model
         'ready_at',
         'state',
         'artwork_ref',
+        'consignment_ref',
         'print_method',
         'qty',
         'created_by',

@@ -8,6 +8,7 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import ProductDesignerPage from './pages/ProductDesignerPage';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
+import TrackPage from './pages/TrackPage';
 import QuoteListPage from './pages/QuoteListPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import ProductionQueuePage from './pages/ProductionQueuePage';
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="design/:id" element={<ProductDesignerPage />} />
           <Route path="cart" element={<CartPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
+          <Route path="track" element={<TrackPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="catalogue" element={<Navigate to="/products" replace />} />
           <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />

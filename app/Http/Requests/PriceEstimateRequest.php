@@ -28,6 +28,7 @@ class PriceEstimateRequest extends FormRequest
             'line_items.*.variant_id' => ['nullable', 'integer', 'exists:variants,id'],
             'line_items.*.qty' => ['required', 'integer', 'min:1', 'max:100000'],
             'line_items.*.has_customization' => ['nullable', 'boolean'],
+            'line_items.*.logo_size' => ['nullable', 'string', 'in:S,M,L'],
         ];
     }
 }

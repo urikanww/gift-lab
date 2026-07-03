@@ -34,7 +34,7 @@ return new class extends Migration
             $table->decimal('unit_price', 12, 2)->default(0);
             $table->char('currency', 3)->default('SGD');
 
-            $table->json('customization')->nullable()->comment('{logo_size,name_text,artwork_ref}');
+            $table->json('customization')->nullable()->comment('{logo_size,artwork_ref}');
 
             $table->enum('line_state', [
                 'PENDING',

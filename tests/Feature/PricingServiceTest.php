@@ -52,6 +52,37 @@ it('prices a MODEL_3D unit from filament grams and machine time, not base cost',
         ->and($this->pricing->landedCost($product, null))->toBe(10.50);
 });
 
+it('adds a per-unit logo surcharge by size band on customized lines', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV', 'weight' => 0]);
+
+    $line = fn (?string $size): array => [
+        'product' => $product, 'variant' => null, 'qty' => 50,
+        'has_customization' => true, 'logo_size' => $size,
+    ];
+
+    // unit @ qty 50 = 14.85 → line base 742.50 + flat 8.00 = 750.50 (no band).
+    $none = $this->pricing->quoteTotals([$line(null)]);
+    $medium = $this->pricing->quoteTotals([$line('M')]);
+    $large = $this->pricing->quoteTotals([$line('L')]);
+
+    // Seeded surcharge: S 0.00, M 0.40, L 0.90 per unit × 50 pcs.
+    expect($none['lines'][0]['line_total'])->toBe(750.50)
+        ->and($medium['lines'][0]['line_total'])->toBe(770.50)  // +0.40 × 50
+        ->and($large['lines'][0]['line_total'])->toBe(795.50);   // +0.90 × 50
+});
+
+it('never surcharges a blank (uncustomized) line even with a size present', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV', 'weight' => 0]);
+
+    $totals = $this->pricing->quoteTotals([[
+        'product' => $product, 'variant' => null, 'qty' => 50,
+        'has_customization' => false, 'logo_size' => 'L',
+    ]]);
+
+    // 14.85 × 50 = 742.50, no fees at all.
+    expect($totals['lines'][0]['line_total'])->toBe(742.50);
+});
+
 it('charges the heaviest delivery tier when weight exceeds every tier', function (): void {
     // Misconfigured table without a null-max catch-all must not fall through
     // to free shipping.

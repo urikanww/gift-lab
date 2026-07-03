@@ -1,6 +1,5 @@
 import { expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
 import ProductDetailPage from './ProductDetailPage';
@@ -25,69 +24,6 @@ it('renders product name, price, and a Customize CTA linking to the designer', a
   await waitFor(() => expect(screen.getByRole('heading', { name: /A5 Hardcover Notebook/i })).toBeInTheDocument());
   const cta = screen.getByRole('link', { name: /customize/i });
   expect(cta).toHaveAttribute('href', '/design/5');
-});
-
-it('overlays a live name preview and carries it into the designer link', async () => {
-  const user = userEvent.setup();
-  render(
-    <ThemeProvider>
-      <MemoryRouter initialEntries={['/products/5']}>
-        <Routes>
-          <Route path="/products/:id" element={<ProductDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </ThemeProvider>,
-  );
-  await waitFor(() =>
-    expect(screen.getByRole('heading', { name: /A5 Hardcover Notebook/i })).toBeInTheDocument(),
-  );
-
-  await user.type(screen.getByLabelText(/see your name on it/i), 'Ada');
-
-  expect(screen.getByTestId('name-preview-overlay')).toHaveTextContent('Ada');
-  expect(screen.getByRole('link', { name: /customize in studio/i })).toHaveAttribute(
-    'href',
-    '/design/5?name=Ada',
-  );
-});
-
-it('clears the name preview when navigating to another product', async () => {
-  const user = userEvent.setup();
-  // Give the related-products rail something to navigate to; the same route
-  // component instance is reused, so per-product state must reset on :id change.
-  (catalogue.fetchCatalogue as any).mockResolvedValue({
-    data: [{ id: 9, name: 'Other Mug', from_price: 3.2, currency: 'SGD', image_url: null } as any],
-    meta: { current_page: 1, last_page: 1, total: 1 },
-  });
-
-  render(
-    <ThemeProvider>
-      <MemoryRouter initialEntries={['/products/5']}>
-        <Routes>
-          <Route path="/products/:id" element={<ProductDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </ThemeProvider>,
-  );
-  await waitFor(() =>
-    expect(screen.getByRole('heading', { name: /A5 Hardcover Notebook/i })).toBeInTheDocument(),
-  );
-
-  await user.type(screen.getByLabelText(/see your name on it/i), 'Ada');
-  expect(screen.getByTestId('name-preview-overlay')).toBeInTheDocument();
-
-  await waitFor(() => expect(screen.getAllByRole('link', { name: /Other Mug/i }).length).toBeGreaterThan(0));
-  await user.click(screen.getAllByRole('link', { name: /Other Mug/i })[0]);
-
-  await waitFor(() =>
-    expect(screen.queryByTestId('name-preview-overlay')).not.toBeInTheDocument(),
-  );
-
-  // Restore the empty related-products default for other tests.
-  (catalogue.fetchCatalogue as any).mockResolvedValue({
-    data: [],
-    meta: { current_page: 1, last_page: 1, total: 0 },
-  });
 });
 
 it('uses the marketplace category for breadcrumb, not the print class', async () => {

@@ -1,11 +1,10 @@
 import type { CartLine } from '../../types';
 
-/** Human label for a cart line's customization (logo size / engraved name). */
+/** Human label for a cart line's customization (logo size). */
 export function customizationLabel(line: CartLine): string {
-  const { logo_size, name_text } = line.customization;
+  const { logo_size } = line.customization;
   const parts: string[] = [];
   if (logo_size) parts.push(`Logo ${logo_size}`);
-  if (name_text) parts.push(`“${name_text}”`);
   return parts.length ? parts.join(' · ') : 'Blank';
 }
 

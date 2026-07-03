@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueueStore } from '../stores/queueStore';
-import { Badge, Button, Card, EmptyState, Skeleton } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Skeleton } from '../ui';
 import type { BadgeTone } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
@@ -43,6 +43,11 @@ function QueueSkeleton() {
 export default function ProductionQueuePage() {
   const { jobs, loading, error, fetchQueue, advance, subscribe, unsubscribe } = useQueueStore();
   const [pendingId, setPendingId] = useState<number | null>(null);
+  // Shipping is confirm-gated: marking a job shipped requires a consignment ref
+  // (that transition fires the buyer's "on the way" signal). This tracks which
+  // card is mid-confirmation and its typed reference.
+  const [shippingId, setShippingId] = useState<number | null>(null);
+  const [consignment, setConsignment] = useState('');
   const animate = useReducedMotionSafe();
 
   useEffect(() => {
@@ -52,11 +57,13 @@ export default function ProductionQueuePage() {
   }, [fetchQueue, subscribe, unsubscribe]);
 
   // Single-flight guard against a double-click firing a duplicate advance.
-  const onAdvance = async (jobId: number, to: JobState) => {
+  const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string) => {
     if (pendingId !== null) return;
     setPendingId(jobId);
     try {
-      await advance(jobId, to);
+      await advance(jobId, to, consignmentRef);
+      setShippingId(null);
+      setConsignment('');
     } finally {
       setPendingId(null);
     }
@@ -134,18 +141,58 @@ export default function ProductionQueuePage() {
                       </dd>
                     </dl>
 
-                    {next && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        fullWidth
-                        className="mt-auto"
-                        loading={isPending}
-                        disabled={pendingId !== null && !isPending}
-                        onClick={() => void onAdvance(j.id, next.to)}
-                      >
-                        {next.label}
-                      </Button>
+                    {next && next.to === 'SHIPPED' && shippingId === j.id ? (
+                      <div className="mt-auto flex flex-col gap-2">
+                        <Input
+                          label="Consignment / tracking ref"
+                          placeholder="e.g. SP123456789SG"
+                          value={consignment}
+                          maxLength={128}
+                          autoFocus
+                          onChange={(e) => setConsignment(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            fullWidth
+                            loading={isPending}
+                            disabled={!consignment.trim() || (pendingId !== null && !isPending)}
+                            onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim())}
+                          >
+                            Confirm shipped
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isPending}
+                            onClick={() => {
+                              setShippingId(null);
+                              setConsignment('');
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      next && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          fullWidth
+                          className="mt-auto"
+                          loading={isPending}
+                          disabled={pendingId !== null && !isPending}
+                          onClick={() =>
+                            next.to === 'SHIPPED'
+                              ? setShippingId(j.id)
+                              : void onAdvance(j.id, next.to)
+                          }
+                        >
+                          {next.label}
+                        </Button>
+                      )
                     )}
                   </Card>
                 </motion.li>

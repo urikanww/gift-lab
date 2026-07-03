@@ -12,6 +12,7 @@ use App\Http\Controllers\ProofController;
 use App\Http\Controllers\QuoteController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\TrackingController;
 use App\Http\Controllers\UploadController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +43,10 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Designer artwork upload (account-free designer, spec 6.1).
     Route::post('/uploads/artwork', [UploadController::class, 'artwork']);
 });
+
+// Login-free order tracking — opaque code + email-prefix check. Throttled
+// hard (anti-enumeration; the controller also returns a single generic error).
+Route::post('/track', TrackingController::class)->middleware('throttle:10,1');
 
 // Stripe webhook — unauthenticated, verified by signature (see controller).
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');

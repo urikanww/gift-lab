@@ -22,7 +22,7 @@ interface QueueStoreState {
   error: string | null;
   subscribed: boolean;
   fetchQueue: () => Promise<void>;
-  advance: (jobId: number, state: JobState) => Promise<void>;
+  advance: (jobId: number, state: JobState, consignmentRef?: string) => Promise<void>;
   subscribe: () => void;
   unsubscribe: () => void;
 }
@@ -48,11 +48,14 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
     }
   },
 
-  advance: async (jobId, state) => {
+  advance: async (jobId, state, consignmentRef) => {
     set({ error: null });
     try {
       await ensureCsrf();
-      await api.post(`/production-jobs/${jobId}/advance`, { state });
+      await api.post(`/production-jobs/${jobId}/advance`, {
+        state,
+        ...(consignmentRef ? { consignment_ref: consignmentRef } : {}),
+      });
       // Broadcast reconciles the happy path; a single post-mutation refetch (not
       // a poll) guards against a dropped socket / missed event leaving the queue
       // diverged from server truth, and surfaces rejections instead of a

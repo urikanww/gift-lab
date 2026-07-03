@@ -66,6 +66,7 @@ final class QuoteService
                     'variant' => $r['variant'],
                     'qty' => $r['qty'],
                     'has_customization' => $r['has_customization'],
+                    'logo_size' => $r['customization']['logo_size'] ?? null,
                 ],
                 $resolved,
             ));
@@ -409,7 +410,6 @@ final class QuoteService
         }
 
         return ! empty($customization['logo_size'])
-            || ! empty($customization['name_text'])
             || ! empty($customization['artwork_ref']);
     }
 }

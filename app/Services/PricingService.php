@@ -75,7 +75,7 @@ final class PricingService
     /**
      * Compute a full quote total from resolved line specs.
      *
-     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool}>  $lines
+     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string}>  $lines
      * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float}
      */
     public function quoteTotals(array $lines): array
@@ -84,6 +84,10 @@ final class PricingService
         // Per-unit component for work repeated on every piece (e.g. embossed
         // personalisation adds print time per unit, unlike a one-off UV setup).
         $customizationPerUnit = (float) PricingConfig::value('fee', 'customization_per_unit', 0);
+        // Per-unit surcharge by logo footprint band (S/M/L). A bigger logo
+        // covers more decoration area (more ink / longer pass), so it costs
+        // more per piece. Absent size → no surcharge (blank/legacy lines).
+        $bySize = (array) PricingConfig::value('fee', 'customization_by_size', []);
         $setupFee = (float) PricingConfig::value('fee', 'setup_fee', 0);
 
         $priced = [];
@@ -95,7 +99,9 @@ final class PricingService
             $lineTotal = $unit * $line['qty'];
 
             if ($line['has_customization']) {
-                $lineTotal += $customizationFee + $customizationPerUnit * $line['qty'];
+                $size = $line['logo_size'] ?? null;
+                $sizeSurcharge = $size !== null ? (float) ($bySize[$size] ?? 0) : 0.0;
+                $lineTotal += $customizationFee + ($customizationPerUnit + $sizeSurcharge) * $line['qty'];
             }
 
             $lineTotal = round($lineTotal, 2);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
@@ -15,8 +15,6 @@ const QTY_OPTIONS = [1, 25, 50, 100, 250, 500];
 export default function ProductDesignerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const initialName = searchParams.get('name')?.slice(0, 24) ?? '';
   const addLine = useCartStore((s) => s.addLine);
   const { toast } = useToast();
 
@@ -25,7 +23,10 @@ export default function ProductDesignerPage() {
   const [error, setError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<number | null>(null);
   const [artwork, setArtwork] = useState<CapturedArtwork | null>(null);
-  // MODEL_3D items add a filament-colour choice; logo/text placement uses the
+  // Live logo state lifted from the canvas so the price bar reflects the
+  // selected size band before the design is captured.
+  const [logo, setLogo] = useState<{ hasLogo: boolean; size: string }>({ hasLogo: false, size: 'M' });
+  // MODEL_3D items add a filament-colour choice; logo placement uses the
   // shared canvas because the item is FDM-printed then UV-decorated on its
   // flat face — the placement mockup is a producible production step.
   const [model3dOptions, setModel3dOptions] = useState<Model3dCustomization | null>(null);
@@ -51,15 +52,23 @@ export default function ProductDesignerPage() {
     void load();
   }, [load]);
 
-  // Live quote: re-estimate whenever qty, variant or captured artwork changes.
-  // Event-driven single POST per change — never polled.
+  // Live quote: re-estimate whenever qty, variant, logo band, or captured
+  // artwork changes. Event-driven single POST per change — never polled.
+  const hasCustomization = logo.hasLogo || !!artwork;
+  const logoSize = logo.hasLogo ? logo.size : null;
   useEffect(() => {
     if (!product) return;
     let active = true;
     api
       .post<PriceEstimate>('/price-estimate', {
         line_items: [
-          { product_id: product.id, variant_id: variantId, qty, has_customization: !!artwork },
+          {
+            product_id: product.id,
+            variant_id: variantId,
+            qty,
+            has_customization: hasCustomization,
+            logo_size: logoSize,
+          },
         ],
       })
       .then(({ data }) => {
@@ -78,7 +87,7 @@ export default function ProductDesignerPage() {
     return () => {
       active = false;
     };
-  }, [product, variantId, qty, artwork]);
+  }, [product, variantId, qty, hasCustomization, logoSize]);
 
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === variantId) ?? null,
@@ -179,7 +188,7 @@ export default function ProductDesignerPage() {
               places logo/text on the canvas over the product photo (3D items
               are UV-decorated after printing) */}
           {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
-          <DesignerCanvas backgroundUrl={product.image_url} onCapture={handleCapture} initialNameText={initialName} />
+          <DesignerCanvas backgroundUrl={product.image_url} onCapture={handleCapture} onLogoChange={setLogo} />
 
           {/* Sticky action bar */}
           <div className="sticky bottom-4 z-raised">
@@ -192,8 +201,8 @@ export default function ProductDesignerPage() {
                 ) : (
                   <span className="text-fg-muted">
                     {is3d
-                      ? 'Pick a colour, place your design, then choose “Use this design” — or add to cart plain.'
-                      : 'Add a logo or text, then choose “Use this design”.'}
+                      ? 'Pick a colour, place your logo, then choose “Use this design” — or add to cart plain.'
+                      : 'Add a logo, then choose “Use this design”.'}
                   </span>
                 )}
               </div>
@@ -207,10 +216,15 @@ export default function ProductDesignerPage() {
                     ))}
                   </Select>
                 </div>
+                {logo.hasLogo && (
+                  <Badge tone="neutral" size="sm">
+                    Logo {logo.size}
+                  </Badge>
+                )}
                 {estimate && (
                   <p className="text-sm text-fg-muted" role="status" aria-live="polite">
                     <span className="font-semibold text-fg">
-                      {estimate.currency} {estimate.unit.toFixed(2)}
+                      {estimate.currency} {(estimate.lineTotal / qty).toFixed(2)}
                     </span>{' '}
                     / unit ·{' '}
                     <span className="font-semibold text-fg">

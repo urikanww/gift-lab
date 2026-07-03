@@ -76,7 +76,6 @@ export interface Product {
 
 export interface Customization {
   logo_size?: string | null;
-  name_text?: string | null;
   artwork_ref?: string | null;
 }
 
@@ -112,6 +111,8 @@ export interface Proof {
 export interface Quote {
   id: number;
   company_id: number;
+  /** Opaque code for login-free tracking (share with the recipient). */
+  tracking_code?: string | null;
   /** Only present on staff listings (relation-loaded server-side). */
   company_name?: string;
   state: QuoteState;
@@ -133,6 +134,7 @@ export interface ProductionJob {
   state: JobState;
   ready_at: string | null;
   artwork_ref: string | null;
+  consignment_ref?: string | null;
   print_method: PrintMethod | null;
   qty: number;
 }

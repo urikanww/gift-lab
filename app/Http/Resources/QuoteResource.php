@@ -21,6 +21,8 @@ class QuoteResource extends JsonResource
         return [
             'id' => $this->id,
             'company_id' => $this->company_id,
+            // Opaque handle the buyer can share for login-free tracking.
+            'tracking_code' => $this->tracking_code,
             // Present only when the relation is loaded (staff listings). Null-safe:
             // Company soft-deletes, so a loaded relation can still be null.
             'company_name' => $this->whenLoaded('company', fn () => $this->company?->name),

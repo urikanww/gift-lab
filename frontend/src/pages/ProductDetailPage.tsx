@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   EmptyState,
-  Input,
   LinkButton,
   Skeleton,
   Spinner,
@@ -79,7 +78,6 @@ export default function ProductDetailPage() {
 
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [selectedTierQty, setSelectedTierQty] = useState<number | null>(null);
-  const [previewName, setPreviewName] = useState('');
 
   const [related, setRelated] = useState<Product[]>([]);
 
@@ -94,7 +92,6 @@ export default function ProductDetailPage() {
     setProduct(null);
     // Per-product UI state must not leak across same-route navigation
     // (related-product clicks reuse this component instance).
-    setPreviewName('');
     setSelectedTierQty(null);
     fetchProduct(id ?? '')
       .then((p) => {
@@ -230,15 +227,6 @@ export default function ProductDetailPage() {
             )}
             <div className="group relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-surface-2">
               <CardImage product={product} />
-              {previewName && (
-                <span
-                  data-testid="name-preview-overlay"
-                  aria-hidden="true"
-                  className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 rounded bg-black/35 px-3 py-1 font-display text-2xl text-white drop-shadow-md backdrop-blur-[2px]"
-                >
-                  {previewName}
-                </span>
-              )}
               {product.class === 'MODEL_3D' && !product.has_model && (
                 <div className="absolute left-3 top-3">
                   <Badge tone="success" size="sm" dot>
@@ -354,21 +342,6 @@ export default function ProductDetailPage() {
             </Motion>
           )}
 
-          {/* Live personalization teaser — the marketplace hook: type a name,
-              see it on the product, then carry it into the studio. */}
-          <Motion variants={staggerItem} className="flex flex-col gap-2 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
-            <Input
-              label="See your name on it"
-              placeholder="Type a name — watch the photo"
-              value={previewName}
-              maxLength={24}
-              onChange={(e) => setPreviewName(e.target.value)}
-            />
-            <p className="text-xs text-fg-muted">
-              Your text appears on the product photo instantly and comes with you into the studio.
-            </p>
-          </Motion>
-
           {/* Quantity tier pricing */}
           <Motion variants={staggerItem} className="flex flex-col gap-2">
             <span className="text-sm font-medium text-fg">Volume pricing</span>
@@ -410,7 +383,7 @@ export default function ProductDetailPage() {
           {/* CTAs */}
           <Motion variants={staggerItem} className="flex flex-col gap-3 sm:flex-row">
             <LinkButton
-              to={`${designPath(product)}${previewName ? `?name=${encodeURIComponent(previewName)}` : ''}`}
+              to={designPath(product)}
               variant="primary"
               size="lg"
               className="w-full sm:w-auto"

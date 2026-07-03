@@ -27,6 +27,7 @@ class PricingConfigSeeder extends Seeder
             ['margin', 'floor_pct', 12, 'Hard margin floor % (amendments cannot price below landed cost + this)', false],
             ['fee', 'customization_flat', 8.00, 'Flat customization fee per line', true],
             ['fee', 'customization_per_unit', 0.00, 'Per-unit customization fee (repeated work, e.g. embossed personalisation)', true],
+            ['fee', 'customization_by_size', ['S' => 0.00, 'M' => 0.40, 'L' => 0.90], 'Per-unit logo surcharge by size band (S/M/L)', true],
             ['fee', 'setup_fee', 25.00, 'One-off artwork setup fee per quote', true],
             ['print_cost', 'per_unit', ['UV' => 1.50, 'FDM' => 3.00, 'RESIN' => 5.00], 'Per-unit print cost by method', true],
             // MODEL_3D landed-cost inputs (filament + machine time). minutes_per_gram

@@ -62,6 +62,7 @@ class PriceEstimateController extends Controller
                 'variant' => isset($spec['variant_id']) ? $variants->get((int) $spec['variant_id']) : null,
                 'qty' => (int) $spec['qty'],
                 'has_customization' => (bool) ($spec['has_customization'] ?? false),
+                'logo_size' => $spec['logo_size'] ?? null,
             ];
         }
 

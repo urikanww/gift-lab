@@ -42,7 +42,7 @@ beforeEach(() => {
 describe('cartStore', () => {
   it('adds, updates, and removes lines', () => {
     const s = useCartStore.getState();
-    s.addLine(product, variant, { name_text: 'Acme' });
+    s.addLine(product, variant, { logo_size: 'M' });
     let lines = useCartStore.getState().lines;
     expect(lines).toHaveLength(1);
     expect(lines[0].qty).toBe(1);

@@ -61,6 +61,9 @@ export default function SiteHeader() {
             Products
           </NavLink>
           <CategoriesMenu />
+          <NavLink to="/track" className={navLinkClass}>
+            Track order
+          </NavLink>
           {isStaffRole(user?.role) && (
             <>
               <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -358,6 +361,9 @@ function MobileDrawer({
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
+            <NavLink to="/track" onClick={onClose} className={navLinkClass}>
+              Track order
+            </NavLink>
             <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3">
               {isStaffRole(user?.role) && (
                 <>

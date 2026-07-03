@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Enums\JobState;
 use App\Enums\LineItemState;
 use App\Enums\QuoteState;
+use App\Events\OrderTrackingUpdated;
 use App\Events\ProductionQueueUpdated;
 use App\Events\QuoteStateChanged;
 use App\Models\ProductionJob;
@@ -22,6 +23,10 @@ use RuntimeException;
  */
 final class QueueService
 {
+    public function __construct(private readonly AuditLogger $audit)
+    {
+    }
+
     /**
      * Build production jobs for a quote whose line items are all resolved
      * (READY or DROPPED). Groups READY lines by track, sets ready_at = now
@@ -102,11 +107,27 @@ final class QueueService
     }
 
     /**
-     * Advance a job's production state and broadcast the queue change.
+     * Advance a job's production state and broadcast the queue change. Every
+     * transition is audit-logged (who/when/old→new) because this state is the
+     * single source of truth the public tracker reads.
      */
-    public function advance(ProductionJob $job, JobState $target): ProductionJob
+    public function advance(ProductionJob $job, JobState $target, ?string $consignmentRef = null): ProductionJob
     {
+        $from = $job->state->value;
+
+        // Persisted in the same save as the state change (transitionTo saves).
+        if ($target === JobState::Shipped && $consignmentRef !== null) {
+            $job->consignment_ref = $consignmentRef;
+        }
+
         $job->transitionTo($target);
+
+        $this->audit->log(
+            $job,
+            'production_job.advanced',
+            ['state' => $from],
+            ['state' => $target->value, 'consignment_ref' => $job->consignment_ref],
+        );
 
         $action = match ($target) {
             JobState::InProduction => 'started',
@@ -116,6 +137,14 @@ final class QueueService
         };
 
         ProductionQueueUpdated::dispatch($job, $action);
+
+        // A job advance leaves the quote in READY, so no QuoteStateChanged fires
+        // — push the tracker update directly (IN_PRODUCTION/SHIPPED/DELIVERED
+        // are the stages buyers watch most).
+        $job->loadMissing('quote');
+        if ($job->quote !== null) {
+            OrderTrackingUpdated::dispatch($job->quote);
+        }
 
         return $job;
     }

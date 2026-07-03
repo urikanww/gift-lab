@@ -14,8 +14,11 @@ use App\Services\Payment\FixturePaymentGateway;
 use App\Services\Payment\StripePaymentGateway;
 use App\Services\Procurement\Contracts\MarketplaceRechecker;
 use App\Services\Procurement\FixtureMarketplaceRechecker;
+use App\Events\OrderTrackingUpdated;
+use App\Events\QuoteStateChanged;
 use App\Models\Quote;
 use App\Policies\QuotePolicy;
+use Illuminate\Support\Facades\Event;
 use App\Services\Scraper\CompositeScraperClient;
 use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\FixtureScraperClient;
@@ -111,5 +114,13 @@ class AppServiceProvider extends ServiceProvider
         // isolation for every quote action, instead of relying on scattered
         // inline abort_unless() checks that a new endpoint could forget.
         Gate::policy(Quote::class, QuotePolicy::class);
+
+        // Mirror every quote state change onto the public tracking channel, so
+        // the login-free tracker updates live without touching all eight
+        // QuoteStateChanged dispatch sites. Job-level advances (which leave the
+        // quote in READY) dispatch OrderTrackingUpdated directly in QueueService.
+        Event::listen(QuoteStateChanged::class, function (QuoteStateChanged $event): void {
+            OrderTrackingUpdated::dispatch($event->quote);
+        });
     }
 }

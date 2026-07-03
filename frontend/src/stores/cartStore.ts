@@ -4,7 +4,7 @@ import api, { apiError } from '../lib/api';
 import type { CartLine, Customization, PriceEstimate, Product, Variant } from '../types';
 
 function hasCustomization(c: Customization): boolean {
-  return Boolean(c.logo_size || c.name_text || c.artwork_ref);
+  return Boolean(c.logo_size || c.artwork_ref);
 }
 
 interface CartState {
@@ -63,6 +63,7 @@ export const useCartStore = create<CartState>()(
               variant_id: l.variant?.id ?? null,
               qty: l.qty,
               has_customization: hasCustomization(l.customization),
+              logo_size: l.customization.logo_size ?? null,
             })),
           });
           set({ estimate: data, estimating: false });
