@@ -112,13 +112,13 @@ routes / policy). Read-only. Returns one aggregated JSON snapshot:
   v1 reports **open booked value** (no month filter) — avoids adding a date
   column/backfill. A time-boxed variant is a later enhancement sourced from
   `audit_logs` acceptance events.
-- Overdue / at-risk: **no customer due-date column exists** on quotes. v1 SLA =
+- Overdue / at-risk: **no customer due-date column exists**. Confirmed: the
+  designer's "Need it by" (`needBy`) is ephemeral UI state in
+  `ProductDesignerPage.tsx` and is never persisted. So at-risk =
   `production_jobs` where `state IN (READY, IN_PRODUCTION)` and
   `now > ready_at + lead_time(print_method)` (lead time from existing pricing/
-  lead-time config). PLAN MUST VERIFY whether a customer "needed_by" field exists
-  (designer had an optional "Need it by" date); if a persisted column is found,
-  prefer it and add the matching index. Until confirmed, SLA-vs-ready_at is the
-  deterministic v1 source.
+  lead-time config). Uses the existing `(state, ready_at)` index. Persisting a
+  customer needed-by date is a separate future feature.
 
 **Controller/service:** `DashboardController@index` delegates to a
 `DashboardMetrics` service (one method per widget, each a single indexed query),
@@ -183,7 +183,5 @@ endpoint stays constant regardless of row volume (no N+1); optionally assert
 
 ## Open items for the plan
 
-1. Confirm whether a persisted customer needed-by date exists; if so, prefer it
-   for at-risk + add index.
-2. Decide shared-vs-split `/quotes` page rendering across shells (default:
+1. Decide shared-vs-split `/quotes` page rendering across shells (default:
    shared page, shell chosen by role).
