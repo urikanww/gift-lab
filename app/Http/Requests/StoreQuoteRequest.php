@@ -30,6 +30,8 @@ class StoreQuoteRequest extends FormRequest
         return [
             'company_id' => ['required', 'integer', 'exists:companies,id'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // Buyer's "need it by" deadline (optional); can't be in the past.
+            'needed_by' => ['nullable', 'date', 'after_or_equal:today'],
             'line_items' => ['required', 'array', 'min:1'],
             'line_items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'line_items.*.variant_id' => ['nullable', 'integer', 'exists:variants,id'],

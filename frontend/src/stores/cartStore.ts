@@ -9,12 +9,16 @@ function hasCustomization(c: Customization): boolean {
 
 interface CartState {
   lines: CartLine[];
+  // Order-level "need it by" deadline (Y-m-d), captured in the designer and
+  // carried to checkout where it's persisted onto the quote. '' = unset.
+  neededBy: string;
   estimate: PriceEstimate | null;
   estimating: boolean;
   estimateError: string | null;
   addLine: (product: Product, variant: Variant | null, customization: Customization, qty?: number) => void;
   updateQty: (key: string, qty: number) => void;
   removeLine: (key: string) => void;
+  setNeededBy: (date: string) => void;
   clear: () => void;
   refreshEstimate: () => Promise<void>;
 }
@@ -26,6 +30,7 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       lines: [],
+      neededBy: '',
       estimate: null,
       estimating: false,
       estimateError: null,
@@ -47,7 +52,9 @@ export const useCartStore = create<CartState>()(
 
       removeLine: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),
 
-      clear: () => set({ lines: [], estimate: null, estimateError: null }),
+      setNeededBy: (date) => set({ neededBy: date }),
+
+      clear: () => set({ lines: [], neededBy: '', estimate: null, estimateError: null }),
 
       refreshEstimate: async () => {
         const { lines } = get();
@@ -74,7 +81,7 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'giftlab-cart',
-      partialize: (s) => ({ lines: s.lines }),
+      partialize: (s) => ({ lines: s.lines, neededBy: s.neededBy }),
     },
   ),
 );

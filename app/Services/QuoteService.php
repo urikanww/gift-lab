@@ -43,9 +43,9 @@ final class QuoteService
      *
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
-    public function create(int $companyId, array $lineSpecs, ?string $notes): Quote
+    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null): Quote
     {
-        return DB::transaction(function () use ($companyId, $lineSpecs, $notes): Quote {
+        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy): Quote {
             $resolved = [];
             foreach ($lineSpecs as $spec) {
                 $product = Product::findOrFail($spec['product_id']);
@@ -80,6 +80,7 @@ final class QuoteService
                 'delivery' => $totals['delivery'],
                 'total' => $totals['total'],
                 'notes' => $notes,
+                'needed_by' => $neededBy,
                 'created_by' => Auth::id(),
             ]);
 

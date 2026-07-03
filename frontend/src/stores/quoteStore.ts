@@ -31,7 +31,12 @@ interface QuoteStoreState {
 
   fetchQuotes: (page?: number) => Promise<void>;
   fetchQuote: (id: number) => Promise<void>;
-  createQuote: (companyId: number, lines: CartLine[], notes: string | null) => Promise<Quote | null>;
+  createQuote: (
+    companyId: number,
+    lines: CartLine[],
+    notes: string | null,
+    neededBy?: string | null,
+  ) => Promise<Quote | null>;
   send: (id: number) => Promise<void>;
   accept: (id: number) => Promise<void>;
   procure: (id: number) => Promise<void>;
@@ -77,13 +82,15 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  createQuote: async (companyId, lines, notes) => {
+  createQuote: async (companyId, lines, notes, neededBy = null) => {
     set({ error: null });
     try {
       await ensureCsrf();
       const { data } = await api.post<{ data: Quote }>('/quotes', {
         company_id: companyId,
         notes,
+        // Omit when unset so the API sees a true absence, not an empty string.
+        needed_by: neededBy || null,
         line_items: lines.map((l) => ({
           product_id: l.product.id,
           variant_id: l.variant?.id ?? null,

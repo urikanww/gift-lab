@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,7 +34,7 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return response()->json(['user' => $request->user()]);
+        return response()->json(['user' => $this->userPayload($request->user())]);
     }
 
     public function logout(Request $request): JsonResponse
@@ -48,6 +49,32 @@ class AuthController extends Controller
 
     public function user(Request $request): JsonResponse
     {
-        return response()->json($request->user());
+        return response()->json($this->userPayload($request->user()));
+    }
+
+    /**
+     * Serialize the authenticated user, embedding a minimal company summary
+     * (id/name/address) so the storefront can show the buyer where an order
+     * ships — read-only, reusing the company's stored address (no per-order
+     * address). Only the fields the SPA needs are exposed.
+     *
+     * @return array<string, mixed>
+     */
+    private function userPayload(User $user): array
+    {
+        $user->loadMissing('company');
+
+        return [
+            'id' => $user->id,
+            'company_id' => $user->company_id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role->value,
+            'company' => $user->company === null ? null : [
+                'id' => $user->company->id,
+                'name' => $user->company->name,
+                'address' => $user->company->address,
+            ],
+        ];
     }
 }

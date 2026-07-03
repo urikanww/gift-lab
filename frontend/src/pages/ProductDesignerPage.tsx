@@ -28,6 +28,10 @@ export default function ProductDesignerPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const addLine = useCartStore((s) => s.addLine);
+  // "Need it by" is an order-level deadline held on the cart, so the buyer's
+  // chosen date survives the designer → cart → checkout hop and reaches the quote.
+  const needBy = useCartStore((s) => s.neededBy);
+  const setNeedBy = useCartStore((s) => s.setNeededBy);
   const { toast } = useToast();
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -47,7 +51,6 @@ export default function ProductDesignerPage() {
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
   const [lead, setLead] = useState<LeadEstimate | null>(null);
-  const [needBy, setNeedBy] = useState('');
   // Brand kit: only a signed-in buyer (has a company) has one to apply.
   const companyId = useAuthStore((s) => s.user?.company_id ?? null);
   const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
