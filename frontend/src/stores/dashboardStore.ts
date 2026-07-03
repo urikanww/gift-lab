@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { apiError } from '../lib/api';
-import { getEcho, onEchoReconnect } from '../lib/echo';
+import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
 import { fetchDashboard, type DashboardPayload } from '../lib/dashboard';
 
 let offReconnect: (() => void) | null = null;
 let subscribed = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
+let refresh: (() => void) | null = null;
+let queueChannel: ReturnType<typeof joinSharedPrivate> | null = null;
+let procurementChannel: ReturnType<typeof joinSharedPrivate> | null = null;
 
 interface DashboardStoreState {
   data: DashboardPayload | null;
@@ -38,16 +41,17 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
     if (subscribed) return;
     subscribed = true;
 
-    const refresh = () => {
+    refresh = () => {
       if (debounce) clearTimeout(debounce);
       debounce = setTimeout(() => void get().load(), 800);
     };
 
     offReconnect = onEchoReconnect(refresh);
 
-    const echo = getEcho();
-    echo.private('staff.queue').listen('.production-queue.updated', refresh);
-    echo.private('staff.procurement').listen('.line-item.awaiting-reconfirm', refresh);
+    queueChannel = joinSharedPrivate('staff.queue');
+    queueChannel.listen('.production-queue.updated', refresh);
+    procurementChannel = joinSharedPrivate('staff.procurement');
+    procurementChannel.listen('.line-item.awaiting-reconfirm', refresh);
   },
 
   unsubscribe: () => {
@@ -56,8 +60,14 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
     if (debounce) clearTimeout(debounce);
     offReconnect?.();
     offReconnect = null;
-    const echo = getEcho();
-    echo.leave('staff.queue');
-    echo.leave('staff.procurement');
+    if (refresh) {
+      queueChannel?.stopListening('.production-queue.updated', refresh);
+      procurementChannel?.stopListening('.line-item.awaiting-reconfirm', refresh);
+      refresh = null;
+    }
+    queueChannel = null;
+    procurementChannel = null;
+    leaveSharedPrivate('staff.queue');
+    leaveSharedPrivate('staff.procurement');
   },
 }));

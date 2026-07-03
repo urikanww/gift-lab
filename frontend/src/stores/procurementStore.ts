@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
-import { getEcho } from '../lib/echo';
+import { joinSharedPrivate, leaveSharedPrivate } from '../lib/echo';
+
+let procurementChannel: ReturnType<typeof joinSharedPrivate> | null = null;
+let reconfirmListener: ((e: ReconfirmAlert) => void) | null = null;
 
 export interface ReconfirmAlert {
   line_item_id: number;
@@ -32,19 +35,24 @@ export const useProcurementStore = create<ProcurementStoreState>((set, get) => (
 
   subscribe: () => {
     if (get().subscribed) return;
-    getEcho()
-      .private('staff.procurement')
-      .listen('.line-item.awaiting-reconfirm', (e: ReconfirmAlert) => {
-        set((s) => ({
-          alerts: [e, ...s.alerts.filter((a) => a.line_item_id !== e.line_item_id)],
-        }));
-      });
+    reconfirmListener = (e: ReconfirmAlert) => {
+      set((s) => ({
+        alerts: [e, ...s.alerts.filter((a) => a.line_item_id !== e.line_item_id)],
+      }));
+    };
+    procurementChannel = joinSharedPrivate('staff.procurement');
+    procurementChannel.listen('.line-item.awaiting-reconfirm', reconfirmListener);
     set({ subscribed: true });
   },
 
   unsubscribe: () => {
     if (!get().subscribed) return;
-    getEcho().leave('staff.procurement');
+    if (reconfirmListener) {
+      procurementChannel?.stopListening('.line-item.awaiting-reconfirm', reconfirmListener);
+      reconfirmListener = null;
+    }
+    procurementChannel = null;
+    leaveSharedPrivate('staff.procurement');
     set({ subscribed: false });
   },
 

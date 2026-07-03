@@ -74,4 +74,27 @@ export function disconnectEcho(): void {
   window.Echo = undefined;
   reconnectHandlers.clear();
   hasConnectedOnce = false;
+  sharedRefs.clear();
+}
+
+// Refcounted private-channel membership. laravel-echo keeps ONE channel per name
+// across the whole app, so multiple stores listening on the same channel must
+// NOT each call echo.leave() — the first leaver would tear the channel out from
+// under the others. Callers join/leave through this registry; the underlying
+// subscription is torn down only when the last participant leaves.
+const sharedRefs = new Map<string, number>();
+
+export function joinSharedPrivate(name: string) {
+  sharedRefs.set(name, (sharedRefs.get(name) ?? 0) + 1);
+  return getEcho().private(name);
+}
+
+export function leaveSharedPrivate(name: string): void {
+  const next = (sharedRefs.get(name) ?? 1) - 1;
+  if (next <= 0) {
+    sharedRefs.delete(name);
+    getEcho().leave(name);
+  } else {
+    sharedRefs.set(name, next);
+  }
 }
