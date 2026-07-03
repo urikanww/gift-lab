@@ -6,13 +6,14 @@ use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BrandKitController;
 use App\Http\Controllers\CatalogueController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LeadTimeEstimateController;
+use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
 use App\Http\Controllers\QuoteController;
-use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\TrackingController;
 use App\Http\Controllers\UploadController;
@@ -93,4 +94,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
+
+    // Staff console overview (read-only aggregate snapshot).
+    Route::get('/admin/dashboard', [DashboardController::class, 'index']);
 });
