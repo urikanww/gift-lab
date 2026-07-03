@@ -81,6 +81,12 @@ export default function DesignerCanvas({
   const logoSizeRef = useRef<LogoSize>('M');
   const [objectCount, setObjectCount] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
+  // Single-stack undo for destructive edits (delete / replace / transform).
+  // Each entry is a full canvas JSON snapshot taken JUST BEFORE the change, so
+  // Ctrl/Cmd+Z restores the prior layout. Capped to keep memory bounded; this
+  // stays inside the flat 2D-over-photo model (no real 3D decal history).
+  const undoStackRef = useRef<string[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
   // Active alignment guides (centre/thirds) shown while a logo snaps mid-drag.
   const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [captured, setCaptured] = useState(false);
@@ -184,9 +190,13 @@ export default function DesignerCanvas({
       obj.setCoords();
       setGuides({ x: gx, y: gy });
     };
+    // Snapshot ONCE at the start of a drag/resize gesture (not on every
+    // incremental move/scale event) so Ctrl/Cmd+Z reverses the whole transform.
+    const onBeforeTransform = () => pushHistory();
     canvas.on('object:scaling', onScaling);
     canvas.on('object:moving', onMoving);
     canvas.on('object:modified', onModified);
+    canvas.on('before:transform', onBeforeTransform);
 
     setReady(true);
 
@@ -203,6 +213,39 @@ export default function DesignerCanvas({
 
   const markDirty = () => setCaptured(false);
 
+  const MAX_UNDO = 30;
+
+  // Snapshot the current layout onto the undo stack BEFORE a destructive edit,
+  // so Ctrl/Cmd+Z can restore it. No-op if the canvas isn't ready.
+  const pushHistory = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const snapshot = JSON.stringify(canvas.toJSON());
+    const stack = undoStackRef.current;
+    stack.push(snapshot);
+    if (stack.length > MAX_UNDO) stack.shift();
+    setCanUndo(true);
+  };
+
+  // Reverse the last destructive edit: reload the most recent snapshot and
+  // re-derive our chrome (logo presence + pricing band) from it.
+  const undo = () => {
+    const canvas = canvasRef.current;
+    const snapshot = undoStackRef.current.pop();
+    if (!canvas || snapshot === undefined) return;
+    void canvas.loadFromJSON(snapshot).then(() => {
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      const stillHasLogo = canvas.getObjects().some((o) => o instanceof FabricImage);
+      setHasLogo(stillHasLogo);
+      onLogoChange?.({ hasLogo: stillHasLogo, size: logoSizeRef.current });
+      setObjectCount(canvas.getObjects().length);
+      setHasSelection(false);
+      setCanUndo(undoStackRef.current.length > 0);
+      markDirty();
+    });
+  };
+
   // Switch the size band. Re-fit an existing logo to the new band's midpoint so
   // the change is visible immediately, and price the new band live.
   const applyBand = (size: LogoSize) => {
@@ -211,6 +254,8 @@ export default function DesignerCanvas({
     const canvas = canvasRef.current;
     const img = canvas?.getObjects().find((o): o is FabricImage => o instanceof FabricImage);
     if (canvas && img) {
+      // Re-fitting the logo to a new band resizes it — snapshot so it's undoable.
+      pushHistory();
       img.scaleToWidth(dims.w * bandMid(size));
       img.setCoords();
       canvas.requestRenderAll();
@@ -224,6 +269,9 @@ export default function DesignerCanvas({
   const addLogoFromDataUrl = async (dataUrl: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Snapshot before the add so Ctrl/Cmd+Z reverses this placement (and, when
+    // replacing an existing logo, restores the previous one).
+    pushHistory();
     const img = await FabricImage.fromURL(dataUrl);
     // Land the logo at the current band's midpoint; the clamp keeps any later
     // resize inside the band.
@@ -258,6 +306,7 @@ export default function DesignerCanvas({
 
   const deleteSelected = () =>
     withActive((canvas, active) => {
+      pushHistory();
       canvas.remove(active);
       canvas.discardActiveObject();
       if (!canvas.getObjects().some((o) => o instanceof FabricImage)) {
@@ -269,15 +318,53 @@ export default function DesignerCanvas({
   const bringForward = () => withActive((canvas, active) => canvas.bringObjectForward(active));
   const sendBackward = () => withActive((canvas, active) => canvas.sendObjectBackwards(active));
 
-  // Arrow-key nudge for pixel-precise placement (Shift = 10px leaps). Only acts
-  // when an object is selected, so it never hijacks the page's scroll keys.
-  const nudge = (e: KeyboardEvent<HTMLDivElement>) => {
+  // True while a run of arrow-key nudges is in flight, so we snapshot ONCE at
+  // the start of the run (Ctrl/Cmd+Z then reverses the whole nudge sequence)
+  // rather than flooding the undo stack with one entry per pixel.
+  const nudgingRef = useRef(false);
+
+  // Don't hijack keys while the user is typing in a form field (the stage is
+  // focusable and this handler is also reachable when focus is inside it).
+  const isTypingTarget = (t: EventTarget | null): boolean => {
+    const el = t as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  };
+
+  // Stage key bindings: arrow-nudge, Delete/Backspace to remove the selection,
+  // and Ctrl/Cmd+Z to undo the last destructive edit.
+  const onStageKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (isTypingTarget(e.target)) return;
+
+    // Undo — Ctrl/Cmd+Z (never with Shift, which is conventionally redo).
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+
+    // Delete selected object.
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      const canvas = canvasRef.current;
+      if (!canvas?.getActiveObject()) return;
+      e.preventDefault();
+      deleteSelected();
+      return;
+    }
+
+    // Arrow-key nudge for pixel-precise placement (Shift = 10px leaps). Only
+    // acts when an object is selected, so it never hijacks page scroll keys.
     const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
     if (!arrows.includes(e.key)) return;
     const canvas = canvasRef.current;
     const active = canvas?.getActiveObject();
     if (!canvas || !active) return;
     e.preventDefault();
+    if (!nudgingRef.current) {
+      pushHistory();
+      nudgingRef.current = true;
+    }
     const step = e.shiftKey ? 10 : 1;
     const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
     const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
@@ -285,6 +372,12 @@ export default function DesignerCanvas({
     active.setCoords();
     canvas.requestRenderAll();
     markDirty();
+  };
+
+  // End the nudge run when the arrow keys are released, so the next run starts
+  // a fresh undo snapshot.
+  const onStageKeyUp = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key.startsWith('Arrow')) nudgingRef.current = false;
   };
 
   const capture = () => {
@@ -329,7 +422,8 @@ export default function DesignerCanvas({
       <div ref={stageRef} className="min-w-0 flex-1">
         <div
           tabIndex={0}
-          onKeyDown={nudge}
+          onKeyDown={onStageKeyDown}
+          onKeyUp={onStageKeyUp}
           className={cn(
             'group relative mx-auto max-w-full overflow-hidden rounded-lg border',
             'bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:20px_20px]',
@@ -455,7 +549,8 @@ export default function DesignerCanvas({
           </Badge>
           {hasSelection && (
             <span className="text-xs text-fg-subtle">
-              Tip: drag to move (snaps to guides), arrow keys to nudge, handles to resize.
+              Tip: drag to move (snaps to guides), arrow keys to nudge, handles to resize · Delete to
+              remove · Ctrl+Z to undo.
             </span>
           )}
         </div>
@@ -529,6 +624,12 @@ export default function DesignerCanvas({
           </fieldset>
 
           <div className="h-px bg-border" aria-hidden="true" />
+
+          {/* Undo — mouse-accessible mirror of Ctrl/Cmd+Z; reverses the last
+              destructive edit (delete / replace / transform). */}
+          <Button variant="outline" size="sm" onClick={undo} disabled={!canUndo} fullWidth>
+            Undo last change
+          </Button>
 
           {/* Capture */}
           <Button

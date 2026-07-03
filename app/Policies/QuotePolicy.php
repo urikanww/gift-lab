@@ -14,6 +14,17 @@ use App\Models\User;
  */
 class QuotePolicy
 {
+    /**
+     * Create a quote for a company. Staff may raise a quote on any company's
+     * behalf; a buyer only for their own company. Defense-in-depth net that
+     * mirrors StoreQuoteRequest's tenancy check at the policy layer, so a new
+     * entry point can't create cross-company quotes by skipping the FormRequest.
+     */
+    public function create(User $user, int $companyId): bool
+    {
+        return $user->isStaff() || $user->company_id === $companyId;
+    }
+
     public function view(User $user, Quote $quote): bool
     {
         return $user->isStaff() || $user->company_id === $quote->company_id;

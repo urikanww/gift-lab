@@ -196,15 +196,19 @@ class Quote extends Model
         }
 
         if ($this->state === QuoteState::Ready) {
+            // pluck() returns JobState enum instances (the model casts `state`),
+            // so compare enum-to-enum — comparing against ->value never matched
+            // and left the tracker stuck on IN_PRODUCTION even once SHIPPED/CLOSED.
             $states = $this->jobs()->pluck('state');
 
             if ($states->isNotEmpty()) {
-                if ($states->every(fn ($s): bool => $s === JobState::Closed->value)) {
+                // DELIVERED first: an all-CLOSED set also satisfies the
+                // shipped-or-closed test below, so precedence matters.
+                if ($states->every(fn (JobState $s): bool => $s === JobState::Closed)) {
                     return 'DELIVERED';
                 }
 
-                $shippedOrClosed = [JobState::Shipped->value, JobState::Closed->value];
-                if ($states->every(fn ($s): bool => in_array($s, $shippedOrClosed, true))) {
+                if ($states->every(fn (JobState $s): bool => $s === JobState::Shipped || $s === JobState::Closed)) {
                     return 'SHIPPED';
                 }
             }

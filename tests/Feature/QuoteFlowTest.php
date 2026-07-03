@@ -7,7 +7,10 @@ use App\Models\Company;
 use App\Models\Product;
 use App\Models\Quote;
 use App\Models\User;
+use Illuminate\Contracts\Broadcasting\Broadcaster;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function (): void {
@@ -43,6 +46,16 @@ it('forbids a buyer creating a quote for another company', function (): void {
     ])->assertStatus(422);
 });
 
+it('denies cross-company quote creation at the policy layer', function (): void {
+    $other = Company::factory()->create();
+
+    // Defense-in-depth net independent of the FormRequest: a buyer may create a
+    // quote for their own company but not another's; staff may create for any.
+    expect(Gate::forUser($this->buyer)->allows('create', [Quote::class, $this->company->id]))->toBeTrue()
+        ->and(Gate::forUser($this->buyer)->allows('create', [Quote::class, $other->id]))->toBeFalse()
+        ->and(Gate::forUser($this->staff)->allows('create', [Quote::class, $other->id]))->toBeTrue();
+});
+
 it('broadcasts a state change when a quote is sent', function (): void {
     Event::fake([QuoteStateChanged::class]);
     Sanctum::actingAs($this->staff);
@@ -52,6 +65,31 @@ it('broadcasts a state change when a quote is sent', function (): void {
 
     expect($quote->fresh()->state->value)->toBe('SENT');
     Event::assertDispatched(QuoteStateChanged::class);
+});
+
+it('still succeeds on a write when the broadcast transport is down', function (): void {
+    // Simulate a Reverb outage: register a broadcaster whose broadcast() throws
+    // the transport error (Pusher cURL error 7) that a dead Reverb produces.
+    Broadcast::extend('exploding', fn (): Broadcaster => new class implements Broadcaster {
+        public function auth($request) {}
+
+        public function validAuthenticationResponse($request, $result) {}
+
+        public function broadcast(array $channels, $event, array $payload = []): void
+        {
+            throw new RuntimeException('cURL error 7: Failed to connect to localhost port 8080');
+        }
+    });
+    config(['broadcasting.default' => 'exploding']);
+
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT']);
+
+    // The broadcast throws after the DB commit; the helper must swallow it so
+    // the committed write still returns success (never a 500).
+    $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
+
+    expect($quote->fresh()->state->value)->toBe('SENT');
 });
 
 it('blocks an illegal transition with a friendly 422, leaving state intact', function (): void {

@@ -12,5 +12,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        // Split large, rarely-changing vendor libraries out of the entry chunk
+        // so they cache independently and the initial payload stays small.
+        // (fabric.js and three.js are pulled in only by lazy route chunks, so
+        // Rollup already keeps them out of the entry chunk on their own.)
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          motion: ['framer-motion'],
+          realtime: ['laravel-echo', 'pusher-js'],
+        },
+      },
+    },
   },
 });

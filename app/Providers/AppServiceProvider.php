@@ -18,6 +18,7 @@ use App\Events\OrderTrackingUpdated;
 use App\Events\QuoteStateChanged;
 use App\Models\Quote;
 use App\Policies\QuotePolicy;
+use App\Support\Broadcasting;
 use Illuminate\Support\Facades\Event;
 use App\Services\Scraper\CompositeScraperClient;
 use App\Services\Scraper\Contracts\ScraperClient;
@@ -120,7 +121,7 @@ class AppServiceProvider extends ServiceProvider
         // QuoteStateChanged dispatch sites. Job-level advances (which leave the
         // quote in READY) dispatch OrderTrackingUpdated directly in QueueService.
         Event::listen(QuoteStateChanged::class, function (QuoteStateChanged $event): void {
-            OrderTrackingUpdated::dispatch($event->quote);
+            Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($event->quote));
         });
     }
 }
