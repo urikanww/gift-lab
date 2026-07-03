@@ -9,6 +9,8 @@ import ProductDesignerPage from './pages/ProductDesignerPage';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import TrackPage from './pages/TrackPage';
+import BrandKitPage from './pages/BrandKitPage';
+import KitBuilderPage from './pages/KitBuilderPage';
 import QuoteListPage from './pages/QuoteListPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
 import ProductionQueuePage from './pages/ProductionQueuePage';
@@ -59,6 +61,7 @@ export default function App() {
           <Route path="cart" element={<CartPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
           <Route path="track" element={<TrackPage />} />
+          <Route path="kits" element={<KitBuilderPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="catalogue" element={<Navigate to="/products" replace />} />
           <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
@@ -67,6 +70,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <QuoteListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="brand-kit"
+            element={
+              <ProtectedRoute>
+                <BrandKitPage />
               </ProtectedRoute>
             }
           />

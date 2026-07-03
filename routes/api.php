@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BrandKitController;
 use App\Http\Controllers\CatalogueController;
+use App\Http\Controllers\LeadTimeEstimateController;
 use App\Http\Controllers\PriceEstimateController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
@@ -40,6 +42,8 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // 3D model stream for the interactive viewer (published MODEL_3D only).
     Route::get('/catalogue/{key}/model', [CatalogueController::class, 'model']);
     Route::post('/price-estimate', PriceEstimateController::class);
+    // Deadline-aware delivery window (queue-depth aware, ranged/conservative).
+    Route::post('/lead-time-estimate', LeadTimeEstimateController::class);
     // Designer artwork upload (account-free designer, spec 6.1).
     Route::post('/uploads/artwork', [UploadController::class, 'artwork']);
 });
@@ -54,6 +58,10 @@ Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->midd
 Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+
+    // Per-company brand kit (saved logo + colours; scoped to own company).
+    Route::get('/company/brand-kit', [BrandKitController::class, 'show']);
+    Route::put('/company/brand-kit', [BrandKitController::class, 'update']);
 
     // Quotes
     Route::get('/quotes', [QuoteController::class, 'index']);

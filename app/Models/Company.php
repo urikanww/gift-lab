@@ -28,9 +28,21 @@ class Company extends Model
         'phone',
         'address',
         'default_terms',
+        'brand_logo',
+        'brand_colors',
         'status',
         'created_by',
     ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'brand_colors' => 'array',
+        ];
+    }
 
     /**
      * @return HasMany<User>

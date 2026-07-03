@@ -61,9 +61,17 @@ export default function SiteHeader() {
             Products
           </NavLink>
           <CategoriesMenu />
+          <NavLink to="/kits" className={navLinkClass}>
+            Build a kit
+          </NavLink>
           <NavLink to="/track" className={navLinkClass}>
             Track order
           </NavLink>
+          {user && !isStaffRole(user.role) && (
+            <NavLink to="/brand-kit" className={navLinkClass}>
+              Brand kit
+            </NavLink>
+          )}
           {isStaffRole(user?.role) && (
             <>
               <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -361,10 +369,18 @@ function MobileDrawer({
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
+            <NavLink to="/kits" onClick={onClose} className={navLinkClass}>
+              Build a kit
+            </NavLink>
             <NavLink to="/track" onClick={onClose} className={navLinkClass}>
               Track order
             </NavLink>
             <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3">
+              {user && !isStaffRole(user.role) && (
+                <NavLink to="/brand-kit" onClick={onClose} className={navLinkClass}>
+                  Brand kit
+                </NavLink>
+              )}
               {isStaffRole(user?.role) && (
                 <>
                   <NavLink to="/catalogue-admin" onClick={onClose} className={navLinkClass}>

@@ -29,6 +29,9 @@ interface DesignerCanvasProps {
    * bands are a price tier — a bigger footprint costs more per unit.
    */
   onLogoChange?: (info: { hasLogo: boolean; size: LogoSize }) => void;
+  /** Company brand kit: a saved logo (data URL) + colour swatches to one-click apply. */
+  brandLogo?: string | null;
+  brandColors?: string[];
 }
 
 const LOGO_SIZES = ['S', 'M', 'L'] as const;
@@ -57,6 +60,8 @@ export default function DesignerCanvas({
   backgroundUrl,
   onCapture,
   onLogoChange,
+  brandLogo,
+  brandColors,
 }: DesignerCanvasProps) {
   const elRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -175,16 +180,11 @@ export default function DesignerCanvas({
     onLogoChange?.({ hasLogo, size });
   };
 
-  const handleLogoUpload = async (file: File) => {
+  // Add a logo from a data URL (fresh upload OR the saved brand-kit logo —
+  // both are data URLs, so neither hits a CORS wall on fabric load).
+  const addLogoFromDataUrl = async (dataUrl: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const reader = new FileReader();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Could not read file.'));
-      reader.readAsDataURL(file);
-    });
-
     const img = await FabricImage.fromURL(dataUrl);
     // Land the logo at the current band's midpoint; the clamp keeps any later
     // resize inside the band.
@@ -196,6 +196,16 @@ export default function DesignerCanvas({
     setHasLogo(true);
     markDirty();
     onLogoChange?.({ hasLogo: true, size: logoSize });
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Could not read file.'));
+      reader.readAsDataURL(file);
+    });
+    await addLogoFromDataUrl(dataUrl);
   };
 
   const withActive = (fn: (canvas: Canvas, active: FabricObject) => void) => {
@@ -398,6 +408,32 @@ export default function DesignerCanvas({
                 />
               </label>
             </div>
+
+            {/* Brand kit: one-click apply the company's saved logo + show its
+                colour swatches for reference. */}
+            {(brandLogo || (brandColors && brandColors.length > 0)) && (
+              <div className="flex flex-col gap-2 rounded-md border border-brand-100 bg-brand-50/50 p-2.5">
+                <span className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Brand kit</span>
+                {brandLogo && (
+                  <Button variant="outline" size="sm" onClick={() => void addLogoFromDataUrl(brandLogo)}>
+                    Apply brand logo
+                  </Button>
+                )}
+                {brandColors && brandColors.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {brandColors.map((c) => (
+                      <span
+                        key={c}
+                        title={c}
+                        className="h-5 w-5 rounded-full border border-border"
+                        style={{ backgroundColor: c }}
+                        aria-label={`Brand colour ${c}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </fieldset>
 
           <div className="h-px bg-border" aria-hidden="true" />

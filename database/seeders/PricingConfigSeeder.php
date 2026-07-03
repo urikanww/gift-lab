@@ -35,6 +35,13 @@ class PricingConfigSeeder extends Seeder
             ['print_cost', 'filament_per_gram', 0.05, 'Filament cost per gram', true],
             ['print_cost', 'minutes_per_gram', 2.0, 'Estimated print minutes per gram', false],
             ['print_cost', 'machine_rate_per_min', 0.08, 'Machine time rate per minute', true],
+            // Deadline-aware delivery estimate inputs (queue-depth aware).
+            ['lead_time', 'production_days', ['UV' => 3, '3D' => 5], 'Base production days by track', false],
+            ['lead_time', 'daily_capacity', 8, 'Jobs the floor clears per day (queue-delay divisor)', false],
+            ['lead_time', 'dispatch_days', 2, 'Shipping transit days added to production', false],
+            ['lead_time', 'buffer_days', 3, 'Padding added for the upper bound of the delivery window', false],
+            ['lead_time', 'rush_shave_days', 2, 'Days a rush order shaves off the earliest date (0 = rush off)', false],
+            ['lead_time', 'rush_fee', 40.00, 'Flat rush fee', true],
             ['threshold', 'bulk_qty', 50, 'Quantity at/above which bulk pricing applies', false],
             ['threshold', 'bulk_discount_pct', 10, 'Discount % applied at bulk quantity', false],
             ['delivery', 'table', [

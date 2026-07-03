@@ -5,12 +5,24 @@ import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
 import Model3dPersonalizer, { type Model3dCustomization } from '../components/Model3dPersonalizer';
 import { useCartStore } from '../stores/cartStore';
+import { useAuthStore } from '../stores/authStore';
+import { fetchBrandKit, type BrandKit } from '../lib/brandKit';
 import { uploadArtwork } from '../lib/uploadArtwork';
 import type { PriceEstimate, Product, Variant } from '../types';
-import { Button, Select, Badge, Card, useToast } from '../ui';
+import { Button, Select, Badge, Card, Input, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 
 const QTY_OPTIONS = [1, 25, 50, 100, 250, 500];
+
+interface LeadEstimate {
+  earliest: string;
+  latest: string;
+  rush_available: boolean;
+  rush_earliest: string | null;
+  rush_fee: number | null;
+}
+
+const fmtDate = (d: string) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 export default function ProductDesignerPage() {
   const { id } = useParams();
@@ -33,6 +45,12 @@ export default function ProductDesignerPage() {
   const is3d = product?.class === 'MODEL_3D';
   const [qty, setQty] = useState(50);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
+  // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
+  const [lead, setLead] = useState<LeadEstimate | null>(null);
+  const [needBy, setNeedBy] = useState('');
+  // Brand kit: only a signed-in buyer (has a company) has one to apply.
+  const companyId = useAuthStore((s) => s.user?.company_id ?? null);
+  const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,6 +69,40 @@ export default function ProductDesignerPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Load the buyer's brand kit once (if signed in with a company).
+  useEffect(() => {
+    if (!companyId) return;
+    let active = true;
+    fetchBrandKit()
+      .then((kit) => {
+        if (active) setBrandKit(kit);
+      })
+      .catch(() => {
+        if (active) setBrandKit(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [companyId]);
+
+  // Delivery window: fetch once the product is known. Queue-depth aware, so a
+  // busy floor honestly pushes the date out. Failure is non-fatal (hide it).
+  useEffect(() => {
+    if (!product) return;
+    let active = true;
+    api
+      .post<LeadEstimate>('/lead-time-estimate', { line_items: [{ product_id: product.id }] })
+      .then(({ data }) => {
+        if (active) setLead(data);
+      })
+      .catch(() => {
+        if (active) setLead(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [product]);
 
   // Live quote: re-estimate whenever qty, variant, logo band, or captured
   // artwork changes. Event-driven single POST per change — never polled.
@@ -167,6 +219,47 @@ export default function ProductDesignerPage() {
             )}
           </header>
 
+          {/* Deadline-aware delivery window + feasibility check */}
+          {lead && (
+            <Card padding="md" className="flex flex-col gap-3 sm:max-w-lg">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-fg">Estimated delivery</p>
+                  <p className="text-sm text-fg-muted">
+                    Arrives {fmtDate(lead.earliest)} – {fmtDate(lead.latest)}
+                  </p>
+                </div>
+                {needBy &&
+                  (needBy < lead.latest ? (
+                    <Badge tone="warning" dot>
+                      At risk
+                    </Badge>
+                  ) : (
+                    <Badge tone="success" dot>
+                      On track
+                    </Badge>
+                  ))}
+              </div>
+              <Input
+                type="date"
+                label="Need it by (optional)"
+                value={needBy}
+                min={lead.earliest}
+                onChange={(e) => setNeedBy(e.target.value)}
+              />
+              {needBy && needBy < lead.latest && (
+                <p className="text-sm text-warning">
+                  Tight for {fmtDate(needBy)}.
+                  {lead.rush_available && lead.rush_earliest
+                    ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
+                        lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
+                      } — ask us to add it.`
+                    : ''}
+                </p>
+              )}
+            </Card>
+          )}
+
           {/* Variant picker */}
           {product.variants && product.variants.length > 0 && (
             <Card padding="sm" className="max-w-xs">
@@ -188,7 +281,13 @@ export default function ProductDesignerPage() {
               places logo/text on the canvas over the product photo (3D items
               are UV-decorated after printing) */}
           {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
-          <DesignerCanvas backgroundUrl={product.image_url} onCapture={handleCapture} onLogoChange={setLogo} />
+          <DesignerCanvas
+            backgroundUrl={product.image_url}
+            onCapture={handleCapture}
+            onLogoChange={setLogo}
+            brandLogo={brandKit?.logo ?? null}
+            brandColors={brandKit?.colors ?? []}
+          />
 
           {/* Sticky action bar */}
           <div className="sticky bottom-4 z-raised">
