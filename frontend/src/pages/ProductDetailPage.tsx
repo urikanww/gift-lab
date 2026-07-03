@@ -213,7 +213,7 @@ export default function ProductDetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-10 pb-24 md:pb-0">
       {/* ── Two-column: gallery + info ────────────────────────────────────── */}
       <div className="grid items-start gap-8 md:grid-cols-2 md:gap-12">
         {/* LEFT — gallery (sticky only at md+). */}
@@ -400,6 +400,15 @@ export default function ProductDetailPage() {
             </Button>
           </Motion>
 
+          {/* Sample = one physical unit, priced at the single-unit rate. Spell it
+              out so the higher-than-"from" price isn't a surprise at checkout. */}
+          <Motion variants={staggerItem}>
+            <p className="text-xs text-fg-subtle">
+              A sample is one unit at single-unit pricing. Volume discounts apply
+              to full orders — see the price breaks above.
+            </p>
+          </Motion>
+
           {/* Trust mini-row */}
           <Motion variants={staggerItem}>
             <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-fg-muted">
@@ -477,6 +486,17 @@ export default function ProductDetailPage() {
           </Motion>
         </section>
       )}
+
+      {/* Mobile sticky action bar — the in-flow CTAs sit far below the fold on a
+          phone, so mirror them in a fixed bar. Hidden at md+ where CTAs are visible. */}
+      <div className="fixed inset-x-0 bottom-0 z-raised flex gap-2 border-t border-border bg-surface/95 p-3 backdrop-blur-md md:hidden">
+        <LinkButton to={designPath(product)} variant="primary" size="md" className="flex-1">
+          Customize
+        </LinkButton>
+        <Button variant="outline" size="md" onClick={handleAddSample} className="flex-1">
+          Add sample
+        </Button>
+      </div>
     </div>
   );
 }

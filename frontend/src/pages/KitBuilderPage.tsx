@@ -159,6 +159,7 @@ export default function KitBuilderPage() {
                 <Button
                   variant={inTray.has(p.id) ? 'secondary' : 'outline'}
                   size="sm"
+                  className="min-h-[44px]"
                   disabled={inTray.has(p.id)}
                   onClick={() => addToKit(p)}
                 >
@@ -204,7 +205,7 @@ export default function KitBuilderPage() {
                     type="button"
                     aria-label={`Remove ${it.product.name}`}
                     onClick={() => removeFromKit(it.product.id)}
-                    className="text-fg-subtle hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-lg text-fg-subtle hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     ×
                   </button>

@@ -22,8 +22,10 @@ it('renders product name, price, and a Customize CTA linking to the designer', a
     </MemoryRouter></ThemeProvider>,
   );
   await waitFor(() => expect(screen.getByRole('heading', { name: /A5 Hardcover Notebook/i })).toBeInTheDocument());
-  const cta = screen.getByRole('link', { name: /customize/i });
-  expect(cta).toHaveAttribute('href', '/design/5');
+  // Desktop CTA ("Customize in studio") + mobile sticky bar ("Customize") both link to the designer.
+  const ctas = screen.getAllByRole('link', { name: /customize/i });
+  expect(ctas.length).toBeGreaterThan(0);
+  ctas.forEach((cta) => expect(cta).toHaveAttribute('href', '/design/5'));
 });
 
 it('uses the marketplace category for breadcrumb, not the print class', async () => {

@@ -21,7 +21,7 @@ const FOCUSABLE =
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    'rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
+    'flex min-h-[44px] items-center rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     isActive ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
   );
@@ -106,7 +106,7 @@ export default function SiteHeader() {
 
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
             aria-label="Open menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(true)}
@@ -202,7 +202,7 @@ function ThemeToggle() {
       type="button"
       onClick={toggleTheme}
       aria-label="Toggle theme"
-      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-lg text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-md text-lg text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
     </button>
@@ -215,7 +215,7 @@ function CartLink({ count }: { count: number }) {
       to="/cart"
       className={({ isActive }) =>
         cn(
-          'relative inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors',
+          'relative inline-flex h-11 w-11 items-center justify-center rounded-md transition-colors',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           isActive ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
         )
@@ -349,7 +349,7 @@ function MobileDrawer({
                 type="button"
                 onClick={onClose}
                 aria-label="Close menu"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-md text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
                   <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

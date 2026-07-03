@@ -106,6 +106,7 @@ export default function CartPage() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="min-h-[44px]"
                         onClick={() => removeLine(l.key)}
                         aria-label={`Remove ${l.product.name} from cart`}
                       >
@@ -119,7 +120,7 @@ export default function CartPage() {
           </AnimatePresence>
 
           <div className="flex justify-end pt-1">
-            <Button variant="ghost" size="sm" onClick={clear}>
+            <Button variant="ghost" size="sm" className="min-h-[44px]" onClick={clear}>
               Clear cart
             </Button>
           </div>
@@ -197,7 +198,7 @@ function QuantityControl({
         value={qty}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label={label}
-        className="h-9 w-12 border-x border-border bg-transparent text-center text-sm tabular-nums text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="h-11 w-12 border-x border-border bg-transparent text-center text-sm tabular-nums text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       />
       <StepButton onClick={() => onChange(qty + 1)} aria-label="Increase quantity">
         <span aria-hidden="true">+</span>
@@ -213,7 +214,7 @@ function StepButton({
   return (
     <button
       type="button"
-      className="flex h-9 w-9 items-center justify-center text-fg-muted transition-colors duration-fast ease-standard hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-40 disabled:pointer-events-none"
+      className="flex h-11 w-11 items-center justify-center text-fg-muted transition-colors duration-fast ease-standard hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-40 disabled:pointer-events-none"
       {...rest}
     >
       {children}
