@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
 import { Badge, Button, Card, Input, Skeleton, useToast } from '../ui';
@@ -314,9 +314,25 @@ export default function QuoteDetailPage() {
                   </Button>
                 )}
 
-                {!['DRAFT', 'ACCEPTED', 'PROOFING', 'PROOF_APPROVED', 'CONFIRMED'].includes(quote.state) && (
-                  <p className="text-sm text-fg-muted">No staff action available for this state.</p>
+                {quote.state === 'PROCURING' && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm text-fg-muted">
+                      {quote.line_items?.some((li) => li.line_state === 'AWAITING_RECONFIRM')
+                        ? 'One or more lines need a stock/price decision before this order can be queued.'
+                        : 'Procurement is running. Any line flagged during the re-check is resolved at the procurement desk.'}
+                    </p>
+                    <Link
+                      to="/procurement"
+                      className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                    >
+                      Go to procurement desk →
+                    </Link>
+                  </div>
                 )}
+
+                {!['DRAFT', 'ACCEPTED', 'PROOFING', 'PROOF_APPROVED', 'CONFIRMED', 'PROCURING'].includes(
+                  quote.state,
+                ) && <p className="text-sm text-fg-muted">No staff action available for this state.</p>}
               </div>
             </Card>
           </Motion>
