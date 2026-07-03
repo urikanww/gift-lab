@@ -60,6 +60,7 @@ class DashboardMetrics
             ->groupBy('state')
             ->selectRaw('state, COUNT(*) as c')
             ->pluck('c', 'state')
+            ->map(fn ($c): int => (int) $c)
             ->all();
     }
 
@@ -70,6 +71,7 @@ class DashboardMetrics
             ->groupBy('state')
             ->selectRaw('state, COUNT(*) as c')
             ->pluck('c', 'state')
+            ->map(fn ($c): int => (int) $c)
             ->all();
 
         return [
@@ -99,8 +101,8 @@ class DashboardMetrics
             ->map(fn (ProductionJob $j): array => [
                 'jobId' => $j->id,
                 'quoteId' => $j->quote_id,
-                'track' => $j->track->value ?? (string) $j->track,
-                'state' => $j->state->value ?? (string) $j->state,
+                'track' => $j->track->value,
+                'state' => $j->state->value,
                 'readyAt' => $j->ready_at?->toIso8601String(),
             ])
             ->all();
