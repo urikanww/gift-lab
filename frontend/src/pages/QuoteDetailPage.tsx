@@ -31,6 +31,25 @@ function timelineIndex(state: QuoteState): number {
   return 0;
 }
 
+/**
+ * Passive "what happens next" copy for buyer-facing states that carry no buyer
+ * action. Keeps the buyer oriented (whose court the ball is in) after they hand
+ * off — e.g. right after requesting changes there's otherwise no confirmation
+ * of what follows. States WITH a buyer action (SENT, PROOF_APPROVED) are
+ * handled by the "Next step" action card instead; CANCELLED is surfaced by the
+ * timeline card.
+ */
+const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
+  ACCEPTED: 'Quote accepted. Our team is preparing your first proof — we’ll let you know when it’s ready to review.',
+  CHANGES_REQUESTED: 'We’ve received your change request and will send a revised proof shortly.',
+  PROOFING: 'Your proof is being prepared. We’ll notify you as soon as it’s ready to review.',
+  PO_ISSUED: 'Payment received and a purchase order has been issued. We’re confirming your order for production.',
+  CONFIRMED: 'Your order is confirmed. It will be scheduled for production shortly.',
+  PROCURING: 'Your order is being prepared for production.',
+  READY: 'Your order is ready. We’ll be in touch about delivery.',
+  CLOSED: 'This order is complete. Thanks for working with us.',
+};
+
 export default function QuoteDetailPage() {
   const { id } = useParams();
   const quoteId = Number(id);
@@ -227,6 +246,18 @@ export default function QuoteDetailPage() {
                   </Button>
                 </div>
               )}
+            </Card>
+          </Motion>
+        )}
+
+        {/* Buyer status note — passive "what happens next" for every
+            buyer-facing state with no buyer action, so the ball is never
+            silently in our court. Mirrors the staff fallback line. */}
+        {!isStaff && BUYER_STATUS_NOTE[quote.state] && (
+          <Motion variants={staggerItem}>
+            <Card padding="lg">
+              <h2 className="font-display text-xl text-fg">What happens next</h2>
+              <p className="mt-3 text-sm text-fg-muted">{BUYER_STATUS_NOTE[quote.state]}</p>
             </Card>
           </Motion>
         )}
