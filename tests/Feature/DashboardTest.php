@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\Quote;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function (): void {
@@ -70,4 +72,31 @@ it('caps activity at 20 newest-first and at-risk at 15', function (): void {
 
     expect($activity)->toHaveCount(20);
     expect($activity[0]['event'])->toBe('quote.amended');
+});
+
+it('runs a bounded number of queries regardless of data volume', function (): void {
+    $company = Company::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $company->id]);
+    for ($i = 0; $i < 30; $i++) {
+        AuditLog::create([
+            'user_id' => $this->staff->id,
+            'auditable_type' => Quote::class,
+            'auditable_id' => $quote->id,
+            'event' => 'quote.amended',
+            'created_at' => now()->subMinutes($i),
+            'updated_at' => now()->subMinutes($i),
+        ]);
+    }
+
+    Sanctum::actingAs($this->staff);
+
+    Cache::flush();
+    DB::enableQueryLog();
+    $this->getJson('/api/admin/dashboard')->assertOk();
+    $count = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    // pipeline + production(byState + overdue) + 3 queues + atRisk + activity(+eager user)
+    // ≈ 9; the eager-load makes actor lookup ONE query, not 30. Guard against N+1.
+    expect($count)->toBeLessThanOrEqual(12);
 });
