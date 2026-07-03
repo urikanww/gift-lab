@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Canvas, FabricImage, type FabricObject } from 'fabric';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Customization } from '../types';
@@ -54,6 +54,13 @@ const LOGO_BANDS: Record<LogoSize, { min: number; max: number }> = {
 
 const bandMid = (size: LogoSize): number => (LOGO_BANDS[size].min + LOGO_BANDS[size].max) / 2;
 
+// Placement precision: while dragging, a logo whose centre lands within this
+// many pixels of a canvas centre/third snaps onto it, and a guide line shows.
+const SNAP_PX = 7;
+// The printable UV zone as an inset fraction of the stage. Placement outside it
+// is not producible on the flat face, so the frame keeps buyer + floor honest.
+const PRINT_INSET = 0.1;
+
 export default function DesignerCanvas({
   width = 500,
   height = 380,
@@ -74,6 +81,8 @@ export default function DesignerCanvas({
   const logoSizeRef = useRef<LogoSize>('M');
   const [objectCount, setObjectCount] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
+  // Active alignment guides (centre/thirds) shown while a logo snaps mid-drag.
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [captured, setCaptured] = useState(false);
   const animate = useReducedMotionSafe();
 
@@ -145,8 +154,38 @@ export default function DesignerCanvas({
         clampToBand(e.target);
         canvas.requestRenderAll();
       }
+      // Drag/scale finished — retract the live guides.
+      setGuides({ x: null, y: null });
+    };
+    // Snap the logo's centre to the stage centre + thirds so placement is
+    // precise and repeatable, and surface a guide line while it's locked on.
+    // Logos are added with a centre origin, so left/top ARE the centre coords.
+    const onMoving = (e: { target?: FabricObject }) => {
+      const obj = e.target;
+      if (!obj) return;
+      const snapsX = [dims.w / 2, dims.w / 3, (dims.w * 2) / 3];
+      const snapsY = [dims.h / 2, dims.h / 3, (dims.h * 2) / 3];
+      let gx: number | null = null;
+      let gy: number | null = null;
+      for (const s of snapsX) {
+        if (Math.abs((obj.left ?? 0) - s) < SNAP_PX) {
+          obj.set('left', s);
+          gx = s;
+          break;
+        }
+      }
+      for (const s of snapsY) {
+        if (Math.abs((obj.top ?? 0) - s) < SNAP_PX) {
+          obj.set('top', s);
+          gy = s;
+          break;
+        }
+      }
+      obj.setCoords();
+      setGuides({ x: gx, y: gy });
     };
     canvas.on('object:scaling', onScaling);
+    canvas.on('object:moving', onMoving);
     canvas.on('object:modified', onModified);
 
     setReady(true);
@@ -230,6 +269,24 @@ export default function DesignerCanvas({
   const bringForward = () => withActive((canvas, active) => canvas.bringObjectForward(active));
   const sendBackward = () => withActive((canvas, active) => canvas.sendObjectBackwards(active));
 
+  // Arrow-key nudge for pixel-precise placement (Shift = 10px leaps). Only acts
+  // when an object is selected, so it never hijacks the page's scroll keys.
+  const nudge = (e: KeyboardEvent<HTMLDivElement>) => {
+    const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+    if (!arrows.includes(e.key)) return;
+    const canvas = canvasRef.current;
+    const active = canvas?.getActiveObject();
+    if (!canvas || !active) return;
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : 1;
+    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+    const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+    active.set({ left: (active.left ?? 0) + dx, top: (active.top ?? 0) + dy });
+    active.setCoords();
+    canvas.requestRenderAll();
+    markDirty();
+  };
+
   const capture = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -271,10 +328,12 @@ export default function DesignerCanvas({
       {/* Canvas stage */}
       <div ref={stageRef} className="min-w-0 flex-1">
         <div
+          tabIndex={0}
+          onKeyDown={nudge}
           className={cn(
             'group relative mx-auto max-w-full overflow-hidden rounded-lg border',
             'bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:20px_20px]',
-            'shadow-card',
+            'shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             dragOver ? 'border-primary ring-2 ring-ring' : 'border-border',
           )}
           style={{ width: dims.w }}
@@ -300,6 +359,37 @@ export default function DesignerCanvas({
 
           {/* fabric mounts here — DO NOT alter the element wiring */}
           <canvas ref={elRef} className="relative block touch-none" aria-label="Design canvas" />
+
+          {/* Producible print zone: the flat UV face the logo must sit within.
+              DOM overlay only — never drawn into the canvas, so it can't leak
+              into the exported print artwork. */}
+          {ready && (
+            <div
+              className="pointer-events-none absolute z-raised rounded-sm border border-dashed border-primary/40"
+              style={{ inset: `${PRINT_INSET * 100}%` }}
+              aria-hidden="true"
+            >
+              <span className="absolute left-1 top-1 rounded bg-surface/85 px-1.5 py-0.5 text-2xs font-medium text-fg-subtle">
+                Print area
+              </span>
+            </div>
+          )}
+
+          {/* Live alignment guides — appear only while a logo snaps mid-drag. */}
+          {guides.x !== null && (
+            <div
+              className="pointer-events-none absolute inset-y-0 z-raised w-px bg-primary/70"
+              style={{ left: guides.x }}
+              aria-hidden="true"
+            />
+          )}
+          {guides.y !== null && (
+            <div
+              className="pointer-events-none absolute inset-x-0 z-raised h-px bg-primary/70"
+              style={{ top: guides.y }}
+              aria-hidden="true"
+            />
+          )}
 
           {/* Loading skeleton while fabric initialises */}
           {!ready && (
@@ -328,7 +418,7 @@ export default function DesignerCanvas({
                   {backgroundUrl ? 'Place your design on the product' : 'Start your design'}
                 </p>
                 <p className={cn('text-xs', backgroundUrl ? 'rounded bg-surface/80 px-2 py-0.5 text-fg-muted' : 'text-fg-subtle')}>
-                  Drag &amp; drop a logo here, or upload one.
+                  Drag &amp; drop a logo, then place it inside the print area.
                 </p>
               </Motion>
             )}
@@ -364,7 +454,9 @@ export default function DesignerCanvas({
             {objectCount} {objectCount === 1 ? 'element' : 'elements'}
           </Badge>
           {hasSelection && (
-            <span className="text-xs text-fg-subtle">Tip: drag handles to resize, or use the layer tools above.</span>
+            <span className="text-xs text-fg-subtle">
+              Tip: drag to move (snaps to guides), arrow keys to nudge, handles to resize.
+            </span>
           )}
         </div>
       </div>

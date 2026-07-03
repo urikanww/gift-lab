@@ -149,7 +149,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : fresh.length > 0 ? (
-            <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6">
+            <div className="-mx-4 flex snap-x snap-mandatory scroll-pl-4 gap-4 overflow-x-auto overscroll-x-contain scroll-smooth px-4 pb-3 pr-6 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border-strong sm:-mx-6 sm:scroll-pl-6 sm:px-6 sm:pr-8">
               {fresh.map((p) => (
                 <div key={p.id} className="w-52 shrink-0 snap-start">
                   <ProductCard product={p} to={productPath(p)} showMeta />

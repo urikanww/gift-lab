@@ -95,14 +95,18 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
         </Link>
         {/* Pointer/keyboard enhancement only: inert while invisible so it never
             swallows taps over the price row; touch users personalize via the
-            product page's studio CTA instead. */}
-        <Link
-          to={designPath(product)}
-          aria-label={`Personalize ${product.name}`}
-          className="pointer-events-none absolute inset-x-2 bottom-2 z-raised translate-y-1 rounded-md bg-primary/95 px-3 py-1.5 text-center text-xs font-semibold text-primary-fg opacity-0 shadow-md transition-all duration-base group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:group-hover:translate-y-0"
-        >
-          🎨 Personalize now
-        </Link>
+            product page's studio CTA instead. Confined to a square overlay that
+            tracks the IMAGE (not the whole card) so the CTA floats at the bottom
+            of the photo and never covers the name/price rows below it. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 aspect-square">
+          <Link
+            to={designPath(product)}
+            aria-label={`Personalize ${product.name}`}
+            className="pointer-events-none absolute inset-x-2 bottom-2 z-raised translate-y-1 rounded-md bg-primary/95 px-3 py-1.5 text-center text-xs font-semibold text-primary-fg opacity-0 shadow-md transition-all duration-base group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:group-hover:translate-y-0"
+          >
+            🎨 Personalize now
+          </Link>
+        </div>
       </div>
     </Motion>
   );
