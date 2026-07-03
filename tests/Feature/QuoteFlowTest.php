@@ -36,6 +36,38 @@ it('lets a buyer create a draft quote priced from config', function (): void {
     $this->assertDatabaseCount('line_items', 1);
 });
 
+it('persists the need-by deadline and returns it on fetch', function (): void {
+    Sanctum::actingAs($this->buyer);
+    $neededBy = now()->addWeeks(2)->toDateString();
+
+    $created = $this->postJson('/api/quotes', [
+        'company_id' => $this->company->id,
+        'needed_by' => $neededBy,
+        'line_items' => [
+            ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 2],
+        ],
+    ])->assertCreated()->assertJsonPath('data.needed_by', $neededBy);
+
+    // Round-trips create -> fetch (not just echoed from the request body).
+    $this->getJson("/api/quotes/{$created->json('data.id')}")
+        ->assertOk()
+        ->assertJsonPath('data.needed_by', $neededBy);
+});
+
+it('rejects a need-by date in the past with a 422', function (): void {
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', [
+        'company_id' => $this->company->id,
+        'needed_by' => now()->subDay()->toDateString(),
+        'line_items' => [
+            ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 1],
+        ],
+    ])->assertStatus(422)->assertJsonValidationErrors('needed_by');
+
+    $this->assertDatabaseCount('quotes', 0);
+});
+
 it('forbids a buyer creating a quote for another company', function (): void {
     Sanctum::actingAs($this->buyer);
     $other = Company::factory()->create();

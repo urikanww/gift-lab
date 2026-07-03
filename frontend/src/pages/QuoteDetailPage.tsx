@@ -114,6 +114,18 @@ export default function QuoteDetailPage() {
                   Created {new Date(quote.created_at).toLocaleDateString()}
                 </p>
               )}
+              {quote.needed_by && (
+                <p className="mt-1 text-sm text-fg-muted">
+                  Need by{' '}
+                  <span className="font-medium text-fg">
+                    {new Date(quote.needed_by).toLocaleDateString(undefined, {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </p>
+              )}
               {quote.tracking_code && (
                 <p className="mt-1 text-sm text-fg-muted">
                   Tracking code{' '}

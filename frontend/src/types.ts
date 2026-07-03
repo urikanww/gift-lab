@@ -34,12 +34,21 @@ export type JobTrack = 'UV' | '3D';
 export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED';
 export type ProofState = 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
 
+/** Minimal company summary embedded on the authed user (delivery destination). */
+export interface CompanySummary {
+  id: number;
+  name: string;
+  address: string | null;
+}
+
 export interface User {
   id: number;
   company_id: number | null;
   name: string;
   email: string;
   role: UserRole;
+  /** The buyer's company — reused as the read-only shipping address at checkout. */
+  company?: CompanySummary | null;
 }
 
 export interface Variant {
@@ -124,6 +133,8 @@ export interface Quote {
   total: string;
   price_snapshot_at: string | null;
   notes: string | null;
+  /** Buyer's requested delivery deadline (Y-m-d); null when unset. */
+  needed_by: string | null;
   line_items?: LineItem[];
   proofs?: Proof[];
   created_at: string | null;

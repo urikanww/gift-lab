@@ -33,6 +33,8 @@ class QuoteResource extends JsonResource
             'total' => $this->total,
             'price_snapshot_at' => $this->price_snapshot_at?->toIso8601String(),
             'notes' => $this->notes,
+            // Buyer's requested delivery deadline (Y-m-d); null when unset.
+            'needed_by' => $this->needed_by?->toDateString(),
             'line_items' => LineItemResource::collection($this->whenLoaded('lineItems')),
             'proofs' => ProofResource::collection($this->whenLoaded('proofs')),
             'created_at' => $this->created_at?->toIso8601String(),

@@ -51,6 +51,7 @@ class Quote extends Model
         'price_snapshot_at',
         'amendment_log',
         'notes',
+        'needed_by',
         'created_by',
         'amended_by',
     ];
@@ -64,6 +65,7 @@ class Quote extends Model
             'total' => 'decimal:2',
             'price_snapshot_at' => 'datetime',
             'amendment_log' => 'array',
+            'needed_by' => 'immutable_date',
         ];
     }
 

@@ -52,6 +52,7 @@ class QuoteController extends Controller
             $companyId,
             $request->array('line_items'),
             $request->input('notes'),
+            $request->input('needed_by'),
         );
 
         return (new QuoteResource($quote->load('lineItems')))

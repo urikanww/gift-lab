@@ -19,7 +19,7 @@ import { Motion, fadeInUp, staggerItem, useReducedMotionSafe } from '../motion';
  * on /quotes/:id.
  */
 export default function CheckoutPage() {
-  const { lines, estimate, estimating, estimateError, refreshEstimate, clear } = useCartStore();
+  const { lines, neededBy, estimate, estimating, estimateError, refreshEstimate, clear } = useCartStore();
   const user = useAuthStore((s) => s.user);
   const createQuote = useQuoteStore((s) => s.createQuote);
   const navigate = useNavigate();
@@ -35,6 +35,12 @@ export default function CheckoutPage() {
   }, [lines, refreshEstimate]);
 
   const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
+  // Delivery destination reuses the company's stored address — shown read-only
+  // so the buyer sees where the order ships (no per-order address entry).
+  const company = user?.company ?? null;
+  const neededByLabel = neededBy
+    ? new Date(neededBy).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
 
   const placeOrder = async () => {
     // Login gate — should be unreachable while anonymous (button is not
@@ -49,7 +55,7 @@ export default function CheckoutPage() {
     }
     setSubmitting(true);
     setSubmitError(null);
-    const quote = await createQuote(user.company_id, lines, null);
+    const quote = await createQuote(user.company_id, lines, null, neededBy);
     setSubmitting(false);
     if (quote) {
       setCelebrating(quote.id);
@@ -122,6 +128,34 @@ export default function CheckoutPage() {
               ))}
             </ul>
           </Card>
+
+          {/* Delivery destination — read-only, from the company's stored
+              address — plus the buyer's chosen need-by date. Only meaningful
+              once signed in (address comes from the authed company). */}
+          {user && (
+            <Card padding="lg" aria-labelledby="delivery-heading">
+              <h2 id="delivery-heading" className="font-display text-xl text-fg">
+                Delivery
+              </h2>
+              <dl className="mt-4 flex flex-col gap-4 text-sm">
+                <div className="flex flex-col gap-1">
+                  <dt className="text-fg-subtle">Ships to</dt>
+                  {company?.address ? (
+                    <dd className="whitespace-pre-line text-fg">{company.address}</dd>
+                  ) : (
+                    <dd className="text-fg-muted">
+                      No company address on file. Contact your administrator to add one.
+                    </dd>
+                  )}
+                  {company?.name && <dd className="text-fg-muted">{company.name}</dd>}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <dt className="text-fg-subtle">Need it by</dt>
+                  <dd className="text-fg">{neededByLabel ?? 'No deadline set'}</dd>
+                </div>
+              </dl>
+            </Card>
+          )}
 
           {user ? (
             <Card padding="lg" aria-labelledby="place-heading">
