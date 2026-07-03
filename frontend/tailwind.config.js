@@ -3,6 +3,17 @@
 // Tokens are defined once as CSS custom properties in src/index.css and mapped
 // here so Tailwind utilities (bg-brand, text-fg-muted, shadow-card, ...) resolve
 // to the same runtime-themeable values. Dark mode flips via [data-theme='dark'].
+//
+// Colour tokens are stored in index.css as SPACE-SEPARATED RGB CHANNEL TRIPLES
+// (e.g. `--color-primary: 255 59 95`) and wrapped here as
+// `rgb(var(--token) / <alpha-value>)`. That `<alpha-value>` placeholder is what
+// lets Tailwind's alpha modifiers (bg-primary/95, text-fg/70, ring-primary/40)
+// emit valid rgb() and render opaque as intended — a bare `var(--token)` mapping
+// silently produced transparent surfaces for every /opacity utility. The two
+// `--color-*-bg` tint tokens stay bare because they are complete colour values,
+// consumed whole and never alpha-modified.
+const rgb = (v) => `rgb(var(${v}) / <alpha-value>)`;
+
 export default {
   darkMode: ['selector', "[data-theme='dark']"],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -10,82 +21,83 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: 'var(--brand-50)',
-          100: 'var(--brand-100)',
-          200: 'var(--brand-200)',
-          300: 'var(--brand-300)',
-          400: 'var(--brand-400)',
-          500: 'var(--brand-500)',
-          600: 'var(--brand-600)',
-          700: 'var(--brand-700)',
-          800: 'var(--brand-800)',
-          900: 'var(--brand-900)',
-          DEFAULT: 'var(--color-primary)',
+          50: rgb('--brand-50'),
+          100: rgb('--brand-100'),
+          200: rgb('--brand-200'),
+          300: rgb('--brand-300'),
+          400: rgb('--brand-400'),
+          500: rgb('--brand-500'),
+          600: rgb('--brand-600'),
+          700: rgb('--brand-700'),
+          800: rgb('--brand-800'),
+          900: rgb('--brand-900'),
+          DEFAULT: rgb('--color-primary'),
         },
         accent: {
-          50: 'var(--accent-50)',
-          100: 'var(--accent-100)',
-          200: 'var(--accent-200)',
-          300: 'var(--accent-300)',
-          400: 'var(--accent-400)',
-          500: 'var(--accent-500)',
-          600: 'var(--accent-600)',
-          700: 'var(--accent-700)',
-          800: 'var(--accent-800)',
-          900: 'var(--accent-900)',
-          DEFAULT: 'var(--accent-500)',
+          50: rgb('--accent-50'),
+          100: rgb('--accent-100'),
+          200: rgb('--accent-200'),
+          300: rgb('--accent-300'),
+          400: rgb('--accent-400'),
+          500: rgb('--accent-500'),
+          600: rgb('--accent-600'),
+          700: rgb('--accent-700'),
+          800: rgb('--accent-800'),
+          900: rgb('--accent-900'),
+          DEFAULT: rgb('--accent-500'),
         },
         ink: {
-          0: 'var(--ink-0)',
-          50: 'var(--ink-50)',
-          100: 'var(--ink-100)',
-          200: 'var(--ink-200)',
-          300: 'var(--ink-300)',
-          400: 'var(--ink-400)',
-          500: 'var(--ink-500)',
-          600: 'var(--ink-600)',
-          700: 'var(--ink-700)',
-          800: 'var(--ink-800)',
-          900: 'var(--ink-900)',
+          0: rgb('--ink-0'),
+          50: rgb('--ink-50'),
+          100: rgb('--ink-100'),
+          200: rgb('--ink-200'),
+          300: rgb('--ink-300'),
+          400: rgb('--ink-400'),
+          500: rgb('--ink-500'),
+          600: rgb('--ink-600'),
+          700: rgb('--ink-700'),
+          800: rgb('--ink-800'),
+          900: rgb('--ink-900'),
         },
         // Semantic aliases — prefer these in app code.
-        bg: 'var(--color-bg)',
+        bg: rgb('--color-bg'),
         surface: {
-          DEFAULT: 'var(--color-surface)',
-          2: 'var(--color-surface-2)',
+          DEFAULT: rgb('--color-surface'),
+          2: rgb('--color-surface-2'),
         },
         border: {
-          DEFAULT: 'var(--color-border)',
-          strong: 'var(--color-border-strong)',
+          DEFAULT: rgb('--color-border'),
+          strong: rgb('--color-border-strong'),
         },
         fg: {
-          DEFAULT: 'var(--color-fg)',
-          muted: 'var(--color-fg-muted)',
-          subtle: 'var(--color-fg-subtle)',
-          onbrand: 'var(--color-fg-onbrand)',
+          DEFAULT: rgb('--color-fg'),
+          muted: rgb('--color-fg-muted'),
+          subtle: rgb('--color-fg-subtle'),
+          onbrand: rgb('--color-fg-onbrand'),
         },
         primary: {
-          DEFAULT: 'var(--color-primary)',
-          hover: 'var(--color-primary-hover)',
-          fg: 'var(--color-primary-fg)',
+          DEFAULT: rgb('--color-primary'),
+          hover: rgb('--color-primary-hover'),
+          fg: rgb('--color-primary-fg'),
         },
         success: {
-          DEFAULT: 'var(--color-success)',
+          DEFAULT: rgb('--color-success'),
+          // Complete tint colour (may be rgba in dark) — consumed whole.
           bg: 'var(--color-success-bg)',
         },
         danger: {
-          DEFAULT: 'var(--color-danger)',
+          DEFAULT: rgb('--color-danger'),
           bg: 'var(--color-danger-bg)',
         },
         warning: {
-          DEFAULT: 'var(--color-warning)',
+          DEFAULT: rgb('--color-warning'),
           bg: 'var(--color-warning-bg)',
         },
         info: {
-          DEFAULT: 'var(--color-info)',
+          DEFAULT: rgb('--color-info'),
           bg: 'var(--color-info-bg)',
         },
-        ring: 'var(--color-ring)',
+        ring: rgb('--color-ring'),
       },
       fontFamily: {
         display: 'var(--font-display)',

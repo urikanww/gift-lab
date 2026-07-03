@@ -16,72 +16,81 @@
  * through var() references. Downstream code should prefer Tailwind utilities
  * (bg-brand, text-fg-muted, rounded-lg, shadow-card, etc.) which resolve to
  * these tokens — never hard-code hex.
+ *
+ * IMPORTANT — colour tokens are stored as SPACE-SEPARATED RGB CHANNEL TRIPLES
+ * (e.g. `255 59 95`), NOT hex. tailwind.config.js wraps them as
+ * `rgb(var(--token) / <alpha-value>)` so Tailwind's alpha modifiers
+ * (bg-primary/95, text-fg/70, ring-primary/40, …) emit VALID rgb() and render
+ * opaque as intended. Storing hex here silently produced transparent surfaces
+ * for any /opacity utility. The two `--color-*-bg` tint tokens are the only
+ * exception: they are consumed whole (never alpha-modified) so they remain
+ * complete colour values.
  * ============================================================================
  */
 
 :root,
 [data-theme='light'] {
-  /* --- Brand (coral) & accent (violet) --------------------------------- */
-  --brand-50: #fff0f3;
-  --brand-100: #ffd9e0;
-  --brand-200: #ffb3c1;
-  --brand-300: #ff8399;
-  --brand-400: #ff5c78;
-  --brand-500: #ff3b5f; /* primary brand — Bold Studio coral */
-  --brand-600: #e82d50;
-  --brand-700: #c31f3f;
-  --brand-800: #971930;
-  --brand-900: #6e1524;
+  /* --- Brand (coral) & accent (violet) — RGB channel triples ----------- */
+  --brand-50: 255 240 243;
+  --brand-100: 255 217 224;
+  --brand-200: 255 179 193;
+  --brand-300: 255 131 153;
+  --brand-400: 255 92 120;
+  --brand-500: 255 59 95; /* primary brand — Bold Studio coral (#ff3b5f) */
+  --brand-600: 232 45 80;
+  --brand-700: 195 31 63;
+  --brand-800: 151 25 48;
+  --brand-900: 110 21 36;
 
-  --accent-50: #f1eeff;
-  --accent-100: #e0d9ff;
-  --accent-200: #c4b6ff;
-  --accent-300: #a690ff;
-  --accent-400: #8a6bff;
-  --accent-500: #6a4bff; /* electric violet — secondary accent */
-  --accent-600: #5836e6;
-  --accent-700: #4429c0;
-  --accent-800: #341f95;
-  --accent-900: #281871;
+  --accent-50: 241 238 255;
+  --accent-100: 224 217 255;
+  --accent-200: 196 182 255;
+  --accent-300: 166 144 255;
+  --accent-400: 138 107 255;
+  --accent-500: 106 75 255; /* electric violet — secondary accent (#6a4bff) */
+  --accent-600: 88 54 230;
+  --accent-700: 68 41 192;
+  --accent-800: 52 31 149;
+  --accent-900: 40 24 113;
 
-  /* --- Neutral (ink) scale -------------------------------------------- */
-  --ink-0: #ffffff;
-  --ink-50: #f6f6fb; /* cool paper */
-  --ink-100: #f0f0f6;
-  --ink-200: #e6e6ef;
-  --ink-300: #cfcfdd;
-  --ink-400: #8a8a99;
-  --ink-500: #5b5b6b;
-  --ink-600: #43434f;
-  --ink-700: #2f2f38;
-  --ink-800: #1f1f26;
-  --ink-900: #14141a;
+  /* --- Neutral (ink) scale — RGB channel triples ---------------------- */
+  --ink-0: 255 255 255;
+  --ink-50: 246 246 251; /* cool paper */
+  --ink-100: 240 240 246;
+  --ink-200: 230 230 239;
+  --ink-300: 207 207 221;
+  --ink-400: 138 138 153;
+  --ink-500: 91 91 107;
+  --ink-600: 67 67 79;
+  --ink-700: 47 47 56;
+  --ink-800: 31 31 38;
+  --ink-900: 20 20 26;
 
-  /* --- Semantic surface / text --------------------------------------- */
-  --color-bg: #f6f6fb;
-  --color-surface: #ffffff;
-  --color-surface-2: #f0f0f6;
-  --color-border: #e6e6ef;
-  --color-border-strong: var(--ink-300);
-  --color-fg: #14141a;
-  --color-fg-muted: #5b5b6b;
-  --color-fg-subtle: #8a8a99;
-  --color-fg-onbrand: #ffffff;
+  /* --- Semantic surface / text — RGB channel triples ----------------- */
+  --color-bg: 246 246 251;
+  --color-surface: 255 255 255;
+  --color-surface-2: 240 240 246;
+  --color-border: 230 230 239;
+  --color-border-strong: 207 207 221;
+  --color-fg: 20 20 26;
+  --color-fg-muted: 91 91 107;
+  --color-fg-subtle: 138 138 153;
+  --color-fg-onbrand: 255 255 255;
 
-  --color-primary: #ff3b5f;
-  --color-primary-hover: #e82d50;
-  --color-primary-fg: #ffffff;
+  --color-primary: 255 59 95;
+  --color-primary-hover: 232 45 80;
+  --color-primary-fg: 255 255 255;
 
-  --color-success: #1f8f63; /* jade — success / commerce (decoupled from accent) */
+  --color-success: 31 143 99; /* jade — success / commerce (decoupled from accent) */
   --color-success-bg: #edf9f2;
-  --color-danger: #c23b3b;
+  --color-danger: 194 59 59;
   --color-danger-bg: #fbeceb;
-  --color-warning: #b7791f;
+  --color-warning: 183 121 31;
   --color-warning-bg: #fdf3e2;
-  --color-info: #2f6fed;
+  --color-info: 47 111 237;
   --color-info-bg: #eaf1fd;
 
-  --color-ring: #ff3b5f;
+  --color-ring: 255 59 95;
 
   /* --- Brand gradient ------------------------------------------------- */
   --grad-brand: linear-gradient(135deg, #ff4d6d, #ff9e64);
@@ -123,30 +132,31 @@
 }
 
 [data-theme='dark'] {
-  --color-bg: #0e0e12;
-  --color-surface: #16161d;
-  --color-surface-2: #1e1e28;
-  --color-border: #2a2a34;
-  --color-border-strong: #3a3a46;
-  --color-fg: #f4f4f7;
-  --color-fg-muted: #9a9aa8;
-  --color-fg-subtle: #6f6f80;
-  --color-fg-onbrand: #ffffff;
+  /* Semantic surface / text — RGB channel triples (see note above). */
+  --color-bg: 14 14 18; /* #0e0e12 */
+  --color-surface: 22 22 29; /* #16161d */
+  --color-surface-2: 30 30 40; /* #1e1e28 */
+  --color-border: 42 42 52; /* #2a2a34 */
+  --color-border-strong: 58 58 70; /* #3a3a46 */
+  --color-fg: 244 244 247; /* #f4f4f7 */
+  --color-fg-muted: 154 154 168; /* #9a9aa8 */
+  --color-fg-subtle: 111 111 128; /* #6f6f80 */
+  --color-fg-onbrand: 255 255 255;
 
-  --color-primary: #ff4d6d;
-  --color-primary-hover: #ff6382;
-  --color-primary-fg: #ffffff;
+  --color-primary: 255 77 109; /* #ff4d6d */
+  --color-primary-hover: 255 99 130; /* #ff6382 */
+  --color-primary-fg: 255 255 255;
 
-  --color-success: #37ad7b; /* jade — success / commerce (decoupled from accent) */
+  --color-success: 55 173 123; /* jade — #37ad7b (decoupled from accent) */
   --color-success-bg: rgba(31, 143, 99, 0.16);
-  --color-danger: #ff6b6b;
+  --color-danger: 255 107 107; /* #ff6b6b */
   --color-danger-bg: rgba(255, 77, 109, 0.16);
-  --color-warning: #e0b25a;
+  --color-warning: 224 178 90; /* #e0b25a */
   --color-warning-bg: rgba(183, 121, 31, 0.18);
-  --color-info: #7aa3f5;
+  --color-info: 122 163 245; /* #7aa3f5 */
   --color-info-bg: rgba(47, 111, 237, 0.18);
 
-  --color-ring: #ff4d6d;
+  --color-ring: 255 77 109; /* #ff4d6d */
 
   --grad-brand: linear-gradient(135deg, #ff4d6d, #ff9e64);
 
@@ -165,7 +175,7 @@
 /* --------------------------------------------------------------------- */
 @layer base {
   * {
-    border-color: var(--color-border);
+    border-color: rgb(var(--color-border));
   }
 
   html {
@@ -178,8 +188,8 @@
     font-family: var(--font-text);
     font-size: 15px;
     line-height: 1.55;
-    color: var(--color-fg);
-    background-color: var(--color-bg);
+    color: rgb(var(--color-fg));
+    background-color: rgb(var(--color-bg));
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
@@ -193,25 +203,25 @@
     font-weight: 550;
     line-height: 1.12;
     letter-spacing: -0.01em;
-    color: var(--color-fg);
+    color: rgb(var(--color-fg));
     margin: 0;
   }
 
   a {
-    color: var(--color-primary);
+    color: rgb(var(--color-primary));
     text-decoration: none;
   }
 
   /* Global, consistent, always-visible keyboard focus (WCAG 2.4.7). */
   :focus-visible {
-    outline: 2px solid var(--color-ring);
+    outline: 2px solid rgb(var(--color-ring));
     outline-offset: 2px;
     border-radius: var(--radius-xs);
   }
 
   ::selection {
-    background: var(--brand-200);
-    color: var(--ink-900);
+    background: rgb(var(--brand-200));
+    color: rgb(var(--ink-900));
   }
 }
 
@@ -265,19 +275,19 @@
   padding: 32px 24px 64px;
 }
 .muted {
-  color: var(--color-fg-muted);
+  color: rgb(var(--color-fg-muted));
 }
 .fineprint {
-  color: var(--color-fg-muted);
+  color: rgb(var(--color-fg-muted));
   font-size: 12px;
 }
 .credit {
-  color: var(--color-fg-muted);
+  color: rgb(var(--color-fg-muted));
   font-size: 13px;
   font-style: italic;
 }
 .ok {
-  color: var(--color-success);
+  color: rgb(var(--color-success));
   font-weight: 600;
 }
 .grid {
@@ -287,15 +297,15 @@
   margin-top: 20px;
 }
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgb(var(--color-surface));
+  border: 1px solid rgb(var(--color-border));
   border-radius: var(--radius-lg);
   overflow: hidden;
-  color: var(--color-fg);
+  color: rgb(var(--color-fg));
   box-shadow: var(--shadow-card);
 }
 .card:hover {
-  border-color: var(--color-border-strong);
+  border-color: rgb(var(--color-border-strong));
 }
 .card__img {
   width: 100%;
@@ -308,8 +318,8 @@
   align-items: center;
   justify-content: center;
   font-size: 42px;
-  color: var(--color-fg-subtle);
-  background: var(--color-surface-2);
+  color: rgb(var(--color-fg-subtle));
+  background: rgb(var(--color-surface-2));
 }
 .card__body {
   padding: 16px;
@@ -319,9 +329,9 @@
   font-size: 16px;
 }
 .btn {
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface);
-  color: var(--color-fg);
+  border: 1px solid rgb(var(--color-border-strong));
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-fg));
   padding: 9px 16px;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -331,27 +341,27 @@
   transition: background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
 }
 .btn:hover {
-  border-color: var(--color-fg-subtle);
+  border-color: rgb(var(--color-fg-subtle));
 }
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .btn--primary {
-  background: var(--color-primary);
-  color: var(--color-primary-fg);
-  border-color: var(--color-primary);
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-primary-fg));
+  border-color: rgb(var(--color-primary));
 }
 .btn--primary:hover {
-  background: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
+  background: rgb(var(--color-primary-hover));
+  border-color: rgb(var(--color-primary-hover));
 }
 .btn--ghost {
   background: transparent;
   border-color: transparent;
 }
 .btn--ghost:hover {
-  background: var(--color-surface-2);
+  background: rgb(var(--color-surface-2));
   border-color: transparent;
 }
 .field {
@@ -365,11 +375,11 @@
 .field input,
 .field select {
   padding: 9px 11px;
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid rgb(var(--color-border-strong));
   border-radius: var(--radius-md);
   font-size: 14px;
-  background: var(--color-surface);
-  color: var(--color-fg);
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-fg));
 }
 .form {
   max-width: 380px;
@@ -383,10 +393,10 @@
 }
 .inline-form input {
   padding: 9px 11px;
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid rgb(var(--color-border-strong));
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-fg);
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-fg));
 }
 .qty-input {
   width: 90px;
@@ -395,7 +405,7 @@
   width: 100%;
   border-collapse: collapse;
   margin: 16px 0;
-  background: var(--color-surface);
+  background: rgb(var(--color-surface));
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -403,11 +413,11 @@
 .table td {
   text-align: left;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgb(var(--color-border));
   font-size: 14px;
 }
 .table th {
-  color: var(--color-fg-muted);
+  color: rgb(var(--color-fg-muted));
   font-weight: 600;
 }
 .totals {
@@ -422,7 +432,7 @@
 }
 .totals__grand {
   font-weight: 700;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgb(var(--color-border));
   margin-top: 4px;
 }
 .badge {
@@ -431,41 +441,41 @@
   border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
-  background: var(--color-surface-2);
-  color: var(--color-fg-muted);
+  background: rgb(var(--color-surface-2));
+  color: rgb(var(--color-fg-muted));
 }
 .badge--ready,
 .badge--proof_approved,
 .badge--closed {
   background: var(--color-success-bg);
-  color: var(--color-success);
+  color: rgb(var(--color-success));
 }
 .badge--awaiting_reconfirm,
 .badge--qty_short,
 .badge--price_jumped {
   background: var(--color-danger-bg);
-  color: var(--color-danger);
+  color: rgb(var(--color-danger));
 }
 .badge--in_production,
 .badge--procuring,
 .badge--proofing {
   background: var(--color-info-bg);
-  color: var(--color-info);
+  color: rgb(var(--color-info));
 }
 .state {
   text-align: center;
   padding: 48px 24px;
-  color: var(--color-fg-muted);
+  color: rgb(var(--color-fg-muted));
 }
 .state--error {
-  color: var(--color-danger);
+  color: rgb(var(--color-danger));
 }
 .spinner {
   display: inline-block;
   width: 22px;
   height: 22px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
+  border: 3px solid rgb(var(--color-border));
+  border-top-color: rgb(var(--color-primary));
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -480,7 +490,7 @@
   gap: 12px;
 }
 .designer__canvas {
-  border: 1px solid var(--color-border);
+  border: 1px solid rgb(var(--color-border));
   border-radius: var(--radius-lg);
 }
 .designer__tools {
@@ -511,7 +521,7 @@
 .staff-actions {
   margin-top: 24px;
   padding-top: 16px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgb(var(--color-border));
 }
 .quote-detail__head {
   display: flex;
@@ -526,15 +536,15 @@
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgb(var(--color-border));
 }
 .alerts {
   list-style: none;
   padding: 0;
 }
 .alert {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgb(var(--color-surface));
+  border: 1px solid rgb(var(--color-border));
   border-radius: var(--radius-lg);
   padding: 16px;
   margin-bottom: 12px;
