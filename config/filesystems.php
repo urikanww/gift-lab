@@ -17,6 +17,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Anonymous Artwork Disk
+    |--------------------------------------------------------------------------
+    |
+    | Disk that backs the public, account-free designer artwork upload
+    | (POST /uploads/artwork). Deliberately DECOUPLED from the default disk:
+    | anon uploads must never land in a world-readable bucket. Dev/test default
+    | to the private "local" disk (storage/app/private); prod sets
+    | ARTWORK_DISK=spaces_private (private-visibility DO Spaces, served only via
+    | short-lived signed URLs). See the "spaces_private" disk below.
+    |
+    */
+
+    'artwork_disk' => env('ARTWORK_DISK', 'local'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -60,6 +76,26 @@ return [
             // DO Spaces folder (GIFT_LAB). Nothing the app stores can land
             // outside that folder, per ops policy.
             'root' => env('DO_STORAGE_FOLDER', 'GIFT_LAB'),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        // Private DO Spaces disk for anonymous designer artwork. Same bucket as
+        // the public "s3" disk but forced 'private' visibility and rooted in a
+        // separate uploads folder, so anon uploads are NOT world-readable — they
+        // are only ever handed to the client as a short-lived signed URL
+        // (Storage::temporaryUrl). Use ARTWORK_DISK=spaces_private in prod.
+        'spaces_private' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'root' => rtrim(env('DO_STORAGE_FOLDER', 'GIFT_LAB'), '/').'/anon-uploads',
+            'visibility' => 'private',
             'throw' => false,
             'report' => false,
         ],

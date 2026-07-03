@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Events\OrderTrackingUpdated;
+use App\Events\QuoteStateChanged;
+use App\Models\Quote;
+use App\Policies\QuotePolicy;
 use App\Services\Model3d\CompositeModel3dApiClient;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\HttpCults3dClient;
@@ -14,18 +18,17 @@ use App\Services\Payment\FixturePaymentGateway;
 use App\Services\Payment\StripePaymentGateway;
 use App\Services\Procurement\Contracts\MarketplaceRechecker;
 use App\Services\Procurement\FixtureMarketplaceRechecker;
-use App\Events\OrderTrackingUpdated;
-use App\Events\QuoteStateChanged;
-use App\Models\Quote;
-use App\Policies\QuotePolicy;
-use App\Support\Broadcasting;
-use Illuminate\Support\Facades\Event;
 use App\Services\Scraper\CompositeScraperClient;
 use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\FixtureScraperClient;
 use App\Services\Scraper\HttpLazadaAffiliateClient;
 use App\Services\Scraper\HttpShopeeAffiliateClient;
+use App\Support\Broadcasting;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
 
@@ -115,6 +118,17 @@ class AppServiceProvider extends ServiceProvider
         // isolation for every quote action, instead of relying on scattered
         // inline abort_unless() checks that a new endpoint could forget.
         Gate::policy(Quote::class, QuotePolicy::class);
+
+        // Public, account-free artwork upload limiter (P2-2): each request can
+        // write a 10 MB file to storage, so throttle it far tighter than the
+        // read catalogue group. Per-IP burst (10/min) blocks a hammering client;
+        // the per-day cap (100/day) bounds sustained anonymous storage/cost-DoS
+        // even from a slow drip under the burst limit. Returning BOTH limits
+        // means whichever trips first yields a 429.
+        RateLimiter::for('artwork-uploads', fn (Request $request): array => [
+            Limit::perMinute(10)->by($request->ip()),
+            Limit::perDay(100)->by($request->ip()),
+        ]);
 
         // Mirror every quote state change onto the public tracking channel, so
         // the login-free tracker updates live without touching all eight

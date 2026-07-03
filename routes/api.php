@@ -45,9 +45,15 @@ Route::middleware('throttle:60,1')->group(function (): void {
     Route::post('/price-estimate', PriceEstimateController::class);
     // Deadline-aware delivery window (queue-depth aware, ranged/conservative).
     Route::post('/lead-time-estimate', LeadTimeEstimateController::class);
-    // Designer artwork upload (account-free designer, spec 6.1).
-    Route::post('/uploads/artwork', [UploadController::class, 'artwork']);
 });
+
+// Designer artwork upload (account-free designer, spec 6.1). Public + writes
+// 10 MB files, so it's throttled far tighter than the read-mostly catalogue
+// group above: a dedicated per-IP limiter with both a burst (per-minute) and a
+// daily cap blunts anonymous storage/cost-DoS. Limiter defined in
+// AppServiceProvider::boot ('artwork-uploads').
+Route::post('/uploads/artwork', [UploadController::class, 'artwork'])
+    ->middleware('throttle:artwork-uploads');
 
 // Login-free order tracking — opaque code + email-prefix check. Throttled
 // hard (anti-enumeration; the controller also returns a single generic error).

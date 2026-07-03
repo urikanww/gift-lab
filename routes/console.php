@@ -41,3 +41,12 @@ Schedule::command('catalogue:slice-pending')
     ->dailyAt('04:30')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Daily orphan sweep for the public, account-free artwork upload: deletes anon
+// uploads no quote/proof/job ever referenced and older than the grace window,
+// so abandoned-designer files can't accumulate on the private artwork disk
+// (P2-2). onOneServer so the multi-node deploy prunes exactly once.
+Schedule::command('artwork:prune-orphans')
+    ->dailyAt('05:00')
+    ->onOneServer()
+    ->withoutOverlapping();
