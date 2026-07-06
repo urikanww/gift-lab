@@ -113,6 +113,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Must be registered before the /{product} wildcard routes below, or
     // "bulk-publish" would be captured as a {product} id.
     Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish']);
+    // Detail/edit fetch — withTrashed so the editor can open an archived row.
+    Route::get('/admin/products/{product}', [AdminProductController::class, 'show'])->withTrashed();
     Route::patch('/admin/products/{product}', [AdminProductController::class, 'update']);
     Route::delete('/admin/products/{product}', [AdminProductController::class, 'destroy']);
     // Archived rows are soft-deleted, so bind withTrashed to resolve them.

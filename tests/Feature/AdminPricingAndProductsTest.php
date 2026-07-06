@@ -171,6 +171,19 @@ it('exposes a licence compliance tier on each product', function (): void {
         ->and($data->firstWhere('id', $core->id)['license_tier'])->toBe('standard');
 });
 
+it('shows a single product with variants and sold_count for the editor', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['class' => 'CORE', 'name' => 'Editor Blank']);
+    Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 12]);
+
+    $this->getJson("/api/admin/products/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', $product->id)
+        ->assertJsonPath('data.name', 'Editor Blank')
+        ->assertJsonPath('data.sold_count', 0)
+        ->assertJsonPath('data.stock_total', 12);
+});
+
 it('filters the product list by licence tier', function (): void {
     Sanctum::actingAs($this->staff);
     $risky = Product::factory()->create(['class' => 'MODEL_3D', 'license' => 'CC_BY_ND']);

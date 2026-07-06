@@ -151,6 +151,27 @@ class AdminProductController extends Controller
     }
 
     /**
+     * Single product for the detail/edit page. Bound withTrashed so an archived
+     * product still resolves (the editor can view/restore it). Loads variants and
+     * the same sold_count aggregate the list uses.
+     */
+    public function show(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $product->load('variants')->loadSum('variants', 'stock_on_hand');
+        $product->sold_count = (int) DB::table('line_items')
+            ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
+            ->where('line_items.product_id', $product->id)
+            ->whereNull('line_items.deleted_at')
+            ->whereNull('quotes.deleted_at')
+            ->whereIn('quotes.state', self::WON_QUOTE_STATES)
+            ->sum('line_items.qty');
+
+        return response()->json(['data' => $this->serialize($product)]);
+    }
+
+    /**
      * Bulk-publish a batch of READY_TO_APPROVE products. Reuses
      * AdminCatalogueController::publish() per item so the full completeness/
      * licence gate runs exactly as it does for a single publish — this never
