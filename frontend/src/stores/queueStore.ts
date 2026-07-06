@@ -23,7 +23,7 @@ interface QueueStoreState {
   loading: boolean;
   error: string | null;
   subscribed: boolean;
-  fetchQueue: () => Promise<void>;
+  fetchQueue: (opts?: { silent?: boolean }) => Promise<void>;
   advance: (jobId: number, state: JobState, consignmentRef?: string) => Promise<void>;
   subscribe: () => void;
   unsubscribe: () => void;
@@ -40,8 +40,8 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
   error: null,
   subscribed: false,
 
-  fetchQueue: async () => {
-    set({ loading: true, error: null });
+  fetchQueue: async (opts) => {
+    set({ loading: opts?.silent ? get().loading : true, error: null });
     try {
       const { data } = await api.get<{ data: ProductionJob[] }>('/production-queue');
       set({ jobs: sortQueue(data.data), loading: false });
@@ -62,17 +62,17 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       // a poll) guards against a dropped socket / missed event leaving the queue
       // diverged from server truth, and surfaces rejections instead of a
       // silently frozen button.
-      await get().fetchQueue();
+      await get().fetchQueue({ silent: true });
     } catch (err) {
       set({ error: apiError(err) });
-      await get().fetchQueue();
+      await get().fetchQueue({ silent: true });
     }
   },
 
   subscribe: () => {
     if (get().subscribed) return;
     // Reconcile the queue after a socket reconnect (events missed while down).
-    offReconnect = onEchoReconnect(() => void get().fetchQueue());
+    offReconnect = onEchoReconnect(() => void get().fetchQueue({ silent: true }));
 
     queueUpdatedListener = (e: QueueUpdatedPayload) => {
       set((s) => {
