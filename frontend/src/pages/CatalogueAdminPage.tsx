@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
 import { safeHref } from '../lib/safeHref';
@@ -184,15 +185,18 @@ function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
 }
 
 export default function CatalogueAdminPage() {
-  const { items, loading, error, fetch, publish, unpublish, setAutoPublish, autoPublish, autoPublishSaving } =
+  const { items, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
   const [stateFilter, setStateFilter] = useState<'' | PublishState>('');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const runFetch = () =>
     void fetch({
@@ -243,6 +247,53 @@ export default function CatalogueAdminPage() {
     return c;
   }, [items]);
 
+  // Only READY_TO_APPROVE rows can be bulk-published. Keep the eligible-id set
+  // and prune any stale selections (a row that dropped out of the list or
+  // changed state after a refetch must not linger in `selected`).
+  const eligibleIds = useMemo(
+    () => items.filter((it) => it.publish_state === 'READY_TO_APPROVE').map((it) => it.id),
+    [items],
+  );
+
+  useEffect(() => {
+    setSelected((prev) => {
+      const eligible = new Set(eligibleIds);
+      const next = new Set([...prev].filter((id) => eligible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [eligibleIds]);
+
+  const allEligibleSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selected.has(id));
+
+  const toggleRow = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllEligible = () => {
+    setSelected((prev) => (prev.size === eligibleIds.length ? new Set() : new Set(eligibleIds)));
+  };
+
+  const runBulkPublish = async () => {
+    if (bulkBusy || selected.size === 0) return;
+    setBulkBusy(true);
+    const result = await bulkPublish([...selected]);
+    setBulkBusy(false);
+    if (result) {
+      toast({
+        title: `Published ${result.published}, failed ${result.failed}`,
+        tone: result.failed > 0 ? 'warning' : 'success',
+      });
+      setSelected(new Set());
+    } else {
+      toast({ title: 'Bulk publish failed', description: 'Please try again.', tone: 'danger' });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-4">
@@ -267,13 +318,25 @@ export default function CatalogueAdminPage() {
           )}
         </div>
 
-        {/* Summary stats */}
+        {/* Summary stats + bulk action */}
         {!loading && !error && items.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{counts.total} in review</Badge>
             {counts.ready > 0 && <Badge tone="warning">{counts.ready} ready to approve</Badge>}
             {counts.published > 0 && <Badge tone="success">{counts.published} published</Badge>}
             {counts.blocked > 0 && <Badge tone="danger">{counts.blocked} blocked</Badge>}
+            {eligibleIds.length > 0 && (
+              <div className="ml-auto">
+                <Button
+                  size="sm"
+                  loading={bulkBusy}
+                  disabled={selected.size === 0}
+                  onClick={() => void runBulkPublish()}
+                >
+                  Publish selected ({selected.size})
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -340,8 +403,20 @@ export default function CatalogueAdminPage() {
         />
       ) : (
         <Card padding="none" className="overflow-hidden">
-          {/* Column header (hidden on mobile where rows stack) */}
-          <div className="hidden grid-cols-[1fr_8rem_10rem_1fr_9rem] gap-4 border-b border-border bg-surface-2/60 px-4 py-3 text-2xs font-semibold uppercase tracking-wide text-fg-subtle md:grid">
+          {/* Column header. Rows stack as cards below lg — the staff sidebar
+              (240px, shown from md) leaves too little room for the fixed table
+              columns until lg, where they'd overflow and clip the Card. */}
+          <div className="hidden grid-cols-[2rem_1fr_8rem_10rem_1fr_9rem] items-center gap-4 border-b border-border bg-surface-2/60 px-4 py-3 text-2xs font-semibold uppercase tracking-wide text-fg-subtle lg:grid">
+            <span>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[var(--color-primary)]"
+                aria-label="Select all eligible items"
+                checked={allEligibleSelected}
+                disabled={eligibleIds.length === 0}
+                onChange={toggleAllEligible}
+              />
+            </span>
             <span>Item</span>
             <span>Class</span>
             <span>State</span>
@@ -359,12 +434,28 @@ export default function CatalogueAdminPage() {
               <Motion
                 key={it.id}
                 variants={staggerItem}
-                className="grid grid-cols-1 gap-3 px-4 py-4 md:grid-cols-[1fr_8rem_10rem_1fr_9rem] md:items-center md:gap-4"
+                className="grid grid-cols-1 gap-3 px-4 py-4 lg:grid-cols-[2rem_1fr_8rem_10rem_1fr_9rem] lg:items-center lg:gap-4"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-40"
+                    aria-label={`Select ${it.name}`}
+                    checked={selected.has(it.id)}
+                    disabled={it.publish_state !== 'READY_TO_APPROVE'}
+                    onChange={() => toggleRow(it.id)}
+                  />
+                </div>
+                <div className="flex min-w-0 items-center gap-3">
                   <ItemThumb item={it} />
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-fg">{it.name}</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/product-admin/${it.id}`)}
+                      className="truncate text-left font-medium text-fg hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {it.name}
+                    </button>
                     {it.creator_credit && (
                       <p className="truncate text-xs text-fg-subtle">by {it.creator_credit}</p>
                     )}
@@ -383,7 +474,7 @@ export default function CatalogueAdminPage() {
                   </Badge>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex min-w-0 flex-wrap gap-1.5">
                   {it.cannot_publish_reasons?.length ? (
                     it.cannot_publish_reasons.map((r) => (
                       <Badge key={r} tone="warning" size="sm">
@@ -395,7 +486,7 @@ export default function CatalogueAdminPage() {
                   )}
                 </div>
 
-                <div className="flex md:justify-end">
+                <div className="flex lg:justify-end">
                   {it.publish_state === 'READY_TO_APPROVE' && (
                     <Button
                       size="sm"
@@ -420,12 +511,12 @@ export default function CatalogueAdminPage() {
                   {/* No-action states: tell the staffer what unblocks the row
                       instead of leaving a dead-end empty cell. */}
                   {it.publish_state === 'PENDING' && (
-                    <span className="text-xs text-fg-subtle md:text-right">
+                    <span className="text-xs text-fg-subtle lg:text-right">
                       No action needed — resolves on next catalogue sync.
                     </span>
                   )}
                   {it.publish_state === 'CANNOT_PUBLISH' && (
-                    <span className="text-xs text-fg-subtle md:text-right">
+                    <span className="text-xs text-fg-subtle lg:text-right">
                       {hasInlineTools(it)
                         ? 'Use the tools below to clear the blockers.'
                         : 'Fix the blockers at the source — re-checked on next sync.'}

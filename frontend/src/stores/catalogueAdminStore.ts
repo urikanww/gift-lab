@@ -8,9 +8,12 @@ interface CatalogueAdminState {
   error: string | null;
   autoPublish: boolean;
   autoPublishSaving: boolean;
-  fetch: (filter?: { class?: string; state?: string }) => Promise<void>;
+  /** Last filter used, so silent refetches after a mutation keep the view. */
+  lastFilter?: { class?: string; state?: string };
+  fetch: (filter?: { class?: string; state?: string }, opts?: { silent?: boolean }) => Promise<void>;
   publish: (id: number) => Promise<void>;
   unpublish: (id: number) => Promise<void>;
+  bulkPublish: (ids: number[]) => Promise<{ published: number; failed: number } | null>;
   setAutoPublish: (enabled: boolean) => Promise<boolean>;
   verifyEstimates: (
     id: number,
@@ -26,13 +29,17 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
   autoPublish: false,
   autoPublishSaving: false,
 
-  fetch: async (filter) => {
-    set({ loading: true, error: null });
+  // A silent refetch keeps the current list rendered (no skeleton, no scroll
+  // jump) — used after a row mutation so the staffer stays exactly where they
+  // were. `filter` defaults to the last one used, so filters survive the reload.
+  fetch: async (filter, opts) => {
+    const activeFilter = filter ?? get().lastFilter;
+    set({ loading: opts?.silent ? get().loading : true, error: null, lastFilter: activeFilter });
     try {
       const { data } = await api.get<{
         data: AdminCatalogueItem[];
         meta?: { auto_publish?: boolean };
-      }>('/admin/catalogue', { params: filter });
+      }>('/admin/catalogue', { params: activeFilter });
       set({
         items: data.data,
         autoPublish: data.meta?.auto_publish ?? get().autoPublish,
@@ -48,7 +55,7 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     try {
       await ensureCsrf();
       await api.post(`/admin/products/${id}/publish`);
-      await get().fetch();
+      await get().fetch(undefined, { silent: true });
     } catch (err) {
       set({ error: apiError(err) });
     }
@@ -59,9 +66,28 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     try {
       await ensureCsrf();
       await api.post(`/admin/products/${id}/unpublish`);
-      await get().fetch();
+      await get().fetch(undefined, { silent: true });
     } catch (err) {
       set({ error: apiError(err) });
+    }
+  },
+
+  // Bulk-approve the ready rows in one request, then silently refetch the gate
+  // so the list reflects the new state without a skeleton flash. Returns the
+  // {published, failed} tally (or null on request failure) so the page can toast.
+  bulkPublish: async (ids) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ meta: { published: number; failed: number } }>(
+        '/admin/products/bulk-publish',
+        { ids },
+      );
+      await get().fetch(undefined, { silent: true });
+      return { published: data.meta.published, failed: data.meta.failed };
+    } catch (err) {
+      set({ error: apiError(err) });
+      return null;
     }
   },
 
@@ -72,7 +98,7 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     try {
       await ensureCsrf();
       await api.post(`/admin/products/${id}/verify-estimates`, estimates);
-      await get().fetch();
+      await get().fetch(undefined, { silent: true });
       return true;
     } catch (err) {
       set({ error: apiError(err) });
@@ -89,7 +115,7 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
       await api.post(`/admin/products/${id}/model-file`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      await get().fetch();
+      await get().fetch(undefined, { silent: true });
       return true;
     } catch (err) {
       set({ error: apiError(err) });
