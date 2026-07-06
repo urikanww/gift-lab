@@ -23,8 +23,9 @@ function useStaffNav(): NavItem[] {
     { to: '/production-queue', label: 'Production', badge: overdue || undefined },
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
     { to: '/product-admin', label: 'Products' },
-    // Pricing is superadmin-only (the page also guards itself).
+    // Pricing and Users are superadmin-only (the pages also guard themselves).
     ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
+    ...(isSuperadmin ? [{ to: '/user-admin', label: 'Users' }] : []),
   ];
 }
 

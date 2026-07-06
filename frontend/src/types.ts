@@ -258,3 +258,20 @@ export interface HistoryEntry {
   new_values: Record<string, unknown> | null;
   created_at: string;
 }
+
+/** A company reference as returned by GET /admin/companies. */
+export interface AdminCompany {
+  id: number;
+  name: string;
+}
+
+/** A user as returned by the superadmin-only /admin/users endpoints. */
+export interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  company: { id: number; name: string } | null;
+  active: boolean;
+  created_at: string;
+}

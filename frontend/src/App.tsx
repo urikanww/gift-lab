@@ -29,6 +29,9 @@ const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
 const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage'));
 const ProductAdminDetailPage = lazy(() => import('./pages/ProductAdminDetailPage'));
 const PricingAdminPage = lazy(() => import('./pages/PricingAdminPage'));
+const UserAdminPage = lazy(() => import('./pages/UserAdminPage'));
+const UserAdminCreatePage = lazy(() => import('./pages/UserAdminCreatePage'));
+const UserAdminDetailPage = lazy(() => import('./pages/UserAdminDetailPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
@@ -136,6 +139,9 @@ export default function App() {
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
               <Route path="pricing-admin" element={<ProtectedRoute staffOnly><PricingAdminPage /></ProtectedRoute>} />
+              <Route path="user-admin" element={<ProtectedRoute staffOnly><UserAdminPage /></ProtectedRoute>} />
+              <Route path="user-admin/new" element={<ProtectedRoute staffOnly><UserAdminCreatePage /></ProtectedRoute>} />
+              <Route path="user-admin/:id" element={<ProtectedRoute staffOnly><UserAdminDetailPage /></ProtectedRoute>} />
             </Route>
           </Route>
         </Routes>
