@@ -16,7 +16,7 @@ interface Meta {
   total: number;
 }
 
-const PER_PAGE = 50;
+const PER_PAGE_OPTIONS = [15, 30, 50, 100] as const;
 
 type SortKey = 'newest' | 'most_sold' | 'name' | 'base_cost' | 'stock';
 
@@ -35,6 +35,7 @@ export default function ProductAdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
   const [status, setStatus] = useState<'active' | 'archived'>('active');
   const [classFilter, setClassFilter] = useState('');
   const [publishState, setPublishState] = useState('');
@@ -51,10 +52,11 @@ export default function ProductAdminPage() {
     return () => clearTimeout(t);
   }, [q]);
 
-  // Any filter/sort change resets to page 1 (a filtered set has fewer pages).
+  // Any filter/sort/page-size change resets to page 1 (a filtered/resized set
+  // has fewer pages).
   useEffect(() => {
     setPage(1);
-  }, [status, classFilter, publishState, licenseTier, category, debouncedQ, sort, dir]);
+  }, [status, classFilter, publishState, licenseTier, category, debouncedQ, sort, dir, perPage]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,7 +65,7 @@ export default function ProductAdminPage() {
       const { data } = await api.get<{ data: AdminProduct[]; meta: Meta }>('/admin/products', {
         params: {
           page,
-          per_page: PER_PAGE,
+          per_page: perPage,
           status,
           class: classFilter || undefined,
           publish_state: publishState || undefined,
@@ -81,11 +83,28 @@ export default function ProductAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, status, classFilter, publishState, licenseTier, category, debouncedQ, sort, dir]);
+  }, [page, perPage, status, classFilter, publishState, licenseTier, category, debouncedQ, sort, dir]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const [gateCount, setGateCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ meta?: { total?: number } }>('/admin/catalogue', { params: { per_page: 1 } })
+      .then(({ data }) => {
+        if (!cancelled) setGateCount(data.meta?.total ?? null);
+      })
+      .catch(() => {
+        // Non-critical — the badge just stays hidden.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const archivedView = status === 'archived';
 
@@ -104,11 +123,18 @@ export default function ProductAdminPage() {
             and 3D items also flow through the catalogue gate.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <LinkButton to="/product-admin/new">New product</LinkButton>
-          <LinkButton to="/catalogue-admin" variant="outline">
-            Catalogue gate
-          </LinkButton>
+          <div className="relative inline-flex">
+            <LinkButton to="/catalogue-admin" variant="outline">
+              Catalogue gate
+            </LinkButton>
+            {!!gateCount && (
+              <Badge tone="brand" size="sm" className="ml-2 self-center">
+                {gateCount}
+              </Badge>
+            )}
+          </div>
         </div>
       </header>
 
@@ -153,6 +179,13 @@ export default function ProductAdminPage() {
           <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'archived')}>
             <option value="active">Active</option>
             <option value="archived">Archived</option>
+          </Select>
+          <Select label="Per page" value={String(perPage)} onChange={(e) => setPerPage(Number(e.target.value))}>
+            {PER_PAGE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </Select>
           <div className="flex items-end gap-2">
             <div className="flex-1">
