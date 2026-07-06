@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
-import { Badge, Button, Card, Input, Select, useToast } from '../ui';
+import { Badge, Button, Card, Input, Select, Textarea, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
 import { useAuthStore } from '../stores/authStore';
-import type { AdminProduct, AdminVariant } from '../types';
+import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
 import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
 
 export default function ProductAdminDetailPage() {
@@ -56,7 +56,6 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
   const navigate = useNavigate();
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
   const archived = product.archived;
-  const isCore = product.class === 'CORE';
 
   const togglePublish = async () => {
     try {
@@ -150,13 +149,13 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
       {/* Variants */}
       <Card padding="lg">
         <h2 className="mb-4 font-display text-xl text-fg">Variants &amp; stock</h2>
-        {isCore ? (
-          <VariantsSection product={product} onChanged={onChanged} disabled={archived} />
-        ) : (
-          <p className="text-sm text-fg-subtle">
-            Variants for {classLabel(product.class)} come from the source / catalogue gate.
-          </p>
-        )}
+        <VariantsSection product={product} onChanged={onChanged} disabled={archived} />
+      </Card>
+
+      {/* History */}
+      <Card padding="lg">
+        <h2 className="mb-4 font-display text-xl text-fg">History</h2>
+        <HistorySection productId={product.id} />
       </Card>
     </div>
   );
@@ -216,62 +215,68 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
   return (
     <Card padding="lg">
       <h2 className="mb-4 font-display text-xl text-fg">Edit details</h2>
-      <form onSubmit={save} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required disabled={saving} />
-        <div className="sm:col-span-2">
+      <form onSubmit={save} className="flex flex-col gap-4">
+        <Textarea
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={saving}
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required disabled={saving} />
           <Input
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            label="Base cost (SGD)"
+            type="number"
+            step="0.01"
+            // 0 is valid for dynamically-priced MODEL_3D items; min 0.01 would
+            // fail native form validation and silently block submit for them.
+            min="0"
+            value={baseCost}
+            onChange={(e) => setBaseCost(e.target.value)}
+            required
             disabled={saving}
           />
+          <Input
+            label="Weight (g)"
+            type="number"
+            step="0.001"
+            min="0"
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            disabled={saving}
+          />
+          <Select label="Category" value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
+            <option value="">Uncategorised</option>
+            {CATEGORIES.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.label}
+              </option>
+            ))}
+          </Select>
+          <Select label="Print method" value={printMethod} onChange={(e) => setPrintMethod(e.target.value)} disabled={saving}>
+            <option value="UV">UV</option>
+            <option value="FDM">FDM</option>
+            <option value="RESIN">RESIN</option>
+          </Select>
+          <Select label="Stock mode" value={stockMode} onChange={(e) => setStockMode(e.target.value)} disabled={saving}>
+            <option value="STOCKED">Stocked</option>
+            <option value="MAKE_TO_ORDER">Make to order</option>
+          </Select>
         </div>
-        <Input
-          label="Base cost (SGD)"
-          type="number"
-          step="0.01"
-          // 0 is valid for dynamically-priced MODEL_3D items; min 0.01 would
-          // fail native form validation and silently block submit for them.
-          min="0"
-          value={baseCost}
-          onChange={(e) => setBaseCost(e.target.value)}
-          required
-          disabled={saving}
-        />
-        <Input
-          label="Weight (g)"
-          type="number"
-          step="0.001"
-          min="0"
-          value={weight}
-          onChange={(e) => setWeight(e.target.value)}
-          disabled={saving}
-        />
-        {/* step="any": MODEL_3D dimensions come from STL geometry and are
-            fractional (e.g. 126.6mm); a default integer step blocks submit. */}
-        <div className="grid grid-cols-3 gap-2">
-          <Input label="L (mm)" type="number" step="any" min="0" value={l} onChange={(e) => setL(e.target.value)} disabled={saving} />
-          <Input label="W (mm)" type="number" step="any" min="0" value={w} onChange={(e) => setW(e.target.value)} disabled={saving} />
-          <Input label="H (mm)" type="number" step="any" min="0" value={h} onChange={(e) => setH(e.target.value)} disabled={saving} />
+
+        <div>
+          <p className="mb-2 text-sm font-medium text-fg">Dimensions (mm)</p>
+          {/* step="any": MODEL_3D dimensions come from STL geometry and are
+              fractional (e.g. 126.6mm); a default integer step blocks submit. */}
+          <div className="grid grid-cols-3 gap-2">
+            <Input label="L (mm)" type="number" step="any" min="0" value={l} onChange={(e) => setL(e.target.value)} disabled={saving} />
+            <Input label="W (mm)" type="number" step="any" min="0" value={w} onChange={(e) => setW(e.target.value)} disabled={saving} />
+            <Input label="H (mm)" type="number" step="any" min="0" value={h} onChange={(e) => setH(e.target.value)} disabled={saving} />
+          </div>
         </div>
-        <Select label="Category" value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
-          <option value="">Uncategorised</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
-        </Select>
-        <Select label="Print method" value={printMethod} onChange={(e) => setPrintMethod(e.target.value)} disabled={saving}>
-          <option value="UV">UV</option>
-          <option value="FDM">FDM</option>
-          <option value="RESIN">RESIN</option>
-        </Select>
-        <Select label="Stock mode" value={stockMode} onChange={(e) => setStockMode(e.target.value)} disabled={saving}>
-          <option value="STOCKED">Stocked</option>
-          <option value="MAKE_TO_ORDER">Make to order</option>
-        </Select>
-        <div className="flex items-end">
+
+        <div>
           <Button type="submit" loading={saving}>
             Save changes
           </Button>
@@ -465,5 +470,139 @@ function VariantRow({
         Save stock
       </Button>
     </li>
+  );
+}
+
+interface HistoryMeta {
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+const HISTORY_EVENT_LABELS: Record<string, string> = {
+  'product.updated': 'Edited',
+  'variant.created': 'Variant added',
+  'variant.updated': 'Variant updated',
+  'product.image_updated': 'Image updated',
+  'product.image_removed': 'Image removed',
+  'product.archived': 'Archived',
+  'product.restored': 'Restored',
+  'product.created': 'Created',
+};
+
+function historyEventLabel(event: string): string {
+  const known = HISTORY_EVENT_LABELS[event];
+  if (known) return known;
+  const pretty = event.replace(/[._-]+/g, ' ').trim();
+  return pretty.charAt(0).toUpperCase() + pretty.slice(1);
+}
+
+function HistoryDiff({ entry }: { entry: HistoryEntry }) {
+  const oldValues = entry.old_values ?? {};
+  const newValues = entry.new_values ?? {};
+  const keys = Object.keys(newValues);
+
+  const rows = keys
+    .map((key) => ({ key, from: oldValues[key] ?? null, to: newValues[key] ?? null }))
+    .filter((row) => row.from !== null || row.to !== null);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <ul className="mt-1 flex flex-col gap-0.5">
+      {rows.map((row) => (
+        <li key={row.key} className="text-xs text-fg-subtle">
+          <span className="font-medium text-fg-muted">{row.key}</span>: {String(row.from ?? '—')} &rarr;{' '}
+          {String(row.to ?? '—')}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function HistorySection({ productId }: { productId: number }) {
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [meta, setMeta] = useState<HistoryMeta | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    api
+      .get<{ data: HistoryEntry[]; meta: HistoryMeta }>(`/admin/products/${productId}/history`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setEntries(data.data);
+        setMeta(data.meta);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(apiError(err));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
+  const loadMore = async () => {
+    if (!meta || meta.current_page >= meta.last_page || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { data } = await api.get<{ data: HistoryEntry[]; meta: HistoryMeta }>(
+        `/admin/products/${productId}/history`,
+        { params: { page: meta.current_page + 1 } },
+      );
+      setEntries((prev) => [...prev, ...data.data]);
+      setMeta(data.meta);
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  if (loading) {
+    return <p className="text-sm text-fg-subtle">Loading history…</p>;
+  }
+
+  if (error) {
+    return <p className="text-sm text-danger">{error}</p>;
+  }
+
+  if (entries.length === 0) {
+    return <p className="text-sm text-fg-subtle">No changes recorded yet.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3">
+        {entries.map((entry) => (
+          <li key={entry.id} className="rounded-md border border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium text-fg">{historyEventLabel(entry.event)}</span>
+              <span className="text-xs text-fg-subtle">{new Date(entry.created_at).toLocaleString()}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-fg-subtle">
+              {entry.entity} · {entry.user ?? 'system'}
+            </p>
+            <HistoryDiff entry={entry} />
+          </li>
+        ))}
+      </ul>
+      {meta && meta.last_page > 1 && meta.current_page < meta.last_page && (
+        <div>
+          <Button variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
+            Load more
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

@@ -247,3 +247,14 @@ export interface Paginated<T> {
   data: T[];
   meta?: { current_page: number; last_page: number; total: number };
 }
+
+/** A single audit-trail entry as returned by GET /admin/products/:id/history. */
+export interface HistoryEntry {
+  id: number;
+  event: string;
+  entity: string;
+  user: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  created_at: string;
+}
