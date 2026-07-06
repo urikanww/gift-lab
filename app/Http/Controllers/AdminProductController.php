@@ -12,7 +12,9 @@ use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 /**
  * Staff CRUD over CORE products and their variants (audit E4): ops can add a
@@ -40,9 +42,10 @@ class AdminProductController extends Controller
         'CLOSED',
     ];
 
-    public function __construct(private readonly AuditLogger $audit)
-    {
-    }
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly AdminCatalogueController $catalogue,
+    ) {}
 
     private const PRODUCT_RULES = [
         'name' => ['required', 'string', 'max:255'],
@@ -128,6 +131,120 @@ class AdminProductController extends Controller
                 'total' => $paginator->total(),
             ],
         ]);
+    }
+
+    /**
+     * Bulk-publish a batch of READY_TO_APPROVE products. Reuses
+     * AdminCatalogueController::publish() per item so the full completeness/
+     * licence gate runs exactly as it does for a single publish — this never
+     * duplicates that logic.
+     */
+    public function bulkPublish(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'max:200'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $results = [];
+        $published = 0;
+        $failed = 0;
+
+        foreach ($validated['ids'] as $id) {
+            try {
+                $product = Product::find($id);
+
+                if ($product === null) {
+                    $results[] = ['id' => $id, 'ok' => false, 'error' => 'not found'];
+                    $failed++;
+
+                    continue;
+                }
+
+                if ($product->publish_state !== PublishState::ReadyToApprove) {
+                    $results[] = ['id' => $id, 'ok' => false, 'error' => 'not eligible'];
+                    $failed++;
+
+                    continue;
+                }
+
+                $response = $this->catalogue->publish($request, $product);
+
+                if ($response->getStatusCode() === 200) {
+                    $results[] = ['id' => $id, 'ok' => true];
+                    $published++;
+                } else {
+                    $message = (string) ($response->getData(true)['message'] ?? 'publish failed');
+                    $results[] = ['id' => $id, 'ok' => false, 'error' => $message];
+                    $failed++;
+                }
+            } catch (Throwable $e) {
+                $results[] = ['id' => $id, 'ok' => false, 'error' => $e->getMessage()];
+                $failed++;
+            }
+        }
+
+        return response()->json([
+            'data' => $results,
+            'meta' => ['published' => $published, 'failed' => $failed],
+        ]);
+    }
+
+    /**
+     * Upload/replace a product's photo. Stored on the public disk under a
+     * deterministic name so re-uploads simply overwrite the previous file
+     * (same pattern the seeder uses for CORE product photography).
+     */
+    public function uploadImage(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $validated = $request->validate([
+            'image' => ['required', 'file', 'mimes:jpeg,png,webp', 'max:4096'],
+        ]);
+
+        $extension = $validated['image']->getClientOriginalExtension() ?: $validated['image']->extension();
+        $path = "products/product-{$product->id}.{$extension}";
+
+        Storage::disk('public')->putFileAs('products', $validated['image'], basename($path));
+
+        $before = ['image_url' => $product->image_url];
+        $product->image_url = url('storage/'.$path);
+        $product->save();
+
+        $this->audit->log($product, 'product.image_updated', $before, ['image_url' => $product->image_url]);
+
+        return response()->json(['data' => $this->serialize($product->fresh(['variants']))]);
+    }
+
+    /**
+     * Remove a product's photo. Only deletes the underlying file when it
+     * actually lives on our public disk (defensive: some rows may still carry
+     * an externally-hosted URL from before local hosting).
+     */
+    public function removeImage(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $before = ['image_url' => $product->image_url];
+        $publicPrefix = url('storage/');
+
+        if ($product->image_url !== null && str_starts_with($product->image_url, $publicPrefix)) {
+            $relativePath = ltrim(substr($product->image_url, strlen($publicPrefix)), '/');
+
+            if ($relativePath !== '' && Storage::disk('public')->exists($relativePath)) {
+                Storage::disk('public')->delete($relativePath);
+            }
+        }
+
+        $product->image_url = null;
+        $product->save();
+
+        $this->audit->log($product, 'product.image_removed', $before, ['image_url' => null]);
+
+        return response()->json(['data' => $this->serialize($product->fresh(['variants']))]);
     }
 
     public function store(Request $request): JsonResponse

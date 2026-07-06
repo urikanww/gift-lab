@@ -110,10 +110,15 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // fix stock/price without seeders or DB access.
     Route::get('/admin/products', [AdminProductController::class, 'index']);
     Route::post('/admin/products', [AdminProductController::class, 'store']);
+    // Must be registered before the /{product} wildcard routes below, or
+    // "bulk-publish" would be captured as a {product} id.
+    Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish']);
     Route::patch('/admin/products/{product}', [AdminProductController::class, 'update']);
     Route::delete('/admin/products/{product}', [AdminProductController::class, 'destroy']);
     // Archived rows are soft-deleted, so bind withTrashed to resolve them.
     Route::post('/admin/products/{product}/restore', [AdminProductController::class, 'restore'])->withTrashed();
+    Route::post('/admin/products/{product}/image', [AdminProductController::class, 'uploadImage']);
+    Route::delete('/admin/products/{product}/image', [AdminProductController::class, 'removeImage']);
     Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant']);
     Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant']);
 
