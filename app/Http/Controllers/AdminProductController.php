@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\License;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
 use App\Models\Product;
@@ -76,7 +77,17 @@ class AdminProductController extends Controller
         $q = trim((string) $request->query('q', ''));
         $publishState = (string) $request->query('publish_state', '');
         $category = (string) $request->query('category', '');
+        $licenseTier = (string) $request->query('license_tier', '');
         $sort = (string) $request->query('sort', 'newest');
+
+        // Licence-tier filter maps a tier back to its licence codes (derived,
+        // not a column). The "standard" tier also covers a null licence (CORE).
+        $tierCodes = in_array($licenseTier, ['standard', 'extended', 'high_risk'], true)
+            ? array_values(array_map(
+                fn (License $l): string => $l->value,
+                array_filter(License::cases(), fn (License $l): bool => $l->tier() === $licenseTier),
+            ))
+            : [];
 
         // Correlated subquery: qty summed across line_items whose parent quote
         // is in a "won" state, for this product. Drives both the sold_count
@@ -112,6 +123,12 @@ class AdminProductController extends Controller
                 fn ($qr) => $qr->where('publish_state', $publishState),
             )
             ->when($category !== '', fn ($qr) => $qr->where('category', $category))
+            ->when($tierCodes !== [], fn ($qr) => $qr->where(function ($w) use ($tierCodes, $licenseTier): void {
+                $w->whereIn('license', $tierCodes);
+                if ($licenseTier === 'standard') {
+                    $w->orWhereNull('license');
+                }
+            }))
             ->with('variants')
             ->withSum('variants', 'stock_on_hand')
             ->selectSub($soldCountSql, 'sold_count')

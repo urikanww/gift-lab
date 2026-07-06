@@ -171,6 +171,21 @@ it('exposes a licence compliance tier on each product', function (): void {
         ->and($data->firstWhere('id', $core->id)['license_tier'])->toBe('standard');
 });
 
+it('filters the product list by licence tier', function (): void {
+    Sanctum::actingAs($this->staff);
+    $risky = Product::factory()->create(['class' => 'MODEL_3D', 'license' => 'CC_BY_ND']);
+    $extended = Product::factory()->create(['class' => 'MODEL_3D', 'license' => 'CC_BY_SA']);
+    $core = Product::factory()->create(['class' => 'CORE', 'license' => null]);
+
+    $highRisk = collect($this->getJson('/api/admin/products?license_tier=high_risk')->assertOk()->json('data'));
+    expect($highRisk->pluck('id'))->toContain($risky->id)
+        ->not->toContain($extended->id)
+        ->not->toContain($core->id);
+
+    $standard = collect($this->getJson('/api/admin/products?license_tier=standard')->assertOk()->json('data'));
+    expect($standard->pluck('id'))->toContain($core->id)->not->toContain($risky->id);
+});
+
 it('lets staff archive a product and restore it (soft delete + restore)', function (): void {
     Sanctum::actingAs($this->staff);
     $model = Product::factory()->create(['name' => 'Printed Vase', 'class' => 'MODEL_3D', 'publish_state' => 'PUBLISHED']);
