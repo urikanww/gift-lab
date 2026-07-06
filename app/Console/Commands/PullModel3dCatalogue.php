@@ -25,24 +25,41 @@ use Illuminate\Support\Facades\Storage;
  * are skipped, not stored. Cults3D is additionally restricted to free
  * listings — a paid file we have not purchased cannot be produced.
  *
+ * Two intake modes:
+ *   - keyword search (query argument): original behaviour, kept as an
+ *     opt-in fallback (see DiscoverModel3dCatalogue --keywords).
+ *   - --browse=popular: keyword-less "popular feed" intake (Phase 2). Pages
+ *     through each source's popular/trending feed instead of searching, so
+ *     the nightly sweep no longer depends on a hand-maintained keyword list.
+ *
  *   php artisan catalogue:pull-3d "phone stand" --count=5 --publish
  *   php artisan catalogue:pull-3d "vase" --source=cults3d --count=3
+ *   php artisan catalogue:pull-3d --browse=popular --count=20
  */
 class PullModel3dCatalogue extends Command
 {
+    /**
+     * Hard cap on pages consulted per source in --browse mode, independent
+     * of --count. Protects a nightly sweep from paging forever if a source's
+     * feed never satisfies --count (e.g. all commercial-blocked).
+     */
+    private const MAX_BROWSE_PAGES = 10;
+
     protected $signature = 'catalogue:pull-3d
-        {query : Search term, e.g. "keychain"}
+        {query? : Search term (omit in --browse mode), e.g. "keychain"}
+        {--browse= : Browse a keyword-less feed instead of searching: "popular"}
         {--count=6 : Commercial-OK models to ingest per source before stopping}
         {--source=all : Source to pull from: all, thingiverse, cults3d}
         {--publish : Publish licence-cleared items immediately (skip the approval queue)}';
 
-    protected $description = 'Search the 3D model sources and ingest real, licence-cleared models into the catalogue.';
+    protected $description = 'Search (or browse) the 3D model sources and ingest real, licence-cleared models into the catalogue.';
 
     public function handle(Model3dApiClient $client, Model3dCatalogueService $service): int
     {
         $query = (string) $this->argument('query');
         $target = max(1, (int) $this->option('count'));
         $sourceOpt = strtolower((string) $this->option('source'));
+        $browseOpt = $this->option('browse');
 
         $sources = match ($sourceOpt) {
             'all' => [Model3dSource::Thingiverse, Model3dSource::Cults3d],
@@ -57,9 +74,31 @@ class PullModel3dCatalogue extends Command
             return self::FAILURE;
         }
 
+        $browse = false;
+
+        if ($browseOpt !== null) {
+            if (strtolower((string) $browseOpt) !== 'popular') {
+                $this->error("Unsupported --browse \"{$browseOpt}\" (only \"popular\" is supported).");
+
+                return self::FAILURE;
+            }
+
+            $browse = true;
+        } elseif ($query === '') {
+            $this->error('Provide a search term or use --browse=popular.');
+
+            return self::FAILURE;
+        }
+
         $failed = false;
 
         foreach ($sources as $source) {
+            if ($browse) {
+                $failed = $this->pullBrowse($source, $target, $client, $service) ? $failed : true;
+
+                continue;
+            }
+
             $ids = $this->search($source, $query);
 
             if ($ids === null) {
@@ -76,7 +115,62 @@ class PullModel3dCatalogue extends Command
     }
 
     /**
+     * Keyword-less popular-feed intake for one source: pages the source's
+     * browse method up to MAX_BROWSE_PAGES, feeding each page's ids into the
+     * existing pull() so the licence/IP/file gate stays identical to search
+     * mode. Stops early once pull() reports it ingested >= $target so a
+     * nightly sweep doesn't page further than it needs to.
+     *
+     * Returns false on a hard per-source failure (missing credentials /
+     * upstream error on the first page), true otherwise — mirrors search()'s
+     * null-signals-failure contract without reusing its return type, since
+     * browse already knows how many items it ingested.
+     */
+    private function pullBrowse(
+        Model3dSource $source,
+        int $target,
+        Model3dApiClient $client,
+        Model3dCatalogueService $service,
+    ): bool {
+        $totalIngested = 0;
+        $sawAnyPage = false;
+
+        for ($page = 1; $page <= self::MAX_BROWSE_PAGES; $page++) {
+            $ids = match ($source) {
+                Model3dSource::Thingiverse => $this->browseThingiverse($page),
+                Model3dSource::Cults3d => $this->browseCults3d($page),
+                default => null,
+            };
+
+            if ($ids === null) {
+                // Missing credentials or upstream failure — already reported.
+                // A failure on page 1 is a hard failure for this source; a
+                // failure on a later page just ends the sweep for tonight.
+                return $sawAnyPage;
+            }
+
+            $sawAnyPage = true;
+
+            if ($ids === []) {
+                // Feed exhausted before MAX_BROWSE_PAGES — nothing more to page.
+                break;
+            }
+
+            $totalIngested += $this->pull($source, $ids, 'popular', $target - $totalIngested, $client, $service);
+
+            if ($totalIngested >= $target) {
+                // Target met — no need to page further tonight.
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * @param  array<int, string>  $ids
+     * @return int number of commercial-OK items ingested this call (used by
+     *             pullBrowse() to decide whether another page is needed)
      */
     private function pull(
         Model3dSource $source,
@@ -85,11 +179,15 @@ class PullModel3dCatalogue extends Command
         int $target,
         Model3dApiClient $client,
         Model3dCatalogueService $service,
-    ): void {
+    ): int {
         if ($ids === []) {
             $this->warn("[{$source->value}] no results for \"{$query}\".");
 
-            return;
+            return 0;
+        }
+
+        if ($target <= 0) {
+            return 0;
         }
 
         $ingested = 0;
@@ -173,6 +271,8 @@ class PullModel3dCatalogue extends Command
         }
 
         $this->info("[{$source->value}] ingested {$ingested}, skipped {$skipped} (licence/fetch) for \"{$query}\".");
+
+        return $ingested;
     }
 
     /**
@@ -266,6 +366,103 @@ class PullModel3dCatalogue extends Command
         }
 
         return collect((array) $response->json('data.creationsSearchBatch.results', []))
+            ->pluck('slug')
+            ->filter()
+            ->map(fn ($slug): string => (string) $slug)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Page through Thingiverse's "popular" feed — no search query, sorted by
+     * the source's own popularity ranking. Same response shape as /search/
+     * (a top-level "hits" array of things), so the pluck mirrors
+     * searchThingiverse() exactly.
+     *
+     * @return array<int, string>|null
+     */
+    private function browseThingiverse(int $page): ?array
+    {
+        $token = (string) config('services.thingiverse.token');
+        if ($token === '') {
+            $this->error('[THINGIVERSE] THINGIVERSE_TOKEN is not configured — skipping.');
+
+            return null;
+        }
+
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->connectTimeout(5)
+            ->timeout(20)
+            ->retry(2, 500, throw: false)
+            ->get(config('services.thingiverse.base_url').'/popular', [
+                'page' => $page,
+                'per_page' => 30,
+            ]);
+
+        if (! $response->successful()) {
+            $this->error("[THINGIVERSE] browse failed (HTTP {$response->status()}).");
+
+            return null;
+        }
+
+        return collect((array) $response->json('hits', []))
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id): string => (string) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Page through a keyword-less "most downloaded" Cults3D feed.
+     *
+     * BEST-GUESS Cults3D browse query — verify field names
+     * (creationsBatch/sort enum) against the live API before relying on live
+     * data. The searchCults3d() query (creationsSearchBatch) is confirmed
+     * against the existing integration; this browse variant has not been
+     * exercised against the live Cults3D GraphQL schema.
+     *
+     * @return array<int, string>|null
+     */
+    private function browseCults3d(int $page): ?array
+    {
+        $username = (string) config('services.cults3d.username');
+        $token = (string) config('services.cults3d.token');
+        if ($username === '' || $token === '') {
+            $this->error('[CULTS3D] CULTS3D_USERNAME / CULTS3D_TOKEN are not configured — skipping.');
+
+            return null;
+        }
+
+        $limit = 30;
+        $offset = ($page - 1) * $limit;
+
+        $gql = <<<'GQL'
+        query ($limit: Int, $offset: Int) {
+          creationsBatch(sort: BY_DOWNLOADS, onlyFree: true, onlyCommercial: true, limit: $limit, offset: $offset) {
+            slug
+          }
+        }
+        GQL;
+
+        $response = Http::withBasicAuth($username, $token)
+            ->acceptJson()
+            ->connectTimeout(5)
+            ->timeout(25)
+            ->retry(2, 500, throw: false)
+            ->post((string) config('services.cults3d.base_url'), [
+                'query' => $gql,
+                'variables' => ['limit' => $limit, 'offset' => $offset],
+            ]);
+
+        if (! $response->successful() || $response->json('errors') !== null) {
+            $this->error("[CULTS3D] browse failed (HTTP {$response->status()}).");
+
+            return null;
+        }
+
+        return collect((array) $response->json('data.creationsBatch', []))
             ->pluck('slug')
             ->filter()
             ->map(fn ($slug): string => (string) $slug)
