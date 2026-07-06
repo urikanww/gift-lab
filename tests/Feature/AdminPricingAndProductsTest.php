@@ -161,6 +161,22 @@ it('lets staff edit a non-CORE product (the CORE-only guard is gone)', function 
         ->assertOk()->assertJsonPath('data.base_cost', '9.90');
 });
 
+it('edits a MODEL_3D product without forcing a positive base cost', function (): void {
+    Sanctum::actingAs($this->staff);
+    // 3D items are priced dynamically → base_cost 0. Editing name/category must
+    // not be blocked by the CORE "base cost > 0" rule.
+    $model = Product::factory()->create(['class' => 'MODEL_3D', 'base_cost' => 0, 'name' => 'Old Name']);
+
+    $this->patchJson("/api/admin/products/{$model->id}", [
+        'name' => 'New Name',
+        'category' => 'tech',
+        'base_cost' => 0,
+    ])->assertOk()
+        ->assertJsonPath('data.name', 'New Name')
+        ->assertJsonPath('data.category', 'tech')
+        ->assertJsonPath('data.base_cost', '0.00');
+});
+
 it('exposes a licence compliance tier on each product', function (): void {
     Sanctum::actingAs($this->staff);
     $risky = Product::factory()->create(['class' => 'MODEL_3D', 'license' => 'CC_BY_NC']);

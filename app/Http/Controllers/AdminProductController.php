@@ -330,6 +330,9 @@ class AdminProductController extends Controller
             self::PRODUCT_RULES,
         );
         $rules['publish_state'] = ['nullable', 'string', Rule::in(['PENDING', 'PUBLISHED'])];
+        // Editing (unlike creating a CORE blank) may target a MODEL_3D item whose
+        // base_cost is legitimately 0 (priced dynamically), so allow 0 here.
+        $rules['base_cost'] = ['sometimes', 'numeric', 'min:0'];
         $validated = $request->validate($rules);
 
         if (isset($validated['dimensions'])) {

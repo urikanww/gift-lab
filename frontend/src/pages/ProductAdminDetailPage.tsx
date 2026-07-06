@@ -180,23 +180,30 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
     e.preventDefault();
     if (saving) return;
     const cost = Number(baseCost);
-    if (!Number.isFinite(cost) || cost <= 0) {
-      toast({ title: 'Base cost must be a positive number', tone: 'danger' });
+    // base_cost 0 is valid: MODEL_3D items are priced dynamically (filament +
+    // print), so they carry a zero base cost. Only reject negatives / non-numbers.
+    if (!Number.isFinite(cost) || cost < 0) {
+      toast({ title: 'Base cost must be zero or a positive number', tone: 'danger' });
       return;
+    }
+    // Only send weight / dimensions when the operator actually filled them —
+    // sending 0 / {0,0,0} for a blank field would trip the backend's gt:0 rule.
+    const payload: Record<string, unknown> = {
+      name,
+      description,
+      base_cost: cost,
+      category: category || null,
+      print_method: printMethod,
+      stock_mode: stockMode,
+    };
+    if (weight !== '' && Number(weight) > 0) payload.weight = Number(weight);
+    if (l !== '' && w !== '' && h !== '') {
+      payload.dimensions = { l: Number(l), w: Number(w), h: Number(h) };
     }
     setSaving(true);
     try {
       await ensureCsrf();
-      await api.patch(`/admin/products/${product.id}`, {
-        name,
-        description,
-        base_cost: cost,
-        category: category || null,
-        print_method: printMethod,
-        stock_mode: stockMode,
-        dimensions: { l: Number(l), w: Number(w), h: Number(h) },
-        weight: Number(weight),
-      });
+      await api.patch(`/admin/products/${product.id}`, payload);
       toast({ title: 'Saved', description: `${name} updated.`, tone: 'success' });
       onChanged();
     } catch (err) {
@@ -223,7 +230,9 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
           label="Base cost (SGD)"
           type="number"
           step="0.01"
-          min="0.01"
+          // 0 is valid for dynamically-priced MODEL_3D items; min 0.01 would
+          // fail native form validation and silently block submit for them.
+          min="0"
           value={baseCost}
           onChange={(e) => setBaseCost(e.target.value)}
           required
@@ -238,10 +247,12 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
           onChange={(e) => setWeight(e.target.value)}
           disabled={saving}
         />
+        {/* step="any": MODEL_3D dimensions come from STL geometry and are
+            fractional (e.g. 126.6mm); a default integer step blocks submit. */}
         <div className="grid grid-cols-3 gap-2">
-          <Input label="L (mm)" type="number" min="0" value={l} onChange={(e) => setL(e.target.value)} disabled={saving} />
-          <Input label="W (mm)" type="number" min="0" value={w} onChange={(e) => setW(e.target.value)} disabled={saving} />
-          <Input label="H (mm)" type="number" min="0" value={h} onChange={(e) => setH(e.target.value)} disabled={saving} />
+          <Input label="L (mm)" type="number" step="any" min="0" value={l} onChange={(e) => setL(e.target.value)} disabled={saving} />
+          <Input label="W (mm)" type="number" step="any" min="0" value={w} onChange={(e) => setW(e.target.value)} disabled={saving} />
+          <Input label="H (mm)" type="number" step="any" min="0" value={h} onChange={(e) => setH(e.target.value)} disabled={saving} />
         </div>
         <Select label="Category" value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
           <option value="">Uncategorised</option>
