@@ -1,0 +1,153 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\Company;
+use App\Models\LineItem;
+use App\Models\Product;
+use App\Models\Quote;
+use App\Models\User;
+use App\Models\Variant;
+use Laravel\Sanctum\Sanctum;
+
+// Phase 4a: product list sort/filter/search/sold_count on AdminProductController.
+
+beforeEach(function (): void {
+    seedPricing();
+    $this->company = Company::factory()->create();
+    $this->buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
+    $this->staff = User::factory()->staffAdmin()->create();
+    $this->superadmin = User::factory()->create(['role' => 'superadmin', 'company_id' => null]);
+});
+
+/**
+ * Build a quote in the given state with one line item for the given product/qty,
+ * bypassing the state machine guard (direct DB writes) since we only need the
+ * end state for the sold_count aggregate, not a legally-transitioned history.
+ */
+function makeQuoteWithLineItem(Company $company, Product $product, int $qty, string $state): LineItem
+{
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => $state]);
+
+    return LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'qty' => $qty,
+    ]);
+}
+
+it('sorts by most_sold using summed qty from won quotes only', function (): void {
+    $hot = Product::factory()->create(['name' => 'Hot Seller']);
+    $warm = Product::factory()->create(['name' => 'Warm Seller']);
+    $cold = Product::factory()->create(['name' => 'Cold Seller']);
+
+    // Hot: 5 (ACCEPTED) + 10 (CLOSED) = 15 won.
+    makeQuoteWithLineItem($this->company, $hot, 5, 'ACCEPTED');
+    makeQuoteWithLineItem($this->company, $hot, 10, 'CLOSED');
+
+    // Warm: 7 (CONFIRMED) won, plus 100 in a DRAFT quote that must NOT count.
+    makeQuoteWithLineItem($this->company, $warm, 7, 'CONFIRMED');
+    makeQuoteWithLineItem($this->company, $warm, 100, 'DRAFT');
+
+    // Cold: only a CANCELLED quote — must not count, sold_count 0.
+    makeQuoteWithLineItem($this->company, $cold, 50, 'CANCELLED');
+
+    Sanctum::actingAs($this->staff);
+    $data = collect($this->getJson('/api/admin/products?sort=most_sold')->assertOk()->json('data'));
+
+    $ids = $data->pluck('id')->values()->all();
+    expect($ids)->toBe([$hot->id, $warm->id, $cold->id]);
+
+    expect($data->firstWhere('id', $hot->id)['sold_count'])->toBe(15)
+        ->and($data->firstWhere('id', $warm->id)['sold_count'])->toBe(7)
+        ->and($data->firstWhere('id', $cold->id)['sold_count'])->toBe(0);
+});
+
+it('does not count SENT or CHANGES_REQUESTED quotes as sold', function (): void {
+    $product = Product::factory()->create(['name' => 'Pending Sales']);
+
+    makeQuoteWithLineItem($this->company, $product, 20, 'SENT');
+    makeQuoteWithLineItem($this->company, $product, 30, 'CHANGES_REQUESTED');
+
+    Sanctum::actingAs($this->staff);
+    $data = collect($this->getJson('/api/admin/products')->assertOk()->json('data'));
+
+    expect($data->firstWhere('id', $product->id)['sold_count'])->toBe(0);
+});
+
+it('filters by q (case-insensitive name search)', function (): void {
+    Product::factory()->create(['name' => 'Ceramic Mug 11oz']);
+    Product::factory()->create(['name' => 'Stainless Tumbler']);
+
+    Sanctum::actingAs($this->staff);
+    $data = collect($this->getJson('/api/admin/products?q=mug')->assertOk()->json('data'));
+
+    expect($data)->toHaveCount(1)
+        ->and($data->first()['name'])->toBe('Ceramic Mug 11oz');
+});
+
+it('filters by publish_state', function (): void {
+    Product::factory()->create(['name' => 'Ready One', 'class' => 'SCRAPED_UV', 'publish_state' => 'READY_TO_APPROVE']);
+    Product::factory()->create(['name' => 'Published One', 'publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->staff);
+    $data = collect($this->getJson('/api/admin/products?publish_state=READY_TO_APPROVE')->assertOk()->json('data'));
+
+    expect($data)->toHaveCount(1)
+        ->and($data->first()['name'])->toBe('Ready One');
+});
+
+it('filters by category', function (): void {
+    Product::factory()->create(['name' => 'Mug A', 'category' => 'drinkware']);
+    Product::factory()->create(['name' => 'Tote B', 'category' => 'bags']);
+
+    Sanctum::actingAs($this->staff);
+    $data = collect($this->getJson('/api/admin/products?category=bags')->assertOk()->json('data'));
+
+    expect($data)->toHaveCount(1)
+        ->and($data->first()['name'])->toBe('Tote B');
+});
+
+it('sorts by name asc by default and base_cost/stock with sensible default directions', function (): void {
+    $a = Product::factory()->create(['name' => 'Alpha', 'base_cost' => 5]);
+    $b = Product::factory()->create(['name' => 'Beta', 'base_cost' => 50]);
+
+    Variant::factory()->create(['product_id' => $a->id, 'stock_on_hand' => 100]);
+    Variant::factory()->create(['product_id' => $b->id, 'stock_on_hand' => 10]);
+
+    Sanctum::actingAs($this->staff);
+
+    $byName = collect($this->getJson('/api/admin/products?sort=name')->assertOk()->json('data'))->pluck('id')->values()->all();
+    expect($byName)->toBe([$a->id, $b->id]);
+
+    $byCost = collect($this->getJson('/api/admin/products?sort=base_cost')->assertOk()->json('data'))->pluck('id')->values()->all();
+    expect($byCost)->toBe([$a->id, $b->id]); // asc default: cheapest first
+
+    $byStock = collect($this->getJson('/api/admin/products?sort=stock')->assertOk()->json('data'))->pluck('id')->values()->all();
+    expect($byStock)->toBe([$a->id, $b->id]); // desc default: most stock first
+
+    $stockTotals = collect($this->getJson('/api/admin/products?sort=stock')->assertOk()->json('data'));
+    expect($stockTotals->firstWhere('id', $a->id)['stock_total'])->toBe(100)
+        ->and($stockTotals->firstWhere('id', $b->id)['stock_total'])->toBe(10);
+});
+
+it('accepts an explicit dir override', function (): void {
+    $a = Product::factory()->create(['name' => 'Alpha', 'base_cost' => 5]);
+    $b = Product::factory()->create(['name' => 'Beta', 'base_cost' => 50]);
+
+    Sanctum::actingAs($this->staff);
+    $ids = collect($this->getJson('/api/admin/products?sort=base_cost&dir=desc')->assertOk()->json('data'))
+        ->pluck('id')->values()->all();
+
+    expect($ids)->toBe([$b->id, $a->id]);
+});
+
+it('paginates with per_page and total in meta', function (): void {
+    Product::factory()->count(5)->create();
+
+    Sanctum::actingAs($this->staff);
+    $response = $this->getJson('/api/admin/products?per_page=2')->assertOk();
+
+    expect($response->json('meta.total'))->toBe(5)
+        ->and($response->json('data'))->toHaveCount(2);
+});

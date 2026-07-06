@@ -11,6 +11,7 @@ use App\Models\Variant;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -21,6 +22,24 @@ use Illuminate\Validation\Rule;
  */
 class AdminProductController extends Controller
 {
+    /**
+     * Quote states that mean the customer committed to the order (spec: "won"
+     * for the sold_count metric). Excludes DRAFT/SENT/CHANGES_REQUESTED (not
+     * yet committed) and CANCELLED (committed then withdrawn).
+     *
+     * @var array<int, string>
+     */
+    private const WON_QUOTE_STATES = [
+        'ACCEPTED',
+        'PROOFING',
+        'PROOF_APPROVED',
+        'PO_ISSUED',
+        'CONFIRMED',
+        'PROCURING',
+        'READY',
+        'CLOSED',
+    ];
+
     public function __construct(private readonly AuditLogger $audit)
     {
     }
@@ -51,16 +70,53 @@ class AdminProductController extends Controller
         // status: active (default, live rows) | archived (soft-deleted) | all.
         $status = (string) $request->query('status', 'active');
         $class = (string) $request->query('class', '');
+        $q = trim((string) $request->query('q', ''));
+        $publishState = (string) $request->query('publish_state', '');
+        $category = (string) $request->query('category', '');
+        $sort = (string) $request->query('sort', 'newest');
+
+        // Correlated subquery: qty summed across line_items whose parent quote
+        // is in a "won" state, for this product. Drives both the sold_count
+        // column and the most_sold sort (a single aggregate, not N+1).
+        $soldCountSql = DB::table('line_items')
+            ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
+            ->whereColumn('line_items.product_id', 'products.id')
+            ->whereNull('line_items.deleted_at')
+            ->whereNull('quotes.deleted_at')
+            ->whereIn('quotes.state', self::WON_QUOTE_STATES)
+            ->selectRaw('coalesce(sum(line_items.qty), 0)');
+
+        $defaultDirs = [
+            'newest' => 'desc',
+            'most_sold' => 'desc',
+            'name' => 'asc',
+            'base_cost' => 'asc',
+            'stock' => 'desc',
+        ];
+        $dir = strtolower((string) $request->query('dir', ''));
+        $dir = in_array($dir, ['asc', 'desc'], true) ? $dir : ($defaultDirs[$sort] ?? 'desc');
 
         $paginator = Product::query()
-            ->when($status === 'archived', fn ($q) => $q->onlyTrashed())
-            ->when($status === 'all', fn ($q) => $q->withTrashed())
+            ->when($status === 'archived', fn ($qr) => $qr->onlyTrashed())
+            ->when($status === 'all', fn ($qr) => $qr->withTrashed())
             ->when(
                 in_array($class, ['CORE', 'SCRAPED_UV', 'MODEL_3D'], true),
-                fn ($q) => $q->where('class', $class),
+                fn ($qr) => $qr->where('class', $class),
             )
+            ->when($q !== '', fn ($qr) => $qr->whereRaw('LOWER(name) LIKE ?', ['%'.mb_strtolower($q).'%']))
+            ->when(
+                in_array($publishState, ['PENDING', 'READY_TO_APPROVE', 'PUBLISHED', 'CANNOT_PUBLISH'], true),
+                fn ($qr) => $qr->where('publish_state', $publishState),
+            )
+            ->when($category !== '', fn ($qr) => $qr->where('category', $category))
             ->with('variants')
-            ->orderBy('name')
+            ->withSum('variants', 'stock_on_hand')
+            ->selectSub($soldCountSql, 'sold_count')
+            ->when($sort === 'most_sold', fn ($qr) => $qr->orderBy('sold_count', $dir))
+            ->when($sort === 'name', fn ($qr) => $qr->orderBy('name', $dir))
+            ->when($sort === 'base_cost', fn ($qr) => $qr->orderBy('base_cost', $dir))
+            ->when($sort === 'stock', fn ($qr) => $qr->orderBy('variants_sum_stock_on_hand', $dir))
+            ->when(! in_array($sort, ['most_sold', 'name', 'base_cost', 'stock'], true), fn ($qr) => $qr->orderBy('created_at', $dir))
             ->paginate($perPage);
 
         return response()->json([
@@ -68,6 +124,7 @@ class AdminProductController extends Controller
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
             ],
         ]);
@@ -259,6 +316,8 @@ class AdminProductController extends Controller
             'license_tier' => $product->license?->tier() ?? 'standard',
             'archived' => $product->trashed(),
             'variants' => $product->relationLoaded('variants') ? $product->variants : null,
+            'sold_count' => (int) ($product->sold_count ?? 0),
+            'stock_total' => (int) ($product->variants_sum_stock_on_hand ?? 0),
         ];
     }
 }

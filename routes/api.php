@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AdminCatalogueController;
+use App\Http\Controllers\AdminProductController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BrandKitController;
 use App\Http\Controllers\CatalogueController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LeadTimeEstimateController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
+use App\Http\Controllers\PricingConfigController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
@@ -34,6 +36,9 @@ use Illuminate\Support\Facades\Route;
 
 // Authentication (Sanctum stateful cookie).
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
+// Self-serve buyer registration (spec 6.1 Stage 0 — account created at
+// Request Quote). Throttled like login to blunt bulk account creation.
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
 
 // Public, no-account catalogue (browse + live estimate).
 Route::middleware('throttle:60,1')->group(function (): void {
@@ -100,6 +105,22 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
+
+    // CORE product/variant management (staff; audit E4) — ops add a blank or
+    // fix stock/price without seeders or DB access.
+    Route::get('/admin/products', [AdminProductController::class, 'index']);
+    Route::post('/admin/products', [AdminProductController::class, 'store']);
+    Route::patch('/admin/products/{product}', [AdminProductController::class, 'update']);
+    Route::delete('/admin/products/{product}', [AdminProductController::class, 'destroy']);
+    // Archived rows are soft-deleted, so bind withTrashed to resolve them.
+    Route::post('/admin/products/{product}/restore', [AdminProductController::class, 'restore'])->withTrashed();
+    Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant']);
+    Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant']);
+
+    // Pricing/config editor (superadmin-only; audit E1/D7/E2) — every quote-time
+    // number is editable without a deploy, and every change is audit-logged.
+    Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
+    Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update']);
 
     // Staff console overview (read-only aggregate snapshot).
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
