@@ -47,18 +47,31 @@ describe('queueStore', () => {
     expect(useQueueStore.getState().jobs).toHaveLength(1);
   });
 
-  it('advance refetches silently — never flips loading true', async () => {
+  // The discriminating assertion: fetchQueue's first statement is a synchronous
+  // set(), so loading reflects the silent decision immediately on call — before
+  // any await. A non-silent fetch flips loading true here (see test above); the
+  // silent path must leave the existing list un-skeletoned.
+  it('fetchQueue({ silent: true }) never flips loading true', async () => {
     useQueueStore.setState({ jobs: [job], loading: false });
-    post.mockResolvedValue({ data: {} });
     let resolveGet!: (v: unknown) => void;
     get.mockReturnValue(new Promise((r) => { resolveGet = r; }));
 
-    const p = useQueueStore.getState().advance(1, 'IN_PRODUCTION');
-    // The safety refetch must not show a skeleton over the existing list.
-    expect(useQueueStore.getState().loading).toBe(false);
+    const p = useQueueStore.getState().fetchQueue({ silent: true });
+    expect(useQueueStore.getState().loading).toBe(false); // no skeleton over the list
 
     resolveGet({ data: { data: [job] } });
     await p;
+    expect(useQueueStore.getState().loading).toBe(false);
+  });
+
+  it('advance posts to the job and refetches silently (no skeleton)', async () => {
+    useQueueStore.setState({ jobs: [job], loading: false });
+    post.mockResolvedValue({ data: {} });
+    get.mockResolvedValue({ data: { data: [job] } });
+
+    await useQueueStore.getState().advance(1, 'IN_PRODUCTION');
+
     expect(post).toHaveBeenCalledWith('/production-jobs/1/advance', { state: 'IN_PRODUCTION' });
+    expect(useQueueStore.getState().loading).toBe(false);
   });
 });
