@@ -77,7 +77,31 @@ it('advances jobs forward only', function (): void {
 it('gates 3D licences to commercial-ok only', function (): void {
     expect(License::Cc0->isCommercialOk())->toBeTrue()
         ->and(License::CcBy->isCommercialOk())->toBeTrue()
+        ->and(License::CcBySa->isCommercialOk())->toBeTrue()
+        ->and(License::Gpl->isCommercialOk())->toBeTrue()
+        ->and(License::Bsd->isCommercialOk())->toBeTrue()
+        // NC/ND explicitly enabled by the operator (licence-risk accepted).
+        ->and(License::CcByNc->isCommercialOk())->toBeTrue()
+        ->and(License::CcByNd->isCommercialOk())->toBeTrue()
+        ->and(License::CcByNcSa->isCommercialOk())->toBeTrue()
         ->and(License::Owned->isCommercialOk())->toBeTrue()
         ->and(License::Blocked->isCommercialOk())->toBeFalse()
-        ->and(License::CcBy->requiresCreatorCredit())->toBeTrue();
+        // Attribution/notice-bound licences require a credit; CC0/OWNED don't.
+        ->and(License::CcBy->requiresCreatorCredit())->toBeTrue()
+        ->and(License::CcBySa->requiresCreatorCredit())->toBeTrue()
+        ->and(License::Gpl->requiresCreatorCredit())->toBeTrue()
+        ->and(License::Cc0->requiresCreatorCredit())->toBeFalse()
+        ->and(License::Owned->requiresCreatorCredit())->toBeFalse();
+});
+
+it('classifies licences into compliance tiers for superadmin labelling', function (): void {
+    expect(License::Cc0->tier())->toBe('standard')
+        ->and(License::CcBy->tier())->toBe('standard')
+        ->and(License::Owned->tier())->toBe('standard')
+        ->and(License::CcBySa->tier())->toBe('extended')
+        ->and(License::Gpl->tier())->toBe('extended')
+        ->and(License::Bsd->tier())->toBe('extended')
+        ->and(License::CcByNc->tier())->toBe('high_risk')
+        ->and(License::CcByNd->tier())->toBe('high_risk')
+        ->and(License::CcByNcSa->tier())->toBe('high_risk');
 });
