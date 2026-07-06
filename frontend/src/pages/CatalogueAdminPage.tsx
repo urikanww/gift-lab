@@ -185,7 +185,7 @@ function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
 }
 
 export default function CatalogueAdminPage() {
-  const { items, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
+  const { items, meta, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
@@ -195,6 +195,7 @@ export default function CatalogueAdminPage() {
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
   const [stateFilter, setStateFilter] = useState<'' | PublishState>('');
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -202,12 +203,18 @@ export default function CatalogueAdminPage() {
     void fetch({
       class: classFilter || undefined,
       state: stateFilter || undefined,
+      page,
     });
 
+  // Changing class/state filters resets to page 1 (a filtered set has fewer pages).
   useEffect(() => {
-    void fetch({ class: classFilter || undefined, state: stateFilter || undefined });
-    // Re-fetch when server-side filters change.
-  }, [fetch, classFilter, stateFilter]);
+    setPage(1);
+  }, [classFilter, stateFilter]);
+
+  useEffect(() => {
+    void fetch({ class: classFilter || undefined, state: stateFilter || undefined, page });
+    // Re-fetch when server-side filters or the page change.
+  }, [fetch, classFilter, stateFilter, page]);
 
   const toggleAutoPublish = async () => {
     const next = !autoPublish;
@@ -452,7 +459,7 @@ export default function CatalogueAdminPage() {
                     <button
                       type="button"
                       onClick={() => navigate(`/product-admin/${it.id}`)}
-                      className="truncate text-left font-medium text-fg hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="block w-full truncate text-left font-medium text-fg hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {it.name}
                     </button>
@@ -529,6 +536,33 @@ export default function CatalogueAdminPage() {
             ))}
           </Motion>
         </Card>
+      )}
+
+      {/* Pagination */}
+      {meta && meta.last_page > 1 && (
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-fg-muted">
+            Page {meta.current_page} of {meta.last_page} · {meta.total} total
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading || meta.current_page <= 1}
+              onClick={() => setPage((n) => Math.max(1, n - 1))}
+            >
+              Prev
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading || meta.current_page >= meta.last_page}
+              onClick={() => setPage((n) => n + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

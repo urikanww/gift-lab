@@ -2,15 +2,25 @@ import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import type { AdminCatalogueItem } from '../types';
 
+interface CatalogueMeta {
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
 interface CatalogueAdminState {
   items: AdminCatalogueItem[];
+  meta: CatalogueMeta | null;
   loading: boolean;
   error: string | null;
   autoPublish: boolean;
   autoPublishSaving: boolean;
   /** Last filter used, so silent refetches after a mutation keep the view. */
-  lastFilter?: { class?: string; state?: string };
-  fetch: (filter?: { class?: string; state?: string }, opts?: { silent?: boolean }) => Promise<void>;
+  lastFilter?: { class?: string; state?: string; page?: number };
+  fetch: (
+    filter?: { class?: string; state?: string; page?: number },
+    opts?: { silent?: boolean },
+  ) => Promise<void>;
   publish: (id: number) => Promise<void>;
   unpublish: (id: number) => Promise<void>;
   bulkPublish: (ids: number[]) => Promise<{ published: number; failed: number } | null>;
@@ -24,6 +34,7 @@ interface CatalogueAdminState {
 
 export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => ({
   items: [],
+  meta: null,
   loading: false,
   error: null,
   autoPublish: false,
@@ -31,17 +42,22 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
 
   // A silent refetch keeps the current list rendered (no skeleton, no scroll
   // jump) — used after a row mutation so the staffer stays exactly where they
-  // were. `filter` defaults to the last one used, so filters survive the reload.
+  // were. `filter` defaults to the last one used (including page), so filters
+  // and pagination survive the reload.
   fetch: async (filter, opts) => {
     const activeFilter = filter ?? get().lastFilter;
     set({ loading: opts?.silent ? get().loading : true, error: null, lastFilter: activeFilter });
     try {
       const { data } = await api.get<{
         data: AdminCatalogueItem[];
-        meta?: { auto_publish?: boolean };
+        meta?: { auto_publish?: boolean; current_page?: number; last_page?: number; total?: number };
       }>('/admin/catalogue', { params: activeFilter });
       set({
         items: data.data,
+        meta:
+          data.meta?.current_page != null && data.meta?.last_page != null && data.meta?.total != null
+            ? { current_page: data.meta.current_page, last_page: data.meta.last_page, total: data.meta.total }
+            : null,
         autoPublish: data.meta?.auto_publish ?? get().autoPublish,
         loading: false,
       });
