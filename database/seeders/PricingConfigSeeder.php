@@ -59,6 +59,7 @@ class PricingConfigSeeder extends Seeder
             // screen is layer 2). CC licences do not clear trademarks.
             ['catalogue', 'ip_blocklist', ['pokemon', 'pikachu', 'disney', 'mickey', 'marvel', 'star wars', 'nintendo', 'mario', 'zelda', 'lego', 'hello kitty', 'harry potter', 'minion', 'batman', 'superman', 'groot', 'baby yoda', 'mandalorian'], 'IP/trademark keyword blocklist for 3D ingest', false],
             ['catalogue', 'price_jump_pct', 10, 'Re-check price jump % tolerated before PRICE_JUMPED', false],
+            ['catalogue', 'browse_cap', 200, 'Max commercial-OK 3D models ingested per source per nightly popular-browse sweep (catalogue:discover-3d)', false],
         ];
 
         foreach ($rows as [$group, $key, $value, $label, $isMoney]) {
