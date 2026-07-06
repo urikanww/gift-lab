@@ -161,6 +161,39 @@ it('lets staff edit a non-CORE product (the CORE-only guard is gone)', function 
         ->assertOk()->assertJsonPath('data.base_cost', '9.90');
 });
 
+it('lets staff add a variant to a non-CORE product (all-class variant control)', function (): void {
+    Sanctum::actingAs($this->staff);
+    $model = Product::factory()->create(['class' => 'MODEL_3D']);
+
+    $this->postJson("/api/admin/products/{$model->id}/variants", [
+        'attributes' => ['option' => 'Black PLA'],
+        'stock_on_hand' => 5,
+        'price_delta' => 1.50,
+    ])->assertCreated();
+
+    $this->assertDatabaseHas('variants', ['product_id' => $model->id, 'stock_on_hand' => 5]);
+});
+
+it('returns a product change history from the audit log', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['class' => 'CORE', 'base_cost' => 5]);
+
+    // Two audited changes: a field edit and a variant add.
+    $this->patchJson("/api/admin/products/{$product->id}", ['base_cost' => 8.00])->assertOk();
+    $this->postJson("/api/admin/products/{$product->id}/variants", [
+        'attributes' => ['option' => 'Silver'],
+        'stock_on_hand' => 3,
+    ])->assertCreated();
+
+    $history = $this->getJson("/api/admin/products/{$product->id}/history")->assertOk();
+    $events = collect($history->json('data'))->pluck('event');
+    expect($events)->toContain('product.updated')
+        ->and($events)->toContain('variant.created');
+    // Newest first.
+    expect($history->json('data.0.event'))->toBe('variant.created')
+        ->and($history->json('data.0.user'))->toBe($this->staff->name);
+});
+
 it('edits a MODEL_3D product without forcing a positive base cost', function (): void {
     Sanctum::actingAs($this->staff);
     // 3D items are priced dynamically → base_cost 0. Editing name/category must

@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\License;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
+use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\Variant;
 use App\Services\AuditLogger;
@@ -169,6 +170,51 @@ class AdminProductController extends Controller
             ->sum('line_items.qty');
 
         return response()->json(['data' => $this->serialize($product)]);
+    }
+
+    /**
+     * Full change history for a product: every audit-logged change to the
+     * product itself and its variants (edits, stock, publish, image), newest
+     * first. Bound withTrashed so an archived product still resolves.
+     */
+    public function history(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $variantIds = $product->variants()->withTrashed()->pluck('id')->all();
+
+        $paginator = AuditLog::query()
+            ->with('user:id,name')
+            ->where(function ($q) use ($product, $variantIds): void {
+                $q->where(fn ($w) => $w
+                    ->where('auditable_type', Product::class)
+                    ->where('auditable_id', $product->id));
+                if ($variantIds !== []) {
+                    $q->orWhere(fn ($w) => $w
+                        ->where('auditable_type', Variant::class)
+                        ->whereIn('auditable_id', $variantIds));
+                }
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(max(1, min((int) $request->integer('per_page', 20), 100)));
+
+        return response()->json([
+            'data' => collect($paginator->items())->map(fn (AuditLog $log): array => [
+                'id' => $log->id,
+                'event' => $log->event,
+                'entity' => class_basename((string) $log->auditable_type),
+                'user' => $log->user?->name,
+                'old_values' => $log->old_values,
+                'new_values' => $log->new_values,
+                'created_at' => $log->created_at?->toIso8601String(),
+            ]),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
     }
 
     /**
@@ -390,10 +436,8 @@ class AdminProductController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        if ($product->class !== ProductClass::Core) {
-            return response()->json(['message' => 'Variants are managed for CORE products only.'], 422);
-        }
-
+        // Superadmin has full variant control across all classes (e.g. filament
+        // colours for a MODEL_3D item), not just CORE blanks.
         $validated = $request->validate([
             'attributes' => ['required', 'array', 'min:1'],
             'sku' => ['nullable', 'string', 'max:100'],
