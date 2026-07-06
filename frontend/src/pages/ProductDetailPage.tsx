@@ -235,20 +235,6 @@ export default function ProductDetailPage() {
                 </div>
               )}
             </div>
-            {/* Thumbnail strip — decorative placeholders reusing the same image. */}
-            <div className="grid grid-cols-4 gap-3" aria-hidden="true">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'aspect-square overflow-hidden rounded-lg border bg-surface-2',
-                    i === 0 ? 'border-primary' : 'border-border',
-                  )}
-                >
-                  <CardImage product={product} />
-                </div>
-              ))}
-            </div>
           </Motion>
         </div>
 

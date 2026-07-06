@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Input } from '../ui';
 import { ErrorState } from '../components/ui/States';
@@ -150,13 +150,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : fresh.length > 0 ? (
-            <div className="-mx-4 flex snap-x snap-mandatory scroll-pl-4 gap-4 overflow-x-auto overscroll-x-contain scroll-smooth px-4 pb-3 pr-6 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border-strong sm:-mx-6 sm:scroll-pl-6 sm:px-6 sm:pr-8">
-              {fresh.map((p) => (
-                <div key={p.id} className="w-52 shrink-0 snap-start">
-                  <ProductCard product={p} to={productPath(p)} showMeta />
-                </div>
-              ))}
-            </div>
+            <NewArrivalsRail items={fresh} />
           ) : null}
         </div>
       </section>
@@ -215,5 +209,79 @@ export default function HomePage() {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * New-arrivals carousel. No manual horizontal scroll — the rail is button-driven
+ * (prev/next flank the cards). Buttons disable at each edge. Programmatic
+ * scrollLeft still works under overflow-x-hidden, so cards slide on click only.
+ */
+function NewArrivalsRail({ items }: { items: Product[] }) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+
+  const updateEdges = useCallback(() => {
+    const el = railRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 1);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    updateEdges();
+    window.addEventListener('resize', updateEdges);
+    return () => window.removeEventListener('resize', updateEdges);
+  }, [items, updateEdges]);
+
+  const move = (dir: 1 | -1) => {
+    const el = railRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(el.clientWidth * 0.8, 208), behavior: 'smooth' });
+  };
+
+  return (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <RailButton dir="prev" onClick={() => move(-1)} disabled={atStart} />
+      <div ref={railRef} onScroll={updateEdges} className="flex flex-1 gap-4 overflow-x-hidden py-1">
+        {items.map((p) => (
+          <div key={p.id} className="w-52 shrink-0">
+            <ProductCard product={p} to={productPath(p)} showMeta />
+          </div>
+        ))}
+      </div>
+      <RailButton dir="next" onClick={() => move(1)} disabled={atEnd} />
+    </div>
+  );
+}
+
+function RailButton({
+  dir,
+  onClick,
+  disabled,
+}: {
+  dir: 'prev' | 'next';
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === 'prev' ? 'Previous arrivals' : 'Next arrivals'}
+      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-fg-muted shadow-card transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+    >
+      <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+        <path
+          d={dir === 'prev' ? 'M12 5l-5 5 5 5' : 'M8 5l5 5-5 5'}
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }

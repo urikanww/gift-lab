@@ -59,9 +59,6 @@ export default function SiteHeader() {
             Products
           </NavLink>
           <CategoriesMenu />
-          <NavLink to="/kits" className={navLinkClass}>
-            Build a kit
-          </NavLink>
           <NavLink to="/track" className={navLinkClass}>
             Track order
           </NavLink>
@@ -359,9 +356,6 @@ function MobileDrawer({
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
-            <NavLink to="/kits" onClick={onClose} className={navLinkClass}>
-              Build a kit
-            </NavLink>
             <NavLink to="/track" onClick={onClose} className={navLinkClass}>
               Track order
             </NavLink>

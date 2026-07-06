@@ -8,8 +8,10 @@ use Illuminate\Database\Seeder;
 
 /**
  * Root seeder. Order matters: staff users and pricing config first (referenced
- * by later flows), then the CORE catalogue spine and starter filament stock.
- * SCRAPED_UV / MODEL_3D catalogue items flow in via the discovery commands.
+ * by later flows), then starter filament stock. No products are seeded — the
+ * catalogue is populated ONLY from real sources via the discovery commands
+ * (catalogue:pull-uv, catalogue:pull-3d / catalogue:discover-3d). The hardcoded
+ * CORE starter catalogue was test data and is intentionally not seeded.
  */
 class DatabaseSeeder extends Seeder
 {
@@ -18,7 +20,6 @@ class DatabaseSeeder extends Seeder
         $this->call([
             AdminUserSeeder::class,
             PricingConfigSeeder::class,
-            CoreCatalogueSeeder::class,
             FilamentSeeder::class,
         ]);
     }
