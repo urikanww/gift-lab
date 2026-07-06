@@ -38,19 +38,39 @@ it('maps public domain to CC0', function (): void {
     expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('CC0');
 });
 
-it('blocks a non-commercial licence', function (): void {
+it('maps a non-commercial licence to CC_BY_NC (operator-enabled)', function (): void {
     fakeThing('Creative Commons - Attribution - Non-Commercial');
-    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('CC_BY_NC');
 });
 
-it('blocks a no-derivatives licence despite the attribution label', function (): void {
+it('maps a no-derivatives licence to CC_BY_ND (operator-enabled)', function (): void {
     fakeThing('Creative Commons - Attribution - No Derivatives');
-    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('CC_BY_ND');
 });
 
-it('blocks a share-alike licence despite the attribution label', function (): void {
+it('allows a share-alike licence (commercial-OK with attribution)', function (): void {
     fakeThing('Creative Commons - Attribution - Share Alike');
-    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BLOCKED');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('CC_BY_SA');
+});
+
+it('maps NonCommercial-ShareAlike to CC_BY_NC_SA (NC combo, most-specific wins)', function (): void {
+    fakeThing('Creative Commons - Attribution - Non-Commercial - Share Alike');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('CC_BY_NC_SA');
+});
+
+it('maps a GPL licence', function (): void {
+    fakeThing('GNU - GPL');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('GPL');
+});
+
+it('maps LGPL to LGPL, not swallowed by the GPL substring', function (): void {
+    fakeThing('GNU - LGPL');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('LGPL');
+});
+
+it('allows a BSD licence', function (): void {
+    fakeThing('BSD License');
+    expect($this->client->fetch(Model3dSource::Thingiverse, '1')->license)->toBe('BSD');
 });
 
 it('blocks an unknown licence label', function (): void {

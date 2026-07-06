@@ -150,12 +150,28 @@ final class HttpThingiverseClient implements Model3dApiClient
     {
         $l = Str::lower($label);
 
+        $nc = str_contains($l, 'non-commercial');
+        $nd = str_contains($l, 'no derivative');
+        $sa = str_contains($l, 'share alike');
+
         return match (true) {
             str_contains($l, 'public domain') => License::Cc0->value,
-            str_contains($l, 'non-commercial') => License::Blocked->value, // NC is not commercial-OK
-            str_contains($l, 'no derivative') => License::Blocked->value, // ND forbids customisation
-            str_contains($l, 'share alike') => License::Blocked->value, // SA obligations don't fit resale
+            // Every CC variant is publish-eligible (operator accepted NC/ND
+            // risk). Match combos most-specific first.
+            $nc && $sa => License::CcByNcSa->value,
+            $nc && $nd => License::CcByNcNd->value,
+            $nc => License::CcByNc->value,
+            $nd => License::CcByNd->value,
+            $sa => License::CcBySa->value,
             str_contains($l, 'attribution') => License::CcBy->value,
+            // Open-source families (Thingiverse: "GNU - GPL", "GNU - LGPL", "BSD").
+            // LGPL before GPL — 'lgpl' contains 'gpl'.
+            str_contains($l, 'lgpl') => License::Lgpl->value,
+            str_contains($l, 'gpl') => License::Gpl->value,
+            str_contains($l, 'bsd') => License::Bsd->value,
+            str_contains($l, 'apache') => License::Apache->value,
+            $l === 'mit' || str_contains($l, 'mit license') => License::Mit->value,
+            // No permission granted (All Rights Reserved / Nokia / unknown).
             default => License::Blocked->value,
         };
     }

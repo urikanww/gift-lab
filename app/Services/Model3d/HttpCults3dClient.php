@@ -101,9 +101,26 @@ final class HttpCults3dClient implements Model3dApiClient
     {
         $c = Str::lower($code);
 
+        $nc = str_contains($c, 'nc');
+        $nd = str_contains($c, 'nd');
+        $sa = str_contains($c, 'sa');
+
         return match (true) {
             $c === 'cc0' || $c === 'pd' || str_contains($c, 'public_domain') => License::Cc0->value,
+            // Every CC variant is publish-eligible (operator accepted NC/ND
+            // risk). Combos most-specific first.
+            str_starts_with($c, 'cc_by') && $nc && $sa => License::CcByNcSa->value,
+            str_starts_with($c, 'cc_by') && $nc && $nd => License::CcByNcNd->value,
+            str_starts_with($c, 'cc_by') && $nc => License::CcByNc->value,
+            str_starts_with($c, 'cc_by') && $nd => License::CcByNd->value,
+            str_starts_with($c, 'cc_by') && $sa => License::CcBySa->value,
             $c === 'cc_by' => License::CcBy->value,
+            str_contains($c, 'lgpl') => License::Lgpl->value,
+            str_contains($c, 'gpl') => License::Gpl->value,
+            str_contains($c, 'bsd') => License::Bsd->value,
+            str_contains($c, 'apache') => License::Apache->value,
+            $c === 'mit' => License::Mit->value,
+            // Cults custom / paid / unknown licences grant no resale right.
             default => License::Blocked->value,
         };
     }

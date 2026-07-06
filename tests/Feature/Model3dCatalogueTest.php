@@ -65,6 +65,16 @@ it('blocks a non-commercial licence', function (): void {
         ->and($product->publish_state->value)->toBe('CANNOT_PUBLISH');
 });
 
+it('clears a Share-Alike item through the gate when it carries creator credit', function (): void {
+    ['model' => $withCredit] = $this->service->ingest(modelData('CC_BY_SA', 'Jane Maker'));
+    ['model' => $noCredit] = $this->service->ingest(modelData('CC_BY_SA', null));
+
+    // SA is now commercial-OK; still attribution-bound like CC-BY.
+    expect($withCredit->publish_state->value)->toBe('READY_TO_APPROVE')
+        ->and($noCredit->publish_state->value)->toBe('CANNOT_PUBLISH')
+        ->and($noCredit->cannot_publish_reasons)->toContain('missing_credit');
+});
+
 it('blocks an item with no locally producible model file', function (): void {
     // Live-source shape: fileRef is the source page URL, no download API.
     ['product' => $product] = $this->service->ingest(
