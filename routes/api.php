@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AdminProductController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BrandKitController;
 use App\Http\Controllers\CatalogueController;
@@ -132,4 +133,14 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
 
     // Staff console overview (read-only aggregate snapshot).
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
+
+    // Superadmin user management (stricter than isStaff() — superadmin-only).
+    Route::get('/admin/companies', [AdminUserController::class, 'companies']);
+    Route::get('/admin/users', [AdminUserController::class, 'index']);
+    Route::post('/admin/users', [AdminUserController::class, 'store']);
+    Route::get('/admin/users/{user}', [AdminUserController::class, 'show'])->withTrashed();
+    Route::patch('/admin/users/{user}', [AdminUserController::class, 'update'])->withTrashed();
+    Route::delete('/admin/users/{user}', [AdminUserController::class, 'deactivate']);
+    Route::post('/admin/users/{user}/reactivate', [AdminUserController::class, 'reactivate'])->withTrashed();
+    Route::post('/admin/users/{user}/password', [AdminUserController::class, 'resetPassword'])->withTrashed();
 });
