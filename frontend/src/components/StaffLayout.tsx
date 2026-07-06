@@ -16,12 +16,16 @@ interface NavItem {
 function useStaffNav(): NavItem[] {
   const q = useDashboardStore((s) => s.data?.queues);
   const overdue = useDashboardStore((s) => s.data?.production.overdue ?? 0);
+  const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
   return [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/quotes', label: 'Quotes', badge: q?.proofsPending },
     { to: '/production-queue', label: 'Production', badge: overdue || undefined },
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
     { to: '/catalogue-admin', label: 'Catalogue Gate', badge: q?.cataloguePending },
+    { to: '/product-admin', label: 'Products' },
+    // Pricing is superadmin-only (the page also guards itself).
+    ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
   ];
 }
 
@@ -68,7 +72,7 @@ export default function StaffLayout() {
 
   return (
     <div className="min-h-screen bg-bg md:flex">
-      <aside className="hidden w-60 shrink-0 border-r border-border bg-surface md:flex md:flex-col md:justify-between md:p-4">
+      <aside className="hidden w-60 shrink-0 border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:flex-col md:justify-between md:overflow-y-auto md:p-4">
         <div className="flex flex-col gap-6">
           <Link to="/dashboard" className="font-display text-xl font-semibold text-fg">
             GIFT<span className="text-primary">LAB</span>
