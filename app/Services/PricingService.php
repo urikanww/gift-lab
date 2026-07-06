@@ -75,20 +75,26 @@ final class PricingService
     /**
      * Compute a full quote total from resolved line specs.
      *
-     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string}>  $lines
+     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
      * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float}
      */
     public function quoteTotals(array $lines): array
     {
         $customizationFee = (float) PricingConfig::value('fee', 'customization_flat', 0);
-        // Per-unit component for work repeated on every piece (e.g. embossed
-        // personalisation adds print time per unit, unlike a one-off UV setup).
+        // Per-unit component for work repeated on every piece — name/text
+        // personalisation (spec 6.1: combinable with logo, priced additively;
+        // audit D9/D10). Charged only on lines that carry text.
         $customizationPerUnit = (float) PricingConfig::value('fee', 'customization_per_unit', 0);
         // Per-unit surcharge by logo footprint band (S/M/L). A bigger logo
         // covers more decoration area (more ink / longer pass), so it costs
         // more per piece. Absent size → no surcharge (blank/legacy lines).
         $bySize = (array) PricingConfig::value('fee', 'customization_by_size', []);
         $setupFee = (float) PricingConfig::value('fee', 'setup_fee', 0);
+        // UV decoration pass on a MODEL_3D part (audit G7): unitPrice skips
+        // the per-unit print fee for MODEL_3D (machine time is in landed
+        // cost), but a customized 3D item still gets a UV pass — recover it.
+        $printPerUnit = (array) PricingConfig::value('print_cost', 'per_unit', []);
+        $uvDecorPerUnit = (float) ($printPerUnit['UV'] ?? 0);
 
         $priced = [];
         $subtotal = 0.0;
@@ -101,12 +107,24 @@ final class PricingService
             if ($line['has_customization']) {
                 $size = $line['logo_size'] ?? null;
                 $sizeSurcharge = $size !== null ? (float) ($bySize[$size] ?? 0) : 0.0;
-                $lineTotal += $customizationFee + ($customizationPerUnit + $sizeSurcharge) * $line['qty'];
+                // Additive fee structure (audit D10): one flat fee per
+                // customized line + per-unit logo-size surcharge + per-unit
+                // text fee when a name/text layer is present.
+                $textPerUnit = ($line['has_text'] ?? false) ? $customizationPerUnit : 0.0;
+                $decorPerUnit = $line['product']->class === ProductClass::Model3d ? $uvDecorPerUnit : 0.0;
+                $lineTotal += $customizationFee + ($textPerUnit + $sizeSurcharge + $decorPerUnit) * $line['qty'];
             }
 
             $lineTotal = round($lineTotal, 2);
             $subtotal += $lineTotal;
-            $totalWeightG += (float) ($line['product']->weight ?? 0) * $line['qty'];
+            // Shipment weight: MODEL_3D items with no catalogued weight fall
+            // back to their filament estimate (audit G8) so delivery pricing
+            // never treats a printed part as weightless.
+            $lineWeightG = (float) ($line['product']->weight ?? 0);
+            if ($lineWeightG <= 0 && $line['product']->class === ProductClass::Model3d) {
+                $lineWeightG = (float) ($line['product']->est_grams ?? 0);
+            }
+            $totalWeightG += $lineWeightG * $line['qty'];
 
             $priced[] = ['unit_price' => $unit, 'line_total' => $lineTotal];
         }

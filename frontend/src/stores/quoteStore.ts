@@ -36,6 +36,7 @@ interface QuoteStoreState {
     lines: CartLine[],
     notes: string | null,
     neededBy?: string | null,
+    idempotencyKey?: string | null,
   ) => Promise<Quote | null>;
   send: (id: number) => Promise<void>;
   accept: (id: number) => Promise<void>;
@@ -83,7 +84,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  createQuote: async (companyId, lines, notes, neededBy = null) => {
+  createQuote: async (companyId, lines, notes, neededBy = null, idempotencyKey = null) => {
     set({ error: null });
     try {
       await ensureCsrf();
@@ -92,6 +93,9 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
         notes,
         // Omit when unset so the API sees a true absence, not an empty string.
         needed_by: neededBy || null,
+        // Same cart re-submitted (double click / retry) returns the original
+        // quote server-side instead of creating a duplicate draft.
+        idempotency_key: idempotencyKey,
         line_items: lines.map((l) => ({
           product_id: l.product.id,
           variant_id: l.variant?.id ?? null,

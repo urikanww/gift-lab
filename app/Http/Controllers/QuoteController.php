@@ -53,6 +53,7 @@ class QuoteController extends Controller
             $request->array('line_items'),
             $request->input('notes'),
             $request->input('needed_by'),
+            $request->input('idempotency_key'),
         );
 
         return (new QuoteResource($quote->load('lineItems')))

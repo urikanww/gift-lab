@@ -63,6 +63,7 @@ class PriceEstimateController extends Controller
                 'qty' => (int) $spec['qty'],
                 'has_customization' => (bool) ($spec['has_customization'] ?? false),
                 'logo_size' => $spec['logo_size'] ?? null,
+                'has_text' => (bool) ($spec['has_text'] ?? false),
             ];
         }
 

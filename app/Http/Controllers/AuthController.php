@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Http\Requests\LoginRequest;
+use App\Http\Requests\RegisterRequest;
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -35,6 +39,46 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         return response()->json(['user' => $this->userPayload($request->user())]);
+    }
+
+    /**
+     * Self-serve corporate buyer registration (spec 6.1 Stage 0). Creates the
+     * buyer's company + first buyer user atomically, then signs them in so the
+     * request-quote flow continues without a second step.
+     */
+    public function register(RegisterRequest $request): JsonResponse
+    {
+        $user = DB::transaction(function () use ($request): User {
+            $company = Company::create([
+                'name' => $request->string('company_name')->toString(),
+                'registration_no' => $request->input('company_registration_no'),
+                'billing_email' => $request->string('email')->toString(),
+                'phone' => $request->input('company_phone'),
+                'address' => $request->input('company_address'),
+                'status' => 'ACTIVE',
+            ]);
+
+            $user = User::create([
+                'company_id' => $company->id,
+                'name' => $request->string('name')->toString(),
+                'email' => $request->string('email')->toString(),
+                'password' => $request->string('password')->toString(),
+                'role' => UserRole::Buyer->value,
+            ]);
+
+            // Close the created_by loop now that the first user exists.
+            $company->created_by = $user->id;
+            $company->save();
+
+            return $user;
+        });
+
+        Auth::login($user);
+        if ($request->hasSession()) {
+            $request->session()->regenerate();
+        }
+
+        return response()->json(['user' => $this->userPayload($user)], 201);
     }
 
     public function logout(Request $request): JsonResponse

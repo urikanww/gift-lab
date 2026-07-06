@@ -12,6 +12,7 @@ use App\Models\Model3D;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * 3D model catalogue lifecycle (spec 6.5). Ingest a model, gate publication on
@@ -25,8 +26,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class Model3dCatalogueService
 {
-    public function __construct(private readonly Model3dFileStore $files)
-    {
+    public function __construct(
+        private readonly Model3dFileStore $files,
+        private readonly StlDimensions $dimensions,
+    ) {
     }
 
     /**
@@ -90,10 +93,36 @@ final class Model3dCatalogueService
 
             $product->publish_state = $publishState;
             $product->cannot_publish_reasons = $reasons;
+
+            // Physical footprint from the stored geometry (audit B10): source
+            // APIs don't supply dimensions, but the STL we print from does.
+            $this->fillDimensionsFromModel($product);
+
             $product->save();
 
             return ['model' => $model, 'product' => $product];
         });
+    }
+
+    /**
+     * Populate missing dimensions from the stored model file's bounding box.
+     * Never overwrites explicitly set dimensions.
+     */
+    public function fillDimensionsFromModel(Product $product): void
+    {
+        if ($product->dimensions !== null) {
+            return;
+        }
+
+        $ref = $this->existingLocalFile($product);
+        if ($ref === null || ! Storage::disk('local')->exists($ref)) {
+            return;
+        }
+
+        $dims = $this->dimensions->fromFile(Storage::disk('local')->path($ref));
+        if ($dims !== null) {
+            $product->dimensions = $dims;
+        }
     }
 
     /**
@@ -178,6 +207,8 @@ final class Model3dCatalogueService
         // explicit staff or auto-publish decision.
         $product->publish_state = $state === PublishState::Published ? PublishState::ReadyToApprove : $state;
         $product->cannot_publish_reasons = $reasons;
+        // A newly attached file may supply the missing footprint (audit B10).
+        $this->fillDimensionsFromModel($product);
         $product->save();
         $this->syncModelState($product);
 

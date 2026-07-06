@@ -43,6 +43,7 @@ class Quote extends Model
     protected $fillable = [
         'company_id',
         'tracking_code',
+        'idempotency_key',
         'state',
         'currency',
         'subtotal',

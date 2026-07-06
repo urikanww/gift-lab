@@ -71,6 +71,32 @@ it('adds a per-unit logo surcharge by size band on customized lines', function (
         ->and($large['lines'][0]['line_total'])->toBe(795.50);   // +0.90 × 50
 });
 
+// Audit D9/D10: logo + name/text combine additively — flat fee + per-unit
+// size surcharge + per-unit text fee (fee.customization_per_unit).
+it('prices logo and text personalisation additively', function (): void {
+    \App\Models\PricingConfig::updateOrCreate(
+        ['group' => 'fee', 'key' => 'customization_per_unit'],
+        ['value' => 0.30, 'label' => 'Per-unit personalisation fee', 'is_money' => true, 'currency' => 'SGD'],
+    );
+    \App\Models\PricingConfig::flushMemo();
+
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV', 'weight' => 0]);
+
+    $line = fn (bool $text, ?string $size): array => [
+        'product' => $product, 'variant' => null, 'qty' => 50,
+        'has_customization' => true, 'logo_size' => $size, 'has_text' => $text,
+    ];
+
+    // Base 742.50 + flat 8.00 = 750.50; M adds 0.40×50 = 20; text adds 0.30×50 = 15.
+    $logoOnly = $this->pricing->quoteTotals([$line(false, 'M')]);
+    $textOnly = $this->pricing->quoteTotals([$line(true, null)]);
+    $both = $this->pricing->quoteTotals([$line(true, 'M')]);
+
+    expect($logoOnly['lines'][0]['line_total'])->toBe(770.50)
+        ->and($textOnly['lines'][0]['line_total'])->toBe(765.50)
+        ->and($both['lines'][0]['line_total'])->toBe(785.50); // additive: 750.50 + 20 + 15
+});
+
 it('never surcharges a blank (uncustomized) line even with a size present', function (): void {
     $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV', 'weight' => 0]);
 

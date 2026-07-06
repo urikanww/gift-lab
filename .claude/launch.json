@@ -4,20 +4,49 @@
     {
       "name": "api",
       "runtimeExecutable": "php",
-      "runtimeArgs": ["artisan", "serve", "--port=8000"],
+      "runtimeArgs": [
+        "artisan",
+        "serve",
+        "--port=8000"
+      ],
       "port": 8000
     },
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "reverb",
       "runtimeExecutable": "php",
-      "runtimeArgs": ["artisan", "reverb:start", "--port=8080"],
+      "runtimeArgs": [
+        "artisan",
+        "reverb:start",
+        "--port=8080"
+      ],
       "port": 8080
+    },
+    {
+      "name": "frontend-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "port": 5174,
+      "autoPort": false
     }
   ]
 }

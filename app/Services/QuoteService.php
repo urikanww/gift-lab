@@ -20,6 +20,7 @@ use App\Exceptions\DomainRuleException;
 use App\Services\Procurement\ProcurementManager;
 use App\Support\Broadcasting;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -44,9 +45,44 @@ final class QuoteService
      *
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
-    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null): Quote
+    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null, ?string $idempotencyKey = null): Quote
     {
-        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy): Quote {
+        // Replay of an already-submitted cart (double-click / network retry)
+        // returns the original draft instead of minting a duplicate (audit A12).
+        if ($idempotencyKey !== null) {
+            $existing = Quote::query()
+                ->where('company_id', $companyId)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+
+            if ($existing !== null) {
+                return $existing->load('lineItems');
+            }
+        }
+
+        try {
+            return $this->createFresh($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey);
+        } catch (UniqueConstraintViolationException $e) {
+            // Two identical submits raced past the lookup; the loser lands
+            // here and returns the winner's quote.
+            if ($idempotencyKey === null) {
+                throw $e;
+            }
+
+            return Quote::query()
+                ->where('company_id', $companyId)
+                ->where('idempotency_key', $idempotencyKey)
+                ->firstOrFail()
+                ->load('lineItems');
+        }
+    }
+
+    /**
+     * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
+     */
+    private function createFresh(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy, ?string $idempotencyKey): Quote
+    {
+        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey): Quote {
             // Batch-load products/variants once (two queries) instead of one
             // query per line — same pattern as PriceEstimateController.
             $productIds = array_values(array_unique(array_map(
@@ -91,12 +127,14 @@ final class QuoteService
                     'qty' => $r['qty'],
                     'has_customization' => $r['has_customization'],
                     'logo_size' => $r['customization']['logo_size'] ?? null,
+                    'has_text' => ! empty($r['customization']['text']),
                 ],
                 $resolved,
             ));
 
             $quote = Quote::create([
                 'company_id' => $companyId,
+                'idempotency_key' => $idempotencyKey,
                 'state' => QuoteState::Draft->value,
                 'currency' => 'SGD',
                 'subtotal' => $totals['subtotal'],
@@ -378,13 +416,20 @@ final class QuoteService
         }
 
         DB::transaction(function () use ($line, $decision): void {
+            // Money delta this decision introduces against the quote's frozen
+            // totals. Tracked as a delta (not a full re-price) so the setup /
+            // customization fees baked into the original subtotal survive.
+            $totalDelta = 0.0;
+
             switch ($decision['action']) {
                 case 'amend':
+                    $before = (float) $line->lineTotal();
                     $line->qty = $decision['qty'];
                     $line->unit_price = $decision['unit_price'];
                     $line->save();
                     $line->transitionTo(LineItemState::Amended);
                     $this->procurement->procureLine($line);
+                    $totalDelta = (float) $line->lineTotal() - $before;
                     break;
 
                 case 'approve':
@@ -397,15 +442,56 @@ final class QuoteService
 
                 case 'drop':
                     $line->transitionTo(LineItemState::Dropped);
+                    $totalDelta = -(float) $line->lineTotal();
                     break;
             }
 
             $this->audit->log($line, 'line_item.reconfirmed', null, $decision);
+
+            if (round($totalDelta, 2) !== 0.0) {
+                $this->retotalAfterReconfirm($line, $totalDelta);
+            }
         });
 
         $this->tryQueue($line->quote->fresh(['lineItems']));
 
         return $line->fresh();
+    }
+
+    /**
+     * Re-anchor the quote's money figures (and any issued PO/invoice amount)
+     * after a reconfirmation changed what will actually be produced. Without
+     * this the buyer is invoiced for the pre-amend order while the floor
+     * fulfils the amended one — the exact dispute the PO exists to prevent.
+     */
+    private function retotalAfterReconfirm(LineItem $line, float $totalDelta): void
+    {
+        $quote = $line->quote()->lockForUpdate()->first();
+
+        $before = [
+            'subtotal' => $quote->subtotal,
+            'total' => $quote->total,
+        ];
+
+        $quote->subtotal = round((float) $quote->subtotal + $totalDelta, 2);
+        $quote->total = round((float) $quote->subtotal + (float) $quote->delivery, 2);
+        $quote->save();
+
+        // The PO amount was frozen at issue time; keep the authoritative
+        // invoice figure in lock-step with the amended quote.
+        $po = $quote->purchaseOrders()->latest('issued_at')->first();
+        if ($po !== null) {
+            $poBefore = ['amount' => $po->amount];
+            $po->amount = $quote->total;
+            $po->save();
+            $this->audit->log($po, 'purchase_order.retotaled', $poBefore, ['amount' => $po->amount]);
+        }
+
+        $this->audit->log($quote, 'quote.retotaled_after_reconfirm', $before, [
+            'subtotal' => $quote->subtotal,
+            'total' => $quote->total,
+            'line_item_id' => $line->id,
+        ]);
     }
 
     /**
@@ -435,6 +521,7 @@ final class QuoteService
         }
 
         return ! empty($customization['logo_size'])
-            || ! empty($customization['artwork_ref']);
+            || ! empty($customization['artwork_ref'])
+            || ! empty($customization['text']);
     }
 }

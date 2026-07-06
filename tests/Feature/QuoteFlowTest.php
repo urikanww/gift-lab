@@ -22,6 +22,8 @@ beforeEach(function (): void {
     $this->buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
     $this->staff = User::factory()->staffAdmin()->create();
     $this->product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV', 'publish_state' => 'PUBLISHED']);
+    // CORE products need at least one variant to be quotable (E4 guard).
+    Variant::factory()->create(['product_id' => $this->product->id]);
 });
 
 it('lets a buyer create a draft quote priced from config', function (): void {

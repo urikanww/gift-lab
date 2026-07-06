@@ -3,12 +3,24 @@ import api, { apiError, ensureCsrf } from '../lib/api';
 import { disconnectEcho } from '../lib/echo';
 import type { User } from '../types';
 
+export interface RegisterPayload {
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+  company_name: string;
+  company_registration_no?: string;
+  company_phone?: string;
+  company_address?: string;
+}
+
 interface AuthState {
   user: User | null;
   status: 'idle' | 'loading' | 'ready';
   error: string | null;
   fetchUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
+  register: (payload: RegisterPayload) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -36,6 +48,20 @@ export const useAuthStore = create<AuthState>((set) => ({
       // a second /user round-trip, which also removes a failure window where a
       // flaky follow-up request would flip a successful login to "unauthenticated".
       const { data } = await api.post<{ user: User }>('/login', { email, password });
+      set({ user: data.user, status: 'ready' });
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
+  },
+
+  register: async (payload) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      // /register signs the new buyer in and returns the user, mirroring /login.
+      const { data } = await api.post<{ user: User }>('/register', payload);
       set({ user: data.user, status: 'ready' });
       return true;
     } catch (err) {

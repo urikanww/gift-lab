@@ -13,11 +13,23 @@ class FakeImage {
   scaleY = 1;
   left = 0;
   top = 0;
+  angle = 0;
   scaleToWidth = vi.fn();
   setCoords = vi.fn();
   set = vi.fn();
+  setControlsVisibility = vi.fn();
   getScaledWidth = () => 100;
+  getBoundingRect = () => ({ left: 100, top: 100, width: 100, height: 60 });
   static fromURL = vi.fn(async () => new FakeImage());
+}
+
+class FakeTextbox extends FakeImage {
+  text = '';
+  constructor(text = '', opts: Record<string, unknown> = {}) {
+    super();
+    this.text = text;
+    Object.assign(this, opts);
+  }
 }
 
 const created: FakeCanvas[] = [];
@@ -30,8 +42,19 @@ class FakeCanvas {
   remove = vi.fn((o: FakeImage) => {
     this.objects = this.objects.filter((x) => x !== o);
   });
-  constructor(_el: unknown, _opts: unknown) {
+  constructor(el: unknown, _opts: unknown) {
     created.push(this);
+    // Mimic fabric v6's DOM surgery (C17): the mounted <canvas> is re-parented
+    // into a library-owned .canvas-container div. Any React sibling anchored
+    // on the canvas node would then crash reconciliation — the isolation
+    // wrapper in DesignerCanvas exists precisely to absorb this.
+    const canvasEl = el as HTMLCanvasElement | null;
+    if (canvasEl?.parentNode) {
+      const container = document.createElement('div');
+      container.className = 'canvas-container';
+      canvasEl.parentNode.insertBefore(container, canvasEl);
+      container.appendChild(canvasEl);
+    }
   }
   setDimensions = vi.fn();
   on = (evt: string, fn: (e: any) => void) => {
@@ -59,6 +82,7 @@ class FakeCanvas {
 vi.mock('fabric', () => ({
   Canvas: FakeCanvas,
   FabricImage: FakeImage,
+  Textbox: FakeTextbox,
 }));
 
 // framer-motion's ResizeObserver / rAF are not needed; jsdom lacks
@@ -158,6 +182,41 @@ it('Ctrl+Z is a no-op with an empty history', async () => {
   fireEvent.keyDown(stage, { key: 'z', ctrlKey: true });
 
   expect(canvas.loadFromJSON).not.toHaveBeenCalled();
+});
+
+it('survives a backdrop that arrives after fabric re-parents the canvas (C17)', async () => {
+  // Regression: the 3D face render resolves async, flipping backgroundUrl
+  // null -> data URL after fabric has already moved the <canvas> node. Without
+  // the isolation wrapper this rerender crashed React with an insertBefore
+  // NotFoundError and blanked the whole designer.
+  const { default: DesignerCanvas } = await import('./DesignerCanvas');
+  const { rerender, container } = render(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} backgroundUrl={null} />
+    </ThemeProvider>,
+  );
+
+  expect(container.querySelector('img[referrerpolicy="no-referrer"]')).toBeNull();
+
+  rerender(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} backgroundUrl="data:image/png;base64,AAAA" />
+    </ThemeProvider>,
+  );
+
+  // Designer still alive, backdrop mounted, canvas still inside fabric's container.
+  expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
+  expect(container.querySelector('img[referrerpolicy="no-referrer"]')).not.toBeNull();
+  expect(screen.getByLabelText('Design canvas').parentElement?.className).toContain('canvas-container');
+
+  // And the reverse hop (render failure clears the backdrop) is safe too.
+  rerender(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} backgroundUrl={null} />
+    </ThemeProvider>,
+  );
+  expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
+  expect(container.querySelector('img[referrerpolicy="no-referrer"]')).toBeNull();
 });
 
 /* ----------------------------- test helpers ------------------------------ */

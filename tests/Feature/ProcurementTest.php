@@ -65,6 +65,106 @@ it('writes a stock re-check audit entry on shortfall', function (): void {
     $this->assertDatabaseHas('audit_logs', ['event' => 'stock.rechecked']);
 });
 
+// D12 (Pass 2 F4): reconfirmation amend enforces the same margin floor as the
+// pre-send amend — the re-quote path is exactly where underpricing happened.
+it('rejects a reconfirmation amend below the margin floor', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 450]);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10000,
+        'unit_price' => 42.00,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    // Floor 12% over landed 30.00 => min 33.60; 0.01 must be rejected.
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", [
+        'action' => 'amend',
+        'qty' => 400,
+        'unit_price' => 0.01,
+    ])->assertStatus(422)->assertJsonValidationErrors('unit_price');
+
+    expect($line->fresh()->line_state->value)->toBe('AWAITING_RECONFIRM');
+});
+
+// A11 (Pass 2 F5): a reconfirmation amend/drop re-anchors the quote totals and
+// the issued PO amount so the invoice matches what is actually fulfilled.
+it('retotals the quote and PO after a reconfirmation amend', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 450]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'subtotal' => 422533.00,
+        'delivery' => 60.00,
+        'total' => 422593.00,
+    ]);
+    $po = \App\Models\PurchaseOrder::create([
+        'quote_id' => $quote->id,
+        'po_ref' => 'PO-TEST',
+        'payment_state' => 'UNPAID',
+        'amount' => 422593.00,
+        'currency' => 'SGD',
+        'issued_at' => now(),
+    ]);
+    // The amended line goes READY and tryQueue fires; the production gate
+    // requires an approved proof (as it did in the live repro).
+    \App\Models\Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10000,
+        'unit_price' => 42.25,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", [
+        'action' => 'amend',
+        'qty' => 400,
+        'unit_price' => 40.00,
+    ])->assertOk();
+
+    // Line total went 422500.00 -> 16000.00 (delta -406500.00); the SGD 33 of
+    // setup/customization fees baked into the original subtotal must survive.
+    $quote->refresh();
+    expect((float) $quote->subtotal)->toBe(16033.00)
+        ->and((float) $quote->total)->toBe(16093.00)
+        ->and((float) $po->fresh()->amount)->toBe(16093.00);
+});
+
+it('retotals the quote and PO after a reconfirmation drop', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 0]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'subtotal' => 500.00,
+        'delivery' => 30.00,
+        'total' => 530.00,
+    ]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10,
+        'unit_price' => 40.00,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'drop'])->assertOk();
+
+    $quote->refresh();
+    expect((float) $quote->subtotal)->toBe(100.00)
+        ->and((float) $quote->total)->toBe(130.00);
+});
+
 it('rejects a quote amendment that breaks the margin floor', function (): void {
     Sanctum::actingAs($this->staff);
     // Landed cost = base_cost (+ variant delta). Force a known base.

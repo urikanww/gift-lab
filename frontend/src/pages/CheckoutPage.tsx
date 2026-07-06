@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useCartStore } from '../stores/cartStore';
@@ -29,6 +29,11 @@ export default function CheckoutPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [celebrating, setCelebrating] = useState<number | null>(null);
 
+  // One replay token per checkout attempt: a double-click or a retry after a
+  // slow network re-sends the same key, so the server returns the original
+  // quote instead of creating a duplicate draft (audit A12).
+  const idempotencyKey = useRef<string>(crypto.randomUUID());
+
   // Refresh the estimate on mount / whenever the cart changes.
   useEffect(() => {
     void refreshEstimate();
@@ -55,10 +60,12 @@ export default function CheckoutPage() {
     }
     setSubmitting(true);
     setSubmitError(null);
-    const quote = await createQuote(user.company_id, lines, null, neededBy);
+    const quote = await createQuote(user.company_id, lines, null, neededBy, idempotencyKey.current);
     setSubmitting(false);
     if (quote) {
       setCelebrating(quote.id);
+      // The cart was converted; a future checkout is a new attempt.
+      idempotencyKey.current = crypto.randomUUID();
     } else {
       setSubmitError('Could not place your order. Please review your cart and try again.');
     }
@@ -198,6 +205,14 @@ export default function CheckoutPage() {
                 className="mt-5 w-full"
               >
                 Log in
+              </LinkButton>
+              <LinkButton
+                to="/register"
+                state={{ from: '/checkout' }}
+                variant="secondary"
+                className="mt-3 w-full"
+              >
+                New here? Create your company account
               </LinkButton>
             </Card>
           )}

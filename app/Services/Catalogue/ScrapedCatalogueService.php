@@ -127,6 +127,10 @@ final class ScrapedCatalogueService
         $product->dimensions = $data->dimensions;
         $product->weight = $data->weight;
         $product->stock_estimate = $data->stockEstimate;
+        // TECH-DEBT (audit B8, tracked in docs/TECH_DEBT.md#scraped-images):
+        // v1 serves the source marketplace image as-is — no re-host, no clean
+        // product render. Acceptable for catalogue thumbnails; replace with
+        // re-hosted/cleaned imagery before scraped items get designer surfaces.
         $product->image_url = $data->imageUrl;
         $product->is_printable = $data->printable;
         $product->print_method = $data->printable ? PrintMethod::Uv : null;

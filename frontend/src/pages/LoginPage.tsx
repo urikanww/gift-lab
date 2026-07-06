@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
 import { Button, Card, Input } from '../ui';
@@ -93,7 +93,10 @@ export default function LoginPage() {
         </Motion>
 
         <Motion variants={staggerItem} className="mt-6 text-center text-xs text-fg-subtle">
-          Staff and buyer access is provisioned by your account manager.
+          New corporate buyer?{' '}
+          <Link to="/register" state={{ from }} className="font-semibold text-brand-700 hover:underline">
+            Create your company account
+          </Link>
         </Motion>
       </Motion>
     </div>

@@ -3,7 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
-import Model3dPersonalizer, { type Model3dCustomization } from '../components/Model3dPersonalizer';
+import Model3dPersonalizer, {
+  DEFAULT_FILAMENT_COLOR,
+  type Model3dCustomization,
+} from '../components/Model3dPersonalizer';
+import { renderModelFace, type ModelFaceSnapshot } from '../lib/modelFaceSnapshot';
 import { useCartStore } from '../stores/cartStore';
 import { useAuthStore } from '../stores/authStore';
 import { fetchBrandKit, type BrandKit } from '../lib/brandKit';
@@ -39,14 +43,26 @@ export default function ProductDesignerPage() {
   const [error, setError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<number | null>(null);
   const [artwork, setArtwork] = useState<CapturedArtwork | null>(null);
-  // Live logo state lifted from the canvas so the price bar reflects the
-  // selected size band before the design is captured.
-  const [logo, setLogo] = useState<{ hasLogo: boolean; size: string }>({ hasLogo: false, size: 'M' });
+  // Live logo/text state lifted from the canvas so the price bar reflects the
+  // selected size band and any text fee before the design is captured.
+  const [logo, setLogo] = useState<{ hasLogo: boolean; size: string; hasText: boolean }>({
+    hasLogo: false,
+    size: 'M',
+    hasText: false,
+  });
   // MODEL_3D items add a filament-colour choice; logo placement uses the
   // shared canvas because the item is FDM-printed then UV-decorated on its
   // flat face — the placement mockup is a producible production step.
   const [model3dOptions, setModel3dOptions] = useState<Model3dCustomization | null>(null);
   const is3d = product?.class === 'MODEL_3D';
+  // Clean orthographic render of the model's decoration face, in the chosen
+  // filament colour — the 3D design surface (audit G1/G2/G3). A MODEL_3D item
+  // NEVER falls back to the scraped marketing photo (audit C16): while the
+  // render loads (or if it fails) the buyer designs on the neutral stage,
+  // with the status spelled out beside the canvas.
+  const [faceSnapshot, setFaceSnapshot] = useState<ModelFaceSnapshot | null>(null);
+  const [faceState, setFaceState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const filamentColor = model3dOptions?.filament_color ?? DEFAULT_FILAMENT_COLOR;
   const [qty, setQty] = useState(50);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
@@ -89,6 +105,33 @@ export default function ProductDesignerPage() {
     };
   }, [companyId]);
 
+  // Render (and re-render on colour change) the model-face backdrop for 3D
+  // items that stream a model file. The snapshot also carries real-mm face
+  // dimensions from the STL geometry, captured into the layout record.
+  useEffect(() => {
+    if (!product || product.class !== 'MODEL_3D' || !product.has_model || !id) {
+      setFaceSnapshot(null);
+      setFaceState(product?.class === 'MODEL_3D' ? 'error' : 'idle');
+      return;
+    }
+    let active = true;
+    setFaceState('loading');
+    renderModelFace(id, filamentColor)
+      .then((snapshot) => {
+        if (!active) return;
+        setFaceSnapshot(snapshot);
+        setFaceState('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setFaceSnapshot(null);
+        setFaceState('error');
+      });
+    return () => {
+      active = false;
+    };
+  }, [product, id, filamentColor]);
+
   // Delivery window: fetch once the product is known. Queue-depth aware, so a
   // busy floor honestly pushes the date out. Failure is non-fatal (hide it).
   useEffect(() => {
@@ -109,8 +152,9 @@ export default function ProductDesignerPage() {
 
   // Live quote: re-estimate whenever qty, variant, logo band, or captured
   // artwork changes. Event-driven single POST per change — never polled.
-  const hasCustomization = logo.hasLogo || !!artwork;
+  const hasCustomization = logo.hasLogo || logo.hasText || !!artwork;
   const logoSize = logo.hasLogo ? logo.size : null;
+  const hasText = logo.hasText;
   useEffect(() => {
     if (!product) return;
     let active = true;
@@ -123,6 +167,7 @@ export default function ProductDesignerPage() {
             qty,
             has_customization: hasCustomization,
             logo_size: logoSize,
+            has_text: hasText,
           },
         ],
       })
@@ -142,7 +187,7 @@ export default function ProductDesignerPage() {
     return () => {
       active = false;
     };
-  }, [product, variantId, qty, hasCustomization, logoSize]);
+  }, [product, variantId, qty, hasCustomization, logoSize, hasText]);
 
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === variantId) ?? null,
@@ -163,7 +208,7 @@ export default function ProductDesignerPage() {
     // 3D lines carry both the filament colour and any canvas artwork; UV/CORE
     // lines carry artwork only.
     const customization: Record<string, unknown> = {
-      ...(is3d ? (model3dOptions ?? { filament_color: 'Black' }) : {}),
+      ...(is3d ? (model3dOptions ?? { filament_color: DEFAULT_FILAMENT_COLOR }) : {}),
       ...(artwork?.customization ?? {}),
     };
     // Persist the captured artwork server-side; store the returned ref (not the
@@ -284,12 +329,30 @@ export default function ProductDesignerPage() {
               places logo/text on the canvas over the product photo (3D items
               are UV-decorated after printing) */}
           {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
+          {is3d && faceState === 'loading' && (
+            <p className="text-sm text-fg-muted" role="status" aria-live="polite">
+              Rendering the product face in your chosen colour…
+            </p>
+          )}
+          {is3d && faceState === 'error' && (
+            <p className="text-sm text-warning" role="status">
+              3D face preview unavailable — design on the neutral stage; placement is confirmed on
+              the formal proof before production.
+            </p>
+          )}
           <DesignerCanvas
-            backgroundUrl={product.image_url}
+            /* MODEL_3D: face render or neutral stage — never the scraped
+               marketing photo as a design surface (audit G1/C16). */
+            backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
             onCapture={handleCapture}
             onLogoChange={setLogo}
             brandLogo={brandKit?.logo ?? null}
             brandColors={brandKit?.colors ?? []}
+            canvasMm={
+              faceSnapshot
+                ? { width: faceSnapshot.canvasWidthMm, height: faceSnapshot.canvasHeightMm }
+                : null
+            }
           />
 
           {/* Sticky action bar */}
