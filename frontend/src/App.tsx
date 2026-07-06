@@ -25,8 +25,13 @@ const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
 const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
 const CatalogueAdminPage = lazy(() => import('./pages/CatalogueAdminPage'));
+const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
+const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage'));
+const ProductAdminDetailPage = lazy(() => import('./pages/ProductAdminDetailPage'));
+const PricingAdminPage = lazy(() => import('./pages/PricingAdminPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function RedirectCatalogueToProduct() {
@@ -99,6 +104,7 @@ export default function App() {
             <Route path="track" element={<TrackPage />} />
             <Route path="kits" element={<KitBuilderPage />} />
             <Route path="login" element={<LoginPage />} />
+            <Route path="register" element={<RegisterPage />} />
             <Route path="catalogue" element={<Navigate to="/products" replace />} />
             <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
             <Route path="*" element={<NotFoundPage />} />
@@ -126,6 +132,10 @@ export default function App() {
               <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
               <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
               <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
+              <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
+              <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
+              <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
+              <Route path="pricing-admin" element={<ProtectedRoute staffOnly><PricingAdminPage /></ProtectedRoute>} />
             </Route>
           </Route>
         </Routes>

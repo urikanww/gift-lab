@@ -88,6 +88,14 @@ export interface Customization {
   artwork_ref?: string | null;
   /** MODEL_3D filament colour chosen in the designer (Black/White/Grey). */
   filament_color?: string | null;
+  /** Name/text personalisation content rendered into the artwork (audit D9). */
+  text?: string | null;
+  /**
+   * Machine-readable placement record captured with the artwork (position,
+   * size, rotation as canvas fractions + export pixel mapping) so production
+   * can read the layout without opening the PNG.
+   */
+  layout?: object | null;
 }
 
 export interface LineItem {
@@ -175,6 +183,47 @@ export interface CartLine {
 }
 
 export type PublishState = 'PENDING' | 'READY_TO_APPROVE' | 'PUBLISHED' | 'CANNOT_PUBLISH';
+
+export type LicenseTier = 'standard' | 'extended' | 'high_risk';
+
+/** A variant as serialized on the admin product resource. */
+export interface AdminVariant {
+  id: number;
+  attributes: Record<string, string>;
+  sku: string | null;
+  stock_on_hand: number;
+  reorder_threshold: number;
+  price_delta: string | number;
+}
+
+/**
+ * Full product shape as returned by the /admin/products endpoints — a superset
+ * of the public Product with the internal cost/publish/licence fields the staff
+ * console edits. Kept distinct from the public `Product` (which never exposes
+ * base_cost, publish_state, or licence tier).
+ */
+export interface AdminProduct {
+  id: number;
+  name: string;
+  slug?: string | null;
+  description: string | null;
+  class: ProductClass;
+  base_cost: string | number;
+  currency: string;
+  dimensions: { l?: number; w?: number; h?: number; unit?: string } | null;
+  weight: string | number | null;
+  print_method: PrintMethod | null;
+  stock_mode: string | null;
+  category: string | null;
+  image_url: string | null;
+  is_printable: boolean;
+  publish_state: string;
+  license_tier: LicenseTier;
+  archived: boolean;
+  variants: AdminVariant[] | null;
+  sold_count: number;
+  stock_total: number;
+}
 
 export interface AdminCatalogueItem {
   id: number;

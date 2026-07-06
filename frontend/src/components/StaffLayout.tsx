@@ -22,7 +22,6 @@ function useStaffNav(): NavItem[] {
     { to: '/quotes', label: 'Quotes', badge: q?.proofsPending },
     { to: '/production-queue', label: 'Production', badge: overdue || undefined },
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
-    { to: '/catalogue-admin', label: 'Catalogue Gate', badge: q?.cataloguePending },
     { to: '/product-admin', label: 'Products' },
     // Pricing is superadmin-only (the page also guards itself).
     ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
