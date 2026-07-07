@@ -100,7 +100,7 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
           <div className="flex min-w-0 items-start gap-3">
             <ItemThumb name={product.name} imageUrl={product.image_url} />
             <div className="min-w-0">
-              <h1 className="font-display text-2xl text-fg">{product.name}</h1>
+              <EditableTitle product={product} onChanged={onChanged} editable={!archived} />
               <p className="mt-1 text-sm text-fg">
                 <span className="font-medium">
                   {product.currency} {Number(product.selling_price).toFixed(2)}
@@ -164,6 +164,109 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
         <HistorySection productId={product.id} />
       </Card>
     </div>
+  );
+}
+
+/**
+ * Click-to-rename the product title in place. Enter or blur commits the new name
+ * via the same PATCH the edit form uses (backend records the rename in history);
+ * Escape cancels. Falls back to a plain heading when the product isn't editable
+ * (e.g. archived).
+ */
+function EditableTitle({
+  product,
+  onChanged,
+  editable,
+}: {
+  product: AdminProduct;
+  onChanged: () => void;
+  editable: boolean;
+}) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(product.name);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Guards against Enter + the follow-up blur both firing a second PATCH.
+  const submitted = useRef<string | null>(null);
+
+  useEffect(() => {
+    setName(product.name);
+    submitted.current = null;
+  }, [product.name]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === product.name || trimmed === submitted.current) {
+      setEditing(false);
+      setName(trimmed || product.name);
+      return;
+    }
+    submitted.current = trimmed;
+    setSaving(true);
+    try {
+      await ensureCsrf();
+      await api.patch(`/admin/products/${product.id}`, { name: trimmed });
+      toast({ title: 'Renamed', description: trimmed, tone: 'success' });
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      submitted.current = null;
+      toast({ title: 'Not renamed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editable) {
+    return <h1 className="font-display text-2xl text-fg">{product.name}</h1>;
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={name}
+        disabled={saving}
+        aria-label="Product name"
+        className="w-full max-w-md border-b border-primary bg-transparent font-display text-2xl text-fg focus:outline-none"
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void commit();
+          } else if (e.key === 'Escape') {
+            setName(product.name);
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      title="Click to rename"
+      className="group inline-flex items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="font-display text-2xl text-fg">{product.name}</span>
+      <span
+        aria-hidden="true"
+        className="text-base text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100"
+      >
+        ✎
+      </span>
+    </button>
   );
 }
 
