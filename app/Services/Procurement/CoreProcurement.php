@@ -59,7 +59,12 @@ final class CoreProcurement implements ProcurementStrategy
             $this->ledger->record($variant, -$lineItem->qty, StockMovementReason::Sale, $lineItem);
 
             if ($variant->isBelowThreshold()) {
-                $this->draftReorder($variant->id, $variant->reorder_threshold * 2);
+                // A restock buffer (2× threshold) plus whatever a backorder drove
+                // negative — clamped to at least 1 so a zero-threshold variant
+                // never drafts a useless 0-qty reorder onto the buy-list.
+                $deficit = $variant->stock_on_hand < 0 ? -$variant->stock_on_hand : 0;
+                $reorderQty = max($variant->reorder_threshold * 2, 1) + $deficit;
+                $this->draftReorder($variant->id, $reorderQty);
             }
 
             return ProcurementResult::ok($lineItem->qty, $unitPrice);

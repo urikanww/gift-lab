@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Proof;
 use App\Models\PurchaseOrder;
 use App\Models\Quote;
+use App\Models\SupplierReorder;
 use App\Models\User;
 use App\Models\Variant;
 use App\Services\Procurement\ProcurementManager;
@@ -218,6 +219,32 @@ it('fulfils a backordered CORE line at insufficient stock, driving on-hand negat
         'delta' => -5,
         'reason' => 'SALE',
     ]);
+});
+
+it('drafts a reorder covering the backorder deficit, never a zero qty', function (): void {
+    test()->product->update(['allow_backorder' => true]);
+    // Zero threshold is the case that used to draft qty 0 (threshold * 2).
+    $variant = Variant::factory()->create([
+        'product_id' => $this->product->id,
+        'stock_on_hand' => 0,
+        'reorder_threshold' => 0,
+    ]);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $this->product->id,
+        'variant_id' => $variant->id,
+        'qty' => 5,
+        'unit_price' => 15.00,
+        'line_state' => 'PENDING',
+    ]);
+
+    $this->manager->procureLine($line->load('product', 'variant'));
+
+    // buffer max(0*2, 1) = 1 + deficit 5 = 6, not 0.
+    $reorder = SupplierReorder::where('variant_id', $variant->id)->firstOrFail();
+    expect($variant->fresh()->stock_on_hand)->toBe(-5)
+        ->and((int) round((float) $reorder->qty))->toBe(6);
 });
 
 it('returns consumed stock as a RETURN movement when a quote is cancelled', function (): void {
