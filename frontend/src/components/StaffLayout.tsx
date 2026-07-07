@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
-import { Badge, Button, Logo, cn } from '../ui';
+import { Badge, Button, Logo, cn, useTheme } from '../ui';
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -106,7 +106,10 @@ export default function StaffLayout() {
             </svg>
           </button>
           <span className="font-display text-sm font-semibold text-fg md:hidden">Staff Console</span>
-          <span className="hidden text-sm text-fg-muted md:inline">{user?.name}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden text-sm text-fg-muted md:inline">{user?.name}</span>
+            <ThemeToggle />
+          </div>
         </header>
 
         <main id="main-content" className="mx-auto w-full max-w-content flex-1 px-4 py-6 sm:px-6">
@@ -116,6 +119,22 @@ export default function StaffLayout() {
 
       <StaffDrawer open={drawer} onClose={() => setDrawer(false)} onLogout={onLogout} />
     </div>
+  );
+}
+
+/** Light/dark theme switch for the staff console (mirrors the storefront one). */
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+      className="inline-flex h-11 w-11 items-center justify-center rounded-md text-lg text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+    </button>
   );
 }
 
