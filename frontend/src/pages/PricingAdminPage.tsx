@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import { AsyncBoundary } from '../components/ui/States';
-import { Button, Card, useToast } from '../ui';
+import { Button, Card, cn, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
-import { CONFIG_META, GROUP_LABELS, GROUP_ORDER, metaFor, type FieldMeta } from '../lib/pricingMeta';
+import { CONFIG_META, GROUP_LABELS, GROUP_ORDER, fieldDomId, metaFor, type FieldMeta } from '../lib/pricingMeta';
 import { ConfigField, type ConfigRow } from './pricingFields';
 import TestQuoteCard from './pricingTestQuote';
 
@@ -39,6 +39,19 @@ export default function PricingAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+
+  // Jump from a breakdown row to the config knob that drives it: open the
+  // Advanced section if the knob lives there, scroll to it, and flash it.
+  const jumpToConfig = useCallback((configKey: string) => {
+    const isAdvanced = Boolean(CONFIG_META[configKey]?.advanced);
+    if (isAdvanced) setShowAdvanced(true);
+    setHighlight(configKey);
+    window.setTimeout(() => {
+      document.getElementById(fieldDomId(configKey))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, isAdvanced ? 60 : 0);
+    window.setTimeout(() => setHighlight(null), 2200);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,9 +104,21 @@ export default function PricingAdminPage() {
     <Card key={group} padding="lg" aria-label={GROUP_LABELS[group] ?? group}>
       <h2 className="mb-4 font-display text-xl text-fg">{GROUP_LABELS[group] ?? group}</h2>
       <div className="flex flex-col gap-3">
-        {fields.map((f) => (
-          <ConfigField key={f.row.id} row={f.row} meta={f.meta} onSave={save} />
-        ))}
+        {fields.map((f) => {
+          const key = `${f.row.group}.${f.row.key}`;
+          return (
+            <div
+              key={f.row.id}
+              id={fieldDomId(key)}
+              className={cn(
+                'rounded-lg transition-shadow',
+                highlight === key && 'ring-2 ring-primary ring-offset-2 ring-offset-bg',
+              )}
+            >
+              <ConfigField row={f.row} meta={f.meta} onSave={save} />
+            </div>
+          );
+        })}
       </div>
     </Card>
   );
@@ -109,7 +134,7 @@ export default function PricingAdminPage() {
           </p>
         </header>
 
-        <TestQuoteCard />
+        <TestQuoteCard onEditConfig={jumpToConfig} />
 
         {everyday.map(renderGroup)}
 

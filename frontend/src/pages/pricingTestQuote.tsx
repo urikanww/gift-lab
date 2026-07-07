@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api, { apiError } from '../lib/api';
-import { Button, Card, Input, Select } from '../ui';
+import { Button, Card, Input, Select, Tooltip } from '../ui';
 
 interface ProductOption {
   id: number;
@@ -36,7 +36,11 @@ interface Breakdown {
 const money = (v: number | string, currency = 'SGD') =>
   `${currency} ${Number(v).toFixed(2)}`;
 
-/** One breakdown row: label + amount, with an optional sign and emphasis. */
+/**
+ * One breakdown row: label + amount, with an optional sign/emphasis, an ⓘ
+ * tooltip explaining the line, and — when it maps to a config knob — a clickable
+ * label that jumps to that setting below.
+ */
 function Row({
   label,
   value,
@@ -44,6 +48,9 @@ function Row({
   sign,
   strong,
   muted,
+  info,
+  target,
+  onJump,
 }: {
   label: string;
   value: number;
@@ -51,12 +58,36 @@ function Row({
   sign?: '+' | '−';
   strong?: boolean;
   muted?: boolean;
+  info?: string;
+  target?: string;
+  onJump?: (key: string) => void;
 }) {
+  const jumpable = target && onJump;
   return (
-    <div className={`flex items-center justify-between ${strong ? 'border-t border-border pt-2 font-medium text-fg' : muted ? 'text-fg-subtle' : 'text-fg-muted'}`}>
-      <dt>
-        {sign && <span className="mr-1 text-fg-subtle">{sign}</span>}
-        {label}
+    <div
+      className={`flex items-center justify-between ${strong ? 'border-t border-border pt-2 font-medium text-fg' : muted ? 'text-fg-subtle' : 'text-fg-muted'}`}
+    >
+      <dt className="flex items-center gap-1.5">
+        {sign && <span className="text-fg-subtle">{sign}</span>}
+        {jumpable ? (
+          <button
+            type="button"
+            onClick={() => onJump(target)}
+            className="text-left underline decoration-dotted decoration-fg-subtle underline-offset-2 hover:text-primary hover:decoration-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+            title="Adjust this setting"
+          >
+            {label}
+          </button>
+        ) : (
+          <span>{label}</span>
+        )}
+        {info && (
+          <Tooltip content={info}>
+            <span tabIndex={0} aria-label={`About ${label}`} className="cursor-help text-fg-subtle">
+              ⓘ
+            </span>
+          </Tooltip>
+        )}
       </dt>
       <dd className={strong ? 'font-display text-fg' : 'text-fg'}>
         {sign === '−' ? '−' : ''}
@@ -72,7 +103,7 @@ function Row({
  * staffer can change a config above, re-run, and watch the number move — no
  * need to understand the maths.
  */
-export default function TestQuoteCard() {
+export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: string) => void }) {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [productId, setProductId] = useState<number | null>(null);
   const [qty, setQty] = useState('10');
@@ -218,11 +249,51 @@ export default function TestQuoteCard() {
                     {/* Per-item build-up */}
                     <div className="flex flex-col gap-1.5">
                       <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Per item</p>
-                      <Row label="Base cost" value={l.landed_cost} currency={c} muted />
-                      <Row label="Margin" value={l.margin} currency={c} sign="+" />
-                      {l.print_per_unit > 0 && <Row label="Print cost" value={l.print_per_unit} currency={c} sign="+" />}
-                      {l.bulk_discount > 0 && <Row label="Bulk discount" value={l.bulk_discount} currency={c} sign="−" />}
-                      <Row label="Price per item" value={l.unit_price} currency={c} strong />
+                      <Row
+                        label="Base cost"
+                        value={l.landed_cost}
+                        currency={c}
+                        muted
+                        info="Blank/material cost before margin. For 3D it's filament + machine time; edited on the product, not here."
+                      />
+                      <Row
+                        label="Margin"
+                        value={l.margin}
+                        currency={c}
+                        sign="+"
+                        info="Profit added on top of cost."
+                        target="margin.default_pct"
+                        onJump={onEditConfig}
+                      />
+                      {l.print_per_unit > 0 && (
+                        <Row
+                          label="Print cost"
+                          value={l.print_per_unit}
+                          currency={c}
+                          sign="+"
+                          info="Per-item decoration cost by print method."
+                          target="print_cost.per_unit"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      {l.bulk_discount > 0 && (
+                        <Row
+                          label="Bulk discount"
+                          value={l.bulk_discount}
+                          currency={c}
+                          sign="−"
+                          info="Discount applied once the order reaches the bulk quantity."
+                          target="threshold.bulk_discount_pct"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      <Row
+                        label="Price per item"
+                        value={l.unit_price}
+                        currency={c}
+                        strong
+                        info="Base + margin + print, minus any bulk discount."
+                      />
                     </div>
 
                     {/* Line build-up */}
@@ -230,26 +301,103 @@ export default function TestQuoteCard() {
                       <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">
                         Line ({l.qty} × item)
                       </p>
-                      <Row label={`Items (${l.qty} × ${money(l.unit_price, c)})`} value={l.units_total} currency={c} muted />
-                      {l.customization_flat > 0 && <Row label="Customization fee" value={l.customization_flat} currency={c} sign="+" />}
-                      {l.size_surcharge_total > 0 && <Row label="Logo surcharge" value={l.size_surcharge_total} currency={c} sign="+" />}
-                      {l.text_fee_total > 0 && <Row label="Personalisation" value={l.text_fee_total} currency={c} sign="+" />}
-                      {l.uv_decor_total > 0 && <Row label="UV decoration" value={l.uv_decor_total} currency={c} sign="+" />}
-                      <Row label="Line total" value={l.line_total} currency={c} strong />
+                      <Row
+                        label={`Items (${l.qty} × ${money(l.unit_price, c)})`}
+                        value={l.units_total}
+                        currency={c}
+                        muted
+                        info="Price per item × quantity."
+                      />
+                      {l.customization_flat > 0 && (
+                        <Row
+                          label="Customization fee"
+                          value={l.customization_flat}
+                          currency={c}
+                          sign="+"
+                          info="One-off fee per customized line."
+                          target="fee.customization_flat"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      {l.size_surcharge_total > 0 && (
+                        <Row
+                          label="Logo surcharge"
+                          value={l.size_surcharge_total}
+                          currency={c}
+                          sign="+"
+                          info="Per-item charge by logo size (S/M/L)."
+                          target="fee.customization_by_size"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      {l.text_fee_total > 0 && (
+                        <Row
+                          label="Personalisation"
+                          value={l.text_fee_total}
+                          currency={c}
+                          sign="+"
+                          info="Per-item fee for names/text."
+                          target="fee.customization_per_unit"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      {l.uv_decor_total > 0 && (
+                        <Row
+                          label="UV decoration"
+                          value={l.uv_decor_total}
+                          currency={c}
+                          sign="+"
+                          info="UV print pass applied to a customized 3D item."
+                          target="print_cost.per_unit"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      <Row
+                        label="Line total"
+                        value={l.line_total}
+                        currency={c}
+                        strong
+                        info="Items plus this line's fees."
+                      />
                     </div>
 
                     {/* Quote total */}
                     <div className="flex flex-col gap-1.5">
                       <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Quote</p>
-                      {estimate.setup_fee > 0 && <Row label="Setup fee" value={estimate.setup_fee} currency={c} sign="+" />}
-                      <Row label="Subtotal" value={estimate.subtotal} currency={c} muted />
+                      {estimate.setup_fee > 0 && (
+                        <Row
+                          label="Setup fee"
+                          value={estimate.setup_fee}
+                          currency={c}
+                          sign="+"
+                          info="One-off artwork setup fee per order."
+                          target="fee.setup_fee"
+                          onJump={onEditConfig}
+                        />
+                      )}
+                      <Row
+                        label="Subtotal"
+                        value={estimate.subtotal}
+                        currency={c}
+                        muted
+                        info="All line totals plus the setup fee."
+                      />
                       <Row
                         label={`Delivery (${estimate.delivery_weight_g} g)`}
                         value={estimate.delivery}
                         currency={c}
                         sign="+"
+                        info="Shipping by chargeable weight — the greater of actual and volumetric weight."
+                        target="delivery.table"
+                        onJump={onEditConfig}
                       />
-                      <Row label="Total" value={estimate.total} currency={c} strong />
+                      <Row
+                        label="Total"
+                        value={estimate.total}
+                        currency={c}
+                        strong
+                        info="Subtotal plus delivery."
+                      />
                     </div>
                   </dl>
                 );

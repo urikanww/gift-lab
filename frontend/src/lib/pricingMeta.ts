@@ -206,6 +206,11 @@ export const CONFIG_META: Record<string, FieldMeta> = {
  * Metadata for a config, falling back to a humanised key + a best-guess editor
  * when a row isn't in the registry (so a newly-seeded config still renders).
  */
+/** Stable DOM id for a config field, so the breakdown can scroll to it. */
+export function fieldDomId(configKey: string): string {
+  return `cfg-${configKey.replace(/\./g, '-')}`;
+}
+
 export function metaFor(group: string, key: string, value: unknown): FieldMeta {
   const found = CONFIG_META[`${group}.${key}`];
   if (found) return found;
