@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Enums\ProductClass;
+use App\Enums\StockMode;
 use App\Models\Product;
 use App\Services\PricingService;
 use Illuminate\Http\Request;
@@ -37,15 +39,41 @@ class ProductResource extends JsonResource
             'weight' => $this->weight,
             'print_method' => $this->print_method?->value,
             'stock_mode' => $this->stock_mode->value,
+            // Customer-facing availability, honest about on-demand items: a
+            // STOCKED blank at zero stock reads "made to order" when backorder
+            // is allowed, "out of stock" otherwise. 3D/make-to-order is always
+            // made to order.
+            'availability' => $this->availabilityStatus(),
             'image_url' => $this->image_url,
             'is_printable' => $this->is_printable,
             'creator_credit' => $this->creator_credit,
             // Interactive viewer availability: we hold a local model file
             // (never exposes the storage path itself).
-            'has_model' => $this->class === \App\Enums\ProductClass::Model3d
+            'has_model' => $this->class === ProductClass::Model3d
                 && (string) $this->model_file_ref !== ''
                 && ! str_starts_with((string) $this->model_file_ref, 'http'),
             'variants' => VariantResource::collection($this->whenLoaded('variants')),
         ];
+    }
+
+    /**
+     * in_stock | made_to_order | out_of_stock. Uses the eager-loaded variants
+     * (the catalogue always loads them) to avoid an N+1; falls back to the
+     * stock mode + backorder flag when variants aren't loaded.
+     */
+    private function availabilityStatus(): string
+    {
+        if ($this->stock_mode === StockMode::MakeToOrder) {
+            return 'made_to_order';
+        }
+
+        if ($this->relationLoaded('variants')) {
+            $anyInStock = $this->variants->contains(fn ($v): bool => $v->stock_on_hand > 0);
+            if ($anyInStock) {
+                return 'in_stock';
+            }
+        }
+
+        return $this->allow_backorder ? 'made_to_order' : 'out_of_stock';
     }
 }

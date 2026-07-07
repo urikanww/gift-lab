@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { safeHref } from '../../lib/safeHref';
 import { designPath } from '../../lib/catalogue';
 import { categoryLabel } from '../../lib/categories';
+import { AVAILABILITY } from '../../lib/availability';
 import { Badge, Skeleton } from '../../ui';
 import { Motion, staggerItem } from '../../motion';
 import type { Product } from '../../types';
@@ -74,6 +75,15 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
               <div className="absolute left-2 top-2">
                 <Badge tone="brand" size="sm">
                   {categoryLabel(product.category)}
+                </Badge>
+              </div>
+            )}
+            {/* Availability corner — only when it's not plain in-stock, so the
+                grid stays quiet but made-to-order / unavailable items are honest. */}
+            {product.availability !== 'in_stock' && (
+              <div className="absolute right-2 top-2">
+                <Badge tone={AVAILABILITY[product.availability].tone} size="sm">
+                  {AVAILABILITY[product.availability].label}
                 </Badge>
               </div>
             )}

@@ -21,6 +21,7 @@ const product: Product = {
   weight: '320',
   print_method: 'UV',
   stock_mode: 'STOCKED',
+  availability: 'in_stock',
   image_url: null,
   is_printable: true,
   creator_credit: null,

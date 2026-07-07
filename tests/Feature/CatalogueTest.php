@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Models\Product;
+use App\Models\Variant;
+use Database\Seeders\CoreCatalogueSeeder;
 
 it('exposes only published products on the public catalogue', function (): void {
     Product::factory()->create(['name' => 'Published Mug', 'publish_state' => 'PUBLISHED']);
@@ -49,6 +51,43 @@ it('still resolves a product detail by numeric id (legacy links)', function (): 
 
 it('404s an unknown slug', function (): void {
     $this->getJson('/api/catalogue/no-such-thing')->assertNotFound();
+});
+
+it('reports availability in stock when a variant has stock', function (): void {
+    seedPricing();
+    $p = Product::factory()->create(['class' => 'CORE', 'stock_mode' => 'STOCKED', 'publish_state' => 'PUBLISHED']);
+    Variant::factory()->create(['product_id' => $p->id, 'stock_on_hand' => 5]);
+
+    $this->getJson("/api/catalogue/{$p->id}")->assertOk()->assertJsonPath('data.availability', 'in_stock');
+});
+
+it('reports availability made-to-order for a zero-stock backorder blank', function (): void {
+    seedPricing();
+    $p = Product::factory()->create([
+        'class' => 'CORE', 'stock_mode' => 'STOCKED', 'allow_backorder' => true, 'publish_state' => 'PUBLISHED',
+    ]);
+    Variant::factory()->create(['product_id' => $p->id, 'stock_on_hand' => 0]);
+
+    $this->getJson("/api/catalogue/{$p->id}")->assertOk()->assertJsonPath('data.availability', 'made_to_order');
+});
+
+it('reports availability out-of-stock at zero stock with no backorder', function (): void {
+    seedPricing();
+    $p = Product::factory()->create([
+        'class' => 'CORE', 'stock_mode' => 'STOCKED', 'allow_backorder' => false, 'publish_state' => 'PUBLISHED',
+    ]);
+    Variant::factory()->create(['product_id' => $p->id, 'stock_on_hand' => 0]);
+
+    $this->getJson("/api/catalogue/{$p->id}")->assertOk()->assertJsonPath('data.availability', 'out_of_stock');
+});
+
+it('reports availability made-to-order for a make-to-order product', function (): void {
+    seedPricing();
+    $p = Product::factory()->create([
+        'class' => 'CORE', 'stock_mode' => 'MAKE_TO_ORDER', 'publish_state' => 'PUBLISHED',
+    ]);
+
+    $this->getJson("/api/catalogue/{$p->id}")->assertOk()->assertJsonPath('data.availability', 'made_to_order');
 });
 
 it('returns a live price estimate without an account', function (): void {
@@ -135,7 +174,7 @@ it('falls back to name order for an unknown sort value', function (): void {
 });
 
 it('seeds the CORE catalogue with self-hosted image urls', function (): void {
-    (new Database\Seeders\CoreCatalogueSeeder())->run();
+    (new CoreCatalogueSeeder)->run();
 
     expect(Product::query()->where('class', 'CORE')->count())->toBe(10)
         ->and(Product::query()->where('class', 'CORE')->whereNull('image_url')->count())->toBe(0)
@@ -144,7 +183,7 @@ it('seeds the CORE catalogue with self-hosted image urls', function (): void {
 });
 
 it('re-runs the CORE seeder idempotently, backfilling missing image urls', function (): void {
-    $seeder = new Database\Seeders\CoreCatalogueSeeder();
+    $seeder = new CoreCatalogueSeeder;
     $seeder->run();
 
     // Simulate a database seeded before the local images landed.

@@ -75,6 +75,8 @@ export interface Product {
   weight: string | null;
   print_method: PrintMethod | null;
   stock_mode: string;
+  /** Customer-facing availability, honest about on-demand items. */
+  availability: 'in_stock' | 'made_to_order' | 'out_of_stock';
   image_url: string | null;
   is_printable: boolean;
   creator_credit: string | null;

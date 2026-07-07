@@ -26,6 +26,7 @@ import {
   type TierPrice,
 } from '../lib/catalogue';
 import { categoryLabel } from '../lib/categories';
+import { AVAILABILITY } from '../lib/availability';
 import { useCartStore } from '../stores/cartStore';
 import type { PrintMethod, Product, Variant } from '../types';
 
@@ -292,6 +293,16 @@ export default function ProductDetailPage() {
               </span>
             </p>
 
+            {/* Availability — honest about made-to-order / on-demand items. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={AVAILABILITY[product.availability].tone} dot>
+                {AVAILABILITY[product.availability].label}
+              </Badge>
+              {AVAILABILITY[product.availability].note && (
+                <span className="text-xs text-fg-muted">{AVAILABILITY[product.availability].note}</span>
+              )}
+            </div>
+
             {product.description && <p className="text-fg-muted">{product.description}</p>}
             {product.creator_credit && (
               <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
@@ -425,7 +436,7 @@ export default function ProductDetailPage() {
                 <SpecRow key={k} label={`Dimension (${k})`} value={String(v)} />
               ))}
             {product.weight && <SpecRow label="Weight" value={`${product.weight} g`} />}
-            <SpecRow label="Stock" value={product.stock_mode} />
+            <SpecRow label="Availability" value={AVAILABILITY[product.availability].label} />
           </dl>
         </Card>
       </section>
