@@ -6,6 +6,7 @@ import { Button, Card, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CONFIG_META, GROUP_LABELS, GROUP_ORDER, metaFor, type FieldMeta } from '../lib/pricingMeta';
 import { ConfigField, type ConfigRow } from './pricingFields';
+import TestQuoteCard from './pricingTestQuote';
 
 /**
  * Superadmin pricing/config editor. Every quote-time number is editable without
@@ -107,6 +108,8 @@ export default function PricingAdminPage() {
             every edit is logged.
           </p>
         </header>
+
+        <TestQuoteCard />
 
         {everyday.map(renderGroup)}
 
