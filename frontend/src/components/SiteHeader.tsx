@@ -11,7 +11,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useCartStore } from '../stores/cartStore';
 import { CATEGORIES } from '../lib/categories';
 import { isStaffRole } from '../lib/roles';
-import { Badge, Button, Input, useTheme, cn } from '../ui';
+import { Badge, Button, Input, Logo, useTheme, cn } from '../ui';
 import type { User } from '../types';
 
 const FOCUSABLE =
@@ -48,9 +48,9 @@ export default function SiteHeader() {
         <Link
           to="/"
           aria-label="GiftLab home"
-          className="font-display text-xl font-semibold tracking-tight text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          GIFT<span className="text-primary">LAB</span>
+          <Logo />
         </Link>
 
         {/* Desktop nav */}

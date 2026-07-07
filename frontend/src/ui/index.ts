@@ -50,3 +50,5 @@ export type { TooltipProps } from './Tooltip';
 
 export { Spinner } from './Spinner';
 export type { SpinnerProps, SpinnerSize } from './Spinner';
+
+export { Logo, LogoMark } from './Logo';

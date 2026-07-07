@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
-import { Button, Card, Input } from '../ui';
+import { Button, Card, Input, Logo } from '../ui';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 
 interface LocationState {
@@ -38,10 +38,7 @@ export default function LoginPage() {
       <Motion variants={staggerContainer} initial="hidden" animate="visible">
         {/* Brand mark + welcome copy */}
         <Motion variants={staggerItem} className="mb-8 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-2xs font-semibold uppercase tracking-wide text-brand-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" aria-hidden="true" />
-            Gift-Lab
-          </span>
+          <Logo className="justify-center" markClassName="h-9 w-9" />
           <h1 className="mt-5 font-display text-3xl text-fg sm:text-4xl">Welcome back</h1>
           <p className="mt-2 text-sm text-fg-muted">
             Sign in to manage quotes, proofs and production.

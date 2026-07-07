@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect width="48" height="48" rx="11" fill="#ff3b5f"/>
+  <!-- bow -->
+  <path d="M24 9.5l-4.6 -2.8v5.6z" fill="#fff"/>
+  <path d="M24 9.5l4.6 -2.8v5.6z" fill="#fff"/>
+  <circle cx="24" cy="9.8" r="1.9" fill="#fff"/>
+  <!-- flask silhouette -->
+  <path d="M20.2 13.5h7.6v6.2l7.6 15.8A4.4 4.4 0 0 1 31.4 41.8H16.6A4.4 4.4 0 0 1 12.6 35.5l7.6 -15.8z" fill="#fff"/>
+</svg>

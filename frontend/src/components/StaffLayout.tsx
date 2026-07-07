@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
-import { Badge, Button, cn } from '../ui';
+import { Badge, Button, Logo, cn } from '../ui';
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -75,8 +75,12 @@ export default function StaffLayout() {
     <div className="min-h-screen bg-bg md:flex">
       <aside className="hidden w-60 shrink-0 border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-screen md:flex-col md:justify-between md:overflow-y-auto md:p-4">
         <div className="flex flex-col gap-6">
-          <Link to="/dashboard" className="font-display text-xl font-semibold text-fg">
-            GIFT<span className="text-primary">LAB</span>
+          <Link
+            to="/dashboard"
+            aria-label="GiftLab dashboard"
+            className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Logo />
           </Link>
           <NavList />
         </div>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Logo } from '../ui';
 
 const TRUST_BADGES = [
   { icon: '⚡', label: '3-day turnaround' },
@@ -54,9 +55,9 @@ export default function SiteFooter() {
             <Link
               to="/"
               aria-label="GiftLab home"
-              className="font-display text-xl font-semibold tracking-tight text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              GIFT<span className="text-primary">LAB</span>
+              <Logo />
             </Link>
             <p className="mt-3 max-w-xs text-sm">
               Custom gifts and merchandise, designed live and delivered fast.
