@@ -11,9 +11,11 @@ import { Motion, fadeIn } from '../motion';
 export default function ProtectedRoute({
   children,
   staffOnly = false,
+  superadminOnly = false,
 }: {
   children: ReactNode;
   staffOnly?: boolean;
+  superadminOnly?: boolean;
 }) {
   const { user, status } = useAuthStore();
   const location = useLocation();
@@ -40,6 +42,11 @@ export default function ProtectedRoute({
   // non-staff role can never fall through into a staff-only route.
   if (staffOnly && user.role !== 'staff_admin' && user.role !== 'superadmin') {
     return <Navigate to="/" replace />;
+  }
+  // Superadmin-only routes (e.g. pricing) redirect a staff_admin instead of
+  // showing a dead "restricted" wall — mirrors the backend isSuperadmin gate.
+  if (superadminOnly && user.role !== 'superadmin') {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

@@ -140,7 +140,7 @@ export default function App() {
               <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
-              <Route path="pricing-admin" element={<ProtectedRoute staffOnly><PricingAdminPage /></ProtectedRoute>} />
+              <Route path="pricing-admin" element={<ProtectedRoute superadminOnly><PricingAdminPage /></ProtectedRoute>} />
               <Route path="user-admin" element={<ProtectedRoute staffOnly><UserAdminPage /></ProtectedRoute>} />
               <Route path="user-admin/new" element={<ProtectedRoute staffOnly><UserAdminCreatePage /></ProtectedRoute>} />
               <Route path="user-admin/:id" element={<ProtectedRoute staffOnly><UserAdminDetailPage /></ProtectedRoute>} />
