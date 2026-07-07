@@ -22,6 +22,7 @@ export default function ProductAdminCreatePage() {
   const [h, setH] = useState('');
   const [printMethod, setPrintMethod] = useState('UV');
   const [stockMode, setStockMode] = useState('STOCKED');
+  const [allowBackorder, setAllowBackorder] = useState(false);
   const [category, setCategory] = useState('');
   const [publishNow, setPublishNow] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +41,7 @@ export default function ProductAdminCreatePage() {
         dimensions: { l: Number(l), w: Number(w), h: Number(h) },
         print_method: printMethod,
         stock_mode: stockMode,
+        allow_backorder: allowBackorder,
         category: category || undefined,
         publish_state: publishNow ? 'PUBLISHED' : 'PENDING',
       });
@@ -123,6 +125,17 @@ export default function ProductAdminCreatePage() {
           <Select label="Stock mode" value={stockMode} onChange={(e) => setStockMode(e.target.value)} disabled={submitting}>
             <option value="STOCKED">Stocked</option>
             <option value="MAKE_TO_ORDER">Make to order</option>
+          </Select>
+          {/* On-demand: only meaningful for STOCKED items — sell at 0 stock and
+              backorder (drives on-hand negative + drafts a supplier reorder). */}
+          <Select
+            label="On-demand (backorder)"
+            value={allowBackorder ? 'yes' : 'no'}
+            onChange={(e) => setAllowBackorder(e.target.value === 'yes')}
+            disabled={submitting || stockMode !== 'STOCKED'}
+          >
+            <option value="no">Off — block at 0 stock</option>
+            <option value="yes">On — sell at 0, backorder</option>
           </Select>
           <label className="flex items-center gap-2 text-sm text-fg">
             <input
