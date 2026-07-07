@@ -211,6 +211,8 @@ export interface AdminProduct {
   description: string | null;
   class: ProductClass;
   base_cost: string | number;
+  /** Computed sell price (qty 1, no variant) — what a customer pays. */
+  selling_price: string | number;
   currency: string;
   dimensions: { l?: number; w?: number; h?: number; unit?: string } | null;
   weight: string | number | null;

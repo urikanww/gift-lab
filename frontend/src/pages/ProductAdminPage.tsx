@@ -240,7 +240,10 @@ export default function ProductAdminPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-sm font-medium text-fg">
-                        {p.currency} {Number(p.base_cost).toFixed(2)}
+                        {p.currency} {Number(p.selling_price).toFixed(2)}
+                      </p>
+                      <p className="text-2xs text-fg-subtle">
+                        cost {p.currency} {Number(p.base_cost).toFixed(2)}
                       </p>
                       <p className="text-xs text-fg-subtle">{p.sold_count} sold</p>
                     </div>

@@ -12,6 +12,7 @@ use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\Variant;
 use App\Services\AuditLogger;
+use App\Services\PricingService;
 use App\Services\StockLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -535,6 +536,10 @@ class AdminProductController extends Controller
             'description' => $product->description,
             'class' => $product->class->value,
             'base_cost' => $product->base_cost,
+            // What a customer actually pays (qty 1, no variant): base cost is the
+            // internal blank cost and is 0 for dynamically-priced 3D items, so the
+            // list needs the computed sell price too.
+            'selling_price' => app(PricingService::class)->unitPrice($product, null, 1),
             'currency' => $product->currency,
             'dimensions' => $product->dimensions,
             'weight' => $product->weight,

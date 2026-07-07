@@ -101,6 +101,12 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
             <ItemThumb name={product.name} imageUrl={product.image_url} />
             <div className="min-w-0">
               <h1 className="font-display text-2xl text-fg">{product.name}</h1>
+              <p className="mt-1 text-sm text-fg">
+                <span className="font-medium">
+                  {product.currency} {Number(product.selling_price).toFixed(2)}
+                </span>
+                <span className="text-fg-subtle"> sell · cost {product.currency} {Number(product.base_cost).toFixed(2)}</span>
+              </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge tone="neutral" size="sm">
                   {classLabel(product.class)}

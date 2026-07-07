@@ -210,6 +210,18 @@ it('edits a MODEL_3D product without forcing a positive base cost', function ():
         ->assertJsonPath('data.base_cost', '0.00');
 });
 
+it('exposes a computed sell price on the product list even when base cost is 0', function (): void {
+    Sanctum::actingAs($this->staff);
+    // 3D items carry base_cost 0 (priced from filament + machine time), so the
+    // admin list must show a real sell price, not SGD 0.00.
+    $model = Product::factory()->create(['class' => 'MODEL_3D', 'base_cost' => 0, 'est_grams' => 40]);
+
+    $data = $this->getJson("/api/admin/products/{$model->id}")->assertOk()->json('data');
+
+    expect((float) $data['base_cost'])->toBe(0.0)
+        ->and((float) $data['selling_price'])->toBeGreaterThan(0.0);
+});
+
 it('returns a full staff pricing breakdown with internal cost and margin', function (): void {
     Sanctum::actingAs($this->staff);
     $product = Product::factory()->create([
