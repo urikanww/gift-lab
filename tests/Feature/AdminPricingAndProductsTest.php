@@ -222,6 +222,54 @@ it('exposes a computed sell price on the product list even when base cost is 0',
         ->and((float) $data['selling_price'])->toBeGreaterThan(0.0);
 });
 
+it('uses volumetric weight for delivery when it exceeds actual weight', function (): void {
+    Sanctum::actingAs($this->staff);
+    // 300 mm cube → 27,000,000 / 5000 = 5400 g volumetric, far above 100 g actual.
+    $p = Product::factory()->create([
+        'weight' => 100,
+        'dimensions' => ['l' => 300, 'w' => 300, 'h' => 300, 'unit' => 'mm'],
+        'publish_state' => 'PUBLISHED',
+    ]);
+
+    $res = $this->postJson('/api/admin/price-breakdown', [
+        'line_items' => [['product_id' => $p->id, 'qty' => 1]],
+    ])->assertOk();
+
+    expect((float) $res->json('delivery_weight_g'))->toBe(5400.0);
+});
+
+it('keeps actual weight for delivery when it exceeds volumetric', function (): void {
+    Sanctum::actingAs($this->staff);
+    // 100×60×40 mm → 48 g volumetric, below the 2000 g actual weight.
+    $p = Product::factory()->create([
+        'weight' => 2000,
+        'dimensions' => ['l' => 100, 'w' => 60, 'h' => 40, 'unit' => 'mm'],
+        'publish_state' => 'PUBLISHED',
+    ]);
+
+    $res = $this->postJson('/api/admin/price-breakdown', [
+        'line_items' => [['product_id' => $p->id, 'qty' => 1]],
+    ])->assertOk();
+
+    expect((float) $res->json('delivery_weight_g'))->toBe(2000.0);
+});
+
+it('falls back to filament grams for delivery when a 3D item has no weight or dimensions', function (): void {
+    Sanctum::actingAs($this->staff);
+    $p = Product::factory()->model3d()->create([
+        'weight' => null,
+        'dimensions' => null,
+        'est_grams' => 40,
+        'publish_state' => 'PUBLISHED',
+    ]);
+
+    $res = $this->postJson('/api/admin/price-breakdown', [
+        'line_items' => [['product_id' => $p->id, 'qty' => 1]],
+    ])->assertOk();
+
+    expect((float) $res->json('delivery_weight_g'))->toBe(40.0);
+});
+
 it('returns a full staff pricing breakdown with internal cost and margin', function (): void {
     Sanctum::actingAs($this->staff);
     $product = Product::factory()->create([

@@ -138,14 +138,10 @@ final class PricingService
 
             $lineTotal = round($lineTotal, 2);
             $subtotal += $lineTotal;
-            // Shipment weight: MODEL_3D items with no catalogued weight fall
-            // back to their filament estimate (audit G8) so delivery pricing
-            // never treats a printed part as weightless.
-            $lineWeightG = (float) ($line['product']->weight ?? 0);
-            if ($lineWeightG <= 0 && $line['product']->class === ProductClass::Model3d) {
-                $lineWeightG = (float) ($line['product']->est_grams ?? 0);
-            }
-            $totalWeightG += $lineWeightG * $line['qty'];
+            // Shipment weight is the chargeable (max of actual + volumetric)
+            // weight so a light-but-bulky item ships at its volume; MODEL_3D with
+            // neither falls back to filament grams (audit G8).
+            $totalWeightG += $this->chargeableWeightG($line['product']) * $line['qty'];
 
             $priced[] = ['unit_price' => $unit, 'line_total' => $lineTotal];
         }
@@ -205,11 +201,7 @@ final class PricingService
             $lineTotal = round($unitsTotal + $flat + $sizeTotal + $textTotal + $uvTotal, 2);
             $subtotal += $lineTotal;
 
-            $lineWeightG = (float) ($product->weight ?? 0);
-            if ($lineWeightG <= 0 && $product->class === ProductClass::Model3d) {
-                $lineWeightG = (float) ($product->est_grams ?? 0);
-            }
-            $totalWeightG += $lineWeightG * $qty;
+            $totalWeightG += $this->chargeableWeightG($product) * $qty;
 
             $priced[] = [
                 'name' => $product->name,
@@ -240,6 +232,33 @@ final class PricingService
             'delivery' => $delivery,
             'total' => round($subtotal + $delivery, 2),
         ];
+    }
+
+    /**
+     * Chargeable shipping weight (grams) for one unit: the greater of the
+     * actual weight and the volumetric/dimensional weight — the standard courier
+     * rule where a light-but-bulky item ships at its volume. Volumetric grams =
+     * (L × W × H in mm) / 5000 (equivalent to the cm³/5000 kg convention).
+     * If neither is available, a MODEL_3D part falls back to its filament
+     * estimate so a print is never treated as weightless.
+     */
+    private function chargeableWeightG(Product $product): float
+    {
+        $actual = (float) ($product->weight ?? 0);
+
+        $dims = $product->dimensions ?? [];
+        $l = (float) ($dims['l'] ?? 0);
+        $w = (float) ($dims['w'] ?? 0);
+        $h = (float) ($dims['h'] ?? 0);
+        $volumetric = ($l > 0 && $w > 0 && $h > 0) ? ($l * $w * $h) / 5000 : 0.0;
+
+        $chargeable = max($actual, $volumetric);
+
+        if ($chargeable <= 0 && $product->class === ProductClass::Model3d) {
+            $chargeable = (float) ($product->est_grams ?? 0);
+        }
+
+        return $chargeable;
     }
 
     /**
