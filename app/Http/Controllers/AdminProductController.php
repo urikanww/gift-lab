@@ -385,11 +385,16 @@ class AdminProductController extends Controller
             $validated['dimensions'] = $validated['dimensions'] + ['unit' => 'mm'];
         }
 
-        $before = ['base_cost' => $product->base_cost, 'publish_state' => $product->publish_state->value];
+        $before = [
+            'name' => $product->name,
+            'base_cost' => $product->base_cost,
+            'publish_state' => $product->publish_state->value,
+        ];
         $product->fill($validated);
         $product->save();
 
         $this->audit->log($product, 'product.updated', $before, [
+            'name' => $product->name,
             'base_cost' => $product->base_cost,
             'publish_state' => $product->publish_state->value,
         ]);
