@@ -40,7 +40,7 @@ it('reports pipeline, production, and queue counts', function (): void {
     expect($res->json('pipeline.SENT'))->toBe(2);
     expect($res->json('pipeline.ACCEPTED'))->toBe(1);
     expect($res->json('production'))->toHaveKeys(['byState', 'wip', 'overdue']);
-    expect($res->json('queues'))->toHaveKeys(['proofsPending', 'procurementToReconfirm', 'cataloguePending']);
+    expect($res->json('queues'))->toHaveKeys(['proofsPending', 'procurementToReconfirm', 'cataloguePending', 'reordersOpen']);
 });
 
 it('includes value-booked only for superadmin', function (): void {
@@ -96,7 +96,7 @@ it('runs a bounded number of queries regardless of data volume', function (): vo
     $count = count(DB::getQueryLog());
     DB::disableQueryLog();
 
-    // pipeline + production(byState + overdue) + 3 queues + atRisk + activity(+eager user)
-    // ≈ 9; the eager-load makes actor lookup ONE query, not 30. Guard against N+1.
+    // pipeline + production(byState + overdue) + 4 queues + atRisk + activity(+eager user)
+    // ≈ 10; the eager-load makes actor lookup ONE query, not 30. Guard against N+1.
     expect($count)->toBeLessThanOrEqual(12);
 });

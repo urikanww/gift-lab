@@ -8,7 +8,7 @@ const base = {
   pipeline: { SENT: 2, ACCEPTED: 1 },
   production: { byState: { READY: 3, IN_PRODUCTION: 1 }, wip: 1, overdue: 2 },
   atRisk: [{ jobId: 5, quoteId: 9, track: 'UV', state: 'READY', readyAt: null }],
-  queues: { proofsPending: 4, procurementToReconfirm: 2, cataloguePending: 6 },
+  queues: { proofsPending: 4, procurementToReconfirm: 2, cataloguePending: 6, reordersOpen: 3 },
   activity: [{ id: 1, actor: 'Ops', event: 'quote.amended', auditableType: 'Quote', auditableId: 9, at: null }],
   valueBooked: null,
 };

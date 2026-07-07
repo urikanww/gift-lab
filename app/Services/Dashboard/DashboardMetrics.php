@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
+use App\Models\SupplierReorder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 
@@ -40,7 +41,7 @@ class DashboardMetrics
         // queues twice). Only valueBooked differs, so it gets its own key and is
         // computed/cached solely for superadmins.
         $counts = Cache::remember(
-            'dashboard.metrics.v1',
+            'dashboard.metrics.v2',
             45,
             fn (): array => [
                 'pipeline' => $this->pipeline(),
@@ -96,6 +97,7 @@ class DashboardMetrics
             'proofsPending' => Proof::query()->where('state', 'SENT')->count(),
             'procurementToReconfirm' => LineItem::query()->where('line_state', 'AWAITING_RECONFIRM')->count(),
             'cataloguePending' => Product::query()->where('publish_state', 'READY_TO_APPROVE')->count(),
+            'reordersOpen' => SupplierReorder::query()->where('state', '!=', 'RECEIVED')->count(),
         ];
     }
 

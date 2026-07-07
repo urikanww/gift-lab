@@ -22,7 +22,7 @@ function useStaffNav(): NavItem[] {
     { to: '/quotes', label: 'Quotes', badge: q?.proofsPending },
     { to: '/production-queue', label: 'Production', badge: overdue || undefined },
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
-    { to: '/reorders', label: 'Buy-list' },
+    { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen },
     { to: '/product-admin', label: 'Products' },
     // Pricing and Users are superadmin-only (the pages also guard themselves).
     ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),

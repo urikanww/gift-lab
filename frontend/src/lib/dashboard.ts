@@ -21,7 +21,12 @@ export interface DashboardPayload {
   pipeline: Record<string, number>;
   production: { byState: Record<string, number>; wip: number; overdue: number };
   atRisk: DashboardAtRisk[];
-  queues: { proofsPending: number; procurementToReconfirm: number; cataloguePending: number };
+  queues: {
+    proofsPending: number;
+    procurementToReconfirm: number;
+    cataloguePending: number;
+    reordersOpen: number;
+  };
   activity: DashboardActivity[];
   valueBooked: { currency: string; amount: number } | null;
 }
