@@ -7,10 +7,12 @@ namespace App\Http\Controllers;
 use App\Enums\License;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
+use App\Enums\StockMovementReason;
 use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\Variant;
 use App\Services\AuditLogger;
+use App\Services\StockLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +49,7 @@ class AdminProductController extends Controller
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly AdminCatalogueController $catalogue,
+        private readonly StockLedger $ledger,
     ) {}
 
     private const PRODUCT_RULES = [
@@ -60,6 +63,7 @@ class AdminProductController extends Controller
         'dimensions.h' => ['required', 'numeric', 'gt:0'],
         'print_method' => ['required', 'string', 'in:UV,FDM,RESIN'],
         'stock_mode' => ['required', 'string', 'in:STOCKED,MAKE_TO_ORDER'],
+        'allow_backorder' => ['nullable', 'boolean'],
         'category' => ['nullable', 'string', 'max:100'],
         'image_url' => ['nullable', 'url', 'max:2048'],
         'is_printable' => ['nullable', 'boolean'],
@@ -347,6 +351,7 @@ class AdminProductController extends Controller
             'weight' => $validated['weight'],
             'print_method' => $validated['print_method'],
             'stock_mode' => $validated['stock_mode'],
+            'allow_backorder' => $validated['allow_backorder'] ?? false,
             'category' => $validated['category'] ?? null,
             'image_url' => $validated['image_url'] ?? null,
             'is_printable' => $validated['is_printable'] ?? true,
@@ -451,15 +456,21 @@ class AdminProductController extends Controller
             'price_delta' => ['nullable', 'numeric'],
         ]);
 
+        // Create at zero, then seed the opening balance through the ledger so the
+        // cached stock_on_hand always equals SUM(delta) — never a direct write.
         $variant = Variant::create([
             'product_id' => $product->id,
             'attributes' => $validated['attributes'],
             'sku' => $validated['sku'] ?? null,
-            'stock_on_hand' => $validated['stock_on_hand'],
+            'stock_on_hand' => 0,
             'reorder_threshold' => $validated['reorder_threshold'] ?? 0,
             'price_delta' => $validated['price_delta'] ?? 0,
             'currency' => 'SGD',
         ]);
+
+        if ($validated['stock_on_hand'] > 0) {
+            $this->ledger->record($variant, $validated['stock_on_hand'], StockMovementReason::Init);
+        }
 
         $this->audit->log($variant, 'variant.created', null, [
             'product_id' => $product->id,
@@ -486,8 +497,23 @@ class AdminProductController extends Controller
             'stock_on_hand' => $variant->stock_on_hand,
             'price_delta' => $variant->price_delta,
         ];
+
+        // stock_on_hand is a manual absolute set here — translate it into a
+        // signed ADJUST movement through the ledger, never a direct column write.
+        $targetStock = $validated['stock_on_hand'] ?? null;
+        unset($validated['stock_on_hand']);
+
         $variant->fill($validated);
         $variant->save();
+
+        if ($targetStock !== null && $targetStock !== $variant->stock_on_hand) {
+            $this->ledger->record(
+                $variant,
+                $targetStock - $variant->stock_on_hand,
+                StockMovementReason::Adjust,
+                actorId: $request->user()->id,
+            );
+        }
 
         $this->audit->log($variant, 'variant.updated', $before, [
             'stock_on_hand' => $variant->stock_on_hand,
@@ -514,6 +540,7 @@ class AdminProductController extends Controller
             'weight' => $product->weight,
             'print_method' => $product->print_method?->value,
             'stock_mode' => $product->stock_mode?->value,
+            'allow_backorder' => (bool) $product->allow_backorder,
             'category' => $product->category,
             'image_url' => $product->image_url,
             'is_printable' => (bool) $product->is_printable,

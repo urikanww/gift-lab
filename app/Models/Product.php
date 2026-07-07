@@ -9,6 +9,7 @@ use App\Enums\PrintMethod;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
 use App\Enums\StockMode;
+use App\Services\Catalogue\CategoryClassifier;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,6 +30,7 @@ class Product extends Model
 {
     /** @use HasFactory<ProductFactory> */
     use HasFactory;
+
     use SoftDeletes;
 
     protected $fillable = [
@@ -45,6 +47,7 @@ class Product extends Model
         'publish_state',
         'cannot_publish_reasons',
         'stock_mode',
+        'allow_backorder',
         'image_url',
         'source_url',
         'source_product_id',
@@ -73,6 +76,7 @@ class Product extends Model
             'publish_state' => PublishState::class,
             'cannot_publish_reasons' => 'array',
             'stock_mode' => StockMode::class,
+            'allow_backorder' => 'boolean',
             'stock_estimate' => 'integer',
             'is_printable' => 'boolean',
             'license' => License::class,
@@ -111,7 +115,7 @@ class Product extends Model
         // when set explicitly (admin/seed overrides win over the classifier).
         static::saving(function (Product $product): void {
             if ($product->category === null || $product->category === '') {
-                $product->category = app(\App\Services\Catalogue\CategoryClassifier::class)
+                $product->category = app(CategoryClassifier::class)
                     ->classify((string) $product->name, $product->class);
             }
         });
