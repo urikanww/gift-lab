@@ -249,6 +249,58 @@ it('removes a product image and clears image_url', function (): void {
     $this->assertDatabaseHas('audit_logs', ['event' => 'product.image_removed']);
 });
 
+it('lets a superadmin set a price override, reflected in selling_price and audited', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+
+    Sanctum::actingAs($this->superadmin);
+    $response = $this->patchJson("/api/admin/products/{$product->id}", [
+        'price_override' => 3.5,
+    ])->assertOk();
+
+    // 3.50 flat instead of the dynamic 16.50.
+    expect($response->json('data.price_override'))->toBe('3.50')
+        ->and((float) $response->json('data.selling_price'))->toBe(3.5);
+
+    $product->refresh();
+    expect((float) $product->price_override)->toBe(3.5);
+    $this->assertDatabaseHas('audit_logs', ['event' => 'product.updated']);
+});
+
+it('lets a superadmin clear a price override back to dynamic pricing', function (): void {
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 3.5,
+    ]);
+
+    Sanctum::actingAs($this->superadmin);
+    $response = $this->patchJson("/api/admin/products/{$product->id}", [
+        'price_override' => null,
+    ])->assertOk();
+
+    expect($response->json('data.price_override'))->toBeNull()
+        // dynamic price restored: 10 +50% +1.50 UV = 16.50.
+        ->and((float) $response->json('data.selling_price'))->toBe(16.5);
+
+    $product->refresh();
+    expect($product->price_override)->toBeNull();
+});
+
+it('ignores a price_override sent by a non-superadmin staff member', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+
+    Sanctum::actingAs($this->staff);
+    $response = $this->patchJson("/api/admin/products/{$product->id}", [
+        'price_override' => 3.5,
+        'category' => 'drinkware',
+    ])->assertOk();
+
+    // The staff edit still applies to other fields, but the override is dropped.
+    expect($response->json('data.price_override'))->toBeNull()
+        ->and($response->json('data.category'))->toBe('drinkware');
+
+    $product->refresh();
+    expect($product->price_override)->toBeNull();
+});
+
 it('blocks non-staff from image upload and removal', function (): void {
     Storage::fake('public');
     $product = Product::factory()->create();

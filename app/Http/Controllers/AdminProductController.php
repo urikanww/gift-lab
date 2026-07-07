@@ -385,7 +385,18 @@ class AdminProductController extends Controller
         // Editing (unlike creating a CORE blank) may target a MODEL_3D item whose
         // base_cost is legitimately 0 (priced dynamically), so allow 0 here.
         $rules['base_cost'] = ['sometimes', 'numeric', 'min:0'];
+        // Superadmin price override: a fixed per-unit sell price, or null to fall
+        // back to dynamic pricing. Validated for everyone, then stripped below for
+        // non-superadmins so only they can pin a price.
+        $rules['price_override'] = ['sometimes', 'nullable', 'numeric', 'min:0'];
         $validated = $request->validate($rules);
+
+        // Guard the override to superadmins: a staff_admin edit that carries the
+        // field has it silently dropped rather than rejected, matching how the
+        // other optional fields degrade.
+        if (! $request->user()->isSuperadmin()) {
+            unset($validated['price_override']);
+        }
 
         if (isset($validated['dimensions'])) {
             $validated['dimensions'] = $validated['dimensions'] + ['unit' => 'mm'];
@@ -394,6 +405,7 @@ class AdminProductController extends Controller
         $before = [
             'name' => $product->name,
             'base_cost' => $product->base_cost,
+            'price_override' => $product->price_override,
             'publish_state' => $product->publish_state->value,
         ];
         $product->fill($validated);
@@ -402,6 +414,7 @@ class AdminProductController extends Controller
         $this->audit->log($product, 'product.updated', $before, [
             'name' => $product->name,
             'base_cost' => $product->base_cost,
+            'price_override' => $product->price_override,
             'publish_state' => $product->publish_state->value,
         ]);
 
@@ -536,6 +549,9 @@ class AdminProductController extends Controller
             'description' => $product->description,
             'class' => $product->class->value,
             'base_cost' => $product->base_cost,
+            // Superadmin override: a fixed per-unit price that supersedes dynamic
+            // pricing (null = dynamic). selling_price already reflects it.
+            'price_override' => $product->price_override,
             // What a customer actually pays (qty 1, no variant): base cost is the
             // internal blank cost and is 0 for dynamically-priced 3D items, so the
             // list needs the computed sell price too.

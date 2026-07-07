@@ -40,6 +40,7 @@ class Product extends Model
         'class',
         'category',
         'base_cost',
+        'price_override',
         'currency',
         'dimensions',
         'weight',
@@ -70,6 +71,7 @@ class Product extends Model
         return [
             'class' => ProductClass::class,
             'base_cost' => 'decimal:2',
+            'price_override' => 'decimal:2',
             'dimensions' => 'array',
             'weight' => 'decimal:3',
             'print_method' => PrintMethod::class,

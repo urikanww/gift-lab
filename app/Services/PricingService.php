@@ -56,11 +56,30 @@ final class PricingService
      * unitPrice() returns only the final figure. INTERNAL — landed cost and
      * margin must never reach the public storefront (business-intel leak).
      *
-     * @return array{landed_cost: float, margin: float, print_per_unit: float, bulk_discount: float, unit_price: float}
+     * @return array{landed_cost: float, margin: float, print_per_unit: float, bulk_discount: float, unit_price: float, overridden: bool, price_override: ?float}
      */
     public function unitPriceBreakdown(Product $product, ?Variant $variant, int $qty): array
     {
         $landed = $this->landedCost($product, $variant);
+
+        // Superadmin price override (spec 2026-07-07): a fixed per-unit price that
+        // replaces the whole dynamic build-up. The variant delta still adds on top;
+        // the bulk discount is skipped; the override may sit below landed cost. The
+        // derived components are zeroed but landed cost stays for reference.
+        if ($product->price_override !== null) {
+            $override = (float) $product->price_override;
+            $delta = (float) ($variant?->price_delta ?? 0);
+
+            return [
+                'landed_cost' => round($landed, 2),
+                'margin' => 0.0,
+                'print_per_unit' => 0.0,
+                'bulk_discount' => 0.0,
+                'unit_price' => round($override + $delta, 2),
+                'overridden' => true,
+                'price_override' => round($override, 2),
+            ];
+        }
 
         $marginPct = (float) PricingConfig::value('margin', 'default_pct', 0);
         $marginAmount = $landed * $marginPct / 100;
@@ -90,6 +109,8 @@ final class PricingService
             'print_per_unit' => round($printPerUnit, 2),
             'bulk_discount' => round($bulkDiscount, 2),
             'unit_price' => round($beforeBulk - $bulkDiscount, 2),
+            'overridden' => false,
+            'price_override' => null,
         ];
     }
 

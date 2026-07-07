@@ -272,9 +272,14 @@ function EditableTitle({
 
 function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: () => void }) {
   const { toast } = useToast();
-  const [name, setName] = useState(product.name);
+  const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
   const [description, setDescription] = useState(product.description ?? '');
   const [baseCost, setBaseCost] = useState(String(product.base_cost));
+  // Superadmin fixed sell price; blank = dynamic pricing. Only rendered/sent for
+  // superadmins (the backend also strips it for anyone else).
+  const [priceOverride, setPriceOverride] = useState(
+    product.price_override != null ? String(product.price_override) : '',
+  );
   const [category, setCategory] = useState(product.category ?? '');
   const [printMethod, setPrintMethod] = useState<string>(product.print_method ?? 'UV');
   const [stockMode, setStockMode] = useState<string>(product.stock_mode ?? 'STOCKED');
@@ -295,10 +300,16 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
       toast({ title: 'Base cost must be zero or a positive number', tone: 'danger' });
       return;
     }
+    if (isSuperadmin && priceOverride !== '') {
+      const override = Number(priceOverride);
+      if (!Number.isFinite(override) || override < 0) {
+        toast({ title: 'Price override must be zero or a positive number', tone: 'danger' });
+        return;
+      }
+    }
     // Only send weight / dimensions when the operator actually filled them —
     // sending 0 / {0,0,0} for a blank field would trip the backend's gt:0 rule.
     const payload: Record<string, unknown> = {
-      name,
       description,
       base_cost: cost,
       category: category || null,
@@ -310,11 +321,16 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
     if (l !== '' && w !== '' && h !== '') {
       payload.dimensions = { l: Number(l), w: Number(w), h: Number(h) };
     }
+    // Superadmin-only: send the override (or null to clear it). Skipped entirely
+    // for other staff so a stray value can't be sent.
+    if (isSuperadmin) {
+      payload.price_override = priceOverride === '' ? null : Number(priceOverride);
+    }
     setSaving(true);
     try {
       await ensureCsrf();
       await api.patch(`/admin/products/${product.id}`, payload);
-      toast({ title: 'Saved', description: `${name} updated.`, tone: 'success' });
+      toast({ title: 'Saved', description: `${product.name} updated.`, tone: 'success' });
       onChanged();
     } catch (err) {
       toast({ title: 'Not saved', description: apiError(err), tone: 'danger' });
@@ -335,7 +351,6 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
         />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required disabled={saving} />
           <Input
             label="Base cost (SGD)"
             type="number"
@@ -387,6 +402,33 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
             <option value="yes">On — sell at 0, backorder</option>
           </Select>
         </div>
+
+        {isSuperadmin && (
+          <div className="rounded-md border border-border p-3">
+            <Input
+              label="Price override (SGD)"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Dynamic pricing"
+              value={priceOverride}
+              onChange={(e) => setPriceOverride(e.target.value)}
+              disabled={saving}
+            />
+            <p className="mt-1 text-xs text-fg-subtle">
+              Fixed sell price that supersedes the dynamic quote engine (delivery
+              is still charged separately). Leave blank for dynamic pricing.
+            </p>
+            {priceOverride !== '' &&
+              Number.isFinite(Number(priceOverride)) &&
+              Number(product.base_cost) > 0 &&
+              Number(priceOverride) < Number(product.base_cost) && (
+                <p className="mt-1 text-xs text-danger">
+                  Below base cost ({product.currency} {Number(product.base_cost).toFixed(2)}) — this sells at a loss.
+                </p>
+              )}
+          </div>
+        )}
 
         <div>
           <p className="mb-2 text-sm font-medium text-fg">Dimensions (mm)</p>

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Product;
+use App\Models\Variant;
 use App\Services\PricingService;
 
 beforeEach(function (): void {
@@ -107,6 +108,74 @@ it('never surcharges a blank (uncustomized) line even with a size present', func
 
     // 14.85 × 50 = 742.50, no fees at all.
     expect($totals['lines'][0]['line_total'])->toBe(742.50);
+});
+
+// Superadmin price override: a fixed per-unit price replaces the whole dynamic
+// computation (landed + margin + print + bulk). Variant delta still adds on top;
+// bulk discount is skipped; the override may sit below landed cost.
+it('uses the price override as the unit price instead of the dynamic computation', function (): void {
+    // Dynamic would be 16.50; override pins it at 3.00 (deliberately below cost).
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 3.00,
+    ]);
+
+    expect($this->pricing->unitPrice($product, null, 1))->toBe(3.00);
+});
+
+it('adds the variant price delta on top of the price override', function (): void {
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 3.00,
+    ]);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'price_delta' => 2]);
+
+    expect($this->pricing->unitPrice($product, $variant, 1))->toBe(5.00);
+});
+
+it('skips the bulk discount when a price override is set', function (): void {
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 3.00,
+    ]);
+
+    // qty 50 is at the bulk threshold, but the override is flat — no discount.
+    expect($this->pricing->unitPrice($product, null, 50))->toBe(3.00);
+});
+
+it('flags the override and zeroes derived components in the breakdown', function (): void {
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 3.00,
+    ]);
+
+    $bd = $this->pricing->unitPriceBreakdown($product, null, 50);
+
+    expect($bd['unit_price'])->toBe(3.00)
+        ->and($bd['overridden'])->toBeTrue()
+        ->and($bd['price_override'])->toBe(3.00)
+        ->and($bd['margin'])->toBe(0.0)
+        ->and($bd['bulk_discount'])->toBe(0.0)
+        ->and($bd['print_per_unit'])->toBe(0.0)
+        // landed cost is still computed for reference (10 base, no margin here).
+        ->and($bd['landed_cost'])->toBe(10.00);
+});
+
+it('uses the override in a full quote total while still charging dynamic delivery', function (): void {
+    // Zero weight + no dimensions → smallest delivery tier; the point is that the
+    // override drives the line total but delivery is still the weight-based figure.
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 4.00,
+        'weight' => 0, 'dimensions' => null,
+    ]);
+
+    $totals = $this->pricing->quoteTotals([[
+        'product' => $product, 'variant' => null, 'qty' => 10,
+        'has_customization' => false,
+    ]]);
+
+    // 4.00 × 10 = 40.00 line (override, no bulk); delivery is dynamic on weight
+    // and stacks on the subtotal (which also carries the flat setup fee).
+    $delivery = $this->pricing->deliveryFor(0.0);
+    expect($totals['lines'][0]['line_total'])->toBe(40.00)
+        ->and($totals['delivery'])->toBe($delivery)
+        ->and($totals['total'])->toBe(round($totals['subtotal'] + $delivery, 2));
 });
 
 it('charges the heaviest delivery tier when weight exceeds every tier', function (): void {

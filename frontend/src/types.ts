@@ -211,6 +211,11 @@ export interface AdminProduct {
   description: string | null;
   class: ProductClass;
   base_cost: string | number;
+  /**
+   * Superadmin fixed per-unit price that supersedes dynamic pricing; null =
+   * dynamic. Covers the product price only (delivery is still weight-based).
+   */
+  price_override: string | number | null;
   /** Computed sell price (qty 1, no variant) — what a customer pays. */
   selling_price: string | number;
   currency: string;
