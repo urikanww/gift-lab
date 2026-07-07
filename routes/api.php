@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AdminCatalogueController;
+use App\Http\Controllers\AdminPriceBreakdownController;
 use App\Http\Controllers\AdminProductController;
 use App\Http\Controllers\AdminReorderController;
 use App\Http\Controllers\AdminUserController;
@@ -137,6 +138,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // number is editable without a deploy, and every change is audit-logged.
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
     Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update']);
+    // Staff "test a quote" full breakdown (exposes internal cost/margin).
+    Route::post('/admin/price-breakdown', AdminPriceBreakdownController::class);
 
     // Staff console overview (read-only aggregate snapshot).
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);

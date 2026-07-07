@@ -7,16 +7,64 @@ interface ProductOption {
   name: string;
 }
 
-interface Estimate {
+interface BreakdownLine {
+  name: string;
+  qty: number;
+  landed_cost: number;
+  margin: number;
+  print_per_unit: number;
+  bulk_discount: number;
+  unit_price: number;
+  units_total: number;
+  customization_flat: number;
+  size_surcharge_total: number;
+  text_fee_total: number;
+  uv_decor_total: number;
+  line_total: number;
+}
+
+interface Breakdown {
   currency: string;
-  lines: { unit_price: number | string }[];
-  subtotal: number | string;
-  delivery: number | string;
-  total: number | string;
+  lines: BreakdownLine[];
+  setup_fee: number;
+  subtotal: number;
+  delivery_weight_g: number;
+  delivery: number;
+  total: number;
 }
 
 const money = (v: number | string, currency = 'SGD') =>
   `${currency} ${Number(v).toFixed(2)}`;
+
+/** One breakdown row: label + amount, with an optional sign and emphasis. */
+function Row({
+  label,
+  value,
+  currency,
+  sign,
+  strong,
+  muted,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  sign?: '+' | '−';
+  strong?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className={`flex items-center justify-between ${strong ? 'border-t border-border pt-2 font-medium text-fg' : muted ? 'text-fg-subtle' : 'text-fg-muted'}`}>
+      <dt>
+        {sign && <span className="mr-1 text-fg-subtle">{sign}</span>}
+        {label}
+      </dt>
+      <dd className={strong ? 'font-display text-fg' : 'text-fg'}>
+        {sign === '−' ? '−' : ''}
+        {money(Math.abs(value), currency)}
+      </dd>
+    </div>
+  );
+}
 
 /**
  * Live "what does this knob do?" panel for the pricing editor. Prices a sample
@@ -32,7 +80,7 @@ export default function TestQuoteCard() {
   const [logoSize, setLogoSize] = useState('M');
   const [hasText, setHasText] = useState(false);
 
-  const [estimate, setEstimate] = useState<Estimate | null>(null);
+  const [estimate, setEstimate] = useState<Breakdown | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +111,7 @@ export default function TestQuoteCard() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.post<Estimate>('/price-estimate', {
+      const { data } = await api.post<Breakdown>('/admin/price-breakdown', {
         line_items: [
           {
             product_id: productId,
@@ -161,27 +209,51 @@ export default function TestQuoteCard() {
               <p className="text-sm text-danger" role="alert">
                 {error}
               </p>
-            ) : estimate ? (
-              <dl className="flex flex-col gap-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <dt className="text-fg-subtle">Price per item</dt>
-                  <dd className="font-medium text-fg">
-                    {estimate.lines[0] ? money(estimate.lines[0].unit_price, estimate.currency) : '—'}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between">
-                  <dt className="text-fg-subtle">Subtotal</dt>
-                  <dd className="font-medium text-fg">{money(estimate.subtotal, estimate.currency)}</dd>
-                </div>
-                <div className="flex items-center justify-between">
-                  <dt className="text-fg-subtle">Delivery</dt>
-                  <dd className="font-medium text-fg">{money(estimate.delivery, estimate.currency)}</dd>
-                </div>
-                <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
-                  <dt className="font-medium text-fg">Total</dt>
-                  <dd className="font-display text-lg text-fg">{money(estimate.total, estimate.currency)}</dd>
-                </div>
-              </dl>
+            ) : estimate && estimate.lines[0] ? (
+              (() => {
+                const c = estimate.currency;
+                const l = estimate.lines[0];
+                return (
+                  <dl className="flex flex-col gap-4 text-sm">
+                    {/* Per-item build-up */}
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Per item</p>
+                      <Row label="Base cost" value={l.landed_cost} currency={c} muted />
+                      <Row label="Margin" value={l.margin} currency={c} sign="+" />
+                      {l.print_per_unit > 0 && <Row label="Print cost" value={l.print_per_unit} currency={c} sign="+" />}
+                      {l.bulk_discount > 0 && <Row label="Bulk discount" value={l.bulk_discount} currency={c} sign="−" />}
+                      <Row label="Price per item" value={l.unit_price} currency={c} strong />
+                    </div>
+
+                    {/* Line build-up */}
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">
+                        Line ({l.qty} × item)
+                      </p>
+                      <Row label={`Items (${l.qty} × ${money(l.unit_price, c)})`} value={l.units_total} currency={c} muted />
+                      {l.customization_flat > 0 && <Row label="Customization fee" value={l.customization_flat} currency={c} sign="+" />}
+                      {l.size_surcharge_total > 0 && <Row label="Logo surcharge" value={l.size_surcharge_total} currency={c} sign="+" />}
+                      {l.text_fee_total > 0 && <Row label="Personalisation" value={l.text_fee_total} currency={c} sign="+" />}
+                      {l.uv_decor_total > 0 && <Row label="UV decoration" value={l.uv_decor_total} currency={c} sign="+" />}
+                      <Row label="Line total" value={l.line_total} currency={c} strong />
+                    </div>
+
+                    {/* Quote total */}
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Quote</p>
+                      {estimate.setup_fee > 0 && <Row label="Setup fee" value={estimate.setup_fee} currency={c} sign="+" />}
+                      <Row label="Subtotal" value={estimate.subtotal} currency={c} muted />
+                      <Row
+                        label={`Delivery (${estimate.delivery_weight_g} g)`}
+                        value={estimate.delivery}
+                        currency={c}
+                        sign="+"
+                      />
+                      <Row label="Total" value={estimate.total} currency={c} strong />
+                    </div>
+                  </dl>
+                );
+              })()
             ) : (
               <p className="text-sm text-fg-subtle">Pick a product to see a sample price.</p>
             )}

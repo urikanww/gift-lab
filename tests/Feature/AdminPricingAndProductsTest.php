@@ -210,6 +210,35 @@ it('edits a MODEL_3D product without forcing a positive base cost', function ():
         ->assertJsonPath('data.base_cost', '0.00');
 });
 
+it('returns a full staff pricing breakdown with internal cost and margin', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'class' => 'CORE', 'print_method' => 'UV', 'publish_state' => 'PUBLISHED',
+    ]);
+
+    $res = $this->postJson('/api/admin/price-breakdown', [
+        'line_items' => [['product_id' => $product->id, 'qty' => 5]],
+    ])->assertOk();
+
+    $line = $res->json('lines.0');
+    // landed 10 + 50% margin (5.00) + UV print 1.50 = 16.50/unit; ×5 = 82.50.
+    expect((float) $line['landed_cost'])->toBe(10.0)
+        ->and((float) $line['margin'])->toBe(5.0)
+        ->and((float) $line['print_per_unit'])->toBe(1.5)
+        ->and((float) $line['unit_price'])->toBe(16.5)
+        ->and((float) $line['units_total'])->toBe(82.5);
+    expect($res->json())->toHaveKeys(['subtotal', 'delivery', 'total', 'setup_fee']);
+});
+
+it('blocks buyers from the pricing breakdown (cost/margin are internal)', function (): void {
+    Sanctum::actingAs($this->buyer);
+    $product = Product::factory()->create(['publish_state' => 'PUBLISHED']);
+
+    $this->postJson('/api/admin/price-breakdown', [
+        'line_items' => [['product_id' => $product->id, 'qty' => 1]],
+    ])->assertForbidden();
+});
+
 it('exposes a licence compliance tier on each product', function (): void {
     Sanctum::actingAs($this->staff);
     $risky = Product::factory()->create(['class' => 'MODEL_3D', 'license' => 'CC_BY_NC']);

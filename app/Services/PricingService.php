@@ -47,10 +47,24 @@ final class PricingService
      */
     public function unitPrice(Product $product, ?Variant $variant, int $qty): float
     {
+        return $this->unitPriceBreakdown($product, $variant, $qty)['unit_price'];
+    }
+
+    /**
+     * Per-unit price with its cost components exposed (landed cost, margin,
+     * print, bulk discount). This is the single source of the unit maths;
+     * unitPrice() returns only the final figure. INTERNAL — landed cost and
+     * margin must never reach the public storefront (business-intel leak).
+     *
+     * @return array{landed_cost: float, margin: float, print_per_unit: float, bulk_discount: float, unit_price: float}
+     */
+    public function unitPriceBreakdown(Product $product, ?Variant $variant, int $qty): array
+    {
         $landed = $this->landedCost($product, $variant);
 
         $marginPct = (float) PricingConfig::value('margin', 'default_pct', 0);
-        $marged = $landed * (1 + $marginPct / 100);
+        $marginAmount = $landed * $marginPct / 100;
+        $marged = $landed + $marginAmount;
 
         // MODEL_3D machine time is already inside landed cost — the flat
         // per-unit print fee applies only to decorate-a-blank methods.
@@ -61,15 +75,22 @@ final class PricingService
             $printPerUnit = (float) ($printCosts[$method] ?? 0);
         }
 
-        $unit = $marged + $printPerUnit;
+        $beforeBulk = $marged + $printPerUnit;
 
+        $bulkDiscount = 0.0;
         $bulkQty = (int) PricingConfig::value('threshold', 'bulk_qty', PHP_INT_MAX);
         if ($qty >= $bulkQty) {
             $discountPct = (float) PricingConfig::value('threshold', 'bulk_discount_pct', 0);
-            $unit *= (1 - $discountPct / 100);
+            $bulkDiscount = $beforeBulk * $discountPct / 100;
         }
 
-        return round($unit, 2);
+        return [
+            'landed_cost' => round($landed, 2),
+            'margin' => round($marginAmount, 2),
+            'print_per_unit' => round($printPerUnit, 2),
+            'bulk_discount' => round($bulkDiscount, 2),
+            'unit_price' => round($beforeBulk - $bulkDiscount, 2),
+        ];
     }
 
     /**
@@ -138,6 +159,86 @@ final class PricingService
             'subtotal' => $subtotal,
             'delivery' => $delivery,
             'total' => $total,
+        ];
+    }
+
+    /**
+     * Full, itemised breakdown of a quote for the staff pricing tester: every
+     * per-unit cost component and per-line fee, plus quote-level setup, delivery
+     * and total. INTERNAL/staff-only — it exposes landed cost + margin, which the
+     * public price estimate deliberately hides. Mirrors quoteTotals' maths.
+     *
+     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
+     * @return array<string, mixed>
+     */
+    public function quoteBreakdown(array $lines): array
+    {
+        $customizationFee = (float) PricingConfig::value('fee', 'customization_flat', 0);
+        $customizationPerUnit = (float) PricingConfig::value('fee', 'customization_per_unit', 0);
+        $bySize = (array) PricingConfig::value('fee', 'customization_by_size', []);
+        $setupFee = (float) PricingConfig::value('fee', 'setup_fee', 0);
+        $printPerUnit = (array) PricingConfig::value('print_cost', 'per_unit', []);
+        $uvDecorPerUnit = (float) ($printPerUnit['UV'] ?? 0);
+
+        $priced = [];
+        $subtotal = 0.0;
+        $totalWeightG = 0.0;
+
+        foreach ($lines as $line) {
+            $product = $line['product'];
+            $qty = $line['qty'];
+            $bd = $this->unitPriceBreakdown($product, $line['variant'], $qty);
+            $unitsTotal = round($bd['unit_price'] * $qty, 2);
+
+            $flat = 0.0;
+            $sizeTotal = 0.0;
+            $textTotal = 0.0;
+            $uvTotal = 0.0;
+            if ($line['has_customization']) {
+                $flat = $customizationFee;
+                $size = $line['logo_size'] ?? null;
+                $sizeTotal = ($size !== null ? (float) ($bySize[$size] ?? 0) : 0.0) * $qty;
+                $textTotal = (($line['has_text'] ?? false) ? $customizationPerUnit : 0.0) * $qty;
+                $uvTotal = ($product->class === ProductClass::Model3d ? $uvDecorPerUnit : 0.0) * $qty;
+            }
+
+            $lineTotal = round($unitsTotal + $flat + $sizeTotal + $textTotal + $uvTotal, 2);
+            $subtotal += $lineTotal;
+
+            $lineWeightG = (float) ($product->weight ?? 0);
+            if ($lineWeightG <= 0 && $product->class === ProductClass::Model3d) {
+                $lineWeightG = (float) ($product->est_grams ?? 0);
+            }
+            $totalWeightG += $lineWeightG * $qty;
+
+            $priced[] = [
+                'name' => $product->name,
+                'qty' => $qty,
+                'landed_cost' => $bd['landed_cost'],
+                'margin' => $bd['margin'],
+                'print_per_unit' => $bd['print_per_unit'],
+                'bulk_discount' => $bd['bulk_discount'],
+                'unit_price' => $bd['unit_price'],
+                'units_total' => $unitsTotal,
+                'customization_flat' => round($flat, 2),
+                'size_surcharge_total' => round($sizeTotal, 2),
+                'text_fee_total' => round($textTotal, 2),
+                'uv_decor_total' => round($uvTotal, 2),
+                'line_total' => $lineTotal,
+            ];
+        }
+
+        $subtotal = round($subtotal + $setupFee, 2);
+        $delivery = $this->deliveryFor($totalWeightG);
+
+        return [
+            'currency' => 'SGD',
+            'lines' => $priced,
+            'setup_fee' => round($setupFee, 2),
+            'subtotal' => $subtotal,
+            'delivery_weight_g' => round($totalWeightG, 1),
+            'delivery' => $delivery,
+            'total' => round($subtotal + $delivery, 2),
         ];
     }
 
