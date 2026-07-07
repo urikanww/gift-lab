@@ -26,8 +26,8 @@ use Illuminate\Support\Facades\Storage;
  * listings — a paid file we have not purchased cannot be produced.
  *
  * Two intake modes:
- *   - keyword search (query argument): original behaviour, kept as an
- *     opt-in fallback (see DiscoverModel3dCatalogue --keywords).
+ *   - keyword search (query argument): original behaviour, still available for
+ *     ad-hoc/manual targeted pulls.
  *   - --browse=popular: keyword-less "popular feed" intake (Phase 2). Pages
  *     through each source's popular/trending feed instead of searching, so
  *     the nightly sweep no longer depends on a hand-maintained keyword list.

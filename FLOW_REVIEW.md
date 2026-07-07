@@ -137,7 +137,7 @@ Verified: 84 backend tests (204 assertions) + 35 frontend tests green; designer 
 | F5 free delivery fall-through | Heaviest tier charged when weight exceeds every tier | `PricingService::deliveryFor` |
 | F6 per-unit customization fee | `fee.customization_per_unit` config (default 0) added ×qty on customized lines | `PricingService::quoteTotals`, seeder |
 | Licence re-check (risk #2) | `catalogue:resync-3d` daily 03:30 — re-fetches licence per item, drifted/NC items pulled from public; dead source flags `needs_re-review` (production unaffected — we hold the file) | new command + schedule |
-| Auto flow-in (§3.1) | `catalogue:discover-3d` nightly 04:00 loops `catalogue.discovery_keywords` (admin-editable config, seeded with 5 gift keywords) through `pull-3d` | new command + schedule + seeder |
+| Auto flow-in (§3.1) | `catalogue:discover-3d` nightly 04:00 runs a keyword-less popular-browse pull per source through `pull-3d`, capped by `catalogue.browse_cap` | new command + schedule + seeder |
 | Marketplace API (§6.2) | `HttpShopeeAffiliateClient` (ScraperClient impl; SHA256-signed GraphQL, ToS-clean affiliate feed) + `catalogue:pull-uv {keyword}`; auto-bound when `SHOPEE_AFFILIATE_APP_ID/SECRET` present, fixture otherwise. Feed items land in the completeness gate for dims/printability | new client + command + `config/services.php` + `AppServiceProvider` |
 | F7 unprintable 3D proofs | Designer branches by class: MODEL_3D gets `Model3dPersonalizer` (filament colour + optional text → structured customization), Fabric canvas stays for UV/CORE | `ProductDesignerPage`, `Model3dPersonalizer` (new) |
 | Public URLs exposed ids | `products.slug` (unique, generated once from name, stable across renames; migration backfills). Public catalogue resolves slug first, numeric id kept as legacy fallback so old links/carts never break. Frontend links via `productPath()`/`designPath()` — `/products/bamboo-coaster`, `/design/bamboo-coaster`. Admin/quote routes stay numeric (auth-gated, not public) | migration `…000019`, `Product` model, `CatalogueController::show`, `ProductResource`, `lib/catalogue.ts` + Home/Catalogue/Detail pages |
@@ -148,7 +148,7 @@ Verified: 84 backend tests (204 assertions) + 35 frontend tests green; designer 
 2. **Thingiverse token** — `THINGIVERSE_TOKEN` (app token from thingiverse.com/developers). Enables live pull + nightly discovery + STL downloads.
 3. **Cults3D credentials** — `CULTS3D_USERNAME` + `CULTS3D_TOKEN` (cults3d.com API key). Note: their items block on `missing_model_file` until a file is attached manually.
 4. **Review pricing numbers** (superadmin dashboard / seeder defaults): `filament_per_gram` 0.06, `minutes_per_gram` 2.0, `machine_rate_per_min` 0.08, `customization_per_unit` 0.00 — placeholders; set to your real costs.
-5. **Curate discovery keywords** — `catalogue.discovery_keywords` config (seeded with 5 defaults).
+5. **Tune discovery breadth** — `catalogue.browse_cap` config (max models ingested per source per nightly popular-browse sweep).
 6. **Decide auto-publish** — flip `catalogue.auto_publish` ON when comfortable; gates (licence, file, verified estimates) now make it safe. Estimates still need per-item verification (staff click or future slicer).
 7. **Run on deploy**: `php artisan migrate && php artisan db:seed --class=PricingConfigSeeder`.
 

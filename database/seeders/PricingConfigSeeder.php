@@ -54,7 +54,6 @@ class PricingConfigSeeder extends Seeder
             // Phase 2 catalogue-breadth controls.
             ['catalogue', 'auto_publish', false, 'Auto-publish complete scraped/3D items', false],
             ['catalogue', 'drift_pct', 10, 'Price drift % that pulls a scraped item for re-review', false],
-            ['catalogue', 'discovery_keywords', ['phone stand', 'desk organizer', 'cable holder', 'name plate', 'keychain', 'pen holder', 'card holder', 'coaster', 'headphone stand', 'plant pot', 'luggage tag', 'bag hook'], 'Keywords swept nightly by catalogue:discover-3d', false],
             // Trademark keyword blocklist (layer 1 of the IP screen; the LLM
             // screen is layer 2). CC licences do not clear trademarks.
             ['catalogue', 'ip_blocklist', ['pokemon', 'pikachu', 'disney', 'mickey', 'marvel', 'star wars', 'nintendo', 'mario', 'zelda', 'lego', 'hello kitty', 'harry potter', 'minion', 'batman', 'superman', 'groot', 'baby yoda', 'mandalorian'], 'IP/trademark keyword blocklist for 3D ingest', false],

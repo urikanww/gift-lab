@@ -186,18 +186,7 @@ it('discover-3d default sweep uses browse mode and respects the configured cap',
     expect(Product::query()->where('name', 'Browsed phone stand')->exists())->toBeTrue()
         ->and(Product::query()->where('name', 'Browsed vase')->exists())->toBeTrue();
 
-    // The legacy keyword loop must NOT have run (no per-keyword search hits).
+    // Browse mode never runs a per-keyword search.
     $searchRequests = Http::recorded(fn ($request) => str_contains($request->url(), '/search/'));
     expect($searchRequests)->toBeEmpty();
-});
-
-it('discover-3d --keywords still runs the legacy per-keyword search loop', function (): void {
-    Http::fake([
-        'api.thingiverse.com/search/*' => Http::response(['hits' => []], 200),
-    ]);
-
-    $this->artisan('catalogue:discover-3d', ['--keywords' => true])->assertSuccessful();
-
-    $searchRequests = Http::recorded(fn ($request) => str_contains($request->url(), '/search/'));
-    expect($searchRequests)->not->toBeEmpty();
 });
