@@ -169,6 +169,7 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
   const [category, setCategory] = useState(product.category ?? '');
   const [printMethod, setPrintMethod] = useState<string>(product.print_method ?? 'UV');
   const [stockMode, setStockMode] = useState<string>(product.stock_mode ?? 'STOCKED');
+  const [allowBackorder, setAllowBackorder] = useState<boolean>(Boolean(product.allow_backorder));
   const [l, setL] = useState(product.dimensions?.l != null ? String(product.dimensions.l) : '');
   const [w, setW] = useState(product.dimensions?.w != null ? String(product.dimensions.w) : '');
   const [h, setH] = useState(product.dimensions?.h != null ? String(product.dimensions.h) : '');
@@ -194,6 +195,7 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
       category: category || null,
       print_method: printMethod,
       stock_mode: stockMode,
+      allow_backorder: allowBackorder,
     };
     if (weight !== '' && Number(weight) > 0) payload.weight = Number(weight);
     if (l !== '' && w !== '' && h !== '') {
@@ -262,6 +264,18 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
           <Select label="Stock mode" value={stockMode} onChange={(e) => setStockMode(e.target.value)} disabled={saving}>
             <option value="STOCKED">Stocked</option>
             <option value="MAKE_TO_ORDER">Make to order</option>
+          </Select>
+          {/* On-demand: only meaningful for STOCKED items. When on, the item can
+              be ordered at 0 stock — the shortfall drives on-hand negative and a
+              supplier reorder is drafted (the buy-list). */}
+          <Select
+            label="On-demand (backorder)"
+            value={allowBackorder ? 'yes' : 'no'}
+            onChange={(e) => setAllowBackorder(e.target.value === 'yes')}
+            disabled={saving || stockMode !== 'STOCKED'}
+          >
+            <option value="no">Off — block at 0 stock</option>
+            <option value="yes">On — sell at 0, backorder</option>
           </Select>
         </div>
 

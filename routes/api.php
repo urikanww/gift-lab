@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AdminProductController;
+use App\Http\Controllers\AdminReorderController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BrandKitController;
@@ -125,6 +126,12 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::delete('/admin/products/{product}/image', [AdminProductController::class, 'removeImage']);
     Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant']);
     Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant']);
+
+    // Supplier reorder buy-list (staff): open reorder drafts raised by
+    // below-threshold / backorder procurement, and marking them received
+    // (which restocks the variant through the ledger).
+    Route::get('/admin/supplier-reorders', [AdminReorderController::class, 'index']);
+    Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive']);
 
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) — every quote-time
     // number is editable without a deploy, and every change is audit-logged.

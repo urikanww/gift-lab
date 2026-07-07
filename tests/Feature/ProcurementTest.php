@@ -6,10 +6,13 @@ use App\Events\LineItemAwaitingReconfirm;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
+use App\Models\Proof;
+use App\Models\PurchaseOrder;
 use App\Models\Quote;
 use App\Models\User;
 use App\Models\Variant;
 use App\Services\Procurement\ProcurementManager;
+use App\Services\QuoteService;
 use Illuminate\Support\Facades\Event;
 use Laravel\Sanctum\Sanctum;
 
@@ -104,7 +107,7 @@ it('retotals the quote and PO after a reconfirmation amend', function (): void {
         'delivery' => 60.00,
         'total' => 422593.00,
     ]);
-    $po = \App\Models\PurchaseOrder::create([
+    $po = PurchaseOrder::create([
         'quote_id' => $quote->id,
         'po_ref' => 'PO-TEST',
         'payment_state' => 'UNPAID',
@@ -114,7 +117,7 @@ it('retotals the quote and PO after a reconfirmation amend', function (): void {
     ]);
     // The amended line goes READY and tryQueue fires; the production gate
     // requires an approved proof (as it did in the live repro).
-    \App\Models\Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
     $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'product_id' => $product->id,
@@ -182,4 +185,52 @@ it('rejects a quote amendment that breaks the margin floor', function (): void {
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'lines' => [['id' => $line->id, 'unit_price' => 9.00, 'qty' => 2]],
     ])->assertStatus(422);
+});
+
+// Stock ledger integration: procurement consumes through the append-only ledger,
+// backorder lets on-demand products sell at 0, and cancellation returns stock.
+
+it('records a SALE movement through the ledger when a CORE line procures', function (): void {
+    $line = makeLine(stock: 100, qty: 5);
+
+    $this->manager->procureLine($line->load('product', 'variant'));
+
+    $this->assertDatabaseHas('stock_movements', [
+        'variant_id' => $line->variant->id,
+        'delta' => -5,
+        'reason' => 'SALE',
+    ]);
+    expect($line->variant->fresh()->stock_on_hand)->toBe(95);
+});
+
+it('fulfils a backordered CORE line at insufficient stock, driving on-hand negative', function (): void {
+    test()->product->update(['allow_backorder' => true]);
+    $line = makeLine(stock: 2, qty: 5);
+
+    $this->manager->procureLine($line->load('product', 'variant'));
+
+    // Not blocked, not sent to reconfirm: full qty sold, balance goes negative
+    // (the -3 is the procurement worklist).
+    expect($line->fresh()->line_state->value)->toBe('READY')
+        ->and($line->variant->fresh()->stock_on_hand)->toBe(-3);
+    $this->assertDatabaseHas('stock_movements', [
+        'variant_id' => $line->variant->id,
+        'delta' => -5,
+        'reason' => 'SALE',
+    ]);
+});
+
+it('returns consumed stock as a RETURN movement when a quote is cancelled', function (): void {
+    $line = makeLine(stock: 100, qty: 5);
+    $this->manager->procureLine($line->load('product', 'variant'));
+    expect($line->variant->fresh()->stock_on_hand)->toBe(95);
+
+    app(QuoteService::class)->cancel($line->quote, 'changed mind');
+
+    expect($line->variant->fresh()->stock_on_hand)->toBe(100);
+    $this->assertDatabaseHas('stock_movements', [
+        'variant_id' => $line->variant->id,
+        'delta' => 5,
+        'reason' => 'RETURN',
+    ]);
 });

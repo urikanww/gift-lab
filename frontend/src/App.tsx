@@ -24,6 +24,7 @@ const QuoteListPage = lazy(() => import('./pages/QuoteListPage'));
 const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
 const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
+const ReorderBuyListPage = lazy(() => import('./pages/ReorderBuyListPage'));
 const CatalogueAdminPage = lazy(() => import('./pages/CatalogueAdminPage'));
 const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
 const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage'));
@@ -134,6 +135,7 @@ export default function App() {
               <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
               <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
               <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
+              <Route path="reorders" element={<ProtectedRoute staffOnly><ReorderBuyListPage /></ProtectedRoute>} />
               <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
               <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />

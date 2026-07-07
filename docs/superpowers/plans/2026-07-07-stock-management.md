@@ -162,6 +162,63 @@ print). 3D on-demand skips `AWAITING_STOCK` and goes straight to `PRINT`.
   movements; failed print = `SCRAP` grams (real cost capture).
 - Printer capacity / `est_print_minutes` as a scheduling constraint.
 
+## Slice 2 — order-side (shipped 2026-07-07)
+
+Map correction: stock is **not** consumed at quote ACCEPT. The real decrement is
+in `CoreProcurement::procure()` during the PROCURING gate, and a shortfall
+already routes to `LineItemState::AWAITING_RECONFIRM`. So the integration hung
+off the existing decrement point, not a new SALE-at-accept.
+
+Done:
+- `CoreProcurement` now consumes stock through `StockLedger` as a `SALE`
+  movement (ref = the line item), replacing the direct `stock_on_hand -=` write.
+- **Backorder**: when `stock_on_hand < qty` and `product.allow_backorder`, the
+  line is fulfilled at full qty and on-hand goes **negative** instead of routing
+  to reconfirm. The existing `SupplierReorder` draft (fired on below-threshold)
+  is the buy-list. `allow_backorder = false` keeps today's reconfirm behaviour.
+- **Cancel returns stock**: `QuoteService::cancel()` reads each line's `SALE`
+  movements from the ledger and posts compensating `RETURN` movements, so a
+  quote cancelled mid-PROCURING gives its blanks back (backorder lines pull the
+  negative balance back toward zero). Reads the ledger, not `procured_qty`, so it
+  never double-returns.
+- Tests: 3 added to `ProcurementTest` (SALE ledgered, backorder negative, cancel
+  RETURN). Full suite 261 green.
+
+### Backorder gating — DECIDED: proceed-now (2026-07-07)
+Superseding the earlier "AWAITING_STOCK gate" note: a backordered line proceeds
+to `READY` immediately with a negative balance; no park-till-arrival state. The
+negative on-hand + drafted `SupplierReorder` is the buy-list. Rationale: the
+codebase already models physical arrival via
+`PENDING→PROCURING→PURCHASED→INBOUND→RECEIVED→READY`; a parallel `AWAITING_STOCK`
+would duplicate it. Accepted trade-off: a backordered line can reach the
+production queue before the affiliate blank is physically in hand — ops is
+trusted not to print early. Strict hold-till-received remains available as an
+optional future refinement (Slice 3) but is not planned.
+
+## Slice 3 — buy-list + toggle (shipped 2026-07-07)
+
+Discovery: `SupplierReorder` drafts (raised by below-threshold / backorder
+procurement) had a model but **no route/controller/UI** — an invisible black
+hole. This slice surfaces and closes them.
+
+Done:
+- `AdminReorderController`: `GET /admin/supplier-reorders` (open drafts, newest
+  first, with variant on-hand + affiliate `source_url`) and
+  `POST /admin/supplier-reorders/{reorder}/receive` — flips state to RECEIVED
+  and, for variant-backed reorders, posts a `RESTOCK` movement through the ledger
+  (pulls a negative backorder balance back toward zero). Filament reorders flip
+  state only (no unit ledger yet). Staff-gated; double-receive → 422.
+- Frontend `ReorderBuyListPage` (`/reorders`, "Buy-list" nav): lists open
+  reorders, red negative on-hand, affiliate "Buy" link, "Mark received" action.
+- `allow_backorder` toggle in the product edit form (`ProductAdminDetailPage`),
+  disabled unless Stock mode = STOCKED.
+- Tests: `AdminReorderTest` (4) backend; frontend typecheck + 77 vitest green.
+
+## Slice 4 — remaining (deferred, low priority)
+- `GET /admin/variants/{id}/movements` history endpoint + frontend stock log
+  (pure audit view; nothing operational blocks on it).
+- 3D filament material inventory (see Future) — still deferred by decision.
+
 ## Out of scope
 
 - Product rename + rename audit trail — already shipped 2026-07-07

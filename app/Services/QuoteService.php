@@ -8,15 +8,17 @@ use App\Enums\LineItemState;
 use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
+use App\Enums\StockMovementReason;
 use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
+use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
 use App\Models\PurchaseOrder;
 use App\Models\Quote;
+use App\Models\StockMovement;
 use App\Models\Variant;
-use App\Exceptions\DomainRuleException;
 use App\Services\Procurement\ProcurementManager;
 use App\Support\Broadcasting;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -36,8 +38,8 @@ final class QuoteService
         private readonly ProcurementManager $procurement,
         private readonly QueueService $queue,
         private readonly AuditLogger $audit,
-    ) {
-    }
+        private readonly StockLedger $ledger,
+    ) {}
 
     /**
      * Create a DRAFT quote from designer line specs, pricing every line from
@@ -106,7 +108,7 @@ final class QuoteService
                 $product = $products->get((int) $spec['product_id']);
                 if ($product === null) {
                     // Preserve findOrFail semantics: a bad product id still 404s.
-                    throw (new ModelNotFoundException())->setModel(Product::class, [(int) $spec['product_id']]);
+                    throw (new ModelNotFoundException)->setModel(Product::class, [(int) $spec['product_id']]);
                 }
                 $variant = isset($spec['variant_id']) ? $variants->get((int) $spec['variant_id']) : null;
                 $customization = $spec['customization'] ?? null;
@@ -365,12 +367,52 @@ final class QuoteService
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::Cancelled);
 
+            // Give back any stock already consumed by this quote's lines. A quote
+            // can be cancelled mid-PROCURING, after some CORE lines have SALE'd
+            // their blanks — reverse exactly what each line took (backorder lines
+            // included, which pulls a negative balance back toward zero).
+            $this->returnConsumedStock($quote);
+
             $this->audit->log($quote, 'quote.cancelled', ['state' => $previous], ['reason' => $reason]);
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $quote->fresh(['lineItems']);
         });
+    }
+
+    /**
+     * Reverse the stock each line consumed, as compensating RETURN movements.
+     * Reads the ledger (SALE movements referencing the line) rather than trusting
+     * procured_qty, so it stays correct across partial/backorder consumption and
+     * never double-returns.
+     */
+    private function returnConsumedStock(Quote $quote): void
+    {
+        $quote->loadMissing('lineItems.variant');
+
+        foreach ($quote->lineItems as $line) {
+            if ($line->variant === null) {
+                continue;
+            }
+
+            $consumed = (int) StockMovement::query()
+                ->where('ref_type', $line->getMorphClass())
+                ->where('ref_id', $line->getKey())
+                ->where('reason', StockMovementReason::Sale->value)
+                ->sum('delta');
+
+            // SALE deltas are negative; return the opposite. Nothing consumed → skip.
+            if ($consumed < 0) {
+                $this->ledger->record(
+                    $line->variant,
+                    -$consumed,
+                    StockMovementReason::Return,
+                    $line,
+                    note: 'quote cancelled',
+                );
+            }
+        }
     }
 
     /**

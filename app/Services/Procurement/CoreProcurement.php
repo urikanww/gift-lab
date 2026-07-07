@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Procurement;
 
 use App\Enums\ReorderState;
+use App\Enums\StockMovementReason;
 use App\Models\LineItem;
 use App\Models\SupplierReorder;
 use App\Services\Procurement\Contracts\ProcurementStrategy;
+use App\Services\StockLedger;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -17,6 +19,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class CoreProcurement implements ProcurementStrategy
 {
+    public function __construct(private readonly StockLedger $ledger) {}
+
     public function procure(LineItem $lineItem): ProcurementResult
     {
         $variant = $lineItem->variant;
@@ -34,7 +38,14 @@ final class CoreProcurement implements ProcurementStrategy
             // Lock the variant row to prevent oversell under concurrent procurement.
             $variant = $variant->newQuery()->lockForUpdate()->find($variant->getKey());
 
-            if ($variant->stock_on_hand < $lineItem->qty) {
+            // Shortfall handling forks on the product's on-demand policy:
+            //  - allow_backorder OFF: keep today's behaviour — short-ship and send
+            //    the line to reconfirm (customer/staff decide on reduced qty).
+            //  - allow_backorder ON: fulfil the full qty and let on-hand go
+            //    negative. The negative balance is the procurement worklist (a
+            //    supplier reorder is drafted below), so the order is never blocked.
+            if ($variant->stock_on_hand < $lineItem->qty
+                && ! (bool) ($lineItem->product?->allow_backorder ?? false)) {
                 return ProcurementResult::qtyShort(
                     $variant->stock_on_hand,
                     $unitPrice,
@@ -42,8 +53,10 @@ final class CoreProcurement implements ProcurementStrategy
                 );
             }
 
-            $variant->stock_on_hand -= $lineItem->qty;
-            $variant->save();
+            // Consume stock through the ledger (append-only movement + cached
+            // on-hand update), never a direct column write. Backorder drives the
+            // balance negative here.
+            $this->ledger->record($variant, -$lineItem->qty, StockMovementReason::Sale, $lineItem);
 
             if ($variant->isBelowThreshold()) {
                 $this->draftReorder($variant->id, $variant->reorder_threshold * 2);

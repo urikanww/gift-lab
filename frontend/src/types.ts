@@ -214,6 +214,7 @@ export interface AdminProduct {
   weight: string | number | null;
   print_method: PrintMethod | null;
   stock_mode: string | null;
+  allow_backorder: boolean;
   category: string | null;
   image_url: string | null;
   is_printable: boolean;
@@ -223,6 +224,20 @@ export interface AdminProduct {
   variants: AdminVariant[] | null;
   sold_count: number;
   stock_total: number;
+}
+
+export interface AdminReorder {
+  id: number;
+  state: 'DRAFT' | 'APPROVED' | 'ORDERED' | 'RECEIVED';
+  qty: number;
+  sku: string | null;
+  kind: 'variant' | 'filament';
+  item: string;
+  variant_id: number | null;
+  product_id: number | null;
+  stock_on_hand: number | null;
+  source_url: string | null;
+  created_at: string | null;
 }
 
 export interface AdminCatalogueItem {
