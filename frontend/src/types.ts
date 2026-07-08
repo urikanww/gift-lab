@@ -252,6 +252,8 @@ export interface AdminProduct {
   has_glb?: boolean;
   /** Persisted admin print zone for MODEL_3D items; null when unset. */
   print_zone?: PrintZone | null;
+  /** Storage path of the canonical mesh file for MODEL_3D items; null when unset. */
+  model_file_ref?: string | null;
 }
 
 export interface AdminReorder {
