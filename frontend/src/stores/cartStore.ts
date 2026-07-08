@@ -37,17 +37,23 @@ export const useCartStore = create<CartState>()(
 
       addLine: (product, variant, customization, qty = 1) => {
         const key = `${product.id}:${variant?.id ?? 0}:${Date.now()}`;
-        const safeQty = Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1;
+        // Floor at the product's minimum order quantity (default 1) so a line
+        // never enters the cart below MOQ - the server rejects it at quote time.
+        const moq = product.min_order_qty ?? 1;
+        const safeQty = Number.isFinite(qty) ? Math.max(moq, Math.floor(qty)) : moq;
         set((s) => ({ lines: [...s.lines, { key, product, variant, qty: safeQty, customization }] }));
       },
 
       updateQty: (key, qty) =>
         set((s) => ({
-          // Guard against NaN (an emptied number input sends Number('') === NaN,
-          // and Math.max(1, NaN) === NaN) - floor to a valid integer ≥ 1.
-          lines: s.lines.map((l) =>
-            l.key === key ? { ...l, qty: Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1 } : l,
-          ),
+          // Guard against NaN (an emptied number input sends Number('') === NaN)
+          // and floor at the line's product MOQ (default 1), so the cart can't
+          // hold a sub-minimum qty that only fails later at quote submission.
+          lines: s.lines.map((l) => {
+            if (l.key !== key) return l;
+            const moq = l.product.min_order_qty ?? 1;
+            return { ...l, qty: Number.isFinite(qty) ? Math.max(moq, Math.floor(qty)) : moq };
+          }),
         })),
 
       removeLine: (key) => set((s) => ({ lines: s.lines.filter((l) => l.key !== key) })),

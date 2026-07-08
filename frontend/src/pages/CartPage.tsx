@@ -100,6 +100,7 @@ export default function CartPage() {
                     <div className="flex items-center justify-between gap-4 sm:justify-end">
                       <QuantityControl
                         qty={l.qty}
+                        min={l.product.min_order_qty ?? 1}
                         onChange={(next) => updateQty(l.key, next)}
                         label={`Quantity for ${l.product.name}`}
                       />
@@ -176,10 +177,12 @@ export default function CartPage() {
 /** Accessible +/- quantity stepper wired to the cart store's clamped updateQty. */
 function QuantityControl({
   qty,
+  min = 1,
   onChange,
   label,
 }: {
   qty: number;
+  min?: number;
   onChange: (next: number) => void;
   label: string;
 }) {
@@ -189,12 +192,12 @@ function QuantityControl({
       role="group"
       aria-label={label}
     >
-      <StepButton onClick={() => onChange(qty - 1)} disabled={qty <= 1} aria-label="Decrease quantity">
+      <StepButton onClick={() => onChange(qty - 1)} disabled={qty <= min} aria-label="Decrease quantity">
         <span aria-hidden="true">−</span>
       </StepButton>
       <input
         type="number"
-        min={1}
+        min={min}
         value={qty}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label={label}

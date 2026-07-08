@@ -90,4 +90,23 @@ describe('cartStore', () => {
     expect(lines[0].qty).toBe(50);
     expect(lines[1].qty).toBe(1);
   });
+
+  it('clamps quantity up to the product minimum order quantity', () => {
+    useCartStore.setState({ lines: [] });
+    const moqProduct = { ...product, id: 42, min_order_qty: 25 };
+
+    // addLine below MOQ (and the default) floors to MOQ
+    useCartStore.getState().addLine(moqProduct, null, {}, 10);
+    useCartStore.getState().addLine(moqProduct, null, {});
+    let lines = useCartStore.getState().lines;
+    expect(lines[0].qty).toBe(25);
+    expect(lines[1].qty).toBe(25);
+
+    // updateQty below MOQ floors to MOQ; at/above MOQ passes through
+    const key = lines[0].key;
+    useCartStore.getState().updateQty(key, 5);
+    expect(useCartStore.getState().lines[0].qty).toBe(25);
+    useCartStore.getState().updateQty(key, 100);
+    expect(useCartStore.getState().lines[0].qty).toBe(100);
+  });
 });
