@@ -36,6 +36,9 @@ interface Props {
   onDragPlacement?: (fu: number, fv: number) => void;
   /** Reports the accumulated logo angle in degrees as the buyer nudges rotation. */
   onRotate?: (deg: number) => void;
+  /** The true logo angle (deg) from the parent. The rotate control reflects this
+   *  so a rotation made on the 2D pad keeps the control in sync (no stale jump). */
+  angle?: number;
 }
 
 export interface DecalPreviewHandle {
@@ -55,14 +58,11 @@ const FILAMENT_HEX: Record<string, number> = {
 };
 
 const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model3dDecalPreview(
-  { productKey, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement, onRotate },
+  { productKey, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement, onRotate, angle },
   ref,
 ) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  // Accumulated logo rotation (degrees, wrapped into [0,360)). Reported to the
-  // parent via onRotate; the parent flattens it into the placement.
-  const [angle, setAngle] = useState(0);
 
   // three.js objects kept in refs so the artwork/zone effect and the imperative
   // handle can reach the live mesh + scene without re-running the loader effect.
@@ -355,17 +355,15 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
     [zone],
   );
 
-  // Rotate the logo by a step, wrapping the accumulated angle into [0,360), and
-  // report the new value to the parent so it can update the placement.
+  // The control is a CONTROLLED reflection of the true angle prop: a rotation
+  // made on the 2D pad flows in via `angle`, so the control never goes stale and
+  // clicking it can't jump the logo. Each nudge computes off the incoming angle.
+  const currentAngle = angle ?? 0;
   const bump = (delta: number) => {
-    setAngle((a) => {
-      const next = (((a + delta) % 360) + 360) % 360;
-      onRotate?.(next);
-      return next;
-    });
+    const next = (((currentAngle + delta) % 360) + 360) % 360;
+    onRotate?.(next);
   };
   const resetAngle = () => {
-    setAngle(0);
     onRotate?.(0);
   };
 
@@ -403,7 +401,7 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
               aria-label="Reset rotation"
               className="min-w-[2.75rem] rounded px-1 text-center text-xs tabular-nums text-fg-subtle hover:text-fg"
             >
-              {Math.round(angle)}°
+              {Math.round(currentAngle)}°
             </button>
             <Button
               variant="ghost"

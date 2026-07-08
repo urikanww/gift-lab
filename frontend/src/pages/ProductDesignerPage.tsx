@@ -76,6 +76,10 @@ export default function ProductDesignerPage() {
   const canvasHandle = useRef<DesignerCanvasHandle>(null);
   const [liveCanvas, setLiveCanvas] = useState<HTMLCanvasElement | null>(null);
   const [decalDirty, setDecalDirty] = useState(0);
+  // True logo angle (deg) lifted from the fabric object so the 3D rotate control
+  // is a controlled reflection of it - a rotation done on the 2D pad keeps the
+  // control in sync instead of leaving it stale and jumping on the next click.
+  const [logo3dAngle, setLogo3dAngle] = useState(0);
   const [qty, setQty] = useState(1);
   // Fallback flow: buyers who'd rather hand us a reference of the finished look
   // than lay it out themselves. The designer surface is swapped for an uploader.
@@ -485,12 +489,17 @@ export default function ProductDesignerPage() {
                       interactive={is3d && !!zone}
                       liveCanvas={is3d && zone ? liveCanvas : null}
                       dirtyTick={decalDirty}
+                      angle={logo3dAngle}
                       onDragPlacement={(fu, fv) => {
                         canvasHandle.current?.setLogoFraction(fu, fv);
                         setDecalDirty((n) => n + 1);
                       }}
                       onRotate={(deg) => {
                         canvasHandle.current?.setLogoAngle(deg);
+                        // setLogoAngle doesn't emit onPlacementChange, so lift the
+                        // angle here to keep the controlled rotate control in sync
+                        // (deg is already wrapped into [0,360) by the control).
+                        setLogo3dAngle(deg);
                         setDecalDirty((n) => n + 1);
                       }}
                     />
@@ -500,8 +509,9 @@ export default function ProductDesignerPage() {
                     /* MODEL_3D: face render or neutral stage - never the scraped
                        marketing photo as a design surface (audit G1/C16). */
                     backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
-                    onPlacementChange={() => {
+                    onPlacementChange={(p) => {
                       if (!liveCanvas) setLiveCanvas(canvasHandle.current?.getCanvasElement() ?? null);
+                      setLogo3dAngle(p.angle);
                       setDecalDirty((n) => n + 1);
                     }}
                     onCapture={handleCapture}
