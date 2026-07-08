@@ -23,3 +23,18 @@ export async function uploadArtwork(dataUrl: string): Promise<string> {
   });
   return data.ref;
 }
+
+/**
+ * Upload a raw File (reference image for the "upload finished look" fallback,
+ * or a logo file) to the same private artwork store and return its ref. Reuses
+ * POST /uploads/artwork, which accepts png/jpg/jpeg/webp up to 10 MB.
+ */
+export async function uploadArtworkFile(file: File): Promise<string> {
+  await ensureCsrf();
+  const form = new FormData();
+  form.append('artwork', file, file.name || 'reference');
+  const { data } = await api.post<{ ref: string; url: string }>('/uploads/artwork', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.ref;
+}
