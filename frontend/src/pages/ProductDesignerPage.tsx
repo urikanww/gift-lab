@@ -73,6 +73,11 @@ export default function ProductDesignerPage() {
   const [qty, setQty] = useState(1);
   // Fallback flow: buyers who'd rather hand us a reference of the finished look
   // than lay it out themselves. The designer surface is swapped for an uploader.
+  // HIDDEN for now: the upload-finished-look entry point is gated off until the
+  // pricing path for buyer-uploaded (no size-band) lines exists. The component +
+  // backend stay in place; flip this to re-enable the mode toggle. Mode is pinned
+  // to 'designer' while disabled, so the buyer_uploaded branches are unreachable.
+  const FINISHED_LOOK_ENABLED = false;
   const [mode, setMode] = useState<'designer' | 'buyer_uploaded'>('designer');
   const [finishedLook, setFinishedLook] = useState<FinishedLookValue | null>(null);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
@@ -487,7 +492,8 @@ export default function ProductDesignerPage() {
 
             {/* RIGHT: the single control rail */}
             <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
-              {/* Customization mode toggle */}
+              {/* Customization mode toggle (hidden until buyer-uploaded pricing exists) */}
+              {FINISHED_LOOK_ENABLED && (
               <div
                 className="flex overflow-hidden rounded-md border border-border text-sm"
                 role="radiogroup"
@@ -520,6 +526,7 @@ export default function ProductDesignerPage() {
                   Upload finished look
                 </button>
               </div>
+              )}
 
               {/* Variant picker */}
               {product.variants && product.variants.length > 0 && (
