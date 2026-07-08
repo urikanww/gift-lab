@@ -18,6 +18,19 @@ it('exposes only published products on the public catalogue', function (): void 
         ->and($names)->not->toContain('Draft Mug');
 });
 
+it('exposes print_zone on a published MODEL_3D detail', function (): void {
+    $zone = ['normal' => [0, 0, 1], 'center' => [0, 0, 2], 'up' => [0, 1, 0], 'width_mm' => 40, 'height_mm' => 30];
+    $product = Product::factory()->create([
+        'class' => 'MODEL_3D',
+        'publish_state' => 'PUBLISHED',
+        'print_zone' => $zone,
+    ]);
+
+    $this->getJson("/api/catalogue/{$product->slug}")
+        ->assertOk()
+        ->assertJsonPath('data.print_zone.width_mm', 40);
+});
+
 it('404s an unpublished product detail', function (): void {
     $product = Product::factory()->create(['publish_state' => 'PENDING']);
 

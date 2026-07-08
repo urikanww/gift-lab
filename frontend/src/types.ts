@@ -95,12 +95,21 @@ export interface Product {
   creator_credit: string | null;
   /** True when an interactive 3D model stream is available for this item. */
   has_model?: boolean;
+  /** Admin-authored decoration zone (model-space mm); null when unset. */
+  print_zone?: PrintZone | null;
+  /** True when an authored GLB is stored (preferred preview mesh). */
+  has_glb?: boolean;
   variants?: Variant[];
 }
 
 export interface Customization {
   logo_size?: string | null;
   artwork_ref?: string | null;
+  /**
+   * UV-flattened production print file (MODEL_3D zoned items): the decal
+   * unwrapped to its print space. Additive to artwork_ref (the buyer proof).
+   */
+  print_file_ref?: string | null;
   /** MODEL_3D filament colour chosen in the designer (Black/White/Grey). */
   filament_color?: string | null;
   /** Name/text personalisation content rendered into the artwork (audit D9). */

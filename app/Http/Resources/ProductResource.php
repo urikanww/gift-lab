@@ -52,6 +52,11 @@ class ProductResource extends JsonResource
             'has_model' => $this->class === ProductClass::Model3d
                 && (string) $this->model_file_ref !== ''
                 && ! str_starts_with((string) $this->model_file_ref, 'http'),
+            // Admin-authored decoration zone (model-space mm) - drives the
+            // customer decal preview + the zone-constrained designer mapping.
+            'print_zone' => $this->print_zone,
+            // True when an authored GLB is stored (preferred preview mesh).
+            'has_glb' => $this->decor_glb_ref !== null,
             'variants' => VariantResource::collection($this->whenLoaded('variants')),
         ];
     }
