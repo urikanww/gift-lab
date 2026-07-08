@@ -30,6 +30,9 @@ describe('zoneMapping', () => {
     expect(c.y).toBeCloseTo(60, 5);
     const top = zoneFractionToCanvas({ fu: 0.5, fv: 1 }, { w: 200, h: 120 });
     expect(top.y).toBeCloseTo(0, 5);
+    // fu=1 must map to the right edge (x=w), pinning the no-flip x convention
+    expect(zoneFractionToCanvas({ fu: 1, fv: 0.5 }, { w: 200, h: 120 }).x).toBeCloseTo(200, 5);
+    expect(zoneFractionToCanvas({ fu: 0, fv: 0.5 }, { w: 200, h: 120 }).x).toBeCloseTo(0, 5);
   });
 
   it('canvasToZoneFraction is the inverse of zoneFractionToCanvas', () => {
