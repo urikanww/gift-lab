@@ -116,7 +116,9 @@ export default function ProductDesignerPage() {
     }
     let active = true;
     setFaceState('loading');
-    renderModelFace(id, filamentColor)
+    // Product has no model-version field yet, so cache by product id
+    // (pending a real version/updated_at token on Product).
+    renderModelFace(id, filamentColor, String(product.id))
       .then((snapshot) => {
         if (!active) return;
         setFaceSnapshot(snapshot);

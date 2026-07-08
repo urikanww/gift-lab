@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import api from './api';
+import { detectPrintZone } from './planarDetect';
+import { zoneBasis } from './printZone';
 
 /**
  * Offscreen render of a MODEL_3D product's decoration face, used as the
@@ -27,17 +29,29 @@ const FILAMENT_HEX: Record<string, number> = {
   Grey: 0x9c9c9c,
 };
 
-// Cache renders per product+colour+size - a colour toggle back and forth
-// should not re-download or re-render the STL.
+// Cache renders per product+colour+version+size - a colour toggle back and
+// forth should not re-download or re-render the STL, but a replaced model
+// (new version token) must never serve a stale render.
 const cache = new Map<string, Promise<ModelFaceSnapshot>>();
+
+export function cacheKeyFor(
+  productKey: string,
+  filamentColor: string,
+  version: string,
+  widthPx: number,
+  heightPx: number,
+): string {
+  return `${productKey}|${filamentColor}|${version}|${widthPx}x${heightPx}`;
+}
 
 export function renderModelFace(
   productKey: string,
   filamentColor: string,
+  version = '',
   widthPx = 1000,
   heightPx = 760,
 ): Promise<ModelFaceSnapshot> {
-  const cacheKey = `${productKey}|${filamentColor}|${widthPx}x${heightPx}`;
+  const cacheKey = cacheKeyFor(productKey, filamentColor, version, widthPx, heightPx);
   const hit = cache.get(cacheKey);
   if (hit) return hit;
 
@@ -66,11 +80,6 @@ async function renderFresh(
   const size = new THREE.Vector3();
   geometry.boundingBox!.getSize(size);
 
-  // The decoration face is the flattest aspect of the part: view along the
-  // smallest extent so the largest printable face fills the frame.
-  const extents = [size.x, size.y, size.z];
-  const minAxis = extents.indexOf(Math.min(...extents));
-
   const mesh = new THREE.Mesh(
     geometry,
     new THREE.MeshStandardMaterial({
@@ -79,13 +88,29 @@ async function renderFresh(
       metalness: 0.1,
     }),
   );
-  // Rotate the smallest extent onto the view axis (+Z).
-  if (minAxis === 0) mesh.rotation.y = Math.PI / 2; // X -> Z
-  if (minAxis === 1) mesh.rotation.x = -Math.PI / 2; // Y -> Z
 
-  // Projected face dimensions after that rotation.
-  const faceWidthMm = minAxis === 0 ? size.z : size.x;
-  const faceHeightMm = minAxis === 1 ? size.z : size.y;
+  const detected = detectPrintZone(geometry);
+
+  let faceWidthMm: number;
+  let faceHeightMm: number;
+  if (detected) {
+    // Orient the detected face normal onto +Z for the orthographic render.
+    const { n } = zoneBasis(detected);
+    const q = new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, 0, 1));
+    mesh.applyQuaternion(q);
+    faceWidthMm = detected.width_mm;
+    faceHeightMm = detected.height_mm;
+  } else {
+    // No flat face detected: keep the legacy smallest-extent framing so the
+    // customer still gets a neutral render (the designer will require an admin
+    // zone for such parts).
+    const extents = [size.x, size.y, size.z];
+    const minAxis = extents.indexOf(Math.min(...extents));
+    if (minAxis === 0) mesh.rotation.y = Math.PI / 2;
+    if (minAxis === 1) mesh.rotation.x = -Math.PI / 2;
+    faceWidthMm = minAxis === 0 ? size.z : size.x;
+    faceHeightMm = minAxis === 1 ? size.z : size.y;
+  }
 
   const scene = new THREE.Scene();
   scene.add(new THREE.AmbientLight(0xffffff, 0.85));
