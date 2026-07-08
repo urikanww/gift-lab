@@ -4,6 +4,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import api from '../lib/api';
 import { buildDecalGeometry, renderPrintFile } from '../lib/modelDecal';
+import { worldToZoneFraction } from '../lib/zoneMapping';
 import type { PrintZone } from '../lib/printZone';
 
 /**
@@ -24,6 +25,14 @@ interface Props {
   /** Captured artwork as a PNG data URL, or null when nothing is placed yet. */
   artworkDataUrl: string | null;
   className?: string;
+  /** Enable drag-to-move on the flat printable face. */
+  interactive?: boolean;
+  /** Live design canvas wrapped as a CanvasTexture; null → use artworkDataUrl. */
+  liveCanvas?: HTMLCanvasElement | null;
+  /** Bumped by the parent on any placement change → flag the texture needsUpdate. */
+  dirtyTick?: number;
+  /** Reports the zone fraction (0..1) as the buyer drags the logo. */
+  onDragPlacement?: (fu: number, fv: number) => void;
 }
 
 export interface DecalPreviewHandle {
@@ -43,7 +52,7 @@ const FILAMENT_HEX: Record<string, number> = {
 };
 
 const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model3dDecalPreview(
-  { productKey, filamentColor, zone, artworkDataUrl, className },
+  { productKey, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement },
   ref,
 ) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -56,6 +65,24 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
   const decalRef = useRef<THREE.Mesh | null>(null);
   // Last texture loaded for the decal - reused to flatten the print file.
   const textureRef = useRef<THREE.Texture | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+
+  // Latest-value refs so the once-run loader effect's pointer handlers read the
+  // current props (they must NOT re-run and re-download the STL).
+  const interactiveRef = useRef(interactive);
+  const onDragPlacementRef = useRef(onDragPlacement);
+  const zoneRef = useRef(zone);
+  useEffect(() => {
+    interactiveRef.current = interactive;
+    onDragPlacementRef.current = onDragPlacement;
+    zoneRef.current = zone;
+    // Auto-spin fights placement, so disable it while interactive.
+    if (controlsRef.current) controlsRef.current.autoRotate = !interactive;
+  }, [interactive, onDragPlacement, zone]);
+
+  // A decal is only worth building when there is something to show. Toggling this
+  // (or the mesh/zone) rebuilds geometry; swapping artwork content does not.
+  const hasSource = (interactive === true && !!liveCanvas) || !!artworkDataUrl;
 
   // Loader + renderer lifecycle. Re-runs only on a product/colour change; the
   // artwork decal is layered on by a separate effect so placing a logo doesn't
@@ -86,13 +113,18 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.autoRotate = true;
+    // Auto-spin fights drag-to-place, so gate it on the (latest) interactive prop.
+    controls.autoRotate = !interactiveRef.current;
     controls.autoRotateSpeed = 1.5;
+    controlsRef.current = controls;
 
+    let dragging = false;
     let frame = 0;
     const animate = () => {
       frame = requestAnimationFrame(animate);
       controls.update();
+      // While dragging a live decal, re-upload the moving canvas each frame.
+      if (dragging && textureRef.current) textureRef.current.needsUpdate = true;
       renderer.render(scene, camera);
     };
 
@@ -129,6 +161,52 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
       },
     );
 
+    // ---- Drag-to-move on the flat face (with an off-zone guard) ----
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    // Accept only hits whose world face-normal is ~parallel (≤25°) to the zone
+    // normal; a hit on a side face returns null so OrbitControls can orbit.
+    const NORMAL_DOT_MIN = Math.cos((25 * Math.PI) / 180);
+    const toFraction = (e: PointerEvent): { fu: number; fv: number } | null => {
+      const mesh = meshRef.current;
+      const zoneNow = zoneRef.current;
+      if (!mesh) return null;
+      const rect = renderer.domElement.getBoundingClientRect();
+      ndc.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      const hit = raycaster.intersectObject(mesh, false)[0];
+      if (!hit || !hit.face) return null;
+      const nm = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+      const worldNormal = hit.face.normal.clone().applyMatrix3(nm).normalize();
+      const zoneNormal = new THREE.Vector3(...zoneNow.normal).normalize();
+      if (worldNormal.dot(zoneNormal) < NORMAL_DOT_MIN) return null; // off the printable face
+      return worldToZoneFraction(hit.point.clone(), zoneNow);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!interactiveRef.current) return;
+      const f = toFraction(e);
+      if (!f) return; // off the face → let OrbitControls orbit
+      dragging = true;
+      controls.enableRotate = false;
+      onDragPlacementRef.current?.(f.fu, f.fv);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!dragging) return;
+      const f = toFraction(e);
+      if (f) onDragPlacementRef.current?.(f.fu, f.fv);
+    };
+    const onUp = () => {
+      dragging = false;
+      controls.enableRotate = true;
+    };
+    renderer.domElement.addEventListener('pointerdown', onDown);
+    renderer.domElement.addEventListener('pointermove', onMove);
+    renderer.domElement.addEventListener('pointerup', onUp);
+    renderer.domElement.addEventListener('pointerleave', onUp);
+
     const onResize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight || 360;
@@ -142,7 +220,13 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
       disposed = true;
       cancelAnimationFrame(frame);
       window.removeEventListener('resize', onResize);
+      renderer.domElement.removeEventListener('pointerdown', onDown);
+      renderer.domElement.removeEventListener('pointermove', onMove);
+      renderer.domElement.removeEventListener('pointerup', onUp);
+      renderer.domElement.removeEventListener('pointerleave', onUp);
+      controls.enableRotate = true;
       controls.dispose();
+      controlsRef.current = null;
       renderer.dispose();
       textureRef.current?.dispose();
       textureRef.current = null;
@@ -159,52 +243,86 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
     };
   }, [productKey, filamentColor]);
 
-  // Project (or clear) the artwork decal whenever the artwork or zone changes
-  // and the mesh is loaded. Disposes any prior decal + texture first.
+  // Build the decal GEOMETRY once per (mesh, zone) - and add/remove it as the
+  // source toggles. A texture/content change (below) does NOT rebuild geometry,
+  // it only re-uploads the map, which keeps drag-to-move cheap.
   useEffect(() => {
     const scene = sceneRef.current;
     const mesh = meshRef.current;
-    if (!scene || !mesh) return;
+    if (!scene || !mesh || !hasSource) return;
 
-    // Remove and dispose the previous decal + texture.
-    const prior = decalRef.current;
-    if (prior) {
-      scene.remove(prior);
-      prior.geometry.dispose();
-      (Array.isArray(prior.material) ? prior.material : [prior.material]).forEach((m) => m.dispose());
-      decalRef.current = null;
-    }
+    const decalGeo = buildDecalGeometry(mesh, zone);
+    if (!decalGeo) return; // Zone off the mesh - skip silently.
+    const material = new THREE.MeshStandardMaterial({
+      map: textureRef.current, // reuse the current texture; the texture effect keeps it in sync
+      transparent: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+    });
+    const decal = new THREE.Mesh(decalGeo, material);
+    decalRef.current = decal;
+    scene.add(decal);
+
+    return () => {
+      scene.remove(decal);
+      decalGeo.dispose();
+      material.dispose();
+      if (decalRef.current === decal) decalRef.current = null;
+    };
+  }, [state, zone, hasSource]);
+
+  // Bind the decal's texture SOURCE. Live path: wrap the design canvas as a
+  // CanvasTexture (content updates flag needsUpdate, no PNG re-encode). Otherwise
+  // load the captured artwork data URL (display-only). Swapping the source here
+  // never rebuilds the decal geometry - it just re-points material.map.
+  useEffect(() => {
+    if (state !== 'ready') return;
+
+    // Assign a texture to the live decal material (if it exists yet).
+    const applyMap = (tex: THREE.Texture | null) => {
+      const decal = decalRef.current;
+      if (decal && !Array.isArray(decal.material)) {
+        (decal.material as THREE.MeshStandardMaterial).map = tex;
+        decal.material.needsUpdate = true;
+      }
+    };
+
     textureRef.current?.dispose();
     textureRef.current = null;
 
-    if (!artworkDataUrl) return;
-
-    let cancelled = false;
-    const texture = new THREE.TextureLoader().load(artworkDataUrl, () => {
-      if (cancelled) {
-        texture.dispose();
-        return;
-      }
+    if (interactive && liveCanvas) {
+      const texture = new THREE.CanvasTexture(liveCanvas);
       textureRef.current = texture;
-      const decalGeo = buildDecalGeometry(mesh, zone);
-      if (!decalGeo) return; // Zone off the mesh - skip silently.
-      const decal = new THREE.Mesh(
-        decalGeo,
-        new THREE.MeshStandardMaterial({
-          map: texture,
-          transparent: true,
-          polygonOffset: true,
-          polygonOffsetFactor: -4,
-        }),
-      );
-      decalRef.current = decal;
-      scene.add(decal);
-    });
+      applyMap(texture);
+      return () => {
+        texture.dispose();
+        if (textureRef.current === texture) textureRef.current = null;
+      };
+    }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [artworkDataUrl, zone]);
+    if (artworkDataUrl) {
+      let cancelled = false;
+      const texture = new THREE.TextureLoader().load(artworkDataUrl, () => {
+        if (!cancelled) texture.needsUpdate = true;
+      });
+      textureRef.current = texture;
+      applyMap(texture);
+      return () => {
+        cancelled = true;
+        texture.dispose();
+        if (textureRef.current === texture) textureRef.current = null;
+      };
+    }
+
+    applyMap(null);
+    return;
+  }, [state, interactive, liveCanvas, artworkDataUrl]);
+
+  // A placement change bumps dirtyTick: re-upload the live CanvasTexture once.
+  useEffect(() => {
+    const tex = textureRef.current;
+    if (tex instanceof THREE.CanvasTexture) tex.needsUpdate = true;
+  }, [dirtyTick]);
 
   useImperativeHandle(
     ref,
