@@ -107,6 +107,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish']);
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
+    Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 
     // CORE product/variant management (staff; audit E4) - ops add a blank or

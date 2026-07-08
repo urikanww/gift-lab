@@ -12,6 +12,8 @@ use App\Services\Catalogue\ScrapedCatalogueService;
 use App\Services\Model3d\Model3dCatalogueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Superadmin/staff catalogue gate (spec 6.7): review scraped + 3D items, approve
@@ -187,6 +189,31 @@ class AdminCatalogueController extends Controller
         return response()->json([
             'publish_state' => $product->publish_state->value,
             'model_file_ref' => $product->model_file_ref,
+        ]);
+    }
+
+    /**
+     * Staff-only model stream for the admin zone editor + decal preview, served
+     * for ANY publish state (the public CatalogueController::model requires a
+     * public product). `kind=glb` serves the authored decoration GLB when set;
+     * anything else serves the canonical mesh (STL/3MF/OBJ).
+     */
+    public function adminModel(Request $request, Product $product): StreamedResponse|JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $kind = $request->string('kind')->toString();
+        $ref = $kind === 'glb'
+            ? (string) ($product->decor_glb_ref ?? '')
+            : (string) ($product->model_file_ref ?? '');
+
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+            return response()->json(['message' => 'Model not available.'], 404);
+        }
+
+        return Storage::disk('local')->response($ref, basename($ref), [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'no-store',
         ]);
     }
 
