@@ -41,6 +41,23 @@ it('lets a buyer create a draft quote priced from config', function (): void {
     $this->assertDatabaseCount('line_items', 1);
 });
 
+it('rejects a line below the product minimum order quantity', function (): void {
+    Sanctum::actingAs($this->buyer);
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'publish_state' => 'PUBLISHED', 'min_order_qty' => 25,
+    ]);
+    Variant::factory()->create(['product_id' => $product->id]);
+
+    $this->postJson('/api/quotes', [
+        'company_id' => $this->company->id,
+        'line_items' => [
+            ['product_id' => $product->id, 'variant_id' => null, 'qty' => 10],
+        ],
+    ])->assertStatus(422)->assertJsonValidationErrors('line_items.0.qty');
+
+    $this->assertDatabaseCount('quotes', 0);
+});
+
 it('creates a multi-line quote with batched product/variant lookups', function (): void {
     Sanctum::actingAs($this->buyer);
     $second = Product::factory()->create(['base_cost' => 6, 'print_method' => 'UV', 'publish_state' => 'PUBLISHED']);

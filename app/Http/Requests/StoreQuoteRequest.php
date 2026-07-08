@@ -129,6 +129,16 @@ class StoreQuoteRequest extends FormRequest
                     $validator->errors()->add("line_items.{$index}.product_id", 'Product is not available.');
                 }
 
+                // MOQ floor: a line below the product's minimum order quantity
+                // is rejected here (client stepper is a convenience, not the guard).
+                $qty = isset($line['qty']) ? (int) $line['qty'] : 0;
+                if ($product !== null && $qty > 0 && $qty < (int) $product->min_order_qty) {
+                    $validator->errors()->add(
+                        "line_items.{$index}.qty",
+                        "Minimum order for this product is {$product->min_order_qty}."
+                    );
+                }
+
                 if ($product !== null
                     && $product->class === ProductClass::Core
                     && ! $productIdsWithVariants->has($productId)
