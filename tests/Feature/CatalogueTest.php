@@ -31,6 +31,19 @@ it('exposes print_zone on a published MODEL_3D detail', function (): void {
         ->assertJsonPath('data.print_zone.width_mm', 40);
 });
 
+it('exposes min_order_qty on a published product detail', function (): void {
+    seedPricing();
+    $product = Product::factory()->create([
+        'publish_state' => 'PUBLISHED',
+        'min_order_qty' => 25,
+    ]);
+    Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 5]);
+
+    $this->getJson("/api/catalogue/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('data.min_order_qty', 25);
+});
+
 it('404s an unpublished product detail', function (): void {
     $product = Product::factory()->create(['publish_state' => 'PENDING']);
 

@@ -55,6 +55,8 @@ class ProductResource extends JsonResource
             // Admin-authored decoration zone (model-space mm) - drives the
             // customer decal preview + the zone-constrained designer mapping.
             'print_zone' => $this->print_zone,
+            // Minimum order quantity (superadmin-set); default 1.
+            'min_order_qty' => (int) $this->min_order_qty,
             // True when an authored GLB is stored (preferred preview mesh).
             'has_glb' => $this->decor_glb_ref !== null,
             'variants' => VariantResource::collection($this->whenLoaded('variants')),
