@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
@@ -533,6 +533,27 @@ function StatusTimeline({ state }: { state: QuoteState }) {
   );
 }
 
+/**
+ * Fallback callout for a line the buyer submitted in "upload finished look"
+ * mode. There's no designer artwork to preview - staff must proof the buyer's
+ * intent (notes + reference images on the artwork disk) before printing. Guards
+ * on mode so normal designer lines are unaffected.
+ */
+function BuyerUploadedNote({ customization }: { customization: NonNullable<LineItem['customization']> }) {
+  const refCount = customization.reference_refs?.length ?? 0;
+  return (
+    <div className="mt-2 rounded-md border border-warning/30 bg-warning-bg p-2 text-sm">
+      <p className="font-medium text-fg">Buyer-uploaded finished look — proof before printing</p>
+      {customization.placement_notes && (
+        <p className="mt-1 text-fg-muted">Notes: {customization.placement_notes}</p>
+      )}
+      {refCount > 0 && (
+        <p className="mt-1 text-fg-subtle">{refCount} reference image(s) attached</p>
+      )}
+    </div>
+  );
+}
+
 function LineItemList({ items }: { items: LineItem[] | undefined }) {
   if (!items || items.length === 0) {
     return <p className="px-5 py-6 text-sm text-fg-muted">No items on this quote.</p>;
@@ -562,21 +583,35 @@ function LineItemList({ items }: { items: LineItem[] | undefined }) {
         </thead>
         <tbody>
           {items.map((li) => (
-            <tr key={li.id} className="border-b border-border last:border-0">
-              <td className="px-5 py-4 text-fg">{li.product?.name ?? `Product #${li.product_id}`}</td>
-              <td className="px-5 py-4 text-right tabular-nums text-fg">{li.qty}</td>
-              <td className="px-5 py-4 text-right tabular-nums text-fg-muted">
-                {li.currency} {li.unit_price}
-              </td>
-              <td className="px-5 py-4 text-right tabular-nums text-fg">
-                {li.currency} {li.line_total}
-              </td>
-              <td className="px-5 py-4">
-                <Badge tone={lineStateTone(li.line_state)} size="sm">
-                  {humanizeState(li.line_state)}
-                </Badge>
-              </td>
-            </tr>
+            <Fragment key={li.id}>
+              <tr
+                className={
+                  'border-b border-border ' +
+                  (li.customization?.mode === 'buyer_uploaded' ? '' : 'last:border-0')
+                }
+              >
+                <td className="px-5 py-4 text-fg">{li.product?.name ?? `Product #${li.product_id}`}</td>
+                <td className="px-5 py-4 text-right tabular-nums text-fg">{li.qty}</td>
+                <td className="px-5 py-4 text-right tabular-nums text-fg-muted">
+                  {li.currency} {li.unit_price}
+                </td>
+                <td className="px-5 py-4 text-right tabular-nums text-fg">
+                  {li.currency} {li.line_total}
+                </td>
+                <td className="px-5 py-4">
+                  <Badge tone={lineStateTone(li.line_state)} size="sm">
+                    {humanizeState(li.line_state)}
+                  </Badge>
+                </td>
+              </tr>
+              {li.customization?.mode === 'buyer_uploaded' && (
+                <tr className="border-b border-border last:border-0">
+                  <td colSpan={5} className="px-5 pb-4">
+                    <BuyerUploadedNote customization={li.customization} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -599,6 +634,9 @@ function LineItemList({ items }: { items: LineItem[] | undefined }) {
                 {li.currency} {li.line_total}
               </span>
             </div>
+            {li.customization?.mode === 'buyer_uploaded' && (
+              <BuyerUploadedNote customization={li.customization} />
+            )}
           </li>
         ))}
       </ul>

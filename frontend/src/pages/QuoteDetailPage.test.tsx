@@ -162,6 +162,44 @@ it('rejects a whitespace-only PO reference without calling the API', async () =>
   expect(screen.getByText(/enter the po number/i)).toBeInTheDocument();
 });
 
+it('surfaces the buyer-uploaded finished-look callout on a line so staff proof before printing', () => {
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        {
+          id: 5,
+          quote_id: 42,
+          job_id: null,
+          product_id: 3,
+          variant_id: null,
+          qty: 10,
+          unit_price: '10.00',
+          currency: 'SGD',
+          line_total: '100.00',
+          line_state: 'PENDING',
+          procured_qty: null,
+          procured_price: null,
+          lead_time_days: null,
+          customization: {
+            mode: 'buyer_uploaded',
+            reference_refs: ['artwork/a.png', 'artwork/b.png'],
+            placement_notes: 'Centre the crest on the left chest.',
+          },
+        },
+      ],
+    },
+  } as any);
+  asStaff();
+  renderPage();
+
+  // Both desktop and mobile views render the callout, so scope with getAllByText.
+  expect(screen.getAllByText(/proof before printing/i).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Centre the crest on the left chest/i).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/2 reference image\(s\) attached/i).length).toBeGreaterThan(0);
+});
+
 it('shows a "what happens next" note for a buyer in CHANGES_REQUESTED', () => {
   seedQuote('CHANGES_REQUESTED');
   asBuyer();
