@@ -245,27 +245,41 @@ drag from a logo drag, as the admin editor already does with a move threshold).
 ### Phase 3 — Drag-on-model for round / cylindrical surfaces (Tier 2)
 
 Same drag-on-model experience, extended to round walls. The real engineering.
-Additive; flat + fallback flows untouched.
+Additive; flat + fallback flows untouched. **Zone definition is admin-marked**
+(no fragile auto-detection): staff mark the cylinder in the zone editor.
 
-- **`lib/cylinderDetect.ts::detectCylinder(geometry)`** — detect the dominant
-  cylindrical surface: axis, radius, height range, angular extent. Return
-  `null` when no dominant cylinder (falls through to freeform).
+**Spike first (blocking gate).** The unwrap → rotary print file can only be
+validated on the physical rotary printer. Before any UI/editor build, ship a
+**parameterized calibration-unwrap generator** (inputs: `radius_mm`, `height_mm`,
+`angle_extent`, `DPI`; output: a flat PNG with a known-mm grid, dimension labels,
+and a TOP/seam marker). The operator prints it, wraps it on a real test cylinder,
+and measures scale / orientation / flip / resolution. The locked findings
+(px-per-mm, seam origin, axis direction, any mirror) feed the full build. Do NOT
+build the editor + patch decal until the calibration print measures correct.
+
+Full build (after the spike passes):
+
 - **Surface model** — generalise the flat `PrintZone` into a discriminated
-  `PrintSurface`:
+  `PrintSurface`, stored in the same `print_zone` JSON with a `kind`
+  discriminator (backward compatible; absent/`'flat'` = today's zones):
   - `{ kind: 'flat', ...PrintZone }` (existing)
-  - `{ kind: 'cylinder', axis, radius_mm, center, height_mm, angle_center,
+  - `{ kind: 'cylinder', axis, center, radius_mm, height_mm, angle_center,
     angle_extent }`
-  - Migration/serialisation updated; existing flat zones map to
-    `kind: 'flat'` (backward compatible).
-- **Placement** — the buyer drags the logo on the round wall (raycast → wrap
-  onto the cylinder), around (θ) and along height, clamped to the detected
-  extent; the decal follows the drag on the real mesh.
-- **Print file** — unwrap the cylindrical region to a flat rectangle
-  (θ → x arc-length, height → y) at the rotary's print resolution; store as
-  `print_file_ref` like the flat path. **Validate the unwrap with a real test
-  print early** (a spike) before building the full UI.
-- **Admin editor** — extend `Model3dZoneEditor` to detect + edit a cylindrical
-  surface (radius/height/angular extent controls).
+- **Decal — parametric cylindrical patch (NOT DecalGeometry projection).**
+  Generate a cylinder-segment mesh over `[angle_center ± angle_extent/2] ×
+  height`, UV-mapped to the artwork. This makes the unwrap exact and trivial: the
+  patch's UV rectangle IS the print file (arc-length `radius·θ` → x, height → y),
+  using the spike-locked resolution + orientation.
+- **Placement** — the buyer drags the logo on the round wall; a pure
+  `cylinderHitToFraction(worldHit, surface) → { fu (angle), fv (height) }`
+  (unit-tested like `zoneMapping`) maps the raycast hit; clamp to the angular +
+  height window. Reuses the Phase 2 placement handle, CanvasTexture refresh, and
+  rotate control unchanged — only the surface + hit mapping differ.
+- **Admin editor** — extend `Model3dZoneEditor`: click the wall to place, set
+  radius/height/angular-window, render the curved patch preview, save the
+  cylinder surface.
+- **Print file** — the unwrapped patch UV rectangle at the spike-locked rotary
+  resolution; store as `print_file_ref` like the flat path.
 - **Metadata** — carry cylindrical placement in mm (arc length, height) in the
   captured layout for production.
 
