@@ -72,6 +72,12 @@ class StoreQuoteRequest extends FormRequest
             // rendered layer ships inside the artwork; this is the recorded
             // source text, priced per unit via fee.customization_per_unit.
             'line_items.*.customization.text' => ['nullable', 'string', 'max:500'],
+            // Fallback ("upload finished look"): the buyer describes intent that
+            // production proofs before printing, rather than a ready print file.
+            'line_items.*.customization.mode' => ['nullable', 'string', 'in:designer,buyer_uploaded'],
+            'line_items.*.customization.placement_notes' => ['nullable', 'string', 'max:2000'],
+            'line_items.*.customization.reference_refs' => ['nullable', 'array', 'max:6'],
+            'line_items.*.customization.reference_refs.*' => ['string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
         ];
     }
 
@@ -176,6 +182,24 @@ class StoreQuoteRequest extends FormRequest
                             "line_items.{$index}.customization.{$refKey}",
                             'Artwork reference does not resolve to an uploaded file.'
                         );
+                    }
+                }
+
+                // Reference images (fallback) get the same on-disk existence
+                // guard as the print refs — a well-formed but foreign key must
+                // not reach the floor.
+                $refs = $line['customization']['reference_refs'] ?? null;
+                if (is_array($refs)) {
+                    foreach ($refs as $refIndex => $ref) {
+                        if (is_string($ref)
+                            && preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) === 1
+                            && ! $artworkDisk->exists($ref)
+                        ) {
+                            $validator->errors()->add(
+                                "line_items.{$index}.customization.reference_refs.{$refIndex}",
+                                'Reference image does not resolve to an uploaded file.'
+                            );
+                        }
                     }
                 }
             }

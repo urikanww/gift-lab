@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Company;
+use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Variant;
@@ -124,6 +125,40 @@ it('accepts a genuine uploaded print_file_ref alongside the proof artwork', func
     $this->postJson('/api/quotes', quotePayload([
         'customization' => ['logo_size' => 'M', 'artwork_ref' => $artwork, 'print_file_ref' => $printFile],
     ]))->assertCreated();
+});
+
+// Fallback ("upload finished look"): the buyer submits reference image(s) +
+// placement notes that production proofs before printing, instead of a ready
+// print file. The three new fields validate and persist onto the LineItem.
+it('accepts buyer-uploaded fallback fields and persists them on the line', function (): void {
+    Storage::disk((string) config('filesystems.artwork_disk'))->put('artwork/ref-photo.png', 'x');
+
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', quotePayload([
+        'qty' => max(1, (int) $this->product->min_order_qty),
+        'customization' => [
+            'mode' => 'buyer_uploaded',
+            'reference_refs' => ['artwork/ref-photo.png'],
+            'placement_notes' => 'Centre of the lid, ~4cm wide.',
+        ],
+    ]))->assertCreated();
+
+    $line = LineItem::query()->latest('id')->firstOrFail();
+    expect($line->customization['mode'])->toBe('buyer_uploaded');
+    expect($line->customization['reference_refs'])->toBe(['artwork/ref-photo.png']);
+});
+
+it('rejects a reference_ref that does not resolve to an uploaded file', function (): void {
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', quotePayload([
+        'qty' => max(1, (int) $this->product->min_order_qty),
+        'customization' => [
+            'mode' => 'buyer_uploaded',
+            'reference_refs' => ['artwork/does-not-exist.png'],
+        ],
+    ]))->assertStatus(422)->assertJsonValidationErrors('line_items.0.customization.reference_refs.0');
 });
 
 // B9 (F3): a variant from another product cannot be attached to a line.
