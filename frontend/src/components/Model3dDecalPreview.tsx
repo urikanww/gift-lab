@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import api from '../lib/api';
+import { Button } from '../ui';
 import { buildDecalGeometry, renderPrintFile } from '../lib/modelDecal';
 import { worldToZoneFraction } from '../lib/zoneMapping';
 import type { PrintZone } from '../lib/printZone';
@@ -33,6 +34,8 @@ interface Props {
   dirtyTick?: number;
   /** Reports the zone fraction (0..1) as the buyer drags the logo. */
   onDragPlacement?: (fu: number, fv: number) => void;
+  /** Reports the accumulated logo angle in degrees as the buyer nudges rotation. */
+  onRotate?: (deg: number) => void;
 }
 
 export interface DecalPreviewHandle {
@@ -52,11 +55,14 @@ const FILAMENT_HEX: Record<string, number> = {
 };
 
 const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model3dDecalPreview(
-  { productKey, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement },
+  { productKey, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement, onRotate },
   ref,
 ) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  // Accumulated logo rotation (degrees, wrapped into [0,360)). Reported to the
+  // parent via onRotate; the parent flattens it into the placement.
+  const [angle, setAngle] = useState(0);
 
   // three.js objects kept in refs so the artwork/zone effect and the imperative
   // handle can reach the live mesh + scene without re-running the loader effect.
@@ -349,16 +355,68 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
     [zone],
   );
 
+  // Rotate the logo by a step, wrapping the accumulated angle into [0,360), and
+  // report the new value to the parent so it can update the placement.
+  const bump = (delta: number) => {
+    setAngle((a) => {
+      const next = (((a + delta) % 360) + 360) % 360;
+      onRotate?.(next);
+      return next;
+    });
+  };
+  const resetAngle = () => {
+    setAngle(0);
+    onRotate?.(0);
+  };
+
   if (state === 'error') return null;
+
+  // Show the rotate control only while interactive and there is a logo to rotate.
+  const showRotate = state === 'ready' && interactive === true && (!!liveCanvas || !!artworkDataUrl);
 
   return (
     <div className={className}>
-      <div
-        ref={mountRef}
-        className="h-[360px] w-full rounded-lg border border-border bg-surface"
-        aria-label="Live 3D decal preview"
-        role="img"
-      />
+      {/* Relative wrapper so the rotate overlay can sit over the canvas mount.
+          The overlay is a SIBLING of the WebGL canvas (which three.js appends
+          inside mountRef), so its pointer events never reach the drag handlers. */}
+      <div className="relative">
+        <div
+          ref={mountRef}
+          className="h-[360px] w-full rounded-lg border border-border bg-surface"
+          aria-label="Live 3D decal preview"
+          role="img"
+        />
+        {showRotate && (
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-border bg-surface/90 px-1.5 py-1 shadow-md backdrop-blur">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 px-0"
+              aria-label="Rotate left"
+              onClick={() => bump(-15)}
+            >
+              ↺
+            </Button>
+            <button
+              type="button"
+              onClick={resetAngle}
+              aria-label="Reset rotation"
+              className="min-w-[2.75rem] rounded px-1 text-center text-xs tabular-nums text-fg-subtle hover:text-fg"
+            >
+              {Math.round(angle)}°
+            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 px-0"
+              aria-label="Rotate right"
+              onClick={() => bump(15)}
+            >
+              ↻
+            </Button>
+          </div>
+        )}
+      </div>
       {state === 'loading' && <p className="mt-2 text-sm text-fg-muted">Loading 3D preview…</p>}
       {state === 'ready' && (
         <p className="mt-2 text-sm text-fg-subtle">Live preview · your artwork on the real model</p>
