@@ -543,7 +543,7 @@ function BuyerUploadedNote({ customization }: { customization: NonNullable<LineI
   const refCount = customization.reference_refs?.length ?? 0;
   return (
     <div className="mt-2 rounded-md border border-warning/30 bg-warning-bg p-2 text-sm">
-      <p className="font-medium text-fg">Buyer-uploaded finished look — proof before printing</p>
+      <p className="font-medium text-fg">Finished look uploaded — our team proofs this before printing</p>
       {customization.placement_notes && (
         <p className="mt-1 text-fg-muted">Notes: {customization.placement_notes}</p>
       )}

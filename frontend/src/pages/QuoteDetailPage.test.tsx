@@ -195,7 +195,7 @@ it('surfaces the buyer-uploaded finished-look callout on a line so staff proof b
   renderPage();
 
   // Both desktop and mobile views render the callout, so scope with getAllByText.
-  expect(screen.getAllByText(/proof before printing/i).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/our team proofs this before printing/i).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Centre the crest on the left chest/i).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/2 reference image\(s\) attached/i).length).toBeGreaterThan(0);
 });
