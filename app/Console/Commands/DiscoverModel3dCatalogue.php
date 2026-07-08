@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Artisan;
  * Nightly 3D catalogue discovery. A single keyword-less "popular browse" pull
  * per source via catalogue:pull-3d --browse=popular, capped by pricing_configs
  * catalogue/browse_cap. Ingested items still pass the full publish gate
- * (licence, local file, verified estimates) — discovery only feeds the
+ * (licence, local file, verified estimates) - discovery only feeds the
  * pipeline, it never bypasses the gates.
  */
 class DiscoverModel3dCatalogue extends Command

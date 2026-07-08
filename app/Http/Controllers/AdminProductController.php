@@ -24,7 +24,7 @@ use Throwable;
 /**
  * Staff CRUD over CORE products and their variants (audit E4): ops can add a
  * new blank with variants + stock, or fix a price, without touching seeders or
- * the DB. Scraped/3D items keep their own ingest + gate flows — this surface
+ * the DB. Scraped/3D items keep their own ingest + gate flows - this surface
  * manages the CORE class only.
  */
 class AdminProductController extends Controller
@@ -225,7 +225,7 @@ class AdminProductController extends Controller
     /**
      * Bulk-publish a batch of READY_TO_APPROVE products. Reuses
      * AdminCatalogueController::publish() per item so the full completeness/
-     * licence gate runs exactly as it does for a single publish — this never
+     * licence gate runs exactly as it does for a single publish - this never
      * duplicates that logic.
      */
     public function bulkPublish(Request $request): JsonResponse
@@ -471,7 +471,7 @@ class AdminProductController extends Controller
         ]);
 
         // Create at zero, then seed the opening balance through the ledger so the
-        // cached stock_on_hand always equals SUM(delta) — never a direct write.
+        // cached stock_on_hand always equals SUM(delta) - never a direct write.
         $variant = Variant::create([
             'product_id' => $product->id,
             'attributes' => $validated['attributes'],
@@ -512,7 +512,7 @@ class AdminProductController extends Controller
             'price_delta' => $variant->price_delta,
         ];
 
-        // stock_on_hand is a manual absolute set here — translate it into a
+        // stock_on_hand is a manual absolute set here - translate it into a
         // signed ADJUST movement through the ledger, never a direct column write.
         $targetStock = $validated['stock_on_hand'] ?? null;
         unset($validated['stock_on_hand']);

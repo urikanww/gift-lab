@@ -72,7 +72,7 @@ it('adds a per-unit logo surcharge by size band on customized lines', function (
         ->and($large['lines'][0]['line_total'])->toBe(795.50);   // +0.90 × 50
 });
 
-// Audit D9/D10: logo + name/text combine additively — flat fee + per-unit
+// Audit D9/D10: logo + name/text combine additively - flat fee + per-unit
 // size surcharge + per-unit text fee (fee.customization_per_unit).
 it('prices logo and text personalisation additively', function (): void {
     \App\Models\PricingConfig::updateOrCreate(
@@ -136,7 +136,7 @@ it('skips the bulk discount when a price override is set', function (): void {
         'base_cost' => 10, 'print_method' => 'UV', 'price_override' => 3.00,
     ]);
 
-    // qty 50 is at the bulk threshold, but the override is flat — no discount.
+    // qty 50 is at the bulk threshold, but the override is flat - no discount.
     expect($this->pricing->unitPrice($product, null, 50))->toBe(3.00);
 });
 

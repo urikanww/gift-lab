@@ -28,7 +28,7 @@ return new class extends Migration
     public function down(): void
     {
         // Best-effort revert. Rows carrying a newly-allowed licence would fall
-        // outside the old enum set — collapse those to BLOCKED first so the
+        // outside the old enum set - collapse those to BLOCKED first so the
         // narrowed column accepts every remaining value.
         foreach (['products', 'model3ds'] as $table) {
             \Illuminate\Support\Facades\DB::table($table)

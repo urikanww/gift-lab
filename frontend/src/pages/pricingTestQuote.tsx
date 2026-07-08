@@ -38,7 +38,7 @@ const money = (v: number | string, currency = 'SGD') =>
 
 /**
  * One breakdown row: label + amount, with an optional sign/emphasis, an ⓘ
- * tooltip explaining the line, and — when it maps to a config knob — a clickable
+ * tooltip explaining the line, and - when it maps to a config knob - a clickable
  * label that jumps to that setting below.
  */
 function Row({
@@ -100,7 +100,7 @@ function Row({
 /**
  * Live "what does this knob do?" panel for the pricing editor. Prices a sample
  * line against the same public estimate endpoint the storefront uses, so a
- * staffer can change a config above, re-run, and watch the number move — no
+ * staffer can change a config above, re-run, and watch the number move - no
  * need to understand the maths.
  */
 export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: string) => void }) {
@@ -387,7 +387,7 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
                         value={estimate.delivery}
                         currency={c}
                         sign="+"
-                        info="Shipping by chargeable weight — the greater of actual and volumetric weight."
+                        info="Shipping by chargeable weight - the greater of actual and volumetric weight."
                         target="delivery.table"
                         onJump={onEditConfig}
                       />

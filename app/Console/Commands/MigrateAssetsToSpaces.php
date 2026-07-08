@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
  *
  * The s3 disk is root-scoped to the DO_STORAGE_FOLDER folder (GIFT_LAB) in
  * config/filesystems.php, so every object this command writes lands inside
- * that folder — it cannot touch anything outside it.
+ * that folder - it cannot touch anything outside it.
  *
  * Requires AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env. Idempotent:
  * re-running overwrites the same object keys and rewrites the same URLs.
@@ -32,7 +32,7 @@ class MigrateAssetsToSpaces extends Command
     public function handle(): int
     {
         if (! $this->option('dry-run') && (string) config('filesystems.disks.s3.key') === '') {
-            $this->error('AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set — fill them in .env first.');
+            $this->error('AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set - fill them in .env first.');
 
             return self::FAILURE;
         }
@@ -46,7 +46,7 @@ class MigrateAssetsToSpaces extends Command
             $probe = '.giftlab-write-probe';
             $spaces->put($probe, 'ok');
             if ($spaces->get($probe) !== 'ok') {
-                $this->error('Spaces probe failed — check credentials/bucket/endpoint.');
+                $this->error('Spaces probe failed - check credentials/bucket/endpoint.');
 
                 return self::FAILURE;
             }

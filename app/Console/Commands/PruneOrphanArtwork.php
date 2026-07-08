@@ -88,7 +88,7 @@ class PruneOrphanArtwork extends Command
         $keys = [];
 
         // Line items store the ref inside the customization JSON blob, so it
-        // can't be plucked in SQL portably (SQLite/MySQL JSON differ) — read the
+        // can't be plucked in SQL portably (SQLite/MySQL JSON differ) - read the
         // cast array. Bounded by line count; runs once per daily sweep.
         LineItem::query()
             ->withTrashed()

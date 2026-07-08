@@ -8,7 +8,7 @@
 // (e.g. `--color-primary: 255 59 95`) and wrapped here as
 // `rgb(var(--token) / <alpha-value>)`. That `<alpha-value>` placeholder is what
 // lets Tailwind's alpha modifiers (bg-primary/95, text-fg/70, ring-primary/40)
-// emit valid rgb() and render opaque as intended — a bare `var(--token)` mapping
+// emit valid rgb() and render opaque as intended - a bare `var(--token)` mapping
 // silently produced transparent surfaces for every /opacity utility. The two
 // `--color-*-bg` tint tokens stay bare because they are complete colour values,
 // consumed whole and never alpha-modified.
@@ -59,7 +59,7 @@ export default {
           800: rgb('--ink-800'),
           900: rgb('--ink-900'),
         },
-        // Semantic aliases — prefer these in app code.
+        // Semantic aliases - prefer these in app code.
         bg: rgb('--color-bg'),
         surface: {
           DEFAULT: rgb('--color-surface'),
@@ -82,7 +82,7 @@ export default {
         },
         success: {
           DEFAULT: rgb('--color-success'),
-          // Complete tint colour (may be rgba in dark) — consumed whole.
+          // Complete tint colour (may be rgba in dark) - consumed whole.
           bg: 'var(--color-success-bg)',
         },
         danger: {

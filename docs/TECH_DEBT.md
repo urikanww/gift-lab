@@ -14,5 +14,5 @@ site, the debt, and the exit criteria.
   clean product render (or at minimum a cropped/whitened thumbnail); then drop
   the `referrerPolicy="no-referrer"` workaround in the storefront.
 - **Note:** the designer no longer uses scraped photos as a design surface for
-  MODEL_3D items (they render the STL face directly — audit G1/G2); this entry
+  MODEL_3D items (they render the STL face directly - audit G1/G2); this entry
   covers catalogue/browse imagery and any future SCRAPED_UV designer surface.

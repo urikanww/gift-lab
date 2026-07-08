@@ -11,8 +11,8 @@ use Throwable;
 
 /**
  * Live Shopee Affiliate Open API client (GraphQL). This is a permitted,
- * ToS-clean product feed — the affiliate program exists precisely to let
- * partners display Shopee listings — not HTML scraping, and never a checkout
+ * ToS-clean product feed - the affiliate program exists precisely to let
+ * partners display Shopee listings - not HTML scraping, and never a checkout
  * bot (spec 7 stands: procurement remains a human purchase).
  *
  * The feed provides name/price/image/link only. Dimensions, weight and
@@ -20,7 +20,7 @@ use Throwable;
  * items intentionally land in the admin completeness gate for staff to
  * complete before they can publish.
  *
- * Auth: SHA256 app signature — Authorization: SHA256 Credential={appId},
+ * Auth: SHA256 app signature - Authorization: SHA256 Credential={appId},
  * Timestamp={ts}, Signature=sha256(appId + ts + body + secret).
  *
  * sourceProductId format: "{itemId}" or "{shopId}_{itemId}" (the pair appears
@@ -61,7 +61,7 @@ final class HttpShopeeAffiliateClient implements ScraperClient
         $node = $result['productOfferV2']['nodes'][0] ?? null;
 
         if ($node === null) {
-            // Listing removed/expired upstream — signal dead source so the
+            // Listing removed/expired upstream - signal dead source so the
             // resync flips the product to CANNOT_PUBLISH instead of erroring.
             return new ScrapedProductData(
                 sourceProductId: $sourceProductId,
@@ -140,7 +140,7 @@ final class HttpShopeeAffiliateClient implements ScraperClient
     }
 
     /**
-     * Signed GraphQL request. Null on any failure — a feed outage degrades
+     * Signed GraphQL request. Null on any failure - a feed outage degrades
      * only the scraped catalogue, never the core flow (spec principle 3).
      *
      * @param  array<string, mixed>  $variables

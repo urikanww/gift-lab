@@ -26,7 +26,7 @@ const TIMELINE: QuoteState[] = [
 function timelineIndex(state: QuoteState): number {
   const i = TIMELINE.indexOf(state);
   if (i !== -1) return i;
-  // Off-path states (CHANGES_REQUESTED, CLOSED, CANCELLED) — treat as end/first.
+  // Off-path states (CHANGES_REQUESTED, CLOSED, CANCELLED) - treat as end/first.
   if (state === 'CLOSED') return TIMELINE.length - 1;
   return 0;
 }
@@ -34,13 +34,13 @@ function timelineIndex(state: QuoteState): number {
 /**
  * Passive "what happens next" copy for buyer-facing states that carry no buyer
  * action. Keeps the buyer oriented (whose court the ball is in) after they hand
- * off — e.g. right after requesting changes there's otherwise no confirmation
+ * off - e.g. right after requesting changes there's otherwise no confirmation
  * of what follows. States WITH a buyer action (SENT, PROOF_APPROVED) are
  * handled by the "Next step" action card instead; CANCELLED is surfaced by the
  * timeline card.
  */
 const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
-  ACCEPTED: 'Quote accepted. Our team is preparing your first proof — we’ll let you know when it’s ready to review.',
+  ACCEPTED: 'Quote accepted. Our team is preparing your first proof - we’ll let you know when it’s ready to review.',
   CHANGES_REQUESTED: 'We’ve received your change request and will send a revised proof shortly.',
   PROOFING: 'Your proof is being prepared. We’ll notify you as soon as it’s ready to review.',
   PO_ISSUED: 'Payment received and a purchase order has been issued. We’re confirming your order for production.',
@@ -99,7 +99,7 @@ export default function QuoteDetailPage() {
   const latestOpenProof = (proofs: Proof[] | undefined): Proof | null =>
     proofs?.find((p) => p.state === 'SENT') ?? null;
 
-  // Light client-side validation for the staff free-text refs — catches the
+  // Light client-side validation for the staff free-text refs - catches the
   // obvious mistakes (blank, spaces in a storage key, runaway length) before a
   // round-trip; the backend remains the authority.
   const validateArtworkRef = (value: string): string | undefined => {
@@ -154,7 +154,7 @@ export default function QuoteDetailPage() {
                 <p className="mt-1 text-sm text-fg-muted">
                   Tracking code{' '}
                   <span className="font-mono font-semibold text-fg">{quote.tracking_code}</span>
-                  <span className="text-fg-subtle"> — share to track without an account at /track</span>
+                  <span className="text-fg-subtle"> - share to track without an account at /track</span>
                 </p>
               )}
             </div>
@@ -264,7 +264,7 @@ export default function QuoteDetailPage() {
                         disabled={busy}
                         onClick={() =>
                           run(async () => {
-                            // API requires a note with request_changes — fall
+                            // API requires a note with request_changes - fall
                             // back to a generic one if the buyer left it blank.
                             await decideProof(
                               latestOpenProof(quote.proofs)!.id,
@@ -320,7 +320,7 @@ export default function QuoteDetailPage() {
                     disabled={busy}
                     onClick={() =>
                       run(async () => {
-                        // Only toast on immediate capture — the Stripe path
+                        // Only toast on immediate capture - the Stripe path
                         // redirects away, so feedback there would be lost.
                         const paid = await payNow(quote.id);
                         if (paid && !useQuoteStore.getState().error) {
@@ -337,7 +337,7 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
-        {/* Buyer status note — passive "what happens next" for every
+        {/* Buyer status note - passive "what happens next" for every
             buyer-facing state with no buyer action, so the ball is never
             silently in our court. Mirrors the staff fallback line. */}
         {!isStaff && BUYER_STATUS_NOTE[quote.state] && (

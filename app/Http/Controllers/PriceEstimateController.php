@@ -13,7 +13,7 @@ use Illuminate\Http\JsonResponse;
 
 /**
  * Public, no-account live price estimate for the designer. Event-driven (called
- * on the client when the cart changes) — never polled. Only PUBLISHED products
+ * on the client when the cart changes) - never polled. Only PUBLISHED products
  * are priced; anything else is rejected so the estimate can't leak drafts.
  */
 class PriceEstimateController extends Controller
@@ -27,7 +27,7 @@ class PriceEstimateController extends Controller
         $specs = $request->array('line_items');
 
         // Batch-load all referenced products/variants up front (two queries
-        // total) instead of Product::find/Variant::find per line — the old path
+        // total) instead of Product::find/Variant::find per line - the old path
         // issued up to ~2 queries per line item (100-line cart → ~200 queries)
         // on this public, unauthenticated, per-cart-change endpoint.
         $productIds = array_values(array_unique(array_map(

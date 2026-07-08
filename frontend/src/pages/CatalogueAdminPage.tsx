@@ -88,7 +88,7 @@ function ItemThumb({ item }: { item: AdminCatalogueItem }) {
 /**
  * Inline production tools for a MODEL_3D row: confirm filament estimates
  * (clears the estimates_unverified hold) and attach the printable model file
- * (clears missing_model_file — e.g. Cults3D has no download API).
+ * (clears missing_model_file - e.g. Cults3D has no download API).
  */
 function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
   const { verifyEstimates, uploadModelFile } = useCatalogueAdminStore();
@@ -410,7 +410,7 @@ export default function CatalogueAdminPage() {
         />
       ) : (
         <Card padding="none" className="overflow-hidden">
-          {/* Column header. Rows stack as cards below lg — the staff sidebar
+          {/* Column header. Rows stack as cards below lg - the staff sidebar
               (240px, shown from md) leaves too little room for the fixed table
               columns until lg, where they'd overflow and clip the Card. */}
           <div className="hidden grid-cols-[2rem_1fr_8rem_10rem_1fr_9rem] items-center gap-4 border-b border-border bg-surface-2/60 px-4 py-3 text-2xs font-semibold uppercase tracking-wide text-fg-subtle lg:grid">
@@ -489,7 +489,7 @@ export default function CatalogueAdminPage() {
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-sm text-fg-subtle">—</span>
+                    <span className="text-sm text-fg-subtle">-</span>
                   )}
                 </div>
 
@@ -519,14 +519,14 @@ export default function CatalogueAdminPage() {
                       instead of leaving a dead-end empty cell. */}
                   {it.publish_state === 'PENDING' && (
                     <span className="text-xs text-fg-subtle lg:text-right">
-                      No action needed — resolves on next catalogue sync.
+                      No action needed - resolves on next catalogue sync.
                     </span>
                   )}
                   {it.publish_state === 'CANNOT_PUBLISH' && (
                     <span className="text-xs text-fg-subtle lg:text-right">
                       {hasInlineTools(it)
                         ? 'Use the tools below to clear the blockers.'
-                        : 'Fix the blockers at the source — re-checked on next sync.'}
+                        : 'Fix the blockers at the source - re-checked on next sync.'}
                     </span>
                   )}
                 </div>

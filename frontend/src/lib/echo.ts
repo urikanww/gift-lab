@@ -2,7 +2,7 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
 // Laravel Reverb speaks the Pusher protocol. This is the ONLY real-time
-// transport in the app — there is no polling anywhere (hard spec constraint).
+// transport in the app - there is no polling anywhere (hard spec constraint).
 
 declare global {
   interface Window {
@@ -79,7 +79,7 @@ export function disconnectEcho(): void {
 
 // Refcounted private-channel membership. laravel-echo keeps ONE channel per name
 // across the whole app, so multiple stores listening on the same channel must
-// NOT each call echo.leave() — the first leaver would tear the channel out from
+// NOT each call echo.leave() - the first leaver would tear the channel out from
 // under the others. Callers join/leave through this registry; the underlying
 // subscription is torn down only when the last participant leaves.
 const sharedRefs = new Map<string, number>();

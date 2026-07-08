@@ -1,12 +1,12 @@
 # Gift-Lab Design System
 
 The shared visual + motion foundation for the Gift-Lab frontend. **Downstream
-feature work must consume these tokens, primitives, and motion presets — do not
+feature work must consume these tokens, primitives, and motion presets - do not
 reinvent them or hard-code hex / durations.**
 
 ---
 
-## 1. Chosen aesthetic — "Modern Boutique"
+## 1. Chosen aesthetic - "Modern Boutique"
 
 A warm, editorial, commerce-clear identity. Think a well-art-directed DTC
 storefront (Aesop calm + Faire clarity), not a generic SaaS dashboard.
@@ -19,11 +19,11 @@ storefront (Aesop calm + Faire clarity), not a generic SaaS dashboard.
 - **Ink-forward neutrals.** The neutral scale is a warm brown-grey ("ink"), so
   text feels printed rather than pixelated.
 - **Confident clay brand.** A terracotta / clay `--brand-500 (#cf5732)` carries
-  primary actions and identity — distinctive, human, giftable.
+  primary actions and identity - distinctive, human, giftable.
 - **Jade accent** (`--accent-500 #1f8f63`) for success and positive commerce
   affordances.
 - **Editorial type pairing.** Display headings in **Fraunces** (a soft,
-  high-contrast serif with optical sizing) paired with **Inter** for UI text —
+  high-contrast serif with optical sizing) paired with **Inter** for UI text -
   the serif/grotesk contrast is the signature move.
 - **Calm, deliberate motion.** Short (140–360ms) transform/opacity transitions
   on a single standard easing curve. Nothing bounces gratuitously; springs are
@@ -50,7 +50,7 @@ runtime-themeable (light/dark) while still usable as ergonomic Tailwind classes.
 
 Prefer the **Tailwind utility** (left) which resolves to the **CSS variable**.
 
-### Color — semantic (use these first)
+### Color - semantic (use these first)
 
 | Utility | Token | Meaning |
 | --- | --- | --- |
@@ -65,9 +65,9 @@ Prefer the **Tailwind utility** (left) which resolves to the **CSS variable**.
 | `text-info` `bg-info-bg` | `--color-info*` | Informational |
 | `ring-ring` | `--color-ring` | Focus ring |
 
-### Color — scales
+### Color - scales
 
-`brand-{50…900}`, `accent-{50…900}`, `ink-{0,50…900}` — full ramps for custom
+`brand-{50…900}`, `accent-{50…900}`, `ink-{0,50…900}` - full ramps for custom
 compositions. `brand.DEFAULT` = current primary; `accent.DEFAULT` = success.
 
 ### Typography
@@ -76,11 +76,11 @@ compositions. `brand.DEFAULT` = current primary; `accent.DEFAULT` = success.
 - Sizes: `text-2xs … text-6xl` (see `tailwind.config.js`). Body default 15px.
 - Headings (`h1–h4`) auto-use Fraunces via base layer.
 
-### Radii — `rounded-{xs,sm,md,lg,xl,2xl,full}` → `--radius-*`
+### Radii - `rounded-{xs,sm,md,lg,xl,2xl,full}` → `--radius-*`
 
-### Shadows (layered) — `shadow-{xs,sm,card,md,lg}` + `shadow-focus` → `--shadow-*`
+### Shadows (layered) - `shadow-{xs,sm,card,md,lg}` + `shadow-focus` → `--shadow-*`
 
-### Z-index — `z-{base,raised,sticky,header,dropdown,overlay,modal,toast,tooltip}`
+### Z-index - `z-{base,raised,sticky,header,dropdown,overlay,modal,toast,tooltip}`
 
 ### Motion tokens
 
@@ -92,12 +92,12 @@ compositions. `brand.DEFAULT` = current primary; `accent.DEFAULT` = success.
 
 `<ThemeProvider>` sets `data-theme="light|dark"` on `<html>` (persisted to
 localStorage, respects `prefers-color-scheme`). Dark mode flips token values
-automatically — components need no dark-specific classes. Toggle via
+automatically - components need no dark-specific classes. Toggle via
 `useTheme().toggleTheme()`.
 
 ---
 
-## 4. Primitives — `src/ui/`
+## 4. Primitives - `src/ui/`
 
 Import from the barrel: `import { Button, Card, Modal, useToast } from '../ui';`
 All primitives are typed (no `any`), keyboard-accessible, focus-visible, ARIA-wired,
@@ -129,19 +129,19 @@ zero-states with actions.
 
 ---
 
-## 5. Motion presets — `src/motion/`
+## 5. Motion presets - `src/motion/`
 
 Import from the barrel: `import { fadeInUp, staggerContainer, Motion } from '../motion';`
 
 ### Variants (drive with `initial="hidden" animate="visible" exit="exit"`)
 
-- `fadeInUp` — workhorse content enter (fade + rise).
-- `fadeIn` — fade only.
-- `scaleIn` — pop from 0.96 (modals, popovers, cards).
-- `slideUp` — from bottom edge (sheets, toasts).
-- `staggerContainer` + `staggerItem` — stagger a list; put the container variant
+- `fadeInUp` - workhorse content enter (fade + rise).
+- `fadeIn` - fade only.
+- `scaleIn` - pop from 0.96 (modals, popovers, cards).
+- `slideUp` - from bottom edge (sheets, toasts).
+- `staggerContainer` + `staggerItem` - stagger a list; put the container variant
   on the parent, item variant on each child.
-- `pageVariants` — used by the shell's route transition (see below).
+- `pageVariants` - used by the shell's route transition (see below).
 
 ### Transitions / springs
 
@@ -151,7 +151,7 @@ Import from the barrel: `import { fadeInUp, staggerContainer, Motion } from '../
 ### Reduced-motion
 
 - `useReducedMotionSafe()` → `true` when it's safe to animate.
-- `<Motion>` — reduced-motion-aware `motion.div`; strips animation props when the
+- `<Motion>` - reduced-motion-aware `motion.div`; strips animation props when the
   user opts out. Prefer it over raw `motion.div` in shared UI.
 - `withReducedMotion(variants, animate)` for one-off variant gating.
 
@@ -173,7 +173,7 @@ import { Motion, staggerContainer, staggerItem } from '../motion';
 
 The app shell (`components/Layout.tsx` → `components/AnimatedOutlet.tsx`) already
 wraps routed pages in `<AnimatePresence mode="wait">` keyed on `pathname`.
-**Pages get an enter/exit transition for free — do nothing.** For finer control
+**Pages get an enter/exit transition for free - do nothing.** For finer control
 within a page, wrap a section in `<PageTransition>`.
 
 ---
@@ -192,7 +192,7 @@ within a page, wrap a section in `<PageTransition>`.
 
 ## 7. Notes for downstream agents
 
-- **No path alias** is configured — use **relative imports** (`../ui`, `../motion`).
+- **No path alias** is configured - use **relative imports** (`../ui`, `../motion`).
 - Legacy hand-rolled classes (`.card`, `.btn`, `.table`, `.badge`, …) still exist
   in `index.css` as **transitional shims** repointed at the new tokens, so
   un-migrated pages don't break. When you restyle your page, replace those

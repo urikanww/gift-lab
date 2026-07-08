@@ -11,14 +11,14 @@ use App\Models\Variant;
 
 /**
  * Quote engine pricing. Every number is read from pricing_configs at quote time
- * (spec principle 5) — nothing here is hardcoded. All money is SGD, rounded to
+ * (spec principle 5) - nothing here is hardcoded. All money is SGD, rounded to
  * 2 dp at the boundary.
  */
 final class PricingService
 {
     /**
      * Per-unit landed (production) cost by product class. MODEL_3D has no
-     * sourced blank — its landed cost is filament consumed plus machine time,
+     * sourced blank - its landed cost is filament consumed plus machine time,
      * both from config (minutes-per-gram is the proxy until a slicer
      * integration supplies measured print times). Everything else is the
      * blank cost plus the variant delta.
@@ -53,7 +53,7 @@ final class PricingService
     /**
      * Per-unit price with its cost components exposed (landed cost, margin,
      * print, bulk discount). This is the single source of the unit maths;
-     * unitPrice() returns only the final figure. INTERNAL — landed cost and
+     * unitPrice() returns only the final figure. INTERNAL - landed cost and
      * margin must never reach the public storefront (business-intel leak).
      *
      * @return array{landed_cost: float, margin: float, print_per_unit: float, bulk_discount: float, unit_price: float, overridden: bool, price_override: ?float}
@@ -85,7 +85,7 @@ final class PricingService
         $marginAmount = $landed * $marginPct / 100;
         $marged = $landed + $marginAmount;
 
-        // MODEL_3D machine time is already inside landed cost — the flat
+        // MODEL_3D machine time is already inside landed cost - the flat
         // per-unit print fee applies only to decorate-a-blank methods.
         $printPerUnit = 0.0;
         if ($product->class !== ProductClass::Model3d) {
@@ -123,7 +123,7 @@ final class PricingService
     public function quoteTotals(array $lines): array
     {
         $customizationFee = (float) PricingConfig::value('fee', 'customization_flat', 0);
-        // Per-unit component for work repeated on every piece — name/text
+        // Per-unit component for work repeated on every piece - name/text
         // personalisation (spec 6.1: combinable with logo, priced additively;
         // audit D9/D10). Charged only on lines that carry text.
         $customizationPerUnit = (float) PricingConfig::value('fee', 'customization_per_unit', 0);
@@ -134,7 +134,7 @@ final class PricingService
         $setupFee = (float) PricingConfig::value('fee', 'setup_fee', 0);
         // UV decoration pass on a MODEL_3D part (audit G7): unitPrice skips
         // the per-unit print fee for MODEL_3D (machine time is in landed
-        // cost), but a customized 3D item still gets a UV pass — recover it.
+        // cost), but a customized 3D item still gets a UV pass - recover it.
         $printPerUnit = (array) PricingConfig::value('print_cost', 'per_unit', []);
         $uvDecorPerUnit = (float) ($printPerUnit['UV'] ?? 0);
 
@@ -182,7 +182,7 @@ final class PricingService
     /**
      * Full, itemised breakdown of a quote for the staff pricing tester: every
      * per-unit cost component and per-line fee, plus quote-level setup, delivery
-     * and total. INTERNAL/staff-only — it exposes landed cost + margin, which the
+     * and total. INTERNAL/staff-only - it exposes landed cost + margin, which the
      * public price estimate deliberately hides. Mirrors quoteTotals' maths.
      *
      * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
@@ -257,7 +257,7 @@ final class PricingService
 
     /**
      * Chargeable shipping weight (grams) for one unit: the greater of the
-     * actual weight and the volumetric/dimensional weight — the standard courier
+     * actual weight and the volumetric/dimensional weight - the standard courier
      * rule where a light-but-bulky item ships at its volume. Volumetric grams =
      * (L × W × H in mm) / 5000 (equivalent to the cm³/5000 kg convention).
      * If neither is available, a MODEL_3D part falls back to its filament

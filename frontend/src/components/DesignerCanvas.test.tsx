@@ -46,7 +46,7 @@ class FakeCanvas {
     created.push(this);
     // Mimic fabric v6's DOM surgery (C17): the mounted <canvas> is re-parented
     // into a library-owned .canvas-container div. Any React sibling anchored
-    // on the canvas node would then crash reconciliation — the isolation
+    // on the canvas node would then crash reconciliation - the isolation
     // wrapper in DesignerCanvas exists precisely to absorb this.
     const canvasEl = el as HTMLCanvasElement | null;
     if (canvasEl?.parentNode) {

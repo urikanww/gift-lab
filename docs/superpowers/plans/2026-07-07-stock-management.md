@@ -1,7 +1,7 @@
-# Stock Management Plan — UV vs 3D
+# Stock Management Plan - UV vs 3D
 
 Date: 2026-07-07
-Status: Proposed (design only — no code yet)
+Status: Proposed (design only - no code yet)
 
 ## Problem
 
@@ -26,7 +26,7 @@ You stock *different things* per track:
   `reorder_threshold` already fits. Keep it.
 - **3D = make-to-order.** Decision (2026-07-07): **no material counting yet.**
   3D products are always makeable; `stock_mode = MAKE_TO_ORDER`; on-hand is not
-  tracked. Material (filament grams) inventory is deferred — see Future.
+  tracked. Material (filament grams) inventory is deferred - see Future.
 
 ## Decisions locked
 
@@ -61,7 +61,7 @@ stock_movements
 Rules:
 - **Never mutate `stock_on_hand` directly.** Every change is a movement row.
 - `Variant.stock_on_hand` is kept as a **cached sum** of its movements, updated
-  inside the same DB transaction that inserts the movement. (Cache, not truth —
+  inside the same DB transaction that inserts the movement. (Cache, not truth -
   can be rebuilt from the ledger anytime.)
 - Reads stay cheap (read the cached column); audits/reconciliation replay the
   ledger.
@@ -104,10 +104,10 @@ this way via `MAKE_TO_ORDER`.
 Modeled as two **independent axes**, NOT a third `stock_mode` value (a third
 enum would overlap `MAKE_TO_ORDER` and mean different things per class):
 
-1. **Order-at-0 policy** — new flag `Product.allow_backorder` (bool, default
+1. **Order-at-0 policy** - new flag `Product.allow_backorder` (bool, default
    false). Only meaningful when `stock_mode = STOCKED`. Decision: applies to
    **UV/CORE only**; 3D stays `MAKE_TO_ORDER` and ignores it.
-2. **Procurement method** — *derived, not stored*:
+2. **Procurement method** - *derived, not stored*:
    - `SCRAPED_UV` + `source_url` → production task `PROCURE` (buy blank from
      affiliate source).
    - `MODEL_3D` → production task `PRINT`.
@@ -142,7 +142,7 @@ print). 3D on-demand skips `AWAITING_STOCK` and goes straight to `PRINT`.
 ## Phased build (for the later implementation session)
 
 1. **Migration** `stock_movements` + `StockMovement` model.
-2. **Service** `StockLedger` — `record(variant, delta, reason, ref, actor)` that
+2. **Service** `StockLedger` - `record(variant, delta, reason, ref, actor)` that
    inserts a movement and updates the cached `stock_on_hand` in one transaction.
    One choke point; nothing else touches the column.
 3. **Backfill** one `INIT` movement per existing variant = current
@@ -153,7 +153,7 @@ print). 3D on-demand skips `AWAITING_STOCK` and goes straight to `PRINT`.
    product `/history` audit view).
 6. **Frontend**: variant stock panel shows current on-hand + movement log;
    restock/adjust form posts a movement.
-7. **Reconcile command** `stock:reconcile` — recompute cached sums, report drift.
+7. **Reconcile command** `stock:reconcile` - recompute cached sums, report drift.
 
 ## Future (deferred, not now)
 
@@ -162,7 +162,7 @@ print). 3D on-demand skips `AWAITING_STOCK` and goes straight to `PRINT`.
   movements; failed print = `SCRAP` grams (real cost capture).
 - Printer capacity / `est_print_minutes` as a scheduling constraint.
 
-## Slice 2 — order-side (shipped 2026-07-07)
+## Slice 2 - order-side (shipped 2026-07-07)
 
 Map correction: stock is **not** consumed at quote ACCEPT. The real decrement is
 in `CoreProcurement::procure()` during the PROCURING gate, and a shortfall
@@ -184,27 +184,27 @@ Done:
 - Tests: 3 added to `ProcurementTest` (SALE ledgered, backorder negative, cancel
   RETURN). Full suite 261 green.
 
-### Backorder gating — DECIDED: proceed-now (2026-07-07)
+### Backorder gating - DECIDED: proceed-now (2026-07-07)
 Superseding the earlier "AWAITING_STOCK gate" note: a backordered line proceeds
 to `READY` immediately with a negative balance; no park-till-arrival state. The
 negative on-hand + drafted `SupplierReorder` is the buy-list. Rationale: the
 codebase already models physical arrival via
 `PENDING→PROCURING→PURCHASED→INBOUND→RECEIVED→READY`; a parallel `AWAITING_STOCK`
 would duplicate it. Accepted trade-off: a backordered line can reach the
-production queue before the affiliate blank is physically in hand — ops is
+production queue before the affiliate blank is physically in hand - ops is
 trusted not to print early. Strict hold-till-received remains available as an
 optional future refinement (Slice 3) but is not planned.
 
-## Slice 3 — buy-list + toggle (shipped 2026-07-07)
+## Slice 3 - buy-list + toggle (shipped 2026-07-07)
 
 Discovery: `SupplierReorder` drafts (raised by below-threshold / backorder
-procurement) had a model but **no route/controller/UI** — an invisible black
+procurement) had a model but **no route/controller/UI** - an invisible black
 hole. This slice surfaces and closes them.
 
 Done:
 - `AdminReorderController`: `GET /admin/supplier-reorders` (open drafts, newest
   first, with variant on-hand + affiliate `source_url`) and
-  `POST /admin/supplier-reorders/{reorder}/receive` — flips state to RECEIVED
+  `POST /admin/supplier-reorders/{reorder}/receive` - flips state to RECEIVED
   and, for variant-backed reorders, posts a `RESTOCK` movement through the ledger
   (pulls a negative backorder balance back toward zero). Filament reorders flip
   state only (no unit ledger yet). Staff-gated; double-receive → 422.
@@ -214,12 +214,12 @@ Done:
   disabled unless Stock mode = STOCKED.
 - Tests: `AdminReorderTest` (4) backend; frontend typecheck + 77 vitest green.
 
-## Slice 4 — remaining (deferred, low priority)
+## Slice 4 - remaining (deferred, low priority)
 - `GET /admin/variants/{id}/movements` history endpoint + frontend stock log
   (pure audit view; nothing operational blocks on it).
-- 3D filament material inventory (see Future) — still deferred by decision.
+- 3D filament material inventory (see Future) - still deferred by decision.
 
 ## Out of scope
 
-- Product rename + rename audit trail — already shipped 2026-07-07
+- Product rename + rename audit trail - already shipped 2026-07-07
   (`AdminProductController::update` now logs `name` before/after).

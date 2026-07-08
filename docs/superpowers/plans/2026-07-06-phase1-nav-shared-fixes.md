@@ -1,14 +1,14 @@
-# Phase 1 — Navigation & Shared Fixes Implementation Plan
+# Phase 1 - Navigation & Shared Fixes Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the staff sidebar sticky and stop the production queue from flashing a loading skeleton / resetting scroll after an action.
 
-**Architecture:** Two independent, frontend-only changes. Task 1 is a CSS/layout change to `StaffLayout` verified in-browser. Task 2 adds a `silent` option to `queueStore.fetchQueue` so the post-mutation safety refetch does not toggle `loading` — mirroring the pattern already in `catalogueAdminStore`.
+**Architecture:** Two independent, frontend-only changes. Task 1 is a CSS/layout change to `StaffLayout` verified in-browser. Task 2 adds a `silent` option to `queueStore.fetchQueue` so the post-mutation safety refetch does not toggle `loading` - mirroring the pattern already in `catalogueAdminStore`.
 
 **Tech Stack:** React, Zustand, Tailwind CSS, Vitest.
 
-**Note on scope:** The spec's "catalogue gate out of main nav" item is deferred to Phase 4, where the replacement "Catalogue gate" button is added to the Products page — removing it now would leave the gate reachable only by raw URL.
+**Note on scope:** The spec's "catalogue gate out of main nav" item is deferred to Phase 4, where the replacement "Catalogue gate" button is added to the Products page - removing it now would leave the gate reachable only by raw URL.
 
 ---
 
@@ -35,7 +35,7 @@ Change its className to pin it to the viewport and scroll internally when the na
 
 Start the preview and log in as superadmin (`superadmin@giftlab.local` / `ChangeMe!123`), open a long staff page (e.g. `/catalogue-admin` or `/product-admin`). Scroll the main content to the bottom.
 
-Expected: the left nav (Dashboard / Quotes / … / Products) stays fixed in view at the bottom of the scroll — it does not scroll away. Confirm via `preview_inspect` that the `<aside>` computed `position` is `sticky` and `top` is `0px`.
+Expected: the left nav (Dashboard / Quotes / … / Products) stays fixed in view at the bottom of the scroll - it does not scroll away. Confirm via `preview_inspect` that the `<aside>` computed `position` is `sticky` and `top` is `0px`.
 
 - [ ] **Step 3: Commit**
 
@@ -106,7 +106,7 @@ describe('queueStore', () => {
     expect(useQueueStore.getState().jobs).toHaveLength(1);
   });
 
-  it('advance refetches silently — never flips loading true', async () => {
+  it('advance refetches silently - never flips loading true', async () => {
     useQueueStore.setState({ jobs: [job], loading: false });
     post.mockResolvedValue({ data: {} });
     let resolveGet!: (v: unknown) => void;
@@ -126,7 +126,7 @@ describe('queueStore', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd frontend && npx vitest run src/stores/queueStore.test.ts`
-Expected: the second test FAILS — `advance` currently calls `fetchQueue()` which sets `loading: true`, so the mid-flight assertion `expect(loading).toBe(false)` fails.
+Expected: the second test FAILS - `advance` currently calls `fetchQueue()` which sets `loading: true`, so the mid-flight assertion `expect(loading).toBe(false)` fails.
 
 - [ ] **Step 3: Add a `silent` option to `fetchQueue` and use it in `advance`**
 
@@ -180,13 +180,13 @@ Expected: no output (clean).
 
 ```bash
 git add frontend/src/stores/queueStore.ts frontend/src/stores/queueStore.test.ts
-git commit -m "fix(production): silent refetch after advance — no skeleton flash or scroll jump"
+git commit -m "fix(production): silent refetch after advance - no skeleton flash or scroll jump"
 ```
 
 ---
 
 ## Self-review
 
-- **Spec coverage:** Phase 1 items 1.1 (sticky sidebar → Task 1) and 1.2 (production silent refetch → Task 2) are covered. Item 1.3 (gate out of nav) intentionally deferred to Phase 4 alongside its replacement button — noted at the top.
-- **Placeholder scan:** none — all steps carry exact classNames, code, commands, and expected output.
+- **Spec coverage:** Phase 1 items 1.1 (sticky sidebar → Task 1) and 1.2 (production silent refetch → Task 2) are covered. Item 1.3 (gate out of nav) intentionally deferred to Phase 4 alongside its replacement button - noted at the top.
+- **Placeholder scan:** none - all steps carry exact classNames, code, commands, and expected output.
 - **Type consistency:** `fetchQueue(opts?: { silent?: boolean })` matches interface and both call sites (`advance`, `subscribe`); `ProductionJob` fixture matches the interface in `types.ts` (`track: '3D'`, `state: 'READY'`, `print_method: 'FDM'`).

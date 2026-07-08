@@ -9,7 +9,7 @@ it('classifies product names into marketplace categories', function (string $nam
     expect((new CategoryClassifier())->classify($name, ProductClass::Core))->toBe($expected);
 })->with([
     ['Ceramic Mug 11oz', 'drinkware'],
-    // 'tee' must NOT match inside 'Stainless' / 'Steel' — word boundaries required.
+    // 'tee' must NOT match inside 'Stainless' / 'Steel' - word boundaries required.
     ['Stainless Tumbler 500ml', 'drinkware'],
     ['Glass Water Bottle 600ml', 'drinkware'],
     ['Canvas Tote Bag', 'bags'],
@@ -20,7 +20,7 @@ it('classifies product names into marketplace categories', function (string $nam
     ['Bamboo Coaster', 'home'],
     ['Enamel Keychain', 'accessories'],
     ['Articulated Dragon Fidget', 'toys'],
-    // Plural tolerance — ordinary catalogue names are often pluralized.
+    // Plural tolerance - ordinary catalogue names are often pluralized.
     ['Ceramic Mugs Set', 'drinkware'],
     ['Enamel Pins', 'accessories'],
     // 'glass' must NOT pluralize into eyewear.

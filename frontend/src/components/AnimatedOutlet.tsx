@@ -7,7 +7,7 @@ import { pageVariants, useReducedMotionSafe } from '../motion';
  *
  * The rendered child element is snapshotted per-location so AnimatePresence can
  * cross-fade the outgoing and incoming pages. Individual pages do NOT need to
- * do anything — the shell provides the transition. (Pages may still use
+ * do anything - the shell provides the transition. (Pages may still use
  * <PageTransition> internally for finer control if desired.)
  *
  * Honors prefers-reduced-motion: renders the current outlet statically.

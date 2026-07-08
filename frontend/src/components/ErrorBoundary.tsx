@@ -15,7 +15,7 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Class-based error boundary — the only way to catch render/lifecycle throws in
+ * Class-based error boundary - the only way to catch render/lifecycle throws in
  * React. Without one, any component throwing during render blanks the whole SPA
  * to a white screen. Mounted both at the app root (main.tsx) and per-shell (so a
  * single route crash keeps the surrounding layout intact).

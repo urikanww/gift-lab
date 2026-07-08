@@ -98,7 +98,7 @@ export default function HomePage() {
         </div>
       </Motion>
 
-      {/* ── Shop by category — 8 marketplace tiles ────────────────────────── */}
+      {/* ── Shop by category - 8 marketplace tiles ────────────────────────── */}
       <section aria-labelledby="home-categories">
         <h2 id="home-categories" className="font-display text-xl text-fg sm:text-2xl">
           Shop by category
@@ -124,7 +124,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── New arrivals — horizontal snap rail. Hidden entirely when there
+      {/* ── New arrivals - horizontal snap rail. Hidden entirely when there
              is nothing to show (a bare heading over a blank rail reads as
              broken; the load error is already surfaced in the section below). */}
       {(loading || fresh.length > 0) && (
@@ -156,7 +156,7 @@ export default function HomePage() {
       </section>
       )}
 
-      {/* ── Featured gifts — dense grid. Backend has no popularity signal yet;
+      {/* ── Featured gifts - dense grid. Backend has no popularity signal yet;
              this is the name-ordered first page, so the label stays honest. */}
       <section aria-labelledby="home-popular">
         <div className="flex items-end justify-between gap-4">
@@ -213,7 +213,7 @@ export default function HomePage() {
 }
 
 /**
- * New-arrivals carousel. No manual horizontal scroll — the rail is button-driven
+ * New-arrivals carousel. No manual horizontal scroll - the rail is button-driven
  * (prev/next flank the cards). Buttons disable at each edge. Programmatic
  * scrollLeft still works under overflow-x-hidden, so cards slide on click only.
  */

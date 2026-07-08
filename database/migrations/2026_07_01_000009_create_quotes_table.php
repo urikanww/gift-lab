@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Quote — the order spine header. State machine (spec 5.1):
+ * Quote - the order spine header. State machine (spec 5.1):
  * DRAFT -> SENT -> (CHANGES_REQUESTED -> DRAFT)* -> ACCEPTED -> PROOFING
  *   -> PROOF_APPROVED -> PO_ISSUED -> CONFIRMED -> PROCURING -> READY -> CLOSED
  * CONFIRMED/PROCURING -> CANCELLED allowed.

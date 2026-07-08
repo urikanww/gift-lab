@@ -52,7 +52,7 @@ it('sorts by most_sold using summed qty from won quotes only', function (): void
     makeQuoteWithLineItem($this->company, $warm, 7, 'CONFIRMED');
     makeQuoteWithLineItem($this->company, $warm, 100, 'DRAFT');
 
-    // Cold: only a CANCELLED quote — must not count, sold_count 0.
+    // Cold: only a CANCELLED quote - must not count, sold_count 0.
     makeQuoteWithLineItem($this->company, $cold, 50, 'CANCELLED');
 
     Sanctum::actingAs($this->staff);

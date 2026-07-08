@@ -82,7 +82,7 @@ return [
 
         // Private DO Spaces disk for anonymous designer artwork. Same bucket as
         // the public "s3" disk but forced 'private' visibility and rooted in a
-        // separate uploads folder, so anon uploads are NOT world-readable — they
+        // separate uploads folder, so anon uploads are NOT world-readable - they
         // are only ever handed to the client as a short-lived signed URL
         // (Storage::temporaryUrl). Use ARTWORK_DISK=spaces_private in prod.
         'spaces_private' => [

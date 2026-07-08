@@ -86,7 +86,7 @@ final class QuoteService
     {
         return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey): Quote {
             // Batch-load products/variants once (two queries) instead of one
-            // query per line — same pattern as PriceEstimateController.
+            // query per line - same pattern as PriceEstimateController.
             $productIds = array_values(array_unique(array_map(
                 static fn (array $spec): int => (int) $spec['product_id'],
                 $lineSpecs,
@@ -356,7 +356,7 @@ final class QuoteService
     }
 
     /**
-     * Cancel a quote at any pre-production stage (Draft…Procuring). Terminal —
+     * Cancel a quote at any pre-production stage (Draft…Procuring). Terminal -
      * makes the CANCELLED state reachable so a buyer/staff can abandon a quote.
      * A READY/CLOSED quote is already on the floor and cannot be cancelled (the
      * state machine has no such edge; transitionTo throws).
@@ -369,7 +369,7 @@ final class QuoteService
 
             // Give back any stock already consumed by this quote's lines. A quote
             // can be cancelled mid-PROCURING, after some CORE lines have SALE'd
-            // their blanks — reverse exactly what each line took (backorder lines
+            // their blanks - reverse exactly what each line took (backorder lines
             // included, which pulls a negative balance back toward zero).
             $this->returnConsumedStock($quote);
 
@@ -504,7 +504,7 @@ final class QuoteService
      * Re-anchor the quote's money figures (and any issued PO/invoice amount)
      * after a reconfirmation changed what will actually be produced. Without
      * this the buyer is invoiced for the pre-amend order while the floor
-     * fulfils the amended one — the exact dispute the PO exists to prevent.
+     * fulfils the amended one - the exact dispute the PO exists to prevent.
      */
     private function retotalAfterReconfirm(LineItem $line, float $totalDelta): void
     {

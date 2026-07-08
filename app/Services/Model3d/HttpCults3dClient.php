@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * Live Cults3D client (GraphQL API, HTTP Basic auth with account nick +
- * API key — spec 6.5). Only handles the CULTS3D source; other sources return
+ * API key - spec 6.5). Only handles the CULTS3D source; other sources return
  * null so the composite can fall through. sourceId is the creation slug.
  * The API licence code is mapped to our License enum; the licence gate in
  * Model3dCatalogueService then decides publishability (NC/unknown → blocked).

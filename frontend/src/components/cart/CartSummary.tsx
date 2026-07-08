@@ -11,7 +11,7 @@ export function customizationLabel(line: CartLine): string {
 
 /** Human label for a cart line's selected variant attributes. */
 export function optionsLabel(line: CartLine): string {
-  return line.variant ? Object.values(line.variant.attributes).join(' / ') : '—';
+  return line.variant ? Object.values(line.variant.attributes).join(' / ') : '-';
 }
 
 /** A single label/value row in an estimate summary. */

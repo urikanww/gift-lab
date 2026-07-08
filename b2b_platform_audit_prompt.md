@@ -1,4 +1,4 @@
-# B2B Gifting Platform — Full Audit Prompt
+# B2B Gifting Platform - Full Audit Prompt
 
 > Usage: paste Pass 1 verbatim into the auditing session together with the two
 > reference documents. Pass 2 is optional and run separately for discovery.
@@ -6,7 +6,7 @@
 
 ---
 
-## PASS 1 — Checklist Audit (deterministic, diffable)
+## PASS 1 - Checklist Audit (deterministic, diffable)
 
 You are running a FULL audit of a B2B custom gifting platform against:
 
@@ -58,7 +58,7 @@ You are running a FULL audit of a B2B custom gifting platform against:
 | B7 | 3D models: only CC0/CC-BY ingested; test with a non-compliant licence |
 | B8 | Scraped images display as-is (v1 behavior) with tech-debt log entry |
 
-#### C. Customization / personalization UX — known problem area, test hardest
+#### C. Customization / personalization UX - known problem area, test hardest
 
 Test each on desktop AND mobile, as a first-time user.
 One row per check per platform (e.g. C1-desktop, C1-mobile).
@@ -84,7 +84,7 @@ One row per check per platform (e.g. C1-desktop, C1-mobile).
 
 | ID | Check |
 |----|-------|
-| D1 | Identify the size-determination mechanism (user-select / measured bounding box / placement zone) — state which, with evidence |
+| D1 | Identify the size-determination mechanism (user-select / measured bounding box / placement zone) - state which, with evidence |
 | D2 | S tier prices correctly in designer, cart, quote, invoice |
 | D3 | M tier prices correctly in designer, cart, quote, invoice |
 | D4 | L tier prices correctly in designer, cart, quote, invoice |
@@ -108,7 +108,7 @@ One row per check per platform (e.g. C1-desktop, C1-mobile).
 
 1. Row-complete results table: `ID | check | status | evidence | severity`
    (blocker / major / minor). ALL IDs present.
-2. Coverage confirmation line: "X of X checks reported" — numbers must match.
+2. Coverage confirmation line: "X of X checks reported" - numbers must match.
 3. B2B readiness verdict: READY / NOT READY, one paragraph, no hedging.
 4. Top 5 customization friction points with a concrete fix each.
 5. Spec gaps requiring business decisions (not dev fixes).
@@ -116,7 +116,7 @@ One row per check per platform (e.g. C1-desktop, C1-mobile).
 
 ---
 
-## PASS 2 — Discovery Audit (run separately, after Pass 1)
+## PASS 2 - Discovery Audit (run separately, after Pass 1)
 
 You have already completed the checklist audit (IDs A1–E4). Now run a
 free-hunt: adversarial exploration of the platform OUTSIDE the checklist.
@@ -141,7 +141,7 @@ of coverage.
 ## Known open item (blocks a clean run)
 
 **D8 will return SPEC-GAP on every run until resolved.** The spec defines
-logo pricing as $3 (S) / $5 (M) only — no Large tier, and no rule for how
+logo pricing as $3 (S) / $5 (M) only - no Large tier, and no rule for how
 size is determined (user-selected vs measured bounding box in mm vs
 placement zone). Define the threshold rule and L-tier price in both spec
 documents before running, or accept paying for the same finding repeatedly.

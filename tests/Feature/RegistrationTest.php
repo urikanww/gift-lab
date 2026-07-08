@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Models\Company;
 use App\Models\User;
 
-// A2: a brand-new corporate buyer can self-register at Request Quote —
+// A2: a brand-new corporate buyer can self-register at Request Quote -
 // company + first buyer user created atomically, signed in immediately.
 
 it('registers a new corporate buyer with their company', function (): void {
@@ -49,7 +49,7 @@ it('rejects a duplicate email registration', function (): void {
     expect(Company::where('name', 'Acme')->exists())->toBeFalse();
 });
 
-// A13: an active session can't register a second company — and the refusal
+// A13: an active session can't register a second company - and the refusal
 // explains itself instead of the framework's generic copy.
 it('rejects registration from an already-authenticated session with friendly copy', function (): void {
     $existing = User::factory()->create();

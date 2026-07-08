@@ -20,7 +20,7 @@ use RuntimeException;
 /**
  * Assembles production jobs from a fully-resolved quote and reads the shared
  * FCFS queue. Gate 2 (spec principle 1): a job is only created once its lines
- * are confirmed READY; readiness time — not order time — drives queue order.
+ * are confirmed READY; readiness time - not order time - drives queue order.
  */
 final class QueueService
 {
@@ -140,8 +140,8 @@ final class QueueService
         Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($job, $action));
 
         // When the final job for a quote closes, close the quote too
-        // (READY -> CLOSED). Without this edge the tracker's DELIVERED stage —
-        // which keys off QuoteState::Closed — was unreachable: no other code
+        // (READY -> CLOSED). Without this edge the tracker's DELIVERED stage -
+        // which keys off QuoteState::Closed - was unreachable: no other code
         // path ever performed the READY->CLOSED transition.
         $job->loadMissing('quote');
         if ($target === JobState::Closed
@@ -160,7 +160,7 @@ final class QueueService
         }
 
         // A job advance normally leaves the quote in READY, so no
-        // QuoteStateChanged fires — push the tracker update directly
+        // QuoteStateChanged fires - push the tracker update directly
         // (IN_PRODUCTION/SHIPPED/DELIVERED are the stages buyers watch most).
         // The QuoteStateChanged above already mirrors onto the tracker for the
         // closing case, so avoid a duplicate there.

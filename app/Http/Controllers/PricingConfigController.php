@@ -11,8 +11,8 @@ use Illuminate\Http\Request;
 
 /**
  * Superadmin pricing/config editor (spec 6.2 / audit E1, D7, E2): every value
- * the quote engine reads at quote time — margins, floor, fees, size surcharges,
- * print costs, thresholds, drift %, pay-now cutoff — is editable here without
+ * the quote engine reads at quote time - margins, floor, fees, size surcharges,
+ * print costs, thresholds, drift %, pay-now cutoff - is editable here without
  * a deploy or DB access. Every change is audit-logged (who/old/new).
  */
 class PricingConfigController extends Controller
@@ -47,8 +47,8 @@ class PricingConfigController extends Controller
     {
         abort_unless($request->user()->isSuperadmin(), 403);
 
-        // `present` (not `required`) so falsy-but-valid values — 0, false, an
-        // empty list — are accepted; group/key are immutable identifiers.
+        // `present` (not `required`) so falsy-but-valid values - 0, false, an
+        // empty list - are accepted; group/key are immutable identifiers.
         $request->validate(['value' => ['present']]);
 
         $old = $pricingConfig->value;

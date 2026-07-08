@@ -9,7 +9,7 @@ use Throwable;
 
 /**
  * Thrown when the upstream payment provider (Stripe) fails to create or process
- * a checkout — network error, API error, or misconfiguration. Wraps the raw
+ * a checkout - network error, API error, or misconfiguration. Wraps the raw
  * provider exception so the boundary never leaks provider internals to the
  * caller; surfaced as a 502 by the exception handler.
  */

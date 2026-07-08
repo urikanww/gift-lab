@@ -31,7 +31,7 @@ it('generates a stable, unique slug and resolves the detail page by it', functio
     expect($first->slug)->toBe('ceramic-mug-350ml')
         ->and($second->slug)->toBe('ceramic-mug-350ml-2');
 
-    // Slug survives a rename — shared links never break.
+    // Slug survives a rename - shared links never break.
     $first->update(['name' => 'Renamed Mug']);
     expect($first->fresh()->slug)->toBe('ceramic-mug-350ml');
 
@@ -153,7 +153,7 @@ it('sorts the catalogue by newest first when requested', function (): void {
 });
 
 it('sorts the catalogue by price', function (): void {
-    // Names chosen so alphabetical order disagrees with price order — a
+    // Names chosen so alphabetical order disagrees with price order - a
     // regression to name-only ordering fails this test.
     Product::factory()->create(['name' => 'Aardvark Mug', 'base_cost' => 50, 'publish_state' => 'PUBLISHED']);
     Product::factory()->create(['name' => 'Middling Mug', 'base_cost' => 20, 'publish_state' => 'PUBLISHED']);

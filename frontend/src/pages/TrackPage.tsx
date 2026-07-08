@@ -22,7 +22,7 @@ interface TrackResult {
 
 /**
  * Login-free order tracking. Opaque code + first-5-of-email → read-only status.
- * No account, no pricing, no line detail — mirrors the public API contract.
+ * No account, no pricing, no line detail - mirrors the public API contract.
  */
 export default function TrackPage() {
   const [code, setCode] = useState('');
@@ -32,7 +32,7 @@ export default function TrackPage() {
   const [busy, setBusy] = useState(false);
 
   // Live updates: once an order is found, subscribe to its PUBLIC tracking
-  // channel (keyed by the opaque code — no auth) so the stage refreshes the
+  // channel (keyed by the opaque code - no auth) so the stage refreshes the
   // moment the floor advances the job. No polling.
   const reference = result?.reference ?? null;
   useEffect(() => {
@@ -68,7 +68,7 @@ export default function TrackPage() {
       setResult(data);
     } catch (err) {
       // 404 (generic anti-enumeration miss) and 422 (validation jargon) both
-      // just mean "not found" to a visitor — always show the friendly line.
+      // just mean "not found" to a visitor - always show the friendly line.
       // Keep the server's message only where it carries real signal (429
       // throttle, 5xx outage).
       const status = err instanceof AxiosError ? err.response?.status : undefined;

@@ -16,7 +16,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Public, no-account catalogue (spec 6.1). Only PUBLISHED products are exposed;
  * scraped stock/price shown here is indicative and never authoritative.
- * Read-only and cacheable — no realtime, so no Reverb here.
+ * Read-only and cacheable - no realtime, so no Reverb here.
  */
 class CatalogueController extends Controller
 {
@@ -56,7 +56,7 @@ class CatalogueController extends Controller
     }
 
     /**
-     * Resolve by slug (public, user-friendly URLs — no id enumeration);
+     * Resolve by slug (public, user-friendly URLs - no id enumeration);
      * numeric ids still resolve so pre-slug links and stored cart lines
      * keep working.
      */
@@ -79,7 +79,7 @@ class CatalogueController extends Controller
      * Stream the 3D model file for the interactive viewer. Published
      * MODEL_3D items only; CC0/CC-BY permits redistribution and CC-BY
      * credit is displayed alongside the viewer. Cache-friendly (immutable
-     * per slug — slugs are stable).
+     * per slug - slugs are stable).
      */
     public function model(string $key): StreamedResponse|JsonResponse
     {

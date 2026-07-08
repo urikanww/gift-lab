@@ -10,7 +10,7 @@ use App\Models\PricingConfig;
 /**
  * Deadline-aware delivery estimate for the designer/cart. Every input is read
  * from pricing_configs at call time (spec principle 5). Deliberately CONSERVATIVE
- * and RANGED — an estimate the buyer relies on is a promise, so we pad with a
+ * and RANGED - an estimate the buyer relies on is a promise, so we pad with a
  * buffer and quote a window, not a single date. Queue depth (the shared floor
  * backlog) feeds the estimate so a busy floor honestly pushes dates out.
  */

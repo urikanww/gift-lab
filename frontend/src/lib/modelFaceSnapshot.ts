@@ -5,7 +5,7 @@ import api from './api';
 /**
  * Offscreen render of a MODEL_3D product's decoration face, used as the
  * designer backdrop (audit G1/G2/G3): the buyer places their logo on a clean
- * orthographic render of the ACTUAL model — in the chosen filament colour —
+ * orthographic render of the ACTUAL model - in the chosen filament colour -
  * instead of the scraped marketing photo. The orthographic frustum is known in
  * model units (STL convention: mm), so canvas placement maps to physical mm.
  */
@@ -27,7 +27,7 @@ const FILAMENT_HEX: Record<string, number> = {
   Grey: 0x9c9c9c,
 };
 
-// Cache renders per product+colour+size — a colour toggle back and forth
+// Cache renders per product+colour+size - a colour toggle back and forth
 // should not re-download or re-render the STL.
 const cache = new Map<string, Promise<ModelFaceSnapshot>>();
 
@@ -42,7 +42,7 @@ export function renderModelFace(
   if (hit) return hit;
 
   const promise = renderFresh(productKey, filamentColor, widthPx, heightPx).catch((err) => {
-    // Don't cache failures — a transient network error should retry.
+    // Don't cache failures - a transient network error should retry.
     cache.delete(cacheKey);
     throw err;
   });

@@ -29,7 +29,7 @@ it('records a movement and keeps stock_on_hand as the running sum', function ():
     $this->assertDatabaseHas('stock_movements', ['variant_id' => $variant->id, 'delta' => 10, 'reason' => 'RESTOCK']);
     $this->assertDatabaseHas('stock_movements', ['variant_id' => $variant->id, 'delta' => -3, 'reason' => 'SALE']);
 
-    // On-hand must equal SUM(delta) — the column is a cache of the ledger.
+    // On-hand must equal SUM(delta) - the column is a cache of the ledger.
     $sum = $variant->movements()->sum('delta');
     expect((int) $sum)->toBe($variant->fresh()->stock_on_hand);
 });

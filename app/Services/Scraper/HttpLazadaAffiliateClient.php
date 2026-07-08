@@ -10,15 +10,15 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Live Lazada Open Platform affiliate client — the second permitted UV-blank
+ * Live Lazada Open Platform affiliate client - the second permitted UV-blank
  * feed alongside Shopee. Same posture: product data only (name/price/image/
  * link), physical attributes stay staff judgements in the completeness gate,
  * and procurement remains a human purchase (spec 7).
  *
- * Auth: Lazada open-platform signature — sign = uppercase HMAC-SHA256 of
+ * Auth: Lazada open-platform signature - sign = uppercase HMAC-SHA256 of
  * (apiPath + concatenated sorted key+value pairs) with the app secret.
  * The search API path is configurable (services.lazada_affiliate.search_path)
- * because Lazada scopes endpoints per affiliate program — confirm the path in
+ * because Lazada scopes endpoints per affiliate program - confirm the path in
  * your program's API console.
  *
  * sourceProductId format: "lazada:{itemId}" (see CompositeScraperClient).
@@ -134,7 +134,7 @@ final class HttpLazadaAffiliateClient implements ScraperClient
 
     /**
      * Signed GET request per Lazada open-platform convention. Null on any
-     * failure — a feed outage degrades only the scraped catalogue.
+     * failure - a feed outage degrades only the scraped catalogue.
      *
      * @param  array<string, string|int>  $params
      * @return array<string, mixed>|null

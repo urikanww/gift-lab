@@ -4,7 +4,7 @@ import { Card, Select } from '../ui';
 /**
  * Filament colour choice for MODEL_3D products. Logo placement happens
  * on the shared DesignerCanvas (the item is FDM-printed, then UV-decorated
- * on its flat face — a real production step, so the placement mockup the
+ * on its flat face - a real production step, so the placement mockup the
  * customer approves is producible).
  */
 
@@ -12,7 +12,7 @@ export interface Model3dCustomization {
   filament_color: string;
 }
 
-// Keep aligned with FilamentSeeder / actual spool inventory — offering a
+// Keep aligned with FilamentSeeder / actual spool inventory - offering a
 // colour with no spool row goes QTY_SHORT at procurement.
 const FILAMENT_COLORS = ['Black', 'White', 'Grey'];
 
@@ -45,7 +45,7 @@ export default function Model3dPersonalizer({ onChange }: Props) {
         ))}
       </Select>
       <p className="text-sm text-fg-muted">
-        Your item is 3D-printed in this colour — the design preview shows the
+        Your item is 3D-printed in this colour - the design preview shows the
         model in your chosen colour. Place your logo on the decoration face
         shown; it is UV-printed exactly where you place it, and the formal
         proof you approve confirms the final result.

@@ -14,19 +14,19 @@
 
 ## File Structure
 
-- Create `app/Http/Controllers/AdminUserController.php` — all user-management endpoints + companies list.
-- Modify `routes/api.php` — new superadmin user routes.
-- Create `tests/Feature/AdminUserManagementTest.php` — backend feature tests.
+- Create `app/Http/Controllers/AdminUserController.php` - all user-management endpoints + companies list.
+- Modify `routes/api.php` - new superadmin user routes.
+- Create `tests/Feature/AdminUserManagementTest.php` - backend feature tests.
 - Create `frontend/src/pages/UserAdminPage.tsx` (list), `UserAdminCreatePage.tsx`, `UserAdminDetailPage.tsx`.
 - Modify `frontend/src/App.tsx` (routes), `frontend/src/components/StaffLayout.tsx` (nav), `frontend/src/types.ts` (AdminUser type).
 
 ---
 
-## Task 1: Backend — list + companies + access guard
+## Task 1: Backend - list + companies + access guard
 
 **Files:** Create `app/Http/Controllers/AdminUserController.php`; Modify `routes/api.php`; Create `tests/Feature/AdminUserManagementTest.php`.
 
-- [ ] **Step 1: Failing test — superadmin lists users; staff/buyer are 403.**
+- [ ] **Step 1: Failing test - superadmin lists users; staff/buyer are 403.**
 
 Add to `tests/Feature/AdminUserManagementTest.php` (Pest, `use RefreshDatabase` is the default). Set up actors in `beforeEach`:
 
@@ -73,7 +73,7 @@ it('serves a superadmin-only companies list for the buyer picker', function (): 
 });
 ```
 
-- [ ] **Step 2: Run — expect FAIL (routes/controller missing).**
+- [ ] **Step 2: Run - expect FAIL (routes/controller missing).**
 
 Run: `cd /d/work/NexGen/gift-lab && php artisan test tests/Feature/AdminUserManagementTest.php`
 Expected: FAIL (404 / method not found).
@@ -106,12 +106,12 @@ Route::post('/admin/users/{user}/reactivate', [AdminUserController::class, 'reac
 Route::post('/admin/users/{user}/password', [AdminUserController::class, 'resetPassword'])->withTrashed();
 Route::get('/admin/companies', [AdminUserController::class, 'companies']);
 ```
-Add `use App\Http\Controllers\AdminUserController;` at the top. (Later tasks implement store/show/update/deactivate/reactivate/resetPassword; adding the routes now is fine — unimplemented methods just aren't hit by Task 1 tests.)
+Add `use App\Http\Controllers\AdminUserController;` at the top. (Later tasks implement store/show/update/deactivate/reactivate/resetPassword; adding the routes now is fine - unimplemented methods just aren't hit by Task 1 tests.)
 
-- [ ] **Step 5: Run — expect PASS** (the three Task-1 tests).
+- [ ] **Step 5: Run - expect PASS** (the three Task-1 tests).
 
 Run: `cd /d/work/NexGen/gift-lab && php artisan test tests/Feature/AdminUserManagementTest.php`
-Expected: PASS for list/filter/companies tests. (Other methods referenced in routes are defined as stubs returning `response()->json([], 200)` for now, or implement them in this task's controller as empty methods to avoid route-resolution errors — implement fully in Tasks 2-4.)
+Expected: PASS for list/filter/companies tests. (Other methods referenced in routes are defined as stubs returning `response()->json([], 200)` for now, or implement them in this task's controller as empty methods to avoid route-resolution errors - implement fully in Tasks 2-4.)
 
 - [ ] **Step 6: Commit.**
 
@@ -122,7 +122,7 @@ git commit -m "feat(admin): user management list + companies picker (superadmin)
 
 ---
 
-## Task 2: Backend — create user (store)
+## Task 2: Backend - create user (store)
 
 **Files:** Modify `app/Http/Controllers/AdminUserController.php`, `tests/Feature/AdminUserManagementTest.php`.
 
@@ -161,14 +161,14 @@ it('rejects a duplicate email', function (): void {
 });
 ```
 
-- [ ] **Step 2: Run — expect FAIL.**
+- [ ] **Step 2: Run - expect FAIL.**
 
 Run: `php artisan test tests/Feature/AdminUserManagementTest.php --filter="creates a"`
 Expected: FAIL.
 
 - [ ] **Step 3: Implement `store`.**
 
-Mirror the password rule in `app/Http/Requests/RegisterRequest.php` (read it; use the same min length — e.g. `['required','string','min:8']`). Validate:
+Mirror the password rule in `app/Http/Requests/RegisterRequest.php` (read it; use the same min length - e.g. `['required','string','min:8']`). Validate:
 ```php
 $validated = $request->validate([
     'name' => ['required','string','max:255'],
@@ -188,7 +188,7 @@ $this->audit->log($user, 'user.created', null, ['role' => $user->role->value, 'e
 return response()->json(['data' => $this->serialize($user->load('company'))], 201);
 ```
 
-- [ ] **Step 4: Run — expect PASS.**
+- [ ] **Step 4: Run - expect PASS.**
 
 Run: `php artisan test tests/Feature/AdminUserManagementTest.php`
 Expected: PASS.
@@ -202,7 +202,7 @@ git commit -m "feat(admin): create staff/buyer users with company + password"
 
 ---
 
-## Task 3: Backend — edit + guardrails
+## Task 3: Backend - edit + guardrails
 
 **Files:** Modify `app/Http/Controllers/AdminUserController.php`, `tests/Feature/AdminUserManagementTest.php`.
 
@@ -233,7 +233,7 @@ it('protects the last active superadmin', function (): void {
 });
 ```
 
-- [ ] **Step 2: Run — expect FAIL.**
+- [ ] **Step 2: Run - expect FAIL.**
 
 Run: `php artisan test tests/Feature/AdminUserManagementTest.php --filter="edits a user|self-|last active"`
 Expected: FAIL.
@@ -267,7 +267,7 @@ Guardrails BEFORE saving:
 - If changing `role` away from superadmin and `$this->isLastSuperadmin($user)` → 422 "Cannot demote the last superadmin."
 Apply role/company rule: if resulting role is buyer, `company_id` required (422 if null); if staff, force `company_id=null`. Fill, save, audit `user.updated` (before/after role+email). Return serialize.
 
-- [ ] **Step 4: Run — expect PASS.**
+- [ ] **Step 4: Run - expect PASS.**
 
 Run: `php artisan test tests/Feature/AdminUserManagementTest.php`
 Expected: PASS.
@@ -281,7 +281,7 @@ git commit -m "feat(admin): edit users + self-lockout & last-superadmin guardrai
 
 ---
 
-## Task 4: Backend — deactivate / reactivate / reset password
+## Task 4: Backend - deactivate / reactivate / reset password
 
 **Files:** Modify `app/Http/Controllers/AdminUserController.php`, `tests/Feature/AdminUserManagementTest.php`.
 
@@ -313,9 +313,9 @@ it('resets a user password', function (): void {
 });
 ```
 
-Note: the "deactivated user cannot use the API" assertion depends on the auth provider excluding soft-deleted users. If `Sanctum::actingAs` bypasses that (it sets the user directly), instead assert via the model resolution: after deactivate, `User::find($this->buyer->id)` is null (default scope) — add `expect(User::find($this->buyer->id))->toBeNull();`. Keep whichever assertion the implementer verifies actually reflects "blocked" in this app; document the choice in the test comment.
+Note: the "deactivated user cannot use the API" assertion depends on the auth provider excluding soft-deleted users. If `Sanctum::actingAs` bypasses that (it sets the user directly), instead assert via the model resolution: after deactivate, `User::find($this->buyer->id)` is null (default scope) - add `expect(User::find($this->buyer->id))->toBeNull();`. Keep whichever assertion the implementer verifies actually reflects "blocked" in this app; document the choice in the test comment.
 
-- [ ] **Step 2: Run — expect FAIL.**
+- [ ] **Step 2: Run - expect FAIL.**
 
 Run: `php artisan test tests/Feature/AdminUserManagementTest.php --filter="deactivat|reset a user"`
 Expected: FAIL.
@@ -351,7 +351,7 @@ public function resetPassword(Request $r, User $user): JsonResponse {
 }
 ```
 
-- [ ] **Step 4: Run full file — expect PASS.**
+- [ ] **Step 4: Run full file - expect PASS.**
 
 Run: `php artisan test tests/Feature/AdminUserManagementTest.php`
 Expected: PASS (all).
@@ -370,7 +370,7 @@ git commit -m "feat(admin): deactivate/reactivate users + password reset"
 
 ---
 
-## Task 5: Frontend — nav + server-driven Users list
+## Task 5: Frontend - nav + server-driven Users list
 
 **Files:** Modify `frontend/src/components/StaffLayout.tsx`, `frontend/src/App.tsx`, `frontend/src/types.ts`; Create `frontend/src/pages/UserAdminPage.tsx`.
 
@@ -407,10 +407,10 @@ const UserAdminDetailPage = lazy(() => import('./pages/UserAdminDetailPage'));
 <Route path="user-admin/:id" element={<ProtectedRoute staffOnly><UserAdminDetailPage /></ProtectedRoute>} />
 ```
 
-- [ ] **Step 4: Create `frontend/src/pages/UserAdminPage.tsx`** — server-driven list, modeled on `ProductAdminPage.tsx`:
+- [ ] **Step 4: Create `frontend/src/pages/UserAdminPage.tsx`** - server-driven list, modeled on `ProductAdminPage.tsx`:
   - State: page, per_page (default 15, adjustable Select 15/30/50/100), role filter, status (active/deactivated), company filter (optional text or from `/admin/companies`), debounced `q`.
   - Fetch `GET /admin/users` with those params; read `meta` for pagination (Prev/Next + "Page X of Y").
-  - Table rows: name, email, role badge, company name (or "—"), active/deactivated badge; row → `/user-admin/:id`.
+  - Table rows: name, email, role badge, company name (or "-"), active/deactivated badge; row → `/user-admin/:id`.
   - Header: "New user" → `/user-admin/new`.
   - Use `AsyncBoundary` for loading/error/empty. Reuse Tailwind tokens; avoid fixed-px grid overflow (flexible columns / `min-w-0`, names as `block w-full truncate`).
 
@@ -427,12 +427,12 @@ git commit -m "feat(admin): Users nav + server-driven user list"
 
 ---
 
-## Task 6: Frontend — create user page
+## Task 6: Frontend - create user page
 
 **Files:** Create `frontend/src/pages/UserAdminCreatePage.tsx`.
 
 - [ ] **Step 1: Build the create form** (`/user-admin/new`), modeled on `ProductAdminCreatePage.tsx`:
-  - Fields: name, email, password, role (Select buyer/staff_admin/superadmin), and a **company picker shown only when role === 'buyer'** — populate from `GET /admin/companies` (fetch on mount).
+  - Fields: name, email, password, role (Select buyer/staff_admin/superadmin), and a **company picker shown only when role === 'buyer'** - populate from `GET /admin/companies` (fetch on mount).
   - Submit: `await ensureCsrf(); api.post('/admin/users', payload)`. Omit `company_id` for staff roles. On success read `data.id` → `navigate('/user-admin/'+id)` with a success toast. Back link to `/user-admin`.
   - Validate lightly client-side (email format, password length ≥ 8, company required when buyer); surface backend 422 messages via toast.
 
@@ -449,7 +449,7 @@ git commit -m "feat(admin): create-user page with conditional company picker"
 
 ---
 
-## Task 7: Frontend — user detail/edit page
+## Task 7: Frontend - user detail/edit page
 
 **Files:** Create `frontend/src/pages/UserAdminDetailPage.tsx`.
 
@@ -477,5 +477,5 @@ git commit -m "feat(admin): user detail/edit + deactivate/reactivate + password 
 ## Self-Review
 
 - **Spec coverage:** access guard (T1) ✓; list+filters (T1) ✓; companies picker (T1) ✓; create staff/buyer+company rule (T2) ✓; edit (T3) ✓; guardrails self+last-superadmin (T3, T4) ✓; deactivate/reactivate+token revoke+login-block (T4) ✓; password reset (T4) ✓; nav superadmin-only (T5) ✓; list/create/detail pages (T5–T7) ✓; testing (each task) ✓. Out-of-scope items (company CRUD, email flows, bulk, last-login) intentionally excluded.
-- **Placeholder scan:** none — concrete code, paths, commands.
+- **Placeholder scan:** none - concrete code, paths, commands.
 - **Type consistency:** `AdminUser` fields (role union, `company` shape, `active`) match the backend `serialize`; route paths (`/admin/users…`) consistent between backend routes and frontend calls; guardrail helper names (`isSelf`, `isLastSuperadmin`, `activeSuperadminCount`) consistent across Tasks 3–4.

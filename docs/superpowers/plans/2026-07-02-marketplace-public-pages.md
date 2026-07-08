@@ -4,7 +4,7 @@
 
 **Goal:** Rework the public-facing pages (Home, Catalogue, Product Detail, Designer, Header) into a dense marketplace-style storefront that categorizes products the way marketplaces do (Drinkware, Bags, Stationery…) instead of by print technique, removes "how it works"/benefit explainers, and gives each page a distinctive personalization-focused feature.
 
-**Architecture:** Add a `category` column to `products` assigned automatically by a keyword classifier (backend), expose + filter + sort it through the existing public catalogue API, then rebuild the React public pages around the new taxonomy with denser layouts. Print-class (`CORE`/`SCRAPED_UV`/`MODEL_3D`) stays as an internal/admin concept only — it disappears from public UI.
+**Architecture:** Add a `category` column to `products` assigned automatically by a keyword classifier (backend), expose + filter + sort it through the existing public catalogue API, then rebuild the React public pages around the new taxonomy with denser layouts. Print-class (`CORE`/`SCRAPED_UV`/`MODEL_3D`) stays as an internal/admin concept only - it disappears from public UI.
 
 **Tech Stack:** Laravel 11 (Pest tests), React 18 + TypeScript + Tailwind + framer-motion + zustand (Vitest + Testing Library). Repo layout: backend at repo root, SPA in `frontend/`.
 
@@ -33,32 +33,32 @@ Fallback when no keyword matches: `MODEL_3D` products → `toys`, everything els
 ## File Structure
 
 **Created:**
-- `app/Services/Catalogue/CategoryClassifier.php` — name → category keyword classifier (pure, no I/O)
-- `app/Console/Commands/BackfillProductCategories.php` — one-shot backfill for existing rows
-- `database/migrations/2026_07_02_000022_add_category_to_products.php` — nullable indexed `category` column
-- `tests/Unit/CategoryClassifierTest.php` — classifier unit tests
+- `app/Services/Catalogue/CategoryClassifier.php` - name → category keyword classifier (pure, no I/O)
+- `app/Console/Commands/BackfillProductCategories.php` - one-shot backfill for existing rows
+- `database/migrations/2026_07_02_000022_add_category_to_products.php` - nullable indexed `category` column
+- `tests/Unit/CategoryClassifierTest.php` - classifier unit tests
 
 **Modified (backend):**
-- `app/Models/Product.php` — fillable + saving-hook auto-assign
-- `app/Http/Controllers/CatalogueController.php` — `category` filter + `sort` param
-- `app/Http/Resources/ProductResource.php` — expose `category`
-- `database/seeders/CoreCatalogueSeeder.php` — explicit category per seeded row (raw DB inserts bypass model hooks)
-- `tests/Feature/CatalogueTest.php` — filter/sort/resource coverage
-- `docs/API.md` — document new params
+- `app/Models/Product.php` - fillable + saving-hook auto-assign
+- `app/Http/Controllers/CatalogueController.php` - `category` filter + `sort` param
+- `app/Http/Resources/ProductResource.php` - expose `category`
+- `database/seeders/CoreCatalogueSeeder.php` - explicit category per seeded row (raw DB inserts bypass model hooks)
+- `tests/Feature/CatalogueTest.php` - filter/sort/resource coverage
+- `docs/API.md` - document new params
 
 **Modified (frontend, all under `frontend/src/`):**
-- `pages/LoginPage.tsx` + new `pages/LoginPage.test.tsx` — role-aware post-login landing (staff → `/catalogue-admin`)
-- `components/SiteHeader.tsx` — ops nav links for staff roles (Task 0), staff "Quotes" label (Task 0b), Categories dropdown (Task 7)
-- `pages/QuoteListPage.tsx` + new `pages/QuoteListPage.test.tsx` — staff copy + Company column (Task 0b; also touches `QuoteController`/`QuoteResource` backend)
-- `types.ts` — `Product.category`
-- `lib/categories.ts` — marketplace taxonomy (replaces print-class categories)
-- `lib/catalogue.ts` + `lib/catalogue.test.ts` — options-object `fetchCatalogue` with category/q/sort
-- `components/product/ProductCard.tsx` — category badge, hover "Personalize now" quick action, denser card
-- `pages/CataloguePage.tsx` + test — category chip rail, sort, server-side search, dense 5-col grid
-- `pages/HomePage.tsx` + test — compact search hero, category tiles, New-arrivals rail + Popular grid; explainer sections deleted
-- `components/SiteHeader.tsx` + test — Categories dropdown menu; drawer category links
-- `pages/ProductDetailPage.tsx` + test — category breadcrumb, live name-preview widget, print-method selector removed
-- `pages/ProductDesignerPage.tsx`, `components/DesignerCanvas.tsx`, `stores/cartStore.ts` + `stores/cartStore.test.ts` — `?name=` prefill, qty + live unit-price sticky bar
+- `pages/LoginPage.tsx` + new `pages/LoginPage.test.tsx` - role-aware post-login landing (staff → `/catalogue-admin`)
+- `components/SiteHeader.tsx` - ops nav links for staff roles (Task 0), staff "Quotes" label (Task 0b), Categories dropdown (Task 7)
+- `pages/QuoteListPage.tsx` + new `pages/QuoteListPage.test.tsx` - staff copy + Company column (Task 0b; also touches `QuoteController`/`QuoteResource` backend)
+- `types.ts` - `Product.category`
+- `lib/categories.ts` - marketplace taxonomy (replaces print-class categories)
+- `lib/catalogue.ts` + `lib/catalogue.test.ts` - options-object `fetchCatalogue` with category/q/sort
+- `components/product/ProductCard.tsx` - category badge, hover "Personalize now" quick action, denser card
+- `pages/CataloguePage.tsx` + test - category chip rail, sort, server-side search, dense 5-col grid
+- `pages/HomePage.tsx` + test - compact search hero, category tiles, New-arrivals rail + Popular grid; explainer sections deleted
+- `components/SiteHeader.tsx` + test - Categories dropdown menu; drawer category links
+- `pages/ProductDetailPage.tsx` + test - category breadcrumb, live name-preview widget, print-method selector removed
+- `pages/ProductDesignerPage.tsx`, `components/DesignerCanvas.tsx`, `stores/cartStore.ts` + `stores/cartStore.test.ts` - `?name=` prefill, qty + live unit-price sticky bar
 
 ---
 
@@ -70,7 +70,7 @@ Fallback when no keyword matches: `MODEL_3D` products → `toys`, everything els
 - Create: `frontend/src/pages/LoginPage.test.tsx`
 - Test: `frontend/src/components/SiteHeader.test.tsx`
 
-Bug: superadmin/ops sign in and get redirected to `/quotes` (the buyer surface) — `LoginPage` hardcodes the fallback — and the header renders **no links at all** to `/catalogue-admin`, `/production-queue`, `/procurement`, so staff can only reach their pages by typing URLs. Fix: role-aware post-login landing (staff → `/catalogue-admin`, the manageable-items gate) + persistent ops nav links for staff roles.
+Bug: superadmin/ops sign in and get redirected to `/quotes` (the buyer surface) - `LoginPage` hardcodes the fallback - and the header renders **no links at all** to `/catalogue-admin`, `/production-queue`, `/procurement`, so staff can only reach their pages by typing URLs. Fix: role-aware post-login landing (staff → `/catalogue-admin`, the manageable-items gate) + persistent ops nav links for staff roles.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -239,7 +239,7 @@ In `frontend/src/components/SiteHeader.tsx`:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npx vitest run src/pages/LoginPage.test.tsx src/components/SiteHeader.test.tsx` — all pass. Then `npm run typecheck` + full `npm run test`.
+Run: `npx vitest run src/pages/LoginPage.test.tsx src/components/SiteHeader.test.tsx` - all pass. Then `npm run typecheck` + full `npm run test`.
 
 - [ ] **Step 6: Commit**
 
@@ -265,7 +265,7 @@ Staff visiting `/quotes` currently see the buyer-voiced UI ("My Orders", "Track 
 
 - [ ] **Step 1: Write the failing backend test**
 
-Append to `tests/Feature/QuoteFlowTest.php` (the file already uses `Company`/`User`/`Quote` factories and `Sanctum::actingAs` — add any missing `use` imports at the top: `App\Models\Company`, `App\Models\Quote`, `App\Models\User`, `Laravel\Sanctum\Sanctum`):
+Append to `tests/Feature/QuoteFlowTest.php` (the file already uses `Company`/`User`/`Quote` factories and `Sanctum::actingAs` - add any missing `use` imports at the top: `App\Models\Company`, `App\Models\Quote`, `App\Models\User`, `Laravel\Sanctum\Sanctum`):
 
 ```php
 it('includes the company name on quote listings for staff', function (): void {
@@ -291,7 +291,7 @@ it('omits the company name on buyer quote listings', function (): void {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `php artisan test --filter=QuoteFlowTest`
-Expected: first new test FAILS (`company_name` missing); second passes vacuously only after implementation — confirm it fails or errors now, then both pass after Step 3.
+Expected: first new test FAILS (`company_name` missing); second passes vacuously only after implementation - confirm it fails or errors now, then both pass after Step 3.
 
 - [ ] **Step 3: Implement backend**
 
@@ -300,7 +300,7 @@ In `app/Http/Controllers/QuoteController.php`, replace the `index` query (lines 
 ```php
         $quotes = Quote::query()
             ->when(! $user->isStaff(), fn ($q) => $q->where('company_id', $user->company_id))
-            // Staff see all companies — load the name so the UI can label rows.
+            // Staff see all companies - load the name so the UI can label rows.
             ->when($user->isStaff(), fn ($q) => $q->with('company'))
             ->latest()
             ->paginate(20);
@@ -313,7 +313,7 @@ In `app/Http/Resources/QuoteResource.php`, add directly after `'company_id' => $
             'company_name' => $this->whenLoaded('company', fn () => $this->company->name),
 ```
 
-Run: `php artisan test --filter=QuoteFlowTest` — expected PASS.
+Run: `php artisan test --filter=QuoteFlowTest` - expected PASS.
 
 - [ ] **Step 4: Write the failing frontend tests**
 
@@ -468,12 +468,12 @@ import { isStaffRole } from '../lib/roles';
 ```tsx
         <p className="mt-1 text-sm text-fg-muted">
           {staff
-            ? 'All customer quotes, newest first — across every company.'
+            ? 'All customer quotes, newest first - across every company.'
             : 'Track your gift orders from request through production.'}
         </p>
 ```
 
-4. Replace the `EmptyState` block (lines 44-52) — staff get no "browse" CTA, and the buyer CTA points at the canonical `/products` route (the old `/catalogue` only worked via redirect):
+4. Replace the `EmptyState` block (lines 44-52) - staff get no "browse" CTA, and the buyer CTA points at the canonical `/products` route (the old `/catalogue` only worked via redirect):
 
 ```tsx
         <EmptyState
@@ -507,7 +507,7 @@ import { isStaffRole } from '../lib/roles';
    - `<QuoteRow key={q.id} quote={q} animate={shouldAnimate} showCompany={staff} />`
    - `<QuoteCard key={q.id} quote={q} showCompany={staff} />`
 
-7. Update `QuoteRow` — signature and a new cell after the Quote `<td>`:
+7. Update `QuoteRow` - signature and a new cell after the Quote `<td>`:
 
 ```tsx
 function QuoteRow({
@@ -529,7 +529,7 @@ function QuoteRow({
       )}
 ```
 
-8. Update `QuoteCard` — signature and a company line under the date `<p>`:
+8. Update `QuoteCard` - signature and a company line under the date `<p>`:
 
 ```tsx
 function QuoteCard({ quote, showCompany }: { quote: Quote; showCompany: boolean }) {
@@ -545,8 +545,8 @@ function QuoteCard({ quote, showCompany }: { quote: Quote; showCompany: boolean 
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `npx vitest run src/pages/QuoteListPage.test.tsx src/components/SiteHeader.test.tsx` — all pass.
-Then `npm run typecheck`, full `npm run test`, and `php artisan test` — all green.
+Run: `npx vitest run src/pages/QuoteListPage.test.tsx src/components/SiteHeader.test.tsx` - all pass.
+Then `npm run typecheck`, full `npm run test`, and `php artisan test` - all green.
 
 - [ ] **Step 7: Commit**
 
@@ -557,7 +557,7 @@ git commit -m "feat(quotes): staff-aware quote list with company column"
 
 ---
 
-### Task 1: Backend — CategoryClassifier service
+### Task 1: Backend - CategoryClassifier service
 
 **Files:**
 - Create: `app/Services/Catalogue/CategoryClassifier.php`
@@ -579,7 +579,7 @@ it('classifies product names into marketplace categories', function (string $nam
     expect((new CategoryClassifier())->classify($name, ProductClass::Core))->toBe($expected);
 })->with([
     ['Ceramic Mug 11oz', 'drinkware'],
-    // 'tee' must NOT match inside 'Stainless' / 'Steel' — word boundaries required.
+    // 'tee' must NOT match inside 'Stainless' / 'Steel' - word boundaries required.
     ['Stainless Tumbler 500ml', 'drinkware'],
     ['Glass Water Bottle 600ml', 'drinkware'],
     ['Canvas Tote Bag', 'bags'],
@@ -672,7 +672,7 @@ git commit -m "feat(catalogue): keyword classifier for marketplace categories"
 
 ---
 
-### Task 2: Backend — category column, auto-assign hook, seeder, backfill
+### Task 2: Backend - category column, auto-assign hook, seeder, backfill
 
 **Files:**
 - Create: `database/migrations/2026_07_02_000022_add_category_to_products.php`
@@ -724,7 +724,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Public marketplace category (drinkware, bags, …) — how buyers browse.
+ * Public marketplace category (drinkware, bags, …) - how buyers browse.
  * Orthogonal to `class`, which stays the internal production taxonomy.
  * Nullable so the model saving-hook (or catalogue:categorize) fills it in.
  */
@@ -861,7 +861,7 @@ class BackfillProductCategories extends Command
 php artisan migrate
 php artisan catalogue:categorize
 ```
-Expected: migration runs clean; command prints `Categorized N product(s).` Then run the full backend suite: `php artisan test` — expected all green.
+Expected: migration runs clean; command prints `Categorized N product(s).` Then run the full backend suite: `php artisan test` - expected all green.
 
 - [ ] **Step 9: Commit**
 
@@ -872,7 +872,7 @@ git commit -m "feat(catalogue): marketplace category column with auto-assignment
 
 ---
 
-### Task 3: Backend — catalogue API category filter, sort, resource field
+### Task 3: Backend - catalogue API category filter, sort, resource field
 
 **Files:**
 - Modify: `app/Http/Controllers/CatalogueController.php:23-40`
@@ -972,14 +972,14 @@ In `app/Http/Controllers/CatalogueController.php`, replace the whole `index` met
 In `app/Http/Resources/ProductResource.php`, add directly after the `'class' => $this->class->value,` line:
 
 ```php
-            // Public marketplace category (how buyers browse) — see CategoryClassifier.
+            // Public marketplace category (how buyers browse) - see CategoryClassifier.
             'category' => $this->category,
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `php artisan test --filter=CatalogueTest`
-Expected: PASS. Then `php artisan test` for the full suite — all green.
+Expected: PASS. Then `php artisan test` for the full suite - all green.
 
 - [ ] **Step 5: Update the API doc**
 
@@ -1008,7 +1008,7 @@ git commit -m "feat(catalogue): category filter and sort on the public catalogue
 
 ---
 
-### Task 4: Frontend — data layer (types, categories lib, catalogue lib)
+### Task 4: Frontend - data layer (types, categories lib, catalogue lib)
 
 **Files:**
 - Modify: `frontend/src/types.ts:54-73`
@@ -1039,7 +1039,7 @@ In `frontend/src/lib/catalogue.test.ts`, replace the `'fetchCatalogue passes pag
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run (from `frontend/`): `npx vitest run src/lib/catalogue.test.ts`
-Expected: FAIL — current `fetchCatalogue(page, productClass)` signature doesn't accept an options object.
+Expected: FAIL - current `fetchCatalogue(page, productClass)` signature doesn't accept an options object.
 
 - [ ] **Step 3: Implement the data layer**
 
@@ -1053,7 +1053,7 @@ In `frontend/src/types.ts`, add to the `Product` interface directly after the `c
 Replace the entire content of `frontend/src/lib/categories.ts` with:
 
 ```ts
-// Public marketplace taxonomy — how buyers browse. Decoupled from the internal
+// Public marketplace taxonomy - how buyers browse. Decoupled from the internal
 // print-class (CORE/SCRAPED_UV/MODEL_3D), which never appears in public UI.
 // Keys mirror backend App\Services\Catalogue\CategoryClassifier::CATEGORIES.
 
@@ -1089,7 +1089,7 @@ export interface CatalogueQuery {
   page?: number;
   /** Marketplace category slug (see lib/categories.ts). */
   category?: string;
-  /** Server-side name search — keeps pagination valid across all pages. */
+  /** Server-side name search - keeps pagination valid across all pages. */
   q?: string;
   sort?: CatalogueSort;
 }
@@ -1107,22 +1107,22 @@ export function fetchCatalogue(query: CatalogueQuery = {}): Promise<Paginated<Pr
 
 - [ ] **Step 4: Fix the three call sites so typecheck passes**
 
-These are updated properly in later tasks, but the signature change breaks them now — apply the minimal mechanical fix:
+These are updated properly in later tasks, but the signature change breaks them now - apply the minimal mechanical fix:
 
 - `frontend/src/pages/HomePage.tsx:47`: `fetchCatalogue(1)` → `fetchCatalogue({})`
-- `frontend/src/pages/CataloguePage.tsx:41`: `fetchCatalogue(target, cls)` → `fetchCatalogue({ page: target, category: cls || undefined })` — and since `class` filtering is now dead, this page is fully rewritten in Task 6; only make it compile here.
+- `frontend/src/pages/CataloguePage.tsx:41`: `fetchCatalogue(target, cls)` → `fetchCatalogue({ page: target, category: cls || undefined })` - and since `class` filtering is now dead, this page is fully rewritten in Task 6; only make it compile here.
 - `frontend/src/pages/ProductDetailPage.tsx:117`: `fetchCatalogue(1)` → `fetchCatalogue({})`
-- `frontend/src/pages/ProductDetailPage.tsx:274` uses `categoryLabel(product.class)` and `:447` — `categoryLabel` now takes a string; `product.class` is a string union, so it still compiles (falls back to `'Gifts'`); leave for Task 8.
-- `frontend/src/pages/CataloguePage.tsx` imports `categoryLabel` and uses `CATEGORIES.map((c) => c.key)` as `ProductClass` — replace the `CLASS_KEYS`/`parseClass` block with `const CLASS_KEYS = new Set<string>(CATEGORIES.map((c) => c.key));` and `function parseClass(value: string | null): string { return value && CLASS_KEYS.has(value) ? value : ''; }`, and change the `classFilter` state type from `'' | ProductClass` to `string` (remove the now-unused `ProductClass` import if flagged).
-- `frontend/src/components/SiteHeader.tsx:62-66,279-283` renders `c.icon`/`c.label` and links `?class=${c.key}` — compiles unchanged (keys are now category slugs; links are corrected in Task 7).
-- `frontend/src/components/product/ProductCard.tsx` — compiles unchanged.
+- `frontend/src/pages/ProductDetailPage.tsx:274` uses `categoryLabel(product.class)` and `:447` - `categoryLabel` now takes a string; `product.class` is a string union, so it still compiles (falls back to `'Gifts'`); leave for Task 8.
+- `frontend/src/pages/CataloguePage.tsx` imports `categoryLabel` and uses `CATEGORIES.map((c) => c.key)` as `ProductClass` - replace the `CLASS_KEYS`/`parseClass` block with `const CLASS_KEYS = new Set<string>(CATEGORIES.map((c) => c.key));` and `function parseClass(value: string | null): string { return value && CLASS_KEYS.has(value) ? value : ''; }`, and change the `classFilter` state type from `'' | ProductClass` to `string` (remove the now-unused `ProductClass` import if flagged).
+- `frontend/src/components/SiteHeader.tsx:62-66,279-283` renders `c.icon`/`c.label` and links `?class=${c.key}` - compiles unchanged (keys are now category slugs; links are corrected in Task 7).
+- `frontend/src/components/product/ProductCard.tsx` - compiles unchanged.
 
-Run: `npm run typecheck` (from `frontend/`) — expected: no errors.
+Run: `npm run typecheck` (from `frontend/`) - expected: no errors.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/lib/catalogue.test.ts`
-Expected: PASS. Then run the full frontend suite `npm run test` — pre-existing page tests must still pass (they mock `fetchCatalogue` wholesale, so the signature change is transparent).
+Expected: PASS. Then run the full frontend suite `npm run test` - pre-existing page tests must still pass (they mock `fetchCatalogue` wholesale, so the signature change is transparent).
 
 - [ ] **Step 6: Commit**
 
@@ -1133,7 +1133,7 @@ git commit -m "feat(frontend): marketplace category taxonomy in the data layer"
 
 ---
 
-### Task 5: Frontend — ProductCard rework (category badge + Personalize quick action)
+### Task 5: Frontend - ProductCard rework (category badge + Personalize quick action)
 
 **Files:**
 - Modify: `frontend/src/components/product/ProductCard.tsx`
@@ -1214,7 +1214,7 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
 - [ ] **Step 2: Verify**
 
 Run: `npm run typecheck` then `npm run test` (from `frontend/`).
-Expected: both green — `CataloguePage.test.tsx` asserts the card link by role/name, unaffected; there is no `ProductClass` import left in this file.
+Expected: both green - `CataloguePage.test.tsx` asserts the card link by role/name, unaffected; there is no `ProductClass` import left in this file.
 
 - [ ] **Step 3: Commit**
 
@@ -1225,7 +1225,7 @@ git commit -m "feat(frontend): marketplace product card with personalize quick a
 
 ---
 
-### Task 6: Frontend — CataloguePage rework (dense marketplace browse)
+### Task 6: Frontend - CataloguePage rework (dense marketplace browse)
 
 **Files:**
 - Modify: `frontend/src/pages/CataloguePage.tsx` (full rewrite)
@@ -1514,9 +1514,9 @@ function CategoryChip({
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npx vitest run src/pages/CataloguePage.test.tsx` — expected: all 4 pass.
+Run: `npx vitest run src/pages/CataloguePage.test.tsx` - expected: all 4 pass.
 Note: the old test `'renders published products from the API'` still passes because the API mock shape is unchanged and search is now server-side (initial load fires once with no debounce when `q` is empty).
-Then `npm run typecheck` and full `npm run test` — expected green.
+Then `npm run typecheck` and full `npm run test` - expected green.
 
 - [ ] **Step 5: Commit**
 
@@ -1527,7 +1527,7 @@ git commit -m "feat(frontend): dense marketplace catalogue with category rail, s
 
 ---
 
-### Task 7: Frontend — SiteHeader categories dropdown
+### Task 7: Frontend - SiteHeader categories dropdown
 
 **Files:**
 - Modify: `frontend/src/components/SiteHeader.tsx`
@@ -1555,13 +1555,13 @@ it('opens the categories menu with marketplace category links', async () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/components/SiteHeader.test.tsx`
-Expected: FAIL — no button named "Categories".
+Expected: FAIL - no button named "Categories".
 
 - [ ] **Step 3: Implement**
 
 In `frontend/src/components/SiteHeader.tsx`:
 
-1. Replace the desktop nav block (the `<nav … aria-label="Primary">` element — originally lines 58-67, now also containing the Task 0 staff links). The `CATEGORIES.map` loop is replaced by `<CategoriesMenu />`; the Task 0 staff block is KEPT:
+1. Replace the desktop nav block (the `<nav … aria-label="Primary">` element - originally lines 58-67, now also containing the Task 0 staff links). The `CATEGORIES.map` loop is replaced by `<CategoriesMenu />`; the Task 0 staff block is KEPT:
 
 ```tsx
         <nav className="hidden flex-1 items-center gap-1 md:flex" aria-label="Primary">
@@ -1668,7 +1668,7 @@ function CategoriesMenu() {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npx vitest run src/components/SiteHeader.test.tsx` — all 3 pass. Then `npm run typecheck`.
+Run: `npx vitest run src/components/SiteHeader.test.tsx` - all 3 pass. Then `npm run typecheck`.
 
 - [ ] **Step 5: Commit**
 
@@ -1679,13 +1679,13 @@ git commit -m "feat(frontend): marketplace categories dropdown in the site heade
 
 ---
 
-### Task 8: Frontend — HomePage rework (marketplace landing)
+### Task 8: Frontend - HomePage rework (marketplace landing)
 
 **Files:**
 - Modify: `frontend/src/pages/HomePage.tsx` (full rewrite)
 - Test: `frontend/src/pages/HomePage.test.tsx`
 
-Page identity: a storefront window, not a pitch. Compact hero with a working search box (unique feature: search-first landing), 8 category tiles, a horizontally snap-scrolling **New arrivals** rail (unique feature), and a dense **Popular right now** grid. The "How it works" steps and trust/benefit bars are deleted per spec — no explainers.
+Page identity: a storefront window, not a pitch. Compact hero with a working search box (unique feature: search-first landing), 8 category tiles, a horizontally snap-scrolling **New arrivals** rail (unique feature), and a dense **Popular right now** grid. The "How it works" steps and trust/benefit bars are deleted per spec - no explainers.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1714,7 +1714,7 @@ vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue({
   meta: { current_page: 1, last_page: 1, total: 1 },
 } as any);
 
-it('renders search hero, category tiles, new arrivals and popular rails — no explainer sections', async () => {
+it('renders search hero, category tiles, new arrivals and popular rails - no explainer sections', async () => {
   render(
     <ThemeProvider>
       <MemoryRouter>
@@ -1726,7 +1726,7 @@ it('renders search hero, category tiles, new arrivals and popular rails — no e
   expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('search')).toBeInTheDocument();
   expect(screen.getByText(/shop by category/i)).toBeInTheDocument();
-  // Drinkware appears twice (hero quick-link + category tile) — assert all point at the category URL.
+  // Drinkware appears twice (hero quick-link + category tile) - assert all point at the category URL.
   const drinkwareLinks = screen.getAllByRole('link', { name: /drinkware/i });
   expect(drinkwareLinks.length).toBeGreaterThanOrEqual(2);
   drinkwareLinks.forEach((l) => expect(l).toHaveAttribute('href', '/products?category=drinkware'));
@@ -1742,7 +1742,7 @@ it('renders search hero, category tiles, new arrivals and popular rails — no e
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/pages/HomePage.test.tsx`
-Expected: FAIL — no `role="search"`, category link href is `?class=…`, "New arrivals" missing, "How it works" present.
+Expected: FAIL - no `role="search"`, category link href is `?class=…`, "New arrivals" missing, "How it works" present.
 
 - [ ] **Step 3: Rewrite the page**
 
@@ -1847,7 +1847,7 @@ export default function HomePage() {
         </div>
       </Motion>
 
-      {/* ── Shop by category — 8 marketplace tiles ────────────────────────── */}
+      {/* ── Shop by category - 8 marketplace tiles ────────────────────────── */}
       <section aria-labelledby="home-categories">
         <h2 id="home-categories" className="font-display text-xl text-fg sm:text-2xl">
           Shop by category
@@ -1873,7 +1873,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── New arrivals — horizontal snap rail ───────────────────────────── */}
+      {/* ── New arrivals - horizontal snap rail ───────────────────────────── */}
       <section aria-labelledby="home-new">
         <div className="flex items-end justify-between gap-4">
           <h2 id="home-new" className="font-display text-xl text-fg sm:text-2xl">
@@ -1907,7 +1907,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Popular right now — dense grid ────────────────────────────────── */}
+      {/* ── Popular right now - dense grid ────────────────────────────────── */}
       <section aria-labelledby="home-popular">
         <div className="flex items-end justify-between gap-4">
           <h2 id="home-popular" className="font-display text-xl text-fg sm:text-2xl">
@@ -1965,7 +1965,7 @@ export default function HomePage() {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npx vitest run src/pages/HomePage.test.tsx` — pass. Then `npm run typecheck` + full `npm run test`.
+Run: `npx vitest run src/pages/HomePage.test.tsx` - pass. Then `npm run typecheck` + full `npm run test`.
 
 - [ ] **Step 5: Commit**
 
@@ -1976,13 +1976,13 @@ git commit -m "feat(frontend): marketplace home with search hero, category tiles
 
 ---
 
-### Task 9: Frontend — ProductDetailPage (category breadcrumb + live name preview)
+### Task 9: Frontend - ProductDetailPage (category breadcrumb + live name preview)
 
 **Files:**
 - Modify: `frontend/src/pages/ProductDetailPage.tsx`
 - Test: `frontend/src/pages/ProductDetailPage.test.tsx`
 
-Unique feature: **"See your name on it"** — an inline input that overlays the typed text live on the product photo, then hands it to the designer via `?name=`. Print-method *chooser* is removed from public UI (print method remains as a spec row only); breadcrumb and specs use the marketplace category.
+Unique feature: **"See your name on it"** - an inline input that overlays the typed text live on the product photo, then hands it to the designer via `?name=`. Print-method *chooser* is removed from public UI (print method remains as a spec row only); breadcrumb and specs use the marketplace category.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2086,12 +2086,12 @@ All edits in `frontend/src/pages/ProductDetailPage.tsx`:
 8. In its place, add the name-preview widget:
 
 ```tsx
-          {/* Live personalization teaser — the marketplace hook: type a name,
+          {/* Live personalization teaser - the marketplace hook: type a name,
               see it on the product, then carry it into the studio. */}
           <Motion variants={staggerItem} className="flex flex-col gap-2 rounded-xl border border-brand-100 bg-brand-50/50 p-4">
             <Input
               label="See your name on it"
-              placeholder="Type a name — watch the photo"
+              placeholder="Type a name - watch the photo"
               value={previewName}
               maxLength={24}
               onChange={(e) => setPreviewName(e.target.value)}
@@ -2119,7 +2119,7 @@ All edits in `frontend/src/pages/ProductDetailPage.tsx`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `npx vitest run src/pages/ProductDetailPage.test.tsx` — all 3 pass. Then `npm run typecheck` (confirms the removed `selectedPrintMethod` left no dangling references) and full `npm run test`.
+Run: `npx vitest run src/pages/ProductDetailPage.test.tsx` - all 3 pass. Then `npm run typecheck` (confirms the removed `selectedPrintMethod` left no dangling references) and full `npm run test`.
 
 - [ ] **Step 5: Commit**
 
@@ -2130,7 +2130,7 @@ git commit -m "feat(frontend): live name preview on product page, category bread
 
 ---
 
-### Task 10: Frontend — Designer handoff (?name= prefill) + qty & live price bar
+### Task 10: Frontend - Designer handoff (?name= prefill) + qty & live price bar
 
 **Files:**
 - Modify: `frontend/src/components/DesignerCanvas.tsx:16-48,133-148`
@@ -2161,7 +2161,7 @@ it('addLine stores the requested quantity (default 1)', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/stores/cartStore.test.ts`
-Expected: FAIL — `addLine` takes 3 args and hardcodes `qty: 1` (TS error or qty === 1).
+Expected: FAIL - `addLine` takes 3 args and hardcodes `qty: 1` (TS error or qty === 1).
 
 - [ ] **Step 3: Extend the cart store**
 
@@ -2178,9 +2178,9 @@ In `frontend/src/stores/cartStore.ts`:
       },
 ```
 
-Run: `npx vitest run src/stores/cartStore.test.ts` — expected PASS.
+Run: `npx vitest run src/stores/cartStore.test.ts` - expected PASS.
 
-- [ ] **Step 4: DesignerCanvas — accept an initial name and auto-place it**
+- [ ] **Step 4: DesignerCanvas - accept an initial name and auto-place it**
 
 In `frontend/src/components/DesignerCanvas.tsx`:
 
@@ -2202,7 +2202,7 @@ export default function DesignerCanvas({ width = 500, height = 380, backgroundUr
 4. Add a one-shot auto-apply effect directly after the `useEffect` that creates the fabric canvas (after line 101). It must run once the canvas is ready:
 
 ```tsx
-  // Auto-place the name carried over from the product page — once, after the
+  // Auto-place the name carried over from the product page - once, after the
   // canvas is live, so the buyer lands with their personalization already on.
   const seededRef = useRef(false);
   useEffect(() => {
@@ -2215,7 +2215,7 @@ export default function DesignerCanvas({ width = 500, height = 380, backgroundUr
 
 (`applyNameText` already exists at line 133 and reads `nameText`, which was seeded in step 3.)
 
-- [ ] **Step 5: ProductDesignerPage — read ?name=, add qty + live estimate to the sticky bar**
+- [ ] **Step 5: ProductDesignerPage - read ?name=, add qty + live estimate to the sticky bar**
 
 In `frontend/src/pages/ProductDesignerPage.tsx`:
 
@@ -2237,13 +2237,13 @@ In `frontend/src/pages/ProductDesignerPage.tsx`:
   const [estimate, setEstimate] = useState<{ unit: number; total: number; currency: string } | null>(null);
 ```
 
-(Move `const QTY_OPTIONS` above the component as a module constant — it must not be re-created per render inside hooks deps.)
+(Move `const QTY_OPTIONS` above the component as a module constant - it must not be re-created per render inside hooks deps.)
 
 4. Add the live re-quote effect (after the `load` effect):
 
 ```tsx
   // Live quote: re-estimate whenever qty, variant or captured artwork changes.
-  // Event-driven single POST per change — never polled.
+  // Event-driven single POST per change - never polled.
   useEffect(() => {
     if (!product) return;
     let active = true;
@@ -2277,7 +2277,7 @@ In `frontend/src/pages/ProductDesignerPage.tsx`:
 7. Rework the sticky action bar (lines 149-176) to include the qty picker + live price:
 
 ```tsx
-          {/* Sticky action bar — qty picker + live unit price + add to cart */}
+          {/* Sticky action bar - qty picker + live unit price + add to cart */}
           <div className="sticky bottom-4 z-raised">
             <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -2288,7 +2288,7 @@ In `frontend/src/pages/ProductDesignerPage.tsx`:
                 ) : (
                   <span className="text-fg-muted">
                     {is3d
-                      ? 'Pick a colour, place your design, then choose “Use this design” — or add to cart plain.'
+                      ? 'Pick a colour, place your design, then choose “Use this design” - or add to cart plain.'
                       : 'Add a logo or text, then choose “Use this design”.'}
                   </span>
                 )}
@@ -2331,7 +2331,7 @@ In `frontend/src/pages/ProductDesignerPage.tsx`:
 - [ ] **Step 6: Verify**
 
 Run: `npm run typecheck` then full `npm run test` (from `frontend/`).
-Expected: all green — no existing test covers ProductDesignerPage directly; cartStore test now passes.
+Expected: all green - no existing test covers ProductDesignerPage directly; cartStore test now passes.
 
 - [ ] **Step 7: Commit**
 
@@ -2357,12 +2357,12 @@ Expected: all green.
 - [ ] **Step 3: Manual smoke via dev servers**
 
 Start backend (`php artisan serve`) + frontend (`npm run dev` in `frontend/`), then verify in the browser (or preview tools):
-- `/` — search hero submits to `/products?q=…`; 8 category tiles link to `/products?category=…`; New-arrivals rail scrolls horizontally; no "How it works"/trust sections.
-- `/products?category=drinkware` — chip rail highlights Drinkware; only drinkware items; sort by price reorders; typing in search re-queries server-side (pagination intact).
-- Product page — breadcrumb shows the marketplace category; typing in "See your name on it" overlays text on the photo; "Customize in studio" href ends `?name=…`.
-- Designer — name pre-placed on canvas; changing quantity updates the live unit price; add to cart carries the qty into `/cart`.
-- Header — Categories dropdown lists 8 categories; mobile drawer links use `?category=`.
-- Staff flow — log in as `ops@giftlab.local` and `superadmin@giftlab.local`: both land on `/catalogue-admin`; header shows Catalogue Gate / Production / Procurement links (desktop + drawer); `/quotes` shows the Company column with real company names and staff copy; header quotes link reads "Quotes". Buyer login still lands on `/quotes`, sees "My Orders", no ops links, no Company column.
+- `/` - search hero submits to `/products?q=…`; 8 category tiles link to `/products?category=…`; New-arrivals rail scrolls horizontally; no "How it works"/trust sections.
+- `/products?category=drinkware` - chip rail highlights Drinkware; only drinkware items; sort by price reorders; typing in search re-queries server-side (pagination intact).
+- Product page - breadcrumb shows the marketplace category; typing in "See your name on it" overlays text on the photo; "Customize in studio" href ends `?name=…`.
+- Designer - name pre-placed on canvas; changing quantity updates the live unit price; add to cart carries the qty into `/cart`.
+- Header - Categories dropdown lists 8 categories; mobile drawer links use `?category=`.
+- Staff flow - log in as `ops@giftlab.local` and `superadmin@giftlab.local`: both land on `/catalogue-admin`; header shows Catalogue Gate / Production / Procurement links (desktop + drawer); `/quotes` shows the Company column with real company names and staff copy; header quotes link reads "Quotes". Buyer login still lands on `/quotes`, sees "My Orders", no ops links, no Company column.
 
 - [ ] **Step 4: Commit any smoke-test fixes, then finish**
 
@@ -2372,7 +2372,7 @@ Use the `superpowers:finishing-a-development-branch` skill to decide merge/PR.
 
 ## Self-Review Notes
 
-- **Spec coverage:** marketplace categorization (Tasks 1-4), no print-method taxonomy in public UI (Tasks 5-9: class badge removed from cards, print-method chooser removed from PDP, header class links replaced), no how-it-works/benefit explainers (Task 8 deletes STEPS + TRUST; PDP trust mini-row from Task 9's file is presentational product info and small — if strictness is wanted, deleting the `TRUST` array + mini-row in Task 9 step 3 is a one-line addition), reduced whitespace (gap-16→gap-10/8, p-4→p-3 cards, compact hero, denser 5-col grids), unique per-page features (search-first hero + arrivals rail on Home; chip rail + personalize hover CTA in catalogue; live name preview on PDP; name handoff + live qty pricing in designer).
-- **Legacy `?class=` URLs:** backend keeps accepting `class` (untouched), old bookmarked links simply show unfiltered results in the new UI — acceptable, no redirect needed.
+- **Spec coverage:** marketplace categorization (Tasks 1-4), no print-method taxonomy in public UI (Tasks 5-9: class badge removed from cards, print-method chooser removed from PDP, header class links replaced), no how-it-works/benefit explainers (Task 8 deletes STEPS + TRUST; PDP trust mini-row from Task 9's file is presentational product info and small - if strictness is wanted, deleting the `TRUST` array + mini-row in Task 9 step 3 is a one-line addition), reduced whitespace (gap-16→gap-10/8, p-4→p-3 cards, compact hero, denser 5-col grids), unique per-page features (search-first hero + arrivals rail on Home; chip rail + personalize hover CTA in catalogue; live name preview on PDP; name handoff + live qty pricing in designer).
+- **Legacy `?class=` URLs:** backend keeps accepting `class` (untouched), old bookmarked links simply show unfiltered results in the new UI - acceptable, no redirect needed.
 - **Type consistency:** `fetchCatalogue(CatalogueQuery)` used identically in Tasks 4, 6, 8; `categoryLabel(string | null | undefined)` matches PDP/card usage; `addLine(..., qty?)` matches Task 10 caller; `initialNameText` prop name consistent between DesignerCanvas and ProductDesignerPage.
 - **Placeholder scan:** every code step contains complete code; no TBDs.

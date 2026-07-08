@@ -12,7 +12,7 @@ use Throwable;
 
 /**
  * Downloads and stores the printable model file for an ingested 3D item.
- * The production floor prints from OUR copy, never from a live source link —
+ * The production floor prints from OUR copy, never from a live source link -
  * a source can delete or re-licence a model after a customer has quoted
  * against it (spec 6.6: the Job carries a print-ready file). Files live on
  * the private `local` disk: the CC licence lets us produce prints, not

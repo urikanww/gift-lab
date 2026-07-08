@@ -307,7 +307,7 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
         return;
       }
     }
-    // Only send weight / dimensions when the operator actually filled them —
+    // Only send weight / dimensions when the operator actually filled them -
     // sending 0 / {0,0,0} for a blank field would trip the backend's gt:0 rule.
     const payload: Record<string, unknown> = {
       description,
@@ -390,7 +390,7 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
             <option value="MAKE_TO_ORDER">Make to order</option>
           </Select>
           {/* On-demand: only meaningful for STOCKED items. When on, the item can
-              be ordered at 0 stock — the shortfall drives on-hand negative and a
+              be ordered at 0 stock - the shortfall drives on-hand negative and a
               supplier reorder is drafted (the buy-list). */}
           <Select
             label="On-demand (backorder)"
@@ -398,8 +398,8 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
             onChange={(e) => setAllowBackorder(e.target.value === 'yes')}
             disabled={saving || stockMode !== 'STOCKED'}
           >
-            <option value="no">Off — block at 0 stock</option>
-            <option value="yes">On — sell at 0, backorder</option>
+            <option value="no">Off - block at 0 stock</option>
+            <option value="yes">On - sell at 0, backorder</option>
           </Select>
         </div>
 
@@ -424,7 +424,7 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
               Number(product.base_cost) > 0 &&
               Number(priceOverride) < Number(product.base_cost) && (
                 <p className="mt-1 text-xs text-danger">
-                  Below base cost ({product.currency} {Number(product.base_cost).toFixed(2)}) — this sells at a loss.
+                  Below base cost ({product.currency} {Number(product.base_cost).toFixed(2)}) - this sells at a loss.
                 </p>
               )}
           </div>
@@ -581,7 +581,7 @@ function VariantsSection({
     <div className="flex flex-col gap-4">
       {variants.length === 0 && (
         <Badge tone="warning" size="sm">
-          No variants — not orderable
+          No variants - not orderable
         </Badge>
       )}
       {variants.length > 0 && (
@@ -677,8 +677,8 @@ function HistoryDiff({ entry }: { entry: HistoryEntry }) {
     <ul className="mt-1 flex flex-col gap-0.5">
       {rows.map((row) => (
         <li key={row.key} className="text-xs text-fg-subtle">
-          <span className="font-medium text-fg-muted">{row.key}</span>: {String(row.from ?? '—')} &rarr;{' '}
-          {String(row.to ?? '—')}
+          <span className="font-medium text-fg-muted">{row.key}</span>: {String(row.from ?? '-')} &rarr;{' '}
+          {String(row.to ?? '-')}
         </li>
       ))}
     </ul>

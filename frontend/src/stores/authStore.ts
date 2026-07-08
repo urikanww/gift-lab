@@ -44,7 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ error: null });
     try {
       await ensureCsrf();
-      // /login already returns the authenticated user — trust its body instead of
+      // /login already returns the authenticated user - trust its body instead of
       // a second /user round-trip, which also removes a failure window where a
       // flaky follow-up request would flip a successful login to "unauthenticated".
       const { data } = await api.post<{ user: User }>('/login', { email, password });

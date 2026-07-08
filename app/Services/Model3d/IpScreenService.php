@@ -13,17 +13,17 @@ use Throwable;
 
 /**
  * IP/trademark screen for ingested 3D models. A CC licence clears copyright
- * on the model file but NOT trademarks — Thingiverse is full of branded
+ * on the model file but NOT trademarks - Thingiverse is full of branded
  * characters we must never sell. Two layers:
  *
- *  1. Keyword blocklist (pricing_configs catalogue/ip_blocklist) — free,
+ *  1. Keyword blocklist (pricing_configs catalogue/ip_blocklist) - free,
  *     always on, admin-editable.
- *  2. LLM screen — provider selected by IP_SCREEN_PROVIDER (anthropic,
+ *  2. LLM screen - provider selected by IP_SCREEN_PROVIDER (anthropic,
  *     openai, or ollama); skipped when the provider's credentials/host are
  *     not configured. The task is a trivial yes/no classification, so any
  *     cheap model works; pick by which account you have.
  *
- * An LLM/API failure fails OPEN (item not flagged) with a warning logged —
+ * An LLM/API failure fails OPEN (item not flagged) with a warning logged -
  * the admin gate and spot checks remain the human backstop.
  */
 final class IpScreenService
@@ -61,7 +61,7 @@ final class IpScreenService
                 default => $this->unknownProvider($provider),
             };
         } catch (Throwable $e) {
-            Log::warning('IP screen failed (transport error) — item passes unflagged.', [
+            Log::warning('IP screen failed (transport error) - item passes unflagged.', [
                 'provider' => $provider,
                 'error' => $e->getMessage(),
             ]);
@@ -108,7 +108,7 @@ final class IpScreenService
             ]);
 
         if (! $response->successful()) {
-            Log::warning('IP screen failed — item passes unflagged.', ['provider' => 'anthropic', 'status' => $response->status()]);
+            Log::warning('IP screen failed - item passes unflagged.', ['provider' => 'anthropic', 'status' => $response->status()]);
 
             return null;
         }
@@ -133,7 +133,7 @@ final class IpScreenService
             ]);
 
         if (! $response->successful()) {
-            Log::warning('IP screen failed — item passes unflagged.', ['provider' => 'openai', 'status' => $response->status()]);
+            Log::warning('IP screen failed - item passes unflagged.', ['provider' => 'openai', 'status' => $response->status()]);
 
             return null;
         }
@@ -157,7 +157,7 @@ final class IpScreenService
             ]);
 
         if (! $response->successful()) {
-            Log::warning('IP screen failed — item passes unflagged.', ['provider' => 'ollama', 'status' => $response->status()]);
+            Log::warning('IP screen failed - item passes unflagged.', ['provider' => 'ollama', 'status' => $response->status()]);
 
             return null;
         }
@@ -167,7 +167,7 @@ final class IpScreenService
 
     private function unknownProvider(string $provider): ?string
     {
-        Log::warning('IP screen: unknown IP_SCREEN_PROVIDER — blocklist-only mode.', ['provider' => $provider]);
+        Log::warning('IP screen: unknown IP_SCREEN_PROVIDER - blocklist-only mode.', ['provider' => $provider]);
 
         return null;
     }
@@ -188,7 +188,7 @@ final class IpScreenService
         $verdict = json_decode(trim($text), true);
 
         if (! is_array($verdict) || ! array_key_exists('ip_flag', $verdict)) {
-            Log::warning('IP screen returned unparseable verdict — item passes unflagged.', ['text' => mb_substr($text, 0, 200)]);
+            Log::warning('IP screen returned unparseable verdict - item passes unflagged.', ['text' => mb_substr($text, 0, 200)]);
 
             return ['flagged' => false, 'reason' => null];
         }

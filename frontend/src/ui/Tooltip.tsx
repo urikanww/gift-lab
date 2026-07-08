@@ -28,7 +28,7 @@ const sideClasses: Record<Side, string> = {
 /**
  * Lightweight tooltip driven by hover AND keyboard focus (WCAG 1.4.13 aware).
  * The trigger is described by the tooltip via aria-describedby. Content should
- * be supplementary — never the only way to get critical information.
+ * be supplementary - never the only way to get critical information.
  */
 export function Tooltip({ content, side = 'top', children }: TooltipProps) {
   const [open, setOpen] = useState(false);

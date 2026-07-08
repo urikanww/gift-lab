@@ -119,7 +119,7 @@ it('falls back to a generic note when the change reason is left blank', async ()
   await userEvent.click(screen.getByRole('button', { name: /request changes/i }));
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
 
-  // API requires a note with request_changes — the UI supplies one.
+  // API requires a note with request_changes - the UI supplies one.
   expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Please revise.');
 });
 

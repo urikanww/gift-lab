@@ -18,7 +18,7 @@ interface KitItem {
 }
 
 /**
- * Curated multi-product kit builder. A kit is just a curated multi-line cart —
+ * Curated multi-product kit builder. A kit is just a curated multi-line cart -
  * the existing cart→quote flow already yields ONE quote, ONE delivery, with
  * per-track jobs that gate atomically. Optionally brands every item in one go.
  */
@@ -27,7 +27,7 @@ export default function KitBuilderPage() {
   const { toast } = useToast();
   const addLine = useCartStore((s) => s.addLine);
   const companyId = useAuthStore((s) => s.user?.company_id ?? null);
-  // Only flag the login gate once the auth probe has settled — avoids flashing
+  // Only flag the login gate once the auth probe has settled - avoids flashing
   // the note at signed-in users while /user is still in flight.
   const needsLogin = useAuthStore((s) => s.status === 'ready' && s.user === null);
 
@@ -242,11 +242,11 @@ export default function KitBuilderPage() {
             Add kit to cart
           </Button>
 
-          {/* Surface the auth gate up front — placing the order requires an
+          {/* Surface the auth gate up front - placing the order requires an
               account, so don't let checkout be the first place they learn it. */}
           {needsLogin && (
             <p className="text-xs text-fg-muted">
-              You can build your kit now — you’ll need to{' '}
+              You can build your kit now - you’ll need to{' '}
               <Link
                 to="/login"
                 className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"

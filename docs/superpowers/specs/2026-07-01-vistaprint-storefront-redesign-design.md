@@ -1,15 +1,15 @@
-# Gift-Lab — Vistaprint-Angled Storefront Redesign
+# Gift-Lab - Vistaprint-Angled Storefront Redesign
 
 **Date:** 2026-07-01
-**Status:** Approved design — ready for implementation plan
-**Approach:** A — storefront reskin + ecommerce IA, existing B2B backend untouched
+**Status:** Approved design - ready for implementation plan
+**Approach:** A - storefront reskin + ecommerce IA, existing B2B backend untouched
 
 ---
 
 ## 1. Goal
 
 Transform the Gift-Lab frontend from a thin, un-commercial UI into a professional,
-Vistaprint-grade custom-gifting **storefront** — without changing the backend.
+Vistaprint-grade custom-gifting **storefront** - without changing the backend.
 The existing B2B quote → proof → pay lifecycle stays exactly as-is; we present it
 inside a modern commerce experience.
 
@@ -31,7 +31,7 @@ Non-goals (explicitly out of scope):
   `src/motion/`, `ThemeProvider` (light/dark), route page-transitions.
 - Preserve all existing API calls, routes' data contracts, and Zustand store shapes.
 
-## 3. Visual direction — "Bold Studio"
+## 3. Visual direction - "Bold Studio"
 
 Dark-default, high-contrast, design-forward. Leans on the fabric.js/3D designer as
 the brand hero. **Full dark/light theme toggle** (reuse existing `ThemeProvider`).
@@ -53,8 +53,8 @@ Token palette (retheme the existing CSS-var token layer; both themes first-class
   gradients for secondary product tiles.
 - Type: bold, tight-tracked display weights (900) for headlines; existing Inter/UI
   text for body. (Fraunces from the current system may be dropped or kept for a
-  single editorial accent — decide at build time; Bold Studio leans sans-heavy.)
-- Motion: existing presets. Purposeful — hero entrance, staggered grids, hover
+  single editorial accent - decide at build time; Bold Studio leans sans-heavy.)
+- Motion: existing presets. Purposeful - hero entrance, staggered grids, hover
   elevation, spring micro-interactions. Honor `prefers-reduced-motion`.
 
 The theme toggle lives in the header, persists to `localStorage`, and defaults to
@@ -85,7 +85,7 @@ Checkout (creates Quote) → Pay**. The "Checkout" is a storefront-styled wrappe
 around the existing `POST /quotes` (+ existing pay-now later in the quote lifecycle);
 it does **not** bypass the B2B flow.
 
-Redirects: keep old paths working — `/catalogue` → `/products`, and
+Redirects: keep old paths working - `/catalogue` → `/products`, and
 `/catalogue/:id` → `/products/:id` (the old "product = designer" link now lands on
 the PDP; the designer is reached from the PDP's "Customize" CTA at `/design/:id`),
 so bookmarks/tests don't break.
@@ -115,7 +115,7 @@ to PDP (`/products/:id`), not straight to the designer.
 
 ### 6.3 PDP `/products/:id` (NEW)
 Two-column desktop layout:
-- **Left gallery — STICKY** (`position:sticky; top:~header height`, releases at the
+- **Left gallery - STICKY** (`position:sticky; top:~header height`, releases at the
   Specifications section) so there is no dead space when the info column is taller.
   Main image + thumbnail strip. "3D preview available" badge when applicable.
 - **Right info:** breadcrumb, title, rating summary, price, description, variant
@@ -124,7 +124,7 @@ Two-column desktop layout:
   studio"** (→ `/design/:id`), secondary "Add sample to cart", trust mini-row.
 - **Below (full-width):** Specifications, reviews, related products.
 Data: reuse `GET /catalogue/{product}` and `POST /price-estimate` for tier prices.
-Reviews are presentational (static/placeholder) unless a source exists — no new
+Reviews are presentational (static/placeholder) unless a source exists - no new
 backend.
 
 ### 6.4 Designer `/design/:id` (reskin)
@@ -135,13 +135,13 @@ wiring untouched.
 ### 6.5 Cart `/cart` + Checkout `/checkout` (reskin/reframe)
 Storefront cart (line items, tier-aware pricing, summary) → **Checkout** page
 styled as commerce (contact/shipping context, order summary, confirm). On confirm
-it calls the existing `POST /quotes` (login required — prompt/redirect to `/login`
+it calls the existing `POST /quotes` (login required - prompt/redirect to `/login`
 if anonymous, then resume). The celebratory confirmation + subsequent
 proof/pay steps use the existing quote lifecycle. No payment-first.
 
 ### 6.6 My Orders `/quotes`, `/quotes/:id` (reskin)
 Buyer-facing quote list re-labeled "My Orders", detail page with status timeline,
-line items, pricing, proofs, and lifecycle actions (accept, pay, proof decisions) —
+line items, pricing, proofs, and lifecycle actions (accept, pay, proof decisions) -
 already themeable via primitives.
 
 ### 6.7 Auth + ops/admin (reskin)
@@ -167,14 +167,14 @@ Mobile-first, must work 360px → desktop with **no horizontal scroll** on any p
 - TypeScript strict, no `any`. `npm run typecheck` clean. `npm test` green; add/adjust
   tests for new pages (Home, PDP) and updated routes/redirects.
 - Motion on transform/opacity/layout only; no CLS; lazy-load routes/images.
-- Reuse the design system — no one-off styles or ad-hoc animations.
+- Reuse the design system - no one-off styles or ad-hoc animations.
 
 ## 9. Implementation phasing (suggested)
 
 1. **Retheme tokens → Bold Studio** (dark+light), theme toggle persistence. Global,
    unblocks everything.
-2. **Global chrome** — mega-nav header + footer, responsive drawer.
-3. **Routing + IA** — add `/products`, `/products/:id`, `/design/:id`, `/checkout`;
+2. **Global chrome** - mega-nav header + footer, responsive drawer.
+3. **Routing + IA** - add `/products`, `/products/:id`, `/design/:id`, `/checkout`;
    redirects for old paths.
 4. **Home** (new).
 5. **PDP** (new, sticky gallery + tier pricing).
@@ -190,7 +190,7 @@ Mobile-first, must work 360px → desktop with **no horizontal scroll** on any p
   (cart is client-side Zustand, so it survives). Confirm this is acceptable vs.
   gating "Add to cart" behind login.
 - **Reviews & tier pricing data:** reviews are presentational unless real data
-  exists; tier pricing uses `POST /price-estimate` per quantity — confirm the
+  exists; tier pricing uses `POST /price-estimate` per quantity - confirm the
   endpoint returns per-unit breaks or compute client-side from returned totals.
 - **Old test coverage:** `CataloguePage.test.tsx` and others assume current routes;
   update alongside the route changes.

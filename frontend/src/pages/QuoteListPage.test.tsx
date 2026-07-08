@@ -79,7 +79,7 @@ it('hides the company column and keeps buyer copy for buyers', () => {
   expect(screen.queryByText('Company')).not.toBeInTheDocument();
   expect(screen.queryByText('Acme Gifts Pte Ltd')).not.toBeInTheDocument();
   expect(screen.getByText(/track your gift orders/i)).toBeInTheDocument();
-  // Buyers arrive via the "My Orders" nav item — the title matches it.
+  // Buyers arrive via the "My Orders" nav item - the title matches it.
   expect(screen.getByRole('heading', { name: 'My Orders' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Quotes' })).not.toBeInTheDocument();
 });

@@ -4,9 +4,9 @@
 
 /*
  * ============================================================================
- * GIFT-LAB DESIGN SYSTEM — TOKEN SOURCE OF TRUTH
+ * GIFT-LAB DESIGN SYSTEM - TOKEN SOURCE OF TRUTH
  * ----------------------------------------------------------------------------
- * Aesthetic: "Bold Studio" — high-contrast, dark-default canvas, a punchy
+ * Aesthetic: "Bold Studio" - high-contrast, dark-default canvas, a punchy
  * coral (#ff4d6d) brand paired with an electric violet (#7c5cff) accent.
  * Editorial display type (Fraunces) paired with a clean grotesk text face
  * (Inter). Layered shadows. Calm, deliberate motion.
@@ -15,9 +15,9 @@
  * runtime (light/dark via [data-theme]) AND are consumed by tailwind.config.js
  * through var() references. Downstream code should prefer Tailwind utilities
  * (bg-brand, text-fg-muted, rounded-lg, shadow-card, etc.) which resolve to
- * these tokens — never hard-code hex.
+ * these tokens - never hard-code hex.
  *
- * IMPORTANT — colour tokens are stored as SPACE-SEPARATED RGB CHANNEL TRIPLES
+ * IMPORTANT - colour tokens are stored as SPACE-SEPARATED RGB CHANNEL TRIPLES
  * (e.g. `255 59 95`), NOT hex. tailwind.config.js wraps them as
  * `rgb(var(--token) / <alpha-value>)` so Tailwind's alpha modifiers
  * (bg-primary/95, text-fg/70, ring-primary/40, …) emit VALID rgb() and render
@@ -30,13 +30,13 @@
 
 :root,
 [data-theme='light'] {
-  /* --- Brand (coral) & accent (violet) — RGB channel triples ----------- */
+  /* --- Brand (coral) & accent (violet) - RGB channel triples ----------- */
   --brand-50: 255 240 243;
   --brand-100: 255 217 224;
   --brand-200: 255 179 193;
   --brand-300: 255 131 153;
   --brand-400: 255 92 120;
-  --brand-500: 255 59 95; /* primary brand — Bold Studio coral (#ff3b5f) */
+  --brand-500: 255 59 95; /* primary brand - Bold Studio coral (#ff3b5f) */
   --brand-600: 232 45 80;
   --brand-700: 195 31 63;
   --brand-800: 151 25 48;
@@ -47,13 +47,13 @@
   --accent-200: 196 182 255;
   --accent-300: 166 144 255;
   --accent-400: 138 107 255;
-  --accent-500: 106 75 255; /* electric violet — secondary accent (#6a4bff) */
+  --accent-500: 106 75 255; /* electric violet - secondary accent (#6a4bff) */
   --accent-600: 88 54 230;
   --accent-700: 68 41 192;
   --accent-800: 52 31 149;
   --accent-900: 40 24 113;
 
-  /* --- Neutral (ink) scale — RGB channel triples ---------------------- */
+  /* --- Neutral (ink) scale - RGB channel triples ---------------------- */
   --ink-0: 255 255 255;
   --ink-50: 246 246 251; /* cool paper */
   --ink-100: 240 240 246;
@@ -66,7 +66,7 @@
   --ink-800: 31 31 38;
   --ink-900: 20 20 26;
 
-  /* --- Semantic surface / text — RGB channel triples ----------------- */
+  /* --- Semantic surface / text - RGB channel triples ----------------- */
   --color-bg: 246 246 251;
   --color-surface: 255 255 255;
   --color-surface-2: 240 240 246;
@@ -81,7 +81,7 @@
   --color-primary-hover: 232 45 80;
   --color-primary-fg: 255 255 255;
 
-  --color-success: 31 143 99; /* jade — success / commerce (decoupled from accent) */
+  --color-success: 31 143 99; /* jade - success / commerce (decoupled from accent) */
   --color-success-bg: #edf9f2;
   --color-danger: 194 59 59;
   --color-danger-bg: #fbeceb;
@@ -132,7 +132,7 @@
 }
 
 [data-theme='dark'] {
-  /* Semantic surface / text — RGB channel triples (see note above). */
+  /* Semantic surface / text - RGB channel triples (see note above). */
   --color-bg: 14 14 18; /* #0e0e12 */
   --color-surface: 22 22 29; /* #16161d */
   --color-surface-2: 30 30 40; /* #1e1e28 */
@@ -147,7 +147,7 @@
   --color-primary-hover: 255 99 130; /* #ff6382 */
   --color-primary-fg: 255 255 255;
 
-  --color-success: 55 173 123; /* jade — #37ad7b (decoupled from accent) */
+  --color-success: 55 173 123; /* jade - #37ad7b (decoupled from accent) */
   --color-success-bg: rgba(31, 143, 99, 0.16);
   --color-danger: 255 107 107; /* #ff6b6b */
   --color-danger-bg: rgba(255, 77, 109, 0.16);
@@ -244,7 +244,7 @@
 }
 
 /* --------------------------------------------------------------------- */
-/* Reduced motion — global safety net. Motion presets also honor this,   */
+/* Reduced motion - global safety net. Motion presets also honor this,   */
 /* but this guarantees any stray CSS animation degrades gracefully.      */
 /* --------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
@@ -259,7 +259,7 @@
 }
 
 /* ===================================================================== */
-/* LEGACY SHIMS — transitional only.                                     */
+/* LEGACY SHIMS - transitional only.                                     */
 /* The pre-existing feature pages (Catalogue, Designer, Cart, Quotes,    */
 /* Production, Procurement) still use hand-rolled class names. These      */
 /* shims re-point those classes at the new tokens so nothing looks       */

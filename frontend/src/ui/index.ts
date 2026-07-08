@@ -1,5 +1,5 @@
 /**
- * Gift-Lab UI primitives — public API.
+ * Gift-Lab UI primitives - public API.
  *
  * All primitives ship with baked-in motion (reduced-motion aware) and WCAG 2.1
  * AA a11y. Import from here:

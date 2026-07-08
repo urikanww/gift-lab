@@ -8,7 +8,7 @@ namespace App\Enums;
  * 3D model licence gate (spec 6.5). Only commercial-OK licences may publish.
  *
  * Commercial-OK set (owner decision, risk explicitly accepted): every Creative
- * Commons variant — including NonCommercial (NC) and NoDerivatives (ND) — plus
+ * Commons variant - including NonCommercial (NC) and NoDerivatives (ND) - plus
  * the permissive/copyleft open-source families and OWNED. Only "all rights
  * reserved" / unknown / paid-without-purchase licences remain BLOCKED.
  *
@@ -41,7 +41,7 @@ enum License: string
     /**
      * Every licence except public-domain (CC0) and OWNED carries an attribution
      * or notice-retention obligation, so we require a creator credit before
-     * publishing — the gate holds items on `missing_credit` otherwise.
+     * publishing - the gate holds items on `missing_credit` otherwise.
      */
     public function requiresCreatorCredit(): bool
     {
@@ -55,7 +55,7 @@ enum License: string
      * Compliance tier for superadmin-only labelling (design Phase 3):
      * - standard  : the original always-allowed set (CC0 / CC-BY / OWNED) + BLOCKED (never shown).
      * - extended  : commercial-OK with obligations (Share-Alike + open-source families).
-     * - high_risk : NonCommercial / NoDerivatives — terms forbid our use; enabled by operator choice.
+     * - high_risk : NonCommercial / NoDerivatives - terms forbid our use; enabled by operator choice.
      *
      * @return 'standard'|'extended'|'high_risk'
      */

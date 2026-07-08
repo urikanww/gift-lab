@@ -82,14 +82,14 @@ export default function ProductionQueuePage() {
           </Badge>
         </div>
         <p className="mt-1 text-sm text-fg-muted">
-          Shared first-come queue by readiness — UV + 3D, no customer priority. Updates in real time.
+          Shared first-come queue by readiness - UV + 3D, no customer priority. Updates in real time.
         </p>
       </Motion>
 
-      {/* Loading — animated skeletons on first load only */}
+      {/* Loading - animated skeletons on first load only */}
       {loading && jobs.length === 0 && <QueueSkeleton />}
 
-      {/* Error — retry */}
+      {/* Error - retry */}
       {!loading && error && <ErrorState message={error} onRetry={() => void fetchQueue()} />}
 
       {/* Empty */}
@@ -100,7 +100,7 @@ export default function ProductionQueuePage() {
         />
       )}
 
-      {/* Board — layout-animated cards; realtime add/remove/reorder via AnimatePresence + layout */}
+      {/* Board - layout-animated cards; realtime add/remove/reorder via AnimatePresence + layout */}
       {jobs.length > 0 && (
         <motion.ul
           layout={animate}
@@ -140,7 +140,7 @@ export default function ProductionQueuePage() {
                       <dd className="text-right font-medium text-fg">{j.qty}</dd>
                       <dt className="text-fg-subtle">Ready at</dt>
                       <dd className="text-right font-medium text-fg">
-                        {j.ready_at ? new Date(j.ready_at).toLocaleString() : '—'}
+                        {j.ready_at ? new Date(j.ready_at).toLocaleString() : '-'}
                       </dd>
                     </dl>
 

@@ -1,4 +1,4 @@
-# Gift Lab — DigitalOcean Ubuntu Deployment Runbook
+# Gift Lab - DigitalOcean Ubuntu Deployment Runbook
 
 Production deployment of the B2B gifting platform on a single DigitalOcean
 Ubuntu 24.04 droplet: LEMP (Nginx + MySQL + PHP-FPM) + Redis, Laravel Reverb
@@ -7,7 +7,7 @@ the Laravel task scheduler via cron.
 
 > **Bootstrap note.** Phases 1–5 produced framework-ready source (`app/`,
 > `database/`, `routes/`, `tests/`, `phpunit.xml`) plus the SPA in `frontend/`.
-> Step 3 assembles these into a fresh Laravel skeleton — that is where the app
+> Step 3 assembles these into a fresh Laravel skeleton - that is where the app
 > becomes runnable.
 
 ## Topology / DNS
@@ -62,7 +62,7 @@ git clone https://github.com/urikanww/gift-lab.git giftlab-src
 composer create-project laravel/laravel giftlab-app
 cd giftlab-app
 
-# IMPORTANT: remove the skeleton's default migrations and example tests first —
+# IMPORTANT: remove the skeleton's default migrations and example tests first -
 # our framework migration defines users/cache/jobs/sessions itself, so leaving
 # the defaults in place causes duplicate-table migration failures.
 rm -f database/migrations/*.php
@@ -79,7 +79,7 @@ cp    ../giftlab-src/routes/console.php    routes/console.php   # daily scraped 
 cp -r ../giftlab-src/tests/.              tests/
 cp    ../giftlab-src/phpunit.xml           phpunit.xml
 
-# First-party packages. Do NOT run `install:api` — it publishes a second
+# First-party packages. Do NOT run `install:api` - it publishes a second
 # personal_access_tokens migration that collides with ours. Just require Sanctum;
 # our migration already creates the tokens table.
 composer require laravel/sanctum laravel/reverb
@@ -89,7 +89,7 @@ composer require pestphp/pest pestphp/pest-plugin-laravel --dev --with-all-depen
 php artisan reverb:install
 ```
 
-Then wire `bootstrap/app.php` — a fresh Laravel skeleton does not register the
+Then wire `bootstrap/app.php` - a fresh Laravel skeleton does not register the
 `api`/`channels` route files or stateful Sanctum, so add them:
 
 ```php
@@ -108,17 +108,17 @@ Then wire `bootstrap/app.php` — a fresh Laravel skeleton does not register the
 
 Also set:
 
-- **CORS** — `config/cors.php`: `paths` include `api/*`, `sanctum/csrf-cookie`,
+- **CORS** - `config/cors.php`: `paths` include `api/*`, `sanctum/csrf-cookie`,
   `broadcasting/auth`; `allowed_origins` = `[env('CORS_ALLOWED_ORIGINS')]`;
   `supports_credentials => true`.
-- **Broadcasting auth** — the `/broadcasting/auth` route (added by
+- **Broadcasting auth** - the `/broadcasting/auth` route (added by
   `reverb:install`) must run behind `auth:sanctum`.
 
-`QuotePolicy` is auto-discovered by Laravel's naming convention — no manual
+`QuotePolicy` is auto-discovered by Laravel's naming convention - no manual
 registration needed.
 
 > **Verified:** this exact assembly (Laravel 12 + Sanctum + Pest, SQLite) runs
-> the full backend suite green — **35 passed, 99 assertions**.
+> the full backend suite green - **35 passed, 99 assertions**.
 
 ## 4. Database
 
@@ -179,7 +179,7 @@ sudo certbot --nginx \
 sudo systemctl status certbot.timer
 ```
 
-## 9. Supervisor — queue workers + Reverb (perpetual)
+## 9. Supervisor - queue workers + Reverb (perpetual)
 
 ```bash
 sudo cp /var/www/giftlab-src/deploy/supervisor/giftlab-worker.conf /etc/supervisor/conf.d/
@@ -191,10 +191,10 @@ sudo supervisorctl status
 ```
 
 Reverb binds `127.0.0.1:8080`; Nginx (`reverb.giftlab.example`) terminates TLS
-and proxies the `wss` upgrade to it. This is the only real-time transport — the
+and proxies the `wss` upgrade to it. This is the only real-time transport - the
 app never polls.
 
-## 10. Cron — Laravel scheduler
+## 10. Cron - Laravel scheduler
 
 The scheduler drives the daily scraped-catalogue re-scrape + drift check
 (Phase 2) and any maintenance jobs. Add for the `www-data` user:
@@ -237,5 +237,5 @@ quote state change on another session pushes live (no refresh).
 
 - **Logs**: `/var/log/giftlab/{worker,reverb}.log`, `storage/logs/laravel.log`, `journalctl -u nginx`.
 - **On deploy always**: `php artisan queue:restart` + `supervisorctl restart giftlab-reverb`.
-- **DB backups**: nightly `mysqldump` to DO Spaces (audit logs are dispute evidence — retain).
+- **DB backups**: nightly `mysqldump` to DO Spaces (audit logs are dispute evidence - retain).
 - **Security**: `composer audit` + `npm audit` in CI; rotate the seeded staff creds; keep `APP_DEBUG=false`. See `SECURITY.md`.

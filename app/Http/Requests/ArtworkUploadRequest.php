@@ -7,7 +7,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Designer artwork upload (public — the designer is account-free until Request
+ * Designer artwork upload (public - the designer is account-free until Request
  * Quote, spec 6.1). Validates type + size so only real images are stored; the
  * returned ref becomes the line's customization artwork_ref and, once a proof is
  * approved, the production print file.

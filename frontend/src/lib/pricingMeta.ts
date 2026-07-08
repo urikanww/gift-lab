@@ -1,7 +1,7 @@
 /**
  * Human-facing metadata for the pricing/config editor. The backend stays a
  * generic key/value store; this layer maps each `group.key` to a plain-language
- * label, a one-line explanation, and which structured editor to render — so a
+ * label, a one-line explanation, and which structured editor to render - so a
  * non-technical shopkeeper never sees raw JSON or machine keys.
  */
 
@@ -90,7 +90,7 @@ export const CONFIG_META: Record<string, FieldMeta> = {
     label: 'Print cost by method (per item)',
     help: 'What it costs to decorate one item, by print method.',
     editor: 'moneyMap',
-    keyLabels: { UV: 'UV print', FDM: '3D — FDM (plastic)', RESIN: '3D — resin' },
+    keyLabels: { UV: 'UV print', FDM: '3D - FDM (plastic)', RESIN: '3D - resin' },
   },
   'print_cost.filament_per_gram': {
     label: 'Filament cost per gram',

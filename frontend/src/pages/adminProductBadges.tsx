@@ -38,7 +38,7 @@ export function PublishBadge({ state }: { state: string }) {
 }
 
 /**
- * Licence-tier badge — superadmin-only surface. 'standard' renders nothing;
+ * Licence-tier badge - superadmin-only surface. 'standard' renders nothing;
  * 'extended' is neutral; 'high_risk' is a red flag for legal attention.
  */
 export function LicenseTierBadge({ tier }: { tier: LicenseTier }) {

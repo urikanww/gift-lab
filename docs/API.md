@@ -1,4 +1,4 @@
-# Gift Lab — API & Realtime Reference (B2B v1)
+# Gift Lab - API & Realtime Reference (B2B v1)
 
 Base URL: `https://api.giftlab.example/api`
 Auth: **Sanctum stateful cookies** (SPA). Call `GET /sanctum/csrf-cookie` once
@@ -150,7 +150,7 @@ Superadmin/staff review of scraped-UV + 3D items.
 | GET | `/admin/catalogue?class=&state=` | staff | List scraped/3D items + `publish_state` + `cannot_publish_reasons` |
 | POST | `/admin/products/{product}/publish` | staff | `READY_TO_APPROVE` → `PUBLISHED` (422 if `CANNOT_PUBLISH`) |
 | POST | `/admin/products/{product}/unpublish` | staff | Pull from public → `READY_TO_APPROVE` |
-| PATCH | `/admin/settings/auto-publish` | superadmin | `{ "enabled": true }` — global auto-publish toggle |
+| PATCH | `/admin/settings/auto-publish` | superadmin | `{ "enabled": true }` - global auto-publish toggle |
 
 Scraped-UV lifecycle: ingest → completeness gate (reason tags `missing_price`,
 `missing_dimensions`, `not_printable`, `stock_unreadable`, `source_dead`) →
@@ -162,11 +162,11 @@ filament grams decrement (`QTY_SHORT` if a spool can't cover the run).
 
 ---
 
-## Realtime — Laravel Reverb (websockets only, no polling)
+## Realtime - Laravel Reverb (websockets only, no polling)
 
 Client: Laravel Echo (`broadcaster: 'reverb'`), auth via `/broadcasting/auth`
 (Sanctum cookie). Private-channel authorization is in `routes/channels.php` and
-mirrors `QuotePolicy` — realtime access never exceeds HTTP access.
+mirrors `QuotePolicy` - realtime access never exceeds HTTP access.
 
 | Channel | Who | Event (`broadcastAs`) | Payload |
 |---|---|---|---|
@@ -175,14 +175,14 @@ mirrors `QuotePolicy` — realtime access never exceeds HTTP access.
 | `private-staff.queue` | staff | `.production-queue.updated` | `job_id, quote_id, track, state, ready_at, qty, action` |
 | `private-staff.procurement` | staff | `.line-item.awaiting-reconfirm` | `line_item_id, quote_id, reason, ordered_qty, procured_qty, unit_price, procured_price` |
 
-All broadcast events implement `ShouldBroadcastNow` (synchronous — no queue lag
+All broadcast events implement `ShouldBroadcastNow` (synchronous - no queue lag
 on realtime).
 
 ---
 
 ## State machines (authoritative)
 
-- **Quote**: `DRAFT→SENT→(CHANGES_REQUESTED→DRAFT)*→ACCEPTED→PROOFING→PROOF_APPROVED→PO_ISSUED→CONFIRMED→PROCURING→READY→CLOSED`; any pre-production state (`DRAFT`…`PROCURING`) `→CANCELLED` — once `READY`/`CLOSED` there is no cancel edge.
+- **Quote**: `DRAFT→SENT→(CHANGES_REQUESTED→DRAFT)*→ACCEPTED→PROOFING→PROOF_APPROVED→PO_ISSUED→CONFIRMED→PROCURING→READY→CLOSED`; any pre-production state (`DRAFT`…`PROCURING`) `→CANCELLED` - once `READY`/`CLOSED` there is no cancel edge.
 - **LineItem**: `PENDING→PROCURING→{PURCHASED→INBOUND→RECEIVED→READY | AWAITING_RECONFIRM→(AMENDED→PROCURING | approve→…→READY | DROPPED)}`.
 - **Proof**: `SENT→{APPROVED(terminal) | CHANGES_REQUESTED}`.
 - **Job**: `READY→IN_PRODUCTION→SHIPPED→CLOSED`.

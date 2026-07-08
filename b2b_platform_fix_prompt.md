@@ -1,13 +1,13 @@
-# B2B Gifting Platform — Fix Prompt (companion to the audit prompt)
+# B2B Gifting Platform - Fix Prompt (companion to the audit prompt)
 
 > Usage: run AFTER an audit pass. Paste this prompt plus a batch of findings
 > from the audit results table. One batch = 3–5 related findings, blockers
 > first. Never paste the entire findings table into one run.
-> SPEC-GAP findings are excluded — route those to the business team.
+> SPEC-GAP findings are excluded - route those to the business team.
 
 ---
 
-## PASS 3 — Fix Execution
+## PASS 3 - Fix Execution
 
 You are fixing defects in a B2B custom gifting platform. The defects come
 from a checklist audit; each has a check ID (e.g. C8-mobile, D5). The audit
@@ -26,14 +26,14 @@ ID | check | status | evidence | severity
 
 - Fix ONLY the findings in this batch. No refactors, no "while I'm here"
   improvements, no touching code paths unrelated to these IDs. If you
-  discover a new defect while fixing, log it under "New findings" — do not
+  discover a new defect while fixing, log it under "New findings" - do not
   fix it in this run.
 - If any pasted row has status SPEC-GAP, stop and return it: spec gaps are
   business decisions, not code fixes. Do not invent the missing rule.
 - Every fix must preserve the spec's locked decisions: browse-first with
   quote-gated accounts, freeze-on-quote snapshots, CC0/CC-BY licence gate,
   superadmin-configurable pricing (never hard-code a price, threshold, or
-  margin — read it from configuration).
+  margin - read it from configuration).
 - Root-cause each finding before coding. A symptom patch that makes the
   check pass while leaving the cause (e.g. suppressing an error instead of
   handling the file format) is a failed fix.
@@ -58,7 +58,7 @@ ID | check | status | evidence | severity
 
 1. Fix table: `ID | root cause | change made (files touched) | verification
    result | regression IDs re-checked`
-2. Coverage line: "X of X batch findings addressed" — numbers must match.
+2. Coverage line: "X of X batch findings addressed" - numbers must match.
    Any finding not fixed appears with status BLOCKED and the reason.
 3. New findings discovered during fixing, formatted as audit rows with a
    suggested new checklist ID (feeds back into Pass 1).

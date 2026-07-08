@@ -47,7 +47,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  /** The buyer's company — reused as the read-only shipping address at checkout. */
+  /** The buyer's company - reused as the read-only shipping address at checkout. */
   company?: CompanySummary | null;
 }
 
@@ -63,7 +63,7 @@ export interface Variant {
 export interface Product {
   id: number;
   name: string;
-  /** Canonical public URL key — link by slug, never by numeric id. */
+  /** Canonical public URL key - link by slug, never by numeric id. */
   slug?: string | null;
   description: string | null;
   class: ProductClass;
@@ -199,7 +199,7 @@ export interface AdminVariant {
 }
 
 /**
- * Full product shape as returned by the /admin/products endpoints — a superset
+ * Full product shape as returned by the /admin/products endpoints - a superset
  * of the public Product with the internal cost/publish/licence fields the staff
  * console edits. Kept distinct from the public `Product` (which never exposes
  * base_cost, publish_state, or licence tier).
@@ -216,7 +216,7 @@ export interface AdminProduct {
    * dynamic. Covers the product price only (delivery is still weight-based).
    */
   price_override: string | number | null;
-  /** Computed sell price (qty 1, no variant) — what a customer pays. */
+  /** Computed sell price (qty 1, no variant) - what a customer pays. */
   selling_price: string | number;
   currency: string;
   dimensions: { l?: number; w?: number; h?: number; unit?: string } | null;

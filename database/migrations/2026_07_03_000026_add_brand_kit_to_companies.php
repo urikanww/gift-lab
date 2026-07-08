@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  * products in one click. The logo is stored as a data URL so the designer can
  * reload it into the Fabric canvas with no CORS dependency (mirrors the
  * existing file→dataURL→canvas upload path; the object store has no CORS
- * policy). Small, single logo per company — acceptable inline.
+ * policy). Small, single logo per company - acceptable inline.
  */
 return new class extends Migration
 {

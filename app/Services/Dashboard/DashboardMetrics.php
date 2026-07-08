@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * Read-only aggregate metrics for the staff dashboard. Every method is a single
- * index-backed query (COUNT/GROUP BY/SUM) or a bounded, eager-loaded slice — no
+ * index-backed query (COUNT/GROUP BY/SUM) or a bounded, eager-loaded slice - no
  * row hydration for counting, no unbounded selects, no N+1.
  */
 class DashboardMetrics
@@ -37,7 +37,7 @@ class DashboardMetrics
     public function snapshot(bool $includeValue): array
     {
         // Counts are identical for staff and superadmin, so cache them under ONE
-        // key (no staff/super split — that recomputed the same pipeline/production/
+        // key (no staff/super split - that recomputed the same pipeline/production/
         // queues twice). Only valueBooked differs, so it gets its own key and is
         // computed/cached solely for superadmins.
         $counts = Cache::remember(

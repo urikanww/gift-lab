@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
  * set), and ingested via Model3dCatalogueService so the licence gate runs for
  * real: only CC0 / CC-BY items are eligible; NC/ND/SA/unknown-licence hits
  * are skipped, not stored. Cults3D is additionally restricted to free
- * listings — a paid file we have not purchased cannot be produced.
+ * listings - a paid file we have not purchased cannot be produced.
  *
  * Two intake modes:
  *   - keyword search (query argument): original behaviour, still available for
@@ -102,7 +102,7 @@ class PullModel3dCatalogue extends Command
             $ids = $this->search($source, $query);
 
             if ($ids === null) {
-                // Missing credentials or upstream failure — already reported.
+                // Missing credentials or upstream failure - already reported.
                 $failed = true;
 
                 continue;
@@ -122,7 +122,7 @@ class PullModel3dCatalogue extends Command
      * nightly sweep doesn't page further than it needs to.
      *
      * Returns false on a hard per-source failure (missing credentials /
-     * upstream error on the first page), true otherwise — mirrors search()'s
+     * upstream error on the first page), true otherwise - mirrors search()'s
      * null-signals-failure contract without reusing its return type, since
      * browse already knows how many items it ingested.
      */
@@ -143,7 +143,7 @@ class PullModel3dCatalogue extends Command
             };
 
             if ($ids === null) {
-                // Missing credentials or upstream failure — already reported.
+                // Missing credentials or upstream failure - already reported.
                 // A failure on page 1 is a hard failure for this source; a
                 // failure on a later page just ends the sweep for tonight.
                 return $sawAnyPage;
@@ -152,14 +152,14 @@ class PullModel3dCatalogue extends Command
             $sawAnyPage = true;
 
             if ($ids === []) {
-                // Feed exhausted before MAX_BROWSE_PAGES — nothing more to page.
+                // Feed exhausted before MAX_BROWSE_PAGES - nothing more to page.
                 break;
             }
 
             $totalIngested += $this->pull($source, $ids, 'popular', $target - $totalIngested, $client, $service);
 
             if ($totalIngested >= $target) {
-                // Target met — no need to page further tonight.
+                // Target met - no need to page further tonight.
                 break;
             }
         }
@@ -206,7 +206,7 @@ class PullModel3dCatalogue extends Command
                 continue;
             }
 
-            // IP/trademark screen — a CC licence doesn't clear trademarks.
+            // IP/trademark screen - a CC licence doesn't clear trademarks.
             // Flagged items still flow IN (owner decision: full visibility),
             // but are held in the admin gate as CANNOT_PUBLISH with the flag
             // reason shown; staff decide, nothing flagged auto-publishes.
@@ -228,15 +228,15 @@ class PullModel3dCatalogue extends Command
             $licenceBlocked = array_intersect($reasons, ['license_blocked', 'missing_credit']) !== [];
 
             if ($product->publish_state === PublishState::CannotPublish && $licenceBlocked) {
-                // Licence not commercial-OK — remove the blocked rows again so a
+                // Licence not commercial-OK - remove the blocked rows again so a
                 // discovery sweep doesn't fill the gate with unusable items.
                 // Hard delete: model3ds has a unique(source, source_id) index and
                 // ingest() ignores trashed rows, so a soft-deleted leftover would
                 // blow up the next sweep that meets the same source id.
-                // Items blocked only on missing_model_file are KEPT — staff can
+                // Items blocked only on missing_model_file are KEPT - staff can
                 // attach the file manually (e.g. Cults3D has no download API).
                 // A product referenced by order lines can't be hard-deleted (FK)
-                // — that history must survive, so it stays as a CANNOT_PUBLISH
+                // - that history must survive, so it stays as a CANNOT_PUBLISH
                 // row in the gate instead.
                 if (LineItem::query()->where('product_id', $product->id)->exists()) {
                     $skipped++;
@@ -255,7 +255,7 @@ class PullModel3dCatalogue extends Command
 
             $this->mirrorImage($product);
 
-            // Measured grams/print-minutes when a slicer is configured —
+            // Measured grams/print-minutes when a slicer is configured -
             // auto-verifies estimates so the item can publish untouched.
             app(SlicerService::class)->measure($product);
             $product->refresh();
@@ -298,7 +298,7 @@ class PullModel3dCatalogue extends Command
     {
         $token = (string) config('services.thingiverse.token');
         if ($token === '') {
-            $this->error('[THINGIVERSE] THINGIVERSE_TOKEN is not configured — skipping.');
+            $this->error('[THINGIVERSE] THINGIVERSE_TOKEN is not configured - skipping.');
 
             return null;
         }
@@ -336,7 +336,7 @@ class PullModel3dCatalogue extends Command
         $username = (string) config('services.cults3d.username');
         $token = (string) config('services.cults3d.token');
         if ($username === '' || $token === '') {
-            $this->error('[CULTS3D] CULTS3D_USERNAME / CULTS3D_TOKEN are not configured — skipping.');
+            $this->error('[CULTS3D] CULTS3D_USERNAME / CULTS3D_TOKEN are not configured - skipping.');
 
             return null;
         }
@@ -374,7 +374,7 @@ class PullModel3dCatalogue extends Command
     }
 
     /**
-     * Page through Thingiverse's "popular" feed — no search query, sorted by
+     * Page through Thingiverse's "popular" feed - no search query, sorted by
      * the source's own popularity ranking. Same response shape as /search/
      * (a top-level "hits" array of things), so the pluck mirrors
      * searchThingiverse() exactly.
@@ -385,7 +385,7 @@ class PullModel3dCatalogue extends Command
     {
         $token = (string) config('services.thingiverse.token');
         if ($token === '') {
-            $this->error('[THINGIVERSE] THINGIVERSE_TOKEN is not configured — skipping.');
+            $this->error('[THINGIVERSE] THINGIVERSE_TOKEN is not configured - skipping.');
 
             return null;
         }
@@ -417,7 +417,7 @@ class PullModel3dCatalogue extends Command
     /**
      * Page through a keyword-less "most downloaded" Cults3D feed.
      *
-     * BEST-GUESS Cults3D browse query — verify field names
+     * BEST-GUESS Cults3D browse query - verify field names
      * (creationsBatch/sort enum) against the live API before relying on live
      * data. The searchCults3d() query (creationsSearchBatch) is confirmed
      * against the existing integration; this browse variant has not been
@@ -430,7 +430,7 @@ class PullModel3dCatalogue extends Command
         $username = (string) config('services.cults3d.username');
         $token = (string) config('services.cults3d.token');
         if ($username === '' || $token === '') {
-            $this->error('[CULTS3D] CULTS3D_USERNAME / CULTS3D_TOKEN are not configured — skipping.');
+            $this->error('[CULTS3D] CULTS3D_USERNAME / CULTS3D_TOKEN are not configured - skipping.');
 
             return null;
         }
@@ -474,7 +474,7 @@ class PullModel3dCatalogue extends Command
      * Mirror the source thumbnail into our own public storage and point the
      * product at it. Source image URLs are proxy/CDN links that can be
      * hotlink-blocked or die with the source; serving from our own disk keeps
-     * the catalogue image stable. Skipped silently on download failure — the
+     * the catalogue image stable. Skipped silently on download failure - the
      * remote URL stays as a best-effort fallback. (assets:migrate-to-spaces
      * later moves these into the GIFT_LAB folder on Spaces.)
      */

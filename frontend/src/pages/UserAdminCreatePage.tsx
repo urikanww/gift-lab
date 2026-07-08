@@ -30,7 +30,7 @@ export default function UserAdminCreatePage() {
         if (!cancelled) setCompanies(data.data);
       })
       .catch(() => {
-        // Non-critical — the picker just stays empty; backend still validates.
+        // Non-critical - the picker just stays empty; backend still validates.
       });
     return () => {
       cancelled = true;

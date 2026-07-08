@@ -1,9 +1,9 @@
-# Custom Gifting Platform — Engineering Handoff (B2B v1)
+# Custom Gifting Platform - Engineering Handoff (B2B v1)
 
 **Audience:** CTO + build team
 **Companion doc:** `B2B_Build_Spec.docx` (business-flow spec with flow diagrams). This file is the engineering-facing version: entities, states, integrations, and phased build order. Where the two differ, the .docx prose is authoritative on *intent*; this file is authoritative on *structure*.
 
-> **Stack is not prescribed.** Language, framework, database, and hosting are the CTO's call. This spec defines domain structure, states, and integration contracts only — implement in whatever stack the team prefers.
+> **Stack is not prescribed.** Language, framework, database, and hosting are the CTO's call. This spec defines domain structure, states, and integration contracts only - implement in whatever stack the team prefers.
 
 ---
 
@@ -11,7 +11,7 @@
 
 A self-serve platform that turns in-house UV and 3D printing into an online B2B business. Companies browse a catalogue with no account, design a customised product on screen, request a quote, approve a formal proof, issue a PO, and the job flows into a single shared production queue. Two printer tracks (UV = decorate a sourced blank; 3D = fabricate from a licensed model file) feed the same queue. Catalogue variety comes from stocked core blanks, a scraped-UV-blank admin gate, and licence-gated 3D models pulled via API.
 
-**Launch scope: B2B only.** B2C ("pay now" via Stripe) is deferred but feeds the same queue when added — build shared components accordingly.
+**Launch scope: B2B only.** B2C ("pay now" via Stripe) is deferred but feeds the same queue when added - build shared components accordingly.
 
 ---
 
@@ -43,7 +43,7 @@ Fields listed are the minimum; add audit columns (`created_at`, `updated_at`, `c
 ### Quote
 - `id`, `company_id`, `state` (see §5.1), `currency`
 - `line_items[]`, `subtotal`, `delivery`, `total`
-- `price_snapshot_at` (freeze timestamp — see §6.4), `amended_by`, `amendment_log[]`
+- `price_snapshot_at` (freeze timestamp - see §6.4), `amended_by`, `amendment_log[]`
 
 ### LineItem
 - `id`, `quote_id`, `product_id`/`variant_id`, `qty`, `unit_price`, `customization` (`{logo_size, artwork_ref}`)
@@ -51,8 +51,8 @@ Fields listed are the minimum; add audit columns (`created_at`, `updated_at`, `c
 
 ### Proof
 - `id`, `quote_id`, `artwork_version_ref`, `state` (`SENT` | `CHANGES_REQUESTED` | `APPROVED`)
-- `approved_by`, `approved_at` — **immutable once APPROVED**; artwork change → new Proof, not edit
-- Approved artwork ref **is** the production print file (avoid re-processing — see §7 note)
+- `approved_by`, `approved_at` - **immutable once APPROVED**; artwork change → new Proof, not edit
+- Approved artwork ref **is** the production print file (avoid re-processing - see §7 note)
 
 ### PurchaseOrder / Invoice
 - `id`, `quote_id`, `po_ref`, `invoice_ref`, `terms`, `payment_state`
@@ -122,7 +122,7 @@ READY → IN_PRODUCTION → SHIPPED → CLOSED
 ## 6. Key modules
 
 ### 6.1 Public catalogue + designer (no account)
-- Full browse, product pages, on-screen designer (two modes: logo upload, name/text personalisation, combinable), live price estimate — all public.
+- Full browse, product pages, on-screen designer (two modes: logo upload, name/text personalisation, combinable), live price estimate - all public.
 - Capture **production-grade artwork** at designer stage: print-resolution file, placement, size, method. Not just a preview.
 - Account/login triggered **only** at Request Quote.
 
@@ -146,11 +146,11 @@ READY → IN_PRODUCTION → SHIPPED → CLOSED
 - **Drift:** price change > **10%** (configurable) → flip to `CANNOT_PUBLISH / needs_re-review`, auto-pull from public. Best-effort; the Stage-5 re-check is the real guarantee.
 
 ### 6.5 3D model track
-- Pull via **Thingiverse public API** (primary — free; returns name, images, creator, files, licence) and **Cults3D GraphQL API** (secondary — metadata + commercial-use flag).
+- Pull via **Thingiverse public API** (primary - free; returns name, images, creator, files, licence) and **Cults3D GraphQL API** (secondary - metadata + commercial-use flag).
 - **Licence gate reads the API licence field**; only `CC0` / `CC_BY` (commercial-OK on Cults) publish. `CC_BY` stores + displays creator credit. NC/unknown/untagged → blocked. Owned/commissioned models bypass with a rights flag.
 - No per-order licence purchase (manual review is slow and would break quoted lead times).
 - Filament inventory by material/colour; bulk reorder when low. Print to order → shared queue.
-- **Check each source's developer-API terms** (rate limits, attribution, redistribution) — separate from the per-model CC licence.
+- **Check each source's developer-API terms** (rate limits, attribution, redistribution) - separate from the per-model CC licence.
 
 ### 6.6 Production queue (shared, build first)
 - Single queue for UV + 3D + (future) B2C. FCFS by `ready_at`.
@@ -165,9 +165,9 @@ READY → IN_PRODUCTION → SHIPPED → CLOSED
 
 ## 7. Cross-cutting notes
 
-- **Print file reuse:** the approved proof artwork should *be* the production file (correct resolution/placement/method) so the floor prints without re-processing. Avoid a "pretty preview + separate re-processing" split — it reintroduces manual work and risks printing something other than what was signed.
-- **Audit trail:** price amendments, proof approvals, and stock re-check outcomes all need who/when logging — this is dispute protection for B2B/PO orders.
-- **No marketplace checkout automation.** Procurement of scraped-UV blanks is a human/admin purchase or a contracted-supplier order — never a bot driving a consumer marketplace checkout (ToS violation, account-ban risk, fragile).
+- **Print file reuse:** the approved proof artwork should *be* the production file (correct resolution/placement/method) so the floor prints without re-processing. Avoid a "pretty preview + separate re-processing" split - it reintroduces manual work and risks printing something other than what was signed.
+- **Audit trail:** price amendments, proof approvals, and stock re-check outcomes all need who/when logging - this is dispute protection for B2B/PO orders.
+- **No marketplace checkout automation.** Procurement of scraped-UV blanks is a human/admin purchase or a contracted-supplier order - never a bot driving a consumer marketplace checkout (ToS violation, account-ban risk, fragile).
 
 ---
 
@@ -175,28 +175,28 @@ READY → IN_PRODUCTION → SHIPPED → CLOSED
 
 | Decision | Blocker for build start? |
 |---|---|
-| Pricing/margins + margin floor numbers | **No** — build dynamic; plug numbers later |
+| Pricing/margins + margin floor numbers | **No** - build dynamic; plug numbers later |
 | Proof production owner + SLA | No for build; **yes for launch** (bottleneck risk) |
 | Admin-gate + procurement ops owner + SLA | No for build; **yes for launch** |
-| Which ~8–15 core blanks; domestic vs imported | Partial — needed to seed catalogue, not to build engine |
-| Pay-now vs quote cutoff rule | No — config-driven |
+| Which ~8–15 core blanks; domestic vs imported | Partial - needed to seed catalogue, not to build engine |
+| Pay-now vs quote cutoff rule | No - config-driven |
 | 3D: owned hero models commissioned? creator memberships? | No for build; affects launch catalogue depth |
 
 ---
 
 ## 9. Suggested build order (phased)
 
-**Phase 1 — spine (take a real order):**
+**Phase 1 - spine (take a real order):**
 1. Shared production queue + the two gates (Proof Approved, Ready for Production).
 2. Public browse + designer + price estimate (no account).
 3. Core blanks with variant trees + "request a specific item" field.
 4. Quote → proof + immutable approval → PO/invoice (human-reviewed quote OK).
 5. Procurement + per-line-item stock re-check.
 
-**Phase 2 — catalogue breadth (isolated from Phase 1):**
+**Phase 2 - catalogue breadth (isolated from Phase 1):**
 6. Scraped-UV admin gate (ingest → completeness → auto-publish toggle → daily sync/drift).
 7. 3D track: API pull + licence gate + filament inventory + print-to-order.
 
 **Deferred (post-v1):** auto-quote pricing engine; demand-intelligence layer; cleared-image pipeline (replace scraped images); B2C "pay now" (Stripe) flow feeding the same queue.
 
-**Sequencing note:** Phase 1 leads with the shared spine and the *simpler* complete path so a real B2B order can flow end-to-end before the fragile scraper/3D pieces are added. Named buyers ordering known/core items are served entirely by Phase 1 — the scraped and 3D tracks in Phase 2 must not be able to block Phase 1 flows.
+**Sequencing note:** Phase 1 leads with the shared spine and the *simpler* complete path so a real B2B order can flow end-to-end before the fragile scraper/3D pieces are added. Named buyers ordering known/core items are served entirely by Phase 1 - the scraped and 3D tracks in Phase 2 must not be able to block Phase 1 flows.

@@ -89,7 +89,7 @@ function affixesFor(meta: FieldMeta, isMoney: boolean, currency: string | null) 
   return { prefix, suffix };
 }
 
-/** money / percent / number / days — a single numeric value. */
+/** money / percent / number / days - a single numeric value. */
 export function ScalarField({ row, meta, onSave }: { row: ConfigRow; meta: FieldMeta; onSave: SaveFn }) {
   const [draft, setDraft] = useState(String(row.value ?? ''));
   const dirty = draft !== String(row.value ?? '');
@@ -117,7 +117,7 @@ export function ScalarField({ row, meta, onSave }: { row: ConfigRow; meta: Field
   );
 }
 
-/** Boolean on/off — saves the moment it's flipped. */
+/** Boolean on/off - saves the moment it's flipped. */
 export function ToggleField({ row, meta, onSave }: { row: ConfigRow; meta: FieldMeta; onSave: SaveFn }) {
   const on = row.value === true;
   return (

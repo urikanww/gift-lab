@@ -1,4 +1,4 @@
-# gift-lab Release-Readiness QA Audit — Design
+# gift-lab Release-Readiness QA Audit - Design
 
 **Date:** 2026-07-03
 **Status:** Approved (design phase)
@@ -7,8 +7,8 @@
 ## Goal
 
 Evaluate the gift-lab application (Laravel API + React/Vite SPA) for release readiness
-across six quality pillars — stability, security, functionality, usability, performance,
-and cross-device conformance — and produce a single prioritized findings report with a
+across six quality pillars - stability, security, functionality, usability, performance,
+and cross-device conformance - and produce a single prioritized findings report with a
 go/no-go verdict.
 
 This is a **read-only** pass. Agents do not edit application code, do not create git
@@ -25,14 +25,14 @@ No formal PRD exists. Intended behavior is derived from:
 Findings flag broken flows, internal inconsistencies, and deviations from behavior a
 reasonable reading of the code + docs implies.
 
-## Scope — Six Pillars
+## Scope - Six Pillars
 
-1. **Stability** — crashes, unhandled errors, race conditions, teardown bugs.
-2. **Security** — authn/authz, input validation, secrets, CSRF, broadcast auth, uploads.
-3. **Functionality** — buyer + staff flows complete end-to-end; edge cases handled.
-4. **Usability** — heuristics, feedback states, copy, flow friction, consistency.
-5. **Performance** — bundle size, N+1 queries, API latency, render/memory cost.
-6. **Cross-device** — responsive layout, keyboard/ARIA, touch targets, dark mode.
+1. **Stability** - crashes, unhandled errors, race conditions, teardown bugs.
+2. **Security** - authn/authz, input validation, secrets, CSRF, broadcast auth, uploads.
+3. **Functionality** - buyer + staff flows complete end-to-end; edge cases handled.
+4. **Usability** - heuristics, feedback states, copy, flow friction, consistency.
+5. **Performance** - bundle size, N+1 queries, API latency, render/memory cost.
+6. **Cross-device** - responsive layout, keyboard/ARIA, touch targets, dark mode.
 
 ## Agent Lanes (5, parallel, read-only)
 
@@ -58,18 +58,18 @@ Environment verification rules (carried from prior session):
   rAF-timed assertions (throttled headless).
 - Verify via `preview_eval` computed geometry / `getComputedStyle` / DOM snapshot,
   plus `npm run typecheck` / `npm run build` / test suites.
-- `preview_click` synthetic events do not reach React — dispatch a real bubbling
+- `preview_click` synthetic events do not reach React - dispatch a real bubbling
   `MouseEvent` (and `KeyboardEvent` for keyboard) in `preview_eval`.
-- Mobile preset quirk: `window.innerWidth != document.documentElement.clientWidth` —
+- Mobile preset quirk: `window.innerWidth != document.documentElement.clientWidth` -
   judge layout by `document.documentElement.clientWidth` / `scrollWidth` and classes.
 
 ## Severity Schema
 
 Every finding is tagged:
-- **P0 blocker** — release-stopping: data loss, security hole, or broken core flow.
-- **P1 major** — significant defect with a workaround.
-- **P2 minor** — limited-impact defect.
-- **P3 polish** — cosmetic / nice-to-have.
+- **P0 blocker** - release-stopping: data loss, security hole, or broken core flow.
+- **P1 major** - significant defect with a workaround.
+- **P2 minor** - limited-impact defect.
+- **P3 polish** - cosmetic / nice-to-have.
 
 Fields per finding: `pillar · severity · file:line-or-endpoint · repro · observed-vs-expected · impact · suggested-fix-owner`.
 
@@ -78,7 +78,7 @@ Fields per finding: `pillar · severity · file:line-or-endpoint · repro · obs
 `docs/qa/2026-07-03-gift-lab-release-audit.md`, containing:
 - merged findings table sorted by severity,
 - per-pillar summary,
-- **go/no-go verdict** — rule: any open P0 = NO-GO; all P1s must be triaged.
+- **go/no-go verdict** - rule: any open P0 = NO-GO; all P1s must be triaged.
 
 This document is the only file written. No application code is modified.
 

@@ -24,7 +24,7 @@ class AdvanceJobRequest extends FormRequest
     {
         return [
             'state' => ['required', 'string', 'in:IN_PRODUCTION,SHIPPED,CLOSED'],
-            // Shipping fires the buyer's "on the way" signal — require a real
+            // Shipping fires the buyer's "on the way" signal - require a real
             // consignment/tracking reference so it is a deliberate handover.
             'consignment_ref' => ['nullable', 'string', 'max:128', 'required_if:state,SHIPPED'],
         ];

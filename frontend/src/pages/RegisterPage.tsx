@@ -20,7 +20,7 @@ export default function RegisterPage() {
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from;
 
-  // Already signed in — registration is for new companies only (audit A13).
+  // Already signed in - registration is for new companies only (audit A13).
   // Bounce to the intended destination instead of letting the form 403.
   useEffect(() => {
     if (user) navigate(from ?? '/quotes', { replace: true });

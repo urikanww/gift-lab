@@ -91,7 +91,7 @@ class AppServiceProvider extends ServiceProvider
         // Payments: Stripe when a secret is configured. The FixturePaymentGateway
         // auto-succeeds (marks POs PAID with no real charge), so it MUST NEVER be
         // reachable outside local/testing. In any other environment a missing
-        // STRIPE_SECRET is a hard misconfiguration — fail closed (refuse to
+        // STRIPE_SECRET is a hard misconfiguration - fail closed (refuse to
         // resolve the gateway) rather than silently issuing free orders.
         $this->app->singleton(PaymentGateway::class, function ($app) {
             if (config('services.stripe.secret')) {
@@ -102,7 +102,7 @@ class AppServiceProvider extends ServiceProvider
                 throw new RuntimeException(
                     'STRIPE_SECRET is not configured. Refusing to fall back to the '
                     .'auto-succeed FixturePaymentGateway in the "'.$app->environment()
-                    .'" environment — this would mark orders PAID without a real charge. '
+                    .'" environment - this would mark orders PAID without a real charge. '
                     .'Set STRIPE_SECRET or disable the B2C pay-now feature.'
                 );
             }

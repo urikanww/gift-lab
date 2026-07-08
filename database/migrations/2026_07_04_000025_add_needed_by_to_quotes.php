@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Buyer's "need it by" deadline, captured in the designer/checkout. Nullable —
+ * Buyer's "need it by" deadline, captured in the designer/checkout. Nullable -
  * a date is optional; the shipping address deliberately reuses the company's
  * stored address, so only the deadline is persisted per quote.
  */

@@ -52,11 +52,11 @@ export default function ProductDesignerPage() {
   });
   // MODEL_3D items add a filament-colour choice; logo placement uses the
   // shared canvas because the item is FDM-printed then UV-decorated on its
-  // flat face — the placement mockup is a producible production step.
+  // flat face - the placement mockup is a producible production step.
   const [model3dOptions, setModel3dOptions] = useState<Model3dCustomization | null>(null);
   const is3d = product?.class === 'MODEL_3D';
   // Clean orthographic render of the model's decoration face, in the chosen
-  // filament colour — the 3D design surface (audit G1/G2/G3). A MODEL_3D item
+  // filament colour - the 3D design surface (audit G1/G2/G3). A MODEL_3D item
   // NEVER falls back to the scraped marketing photo (audit C16): while the
   // render loads (or if it fails) the buyer designs on the neutral stage,
   // with the status spelled out beside the canvas.
@@ -151,7 +151,7 @@ export default function ProductDesignerPage() {
   }, [product]);
 
   // Live quote: re-estimate whenever qty, variant, logo band, or captured
-  // artwork changes. Event-driven single POST per change — never polled.
+  // artwork changes. Event-driven single POST per change - never polled.
   const hasCustomization = logo.hasLogo || logo.hasText || !!artwork;
   const logoSize = logo.hasLogo ? logo.size : null;
   const hasText = logo.hasText;
@@ -173,7 +173,7 @@ export default function ProductDesignerPage() {
       })
       .then(({ data }) => {
         if (!active) return;
-        // Line total, NOT data.total — the order total bakes in delivery and
+        // Line total, NOT data.total - the order total bakes in delivery and
         // setup fee, so "unit × qty" would visibly fail to reconcile here.
         setEstimate({
           unit: data.lines[0]?.unit_price ?? 0,
@@ -212,7 +212,7 @@ export default function ProductDesignerPage() {
       ...(artwork?.customization ?? {}),
     };
     // Persist the captured artwork server-side; store the returned ref (not the
-    // large data URL) on the cart line. On failure, surface an error and ABORT —
+    // large data URL) on the cart line. On failure, surface an error and ABORT -
     // previously the failure was swallowed and the line was added with no
     // artwork_ref, silently losing the buyer's design.
     if (artwork?.dataUrl) {
@@ -301,7 +301,7 @@ export default function ProductDesignerPage() {
                   {lead.rush_available && lead.rush_earliest
                     ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
                         lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
-                      } — ask us to add it.`
+                      } - ask us to add it.`
                     : ''}
                 </p>
               )}
@@ -325,7 +325,7 @@ export default function ProductDesignerPage() {
             </Card>
           )}
 
-          {/* Configurator — 3D items pick a filament colour, then everyone
+          {/* Configurator - 3D items pick a filament colour, then everyone
               places logo/text on the canvas over the product photo (3D items
               are UV-decorated after printing) */}
           {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
@@ -336,12 +336,12 @@ export default function ProductDesignerPage() {
           )}
           {is3d && faceState === 'error' && (
             <p className="text-sm text-warning" role="status">
-              3D face preview unavailable — design on the neutral stage; placement is confirmed on
+              3D face preview unavailable - design on the neutral stage; placement is confirmed on
               the formal proof before production.
             </p>
           )}
           <DesignerCanvas
-            /* MODEL_3D: face render or neutral stage — never the scraped
+            /* MODEL_3D: face render or neutral stage - never the scraped
                marketing photo as a design surface (audit G1/C16). */
             backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
             onCapture={handleCapture}
@@ -366,7 +366,7 @@ export default function ProductDesignerPage() {
                 ) : (
                   <span className="text-fg-muted">
                     {is3d
-                      ? 'Pick a colour, place your logo, then choose “Use this design” — or add to cart plain.'
+                      ? 'Pick a colour, place your logo, then choose “Use this design” - or add to cart plain.'
                       : 'Add a logo, then choose “Use this design”.'}
                   </span>
                 )}

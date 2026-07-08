@@ -99,7 +99,7 @@ export default function ProductAdminPage() {
         if (!cancelled) setGateCount(data.meta?.total ?? null);
       })
       .catch(() => {
-        // Non-critical — the badge just stays hidden.
+        // Non-critical - the badge just stays hidden.
       });
     return () => {
       cancelled = true;
@@ -201,7 +201,7 @@ export default function ProductAdminPage() {
               variant="outline"
               size="sm"
               className="mb-0.5"
-              aria-label={dir === 'asc' ? 'Ascending — click for descending' : 'Descending — click for ascending'}
+              aria-label={dir === 'asc' ? 'Ascending - click for descending' : 'Descending - click for ascending'}
               onClick={() => setDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
             >
               {dir === 'asc' ? '↑ Asc' : '↓ Desc'}

@@ -130,7 +130,7 @@ function CategoriesMenu() {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Close on any click outside the menu (standard disclosure pattern). Focus
-  // is NOT restored here — the user clicked elsewhere on purpose.
+  // is NOT restored here - the user clicked elsewhere on purpose.
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {

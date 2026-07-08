@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Hash;
 
 /**
  * Seeds the internal staff accounts (company_id null). Buyers are never seeded
- * here — they are admin-provisioned per company. Passwords are bcrypt-hashed;
+ * here - they are admin-provisioned per company. Passwords are bcrypt-hashed;
  * change immediately after first deploy.
  */
 class AdminUserSeeder extends Seeder

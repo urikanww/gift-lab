@@ -17,7 +17,7 @@ import { humanizeState, quoteStateTone } from '../lib/quoteStatus';
 import type { Quote } from '../types';
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString() : '—';
+  return iso ? new Date(iso).toLocaleDateString() : '-';
 }
 
 export default function QuoteListPage() {
@@ -34,13 +34,13 @@ export default function QuoteListPage() {
     <section aria-labelledby="quotes-heading">
       <Motion variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
         <h1 id="quotes-heading" className="font-display text-3xl text-fg">
-          {/* Buyers reach this page via the "My Orders" nav item — keep the
+          {/* Buyers reach this page via the "My Orders" nav item - keep the
               title consistent with that entry point. Staff keep "Quotes". */}
           {staff ? 'Quotes' : 'My Orders'}
         </h1>
         <p className="mt-1 text-sm text-fg-muted">
           {staff
-            ? 'All customer quotes, newest first — across every company.'
+            ? 'All customer quotes, newest first - across every company.'
             : 'Track your gift orders from request through production.'}
         </p>
       </Motion>

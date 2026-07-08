@@ -7,7 +7,7 @@ export interface CatalogueQuery {
   page?: number;
   /** Marketplace category slug (see lib/categories.ts). */
   category?: string;
-  /** Server-side name search — keeps pagination valid across all pages. */
+  /** Server-side name search - keeps pagination valid across all pages. */
   q?: string;
   sort?: CatalogueSort;
 }

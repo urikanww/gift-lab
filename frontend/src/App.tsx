@@ -54,7 +54,7 @@ function RouteFallback() {
 
 /**
  * Route-level boundary rendered inside each shell. A crash in one route falls
- * back here — keeping the surrounding layout (header/nav) intact — instead of
+ * back here - keeping the surrounding layout (header/nav) intact - instead of
  * bubbling to the app-root boundary and blanking the whole shell. Also provides
  * the <Suspense> fallback while the lazy route chunk loads.
  */
@@ -77,7 +77,7 @@ export default function App() {
   }, [fetchUser]);
 
   // Subscribe a buyer to their company's realtime channel once known. Depend on
-  // the primitive company_id, NOT the whole user object — the user reference
+  // the primitive company_id, NOT the whole user object - the user reference
   // changes on every fetchUser/login, which would needlessly tear down and
   // re-establish the private-channel subscription (and drop events in the gap).
   const companyId = user?.company_id ?? null;
@@ -117,7 +117,7 @@ export default function App() {
 
           {/* Authenticated area under ONE RoleLayout parent (staff → console shell,
               buyers → shopfront). Keeping every staff destination under this single
-              parent means StaffLayout mounts once per session — navigating between
+              parent means StaffLayout mounts once per session - navigating between
               /quotes and /dashboard no longer remounts the shell or refetches the
               dashboard. Staff-only pages carry their own staffOnly guard so buyers
               (who resolve to Layout here) are redirected away. */}

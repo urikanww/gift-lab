@@ -21,7 +21,7 @@ export default function ProtectedRoute({
   const location = useLocation();
 
   if (status !== 'ready') {
-    // Branded, centered check — fades in so a fast session check doesn't flash.
+    // Branded, centered check - fades in so a fast session check doesn't flash.
     return (
       <Motion
         variants={fadeIn}
@@ -38,13 +38,13 @@ export default function ProtectedRoute({
   }
 
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  // Staff allowlist mirrors backend User::isStaff() — deny by default so a future
+  // Staff allowlist mirrors backend User::isStaff() - deny by default so a future
   // non-staff role can never fall through into a staff-only route.
   if (staffOnly && user.role !== 'staff_admin' && user.role !== 'superadmin') {
     return <Navigate to="/" replace />;
   }
   // Superadmin-only routes (e.g. pricing) redirect a staff_admin instead of
-  // showing a dead "restricted" wall — mirrors the backend isSuperadmin gate.
+  // showing a dead "restricted" wall - mirrors the backend isSuperadmin gate.
   if (superadminOnly && user.role !== 'superadmin') {
     return <Navigate to="/dashboard" replace />;
   }

@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Production job — a unit of work on the floor. Named "production_jobs" to avoid
+ * Production job - a unit of work on the floor. Named "production_jobs" to avoid
  * the Laravel queue "jobs" table. One quote can spawn multiple jobs (UV track +
  * 3D track). ready_at drives FCFS queue order (spec principle 2: readiness, not
  * order time). The (state, ready_at) index backs the shared-queue read.

@@ -20,7 +20,7 @@ vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue({
   meta: { current_page: 1, last_page: 1, total: 1 },
 } as any);
 
-it('renders search hero, category tiles, new arrivals and popular rails — no explainer sections', async () => {
+it('renders search hero, category tiles, new arrivals and popular rails - no explainer sections', async () => {
   render(
     <ThemeProvider>
       <MemoryRouter>
@@ -32,7 +32,7 @@ it('renders search hero, category tiles, new arrivals and popular rails — no e
   expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('search')).toBeInTheDocument();
   expect(screen.getByText(/shop by category/i)).toBeInTheDocument();
-  // Drinkware appears twice (hero quick-link + category tile) — assert all point at the category URL.
+  // Drinkware appears twice (hero quick-link + category tile) - assert all point at the category URL.
   const drinkwareLinks = screen.getAllByRole('link', { name: /drinkware/i });
   expect(drinkwareLinks.length).toBeGreaterThanOrEqual(2);
   drinkwareLinks.forEach((l) => expect(l).toHaveAttribute('href', '/products?category=drinkware'));

@@ -14,14 +14,14 @@ use Illuminate\Support\Facades\Schedule;
 
 // onOneServer + withoutOverlapping: the deploy is multi-node (see DEPLOYMENT.md),
 // so without a shared cache lock every app node's scheduler would fire this at
-// 03:00 simultaneously — racing product writes and duplicate marketplace
+// 03:00 simultaneously - racing product writes and duplicate marketplace
 // re-checks. Requires a non-array cache driver (redis/database) in production.
 Schedule::command('catalogue:resync-scraped')
     ->dailyAt('03:00')
     ->onOneServer()
     ->withoutOverlapping();
 
-// Daily MODEL_3D licence re-check (creator can re-licence/delete upstream —
+// Daily MODEL_3D licence re-check (creator can re-licence/delete upstream -
 // drifted items are pulled from public for re-review).
 Schedule::command('catalogue:resync-3d')
     ->dailyAt('03:30')

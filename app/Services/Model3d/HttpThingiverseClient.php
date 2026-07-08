@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Live Thingiverse client (public API, free — spec 6.5). Only handles the
+ * Live Thingiverse client (public API, free - spec 6.5). Only handles the
  * THINGIVERSE source; other sources return null so a composite can fall through.
  * The API's licence string is mapped to our License enum; the licence gate in
  * Model3dCatalogueService then decides publishability (NC/unknown → blocked).
@@ -33,7 +33,7 @@ final class HttpThingiverseClient implements Model3dApiClient
         $token = (string) config('services.thingiverse.token');
 
         try {
-            // Explicit connect/request timeouts + bounded retry — Laravel's HTTP
+            // Explicit connect/request timeouts + bounded retry - Laravel's HTTP
             // client has NO default request timeout, so without these a hung
             // upstream would block the caller (and the daily resync worker)
             // indefinitely. Retry rides out transient blips with backoff.
@@ -88,7 +88,7 @@ final class HttpThingiverseClient implements Model3dApiClient
     /**
      * Resolve the direct download URL + filename of the thing's first
      * printable file (STL preferred, then 3MF/OBJ) via /things/{id}/files.
-     * Null on any failure — the ingest gate then blocks the item on
+     * Null on any failure - the ingest gate then blocks the item on
      * `missing_model_file` instead of publishing something we cannot produce.
      *
      * @return array{url: string, name: string}|null
@@ -142,7 +142,7 @@ final class HttpThingiverseClient implements Model3dApiClient
      * Map a Thingiverse licence label onto our License enum value string.
      * Restrictive markers (NC/ND/SA) must be checked before the generic
      * "attribution" match: "Attribution - Share Alike" and "Attribution -
-     * No Derivatives" contain "attribution" but are not plain CC-BY — SA
+     * No Derivatives" contain "attribution" but are not plain CC-BY - SA
      * imposes share-alike obligations and ND forbids the derivative works
      * our personalisation flow produces.
      */
@@ -165,7 +165,7 @@ final class HttpThingiverseClient implements Model3dApiClient
             $sa => License::CcBySa->value,
             str_contains($l, 'attribution') => License::CcBy->value,
             // Open-source families (Thingiverse: "GNU - GPL", "GNU - LGPL", "BSD").
-            // LGPL before GPL — 'lgpl' contains 'gpl'.
+            // LGPL before GPL - 'lgpl' contains 'gpl'.
             str_contains($l, 'lgpl') => License::Lgpl->value,
             str_contains($l, 'gpl') => License::Gpl->value,
             str_contains($l, 'bsd') => License::Bsd->value,

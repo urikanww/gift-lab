@@ -1,4 +1,4 @@
-# Vistaprint-Angled Storefront Redesign — Implementation Plan
+# Vistaprint-Angled Storefront Redesign - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -17,31 +17,31 @@
 ## File Structure
 
 **Create:**
-- `frontend/src/pages/HomePage.tsx` — merchandised landing.
+- `frontend/src/pages/HomePage.tsx` - merchandised landing.
 - `frontend/src/pages/HomePage.test.tsx`
-- `frontend/src/pages/ProductDetailPage.tsx` — PDP (sticky gallery, variants, tier pricing).
+- `frontend/src/pages/ProductDetailPage.tsx` - PDP (sticky gallery, variants, tier pricing).
 - `frontend/src/pages/ProductDetailPage.test.tsx`
-- `frontend/src/pages/CheckoutPage.tsx` — commerce framing over `POST /quotes`.
+- `frontend/src/pages/CheckoutPage.tsx` - commerce framing over `POST /quotes`.
 - `frontend/src/pages/CheckoutPage.test.tsx`
-- `frontend/src/components/SiteHeader.tsx` — mega-nav (extract/replace nav from `Layout.tsx`).
-- `frontend/src/components/SiteFooter.tsx` — footer with trust badges.
-- `frontend/src/lib/catalogue.ts` — shared catalogue fetch helpers (`fetchCatalogue`, `fetchProduct`, `fetchTierPrices`) so Home/PDP/Catalogue don't duplicate axios calls.
+- `frontend/src/components/SiteHeader.tsx` - mega-nav (extract/replace nav from `Layout.tsx`).
+- `frontend/src/components/SiteFooter.tsx` - footer with trust badges.
+- `frontend/src/lib/catalogue.ts` - shared catalogue fetch helpers (`fetchCatalogue`, `fetchProduct`, `fetchTierPrices`) so Home/PDP/Catalogue don't duplicate axios calls.
 - `frontend/src/lib/catalogue.test.ts`
-- `frontend/src/lib/categories.ts` — `ProductClass`→label/icon map used by nav, Home, catalogue filters.
+- `frontend/src/lib/categories.ts` - `ProductClass`→label/icon map used by nav, Home, catalogue filters.
 
 **Modify:**
-- `frontend/src/index.css` — retheme token values to Bold Studio (dark + light).
-- `frontend/src/ui/ThemeProvider.tsx` — default to dark when no stored preference.
-- `frontend/src/App.tsx` — new routes + redirects.
-- `frontend/src/components/Layout.tsx` — use `SiteHeader` + `SiteFooter`.
-- `frontend/src/pages/CataloguePage.tsx` — move to `/products`; cards link to PDP; use `catalogue.ts`.
-- `frontend/src/pages/CataloguePage.test.tsx` — update for new route/links.
-- `frontend/src/pages/CartPage.tsx` — checkout CTA points to `/checkout`.
-- `frontend/src/pages/ProductDesignerPage.tsx` — served at `/design/:id`; "add to cart" nav target unchanged logic.
+- `frontend/src/index.css` - retheme token values to Bold Studio (dark + light).
+- `frontend/src/ui/ThemeProvider.tsx` - default to dark when no stored preference.
+- `frontend/src/App.tsx` - new routes + redirects.
+- `frontend/src/components/Layout.tsx` - use `SiteHeader` + `SiteFooter`.
+- `frontend/src/pages/CataloguePage.tsx` - move to `/products`; cards link to PDP; use `catalogue.ts`.
+- `frontend/src/pages/CataloguePage.test.tsx` - update for new route/links.
+- `frontend/src/pages/CartPage.tsx` - checkout CTA points to `/checkout`.
+- `frontend/src/pages/ProductDesignerPage.tsx` - served at `/design/:id`; "add to cart" nav target unchanged logic.
 
 ---
 
-## Phase 1 — Bold Studio theme
+## Phase 1 - Bold Studio theme
 
 ### Task 1: Retheme tokens to Bold Studio (dark + light)
 
@@ -51,7 +51,7 @@
 
 - [ ] **Step 1: Read current token definitions**
 
-Run: open `frontend/src/index.css`. Locate the `:root` / `[data-theme="dark"]` (or equivalent) blocks that define `--bg`, `--surface`, `--surface-2`, `--border`, `--fg`, `--fg-muted`, `--primary`, `--primary-hover`, `--primary-fg`, `--accent-*`, `--ring`, shadows. Note their exact names (Agent 1 mapped these into `tailwind.config.js`; do NOT rename tokens — only change values).
+Run: open `frontend/src/index.css`. Locate the `:root` / `[data-theme="dark"]` (or equivalent) blocks that define `--bg`, `--surface`, `--surface-2`, `--border`, `--fg`, `--fg-muted`, `--primary`, `--primary-hover`, `--primary-fg`, `--accent-*`, `--ring`, shadows. Note their exact names (Agent 1 mapped these into `tailwind.config.js`; do NOT rename tokens - only change values).
 
 - [ ] **Step 2: Set Bold Studio light values (`:root` / default) and dark values (`[data-theme="dark"]`)**
 
@@ -74,7 +74,7 @@ Update the values (keep existing token NAMES so Tailwind utilities keep working)
   --ring: #ff3b5f;
 }
 
-/* Dark (Bold Studio) — default */
+/* Dark (Bold Studio) - default */
 [data-theme="dark"] {
   --bg: #0e0e12;
   --surface: #16161d;
@@ -113,7 +113,7 @@ function getInitialTheme(): Theme {
 
 Run: `npm run typecheck && npm test`
 Expected: typecheck clean, 25 tests pass.
-Then `npm run build` — expected: succeeds.
+Then `npm run build` - expected: succeeds.
 
 - [ ] **Step 5: Commit**
 
@@ -124,7 +124,7 @@ git commit -m "feat(ui): retheme design tokens to Bold Studio (dark default)"
 
 ---
 
-## Phase 2 — Shared data + category helpers
+## Phase 2 - Shared data + category helpers
 
 ### Task 2: Catalogue data helpers
 
@@ -241,7 +241,7 @@ git commit -m "feat(catalogue): shared fetch + category helpers"
 
 ---
 
-## Phase 3 — Global chrome
+## Phase 3 - Global chrome
 
 ### Task 3: SiteHeader (mega-nav, responsive)
 
@@ -320,7 +320,7 @@ it('renders trust badges and link columns', () => {
 });
 ```
 
-- [ ] **Step 2: Verify fail** — `npm test -- SiteFooter.test` → FAIL.
+- [ ] **Step 2: Verify fail** - `npm test -- SiteFooter.test` → FAIL.
 
 - [ ] **Step 3: Implement** a `<footer>` (role contentinfo) with a trust row (⚡ 3-day turnaround, 🎨 live 2D+3D preview, 🔒 secure checkout, 🏢 bulk & corporate), 2-3 link columns (Products, Company, Help), and copyright. Responsive: columns stack on mobile (`grid` → 1 col). Tokens only.
 
@@ -332,7 +332,7 @@ git commit -m "feat(ui): storefront footer with trust badges"
 
 ---
 
-## Phase 4 — Routing + IA
+## Phase 4 - Routing + IA
 
 ### Task 5: New routes and redirects
 
@@ -350,13 +350,13 @@ Update `<Routes>` inside `Layout`:
 <Route path="cart" element={<CartPage />} />
 <Route path="checkout" element={<CheckoutPage />} />
 <Route path="login" element={<LoginPage />} />
-{/* protected: quotes, quotes/:id, production-queue, procurement, catalogue-admin — unchanged */}
+{/* protected: quotes, quotes/:id, production-queue, procurement, catalogue-admin - unchanged */}
 {/* legacy redirects */}
 <Route path="catalogue" element={<Navigate to="/products" replace />} />
 <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />
 <Route path="*" element={<Navigate to="/" replace />} />
 ```
-Add imports for `HomePage`, `ProductDetailPage`, `CheckoutPage` (created in later tasks — this task may temporarily import not-yet-created files; create thin placeholders first so typecheck passes, OR sequence Task 5 after Tasks 6-8. Recommended: do Task 5 LAST of Phase 4-6; here we add the redirect helper now and the page routes as their pages land).
+Add imports for `HomePage`, `ProductDetailPage`, `CheckoutPage` (created in later tasks - this task may temporarily import not-yet-created files; create thin placeholders first so typecheck passes, OR sequence Task 5 after Tasks 6-8. Recommended: do Task 5 LAST of Phase 4-6; here we add the redirect helper now and the page routes as their pages land).
 
 Add a small redirect helper (preserves the id):
 ```tsx
@@ -377,7 +377,7 @@ git commit -m "feat(routing): storefront IA routes + legacy redirects"
 
 ---
 
-## Phase 5 — Home
+## Phase 5 - Home
 
 ### Task 6: HomePage
 
@@ -408,11 +408,11 @@ it('renders hero, categories, and popular products', async () => {
 });
 ```
 
-- [ ] **Step 2: Verify fail** — `npm test -- HomePage.test` → FAIL.
+- [ ] **Step 2: Verify fail** - `npm test -- HomePage.test` → FAIL.
 
 - [ ] **Step 3: Implement HomePage** with sections from spec §6.1: hero (h1, eyebrow, dual CTA → `/design` & `/products`, floating preview chips), shop-by-category grid (from `CATEGORIES`, each links `/products?class=KEY`), popular products grid (first N of `fetchCatalogue(1)`, cards link `/products/:id`), how-it-works (3 steps), trust bar. Use `Motion`/`staggerContainer`/`staggerItem`, `AsyncBoundary` (from `../components/ui/States`) or explicit loading/empty/error via `Skeleton`/`EmptyState`. Responsive: grids reflow (category 3→2, products 4→2→1), hero stacks on mobile.
 
-- [ ] **Step 4: Verify green** — `npm test -- HomePage.test` (PASS), `npm run typecheck`.
+- [ ] **Step 4: Verify green** - `npm test -- HomePage.test` (PASS), `npm run typecheck`.
 
 - [ ] **Step 5: Commit**
 ```bash
@@ -422,7 +422,7 @@ git commit -m "feat(home): merchandised storefront homepage"
 
 ---
 
-## Phase 6 — Product Detail Page
+## Phase 6 - Product Detail Page
 
 ### Task 7: ProductDetailPage (sticky gallery, variants, tier pricing)
 
@@ -460,16 +460,16 @@ it('renders product name, price, and a Customize CTA linking to the designer', a
 });
 ```
 
-- [ ] **Step 2: Verify fail** — `npm test -- ProductDetailPage.test` → FAIL.
+- [ ] **Step 2: Verify fail** - `npm test -- ProductDetailPage.test` → FAIL.
 
 - [ ] **Step 3: Implement PDP** per spec §6.3:
   - Load product via `fetchProduct(id)`; loading→`Skeleton`, error→retry, not-found→`EmptyState`.
   - Two-column grid (`md:grid-cols-2`, `items-start`). Left `.gallery` uses `md:sticky md:top-20 self-start` (sticky ONLY at `md+`; normal flow on mobile). Main image + thumbnail strip.
-  - Right: breadcrumb (`Products / {category} / {name}`), `<h1>`, rating summary (static placeholder stars + count — reviews are presentational), price, description, color swatches (from `product.variants` attributes if present, else base), print-method options, **quantity tier pricing** via `fetchTierPrices(id, variantId, [25,100,250,500])` rendered as selectable tiles, primary CTA `<Link to={`/design/${id}`}>Customize in studio</Link>`, secondary "Add sample to cart" (calls `useCartStore.addLine(product, selectedVariant, {})` then toast), trust mini-row.
+  - Right: breadcrumb (`Products / {category} / {name}`), `<h1>`, rating summary (static placeholder stars + count - reviews are presentational), price, description, color swatches (from `product.variants` attributes if present, else base), print-method options, **quantity tier pricing** via `fetchTierPrices(id, variantId, [25,100,250,500])` rendered as selectable tiles, primary CTA `<Link to={`/design/${id}`}>Customize in studio</Link>`, secondary "Add sample to cart" (calls `useCartStore.addLine(product, selectedVariant, {})` then toast), trust mini-row.
   - Below full-width: Specifications (from `product.dimensions`/`weight`/`print_method`/`stock_mode`), reviews (presentational), related products (`fetchCatalogue` first few, excluding current id).
   - Responsive: columns stack, tiers wrap, CTAs full-width, optional sticky bottom "Customize" bar on mobile.
 
-- [ ] **Step 4: Verify green** — `npm test -- ProductDetailPage.test` (PASS), `npm run typecheck`.
+- [ ] **Step 4: Verify green** - `npm test -- ProductDetailPage.test` (PASS), `npm run typecheck`.
 
 - [ ] **Step 5: Commit**
 ```bash
@@ -479,7 +479,7 @@ git commit -m "feat(pdp): product detail page with sticky gallery and tier prici
 
 ---
 
-## Phase 7 — Catalogue evolve
+## Phase 7 - Catalogue evolve
 
 ### Task 8: Catalogue at /products, cards link to PDP
 
@@ -495,7 +495,7 @@ Change product cards so clicking navigates to `/products/:id` (PDP), not `/catal
 
 In `CataloguePage.test.tsx`, update the assertion that a product links somewhere so it expects `/products/<id>` (was `/catalogue/<id>`). Keep the existing "renders published products from the API" behavior (mock `fetchCatalogue` or `api.get` as the test currently does).
 
-- [ ] **Step 3: Verify green** — `npm test -- CataloguePage.test` (PASS), `npm run typecheck`.
+- [ ] **Step 3: Verify green** - `npm test -- CataloguePage.test` (PASS), `npm run typecheck`.
 
 - [ ] **Step 4: Commit**
 ```bash
@@ -505,7 +505,7 @@ git commit -m "feat(catalogue): move to /products; cards open the PDP"
 
 ---
 
-## Phase 8 — Cart → Checkout
+## Phase 8 - Cart → Checkout
 
 ### Task 9: CheckoutPage with login gate + quote creation
 
@@ -516,7 +516,7 @@ git commit -m "feat(catalogue): move to /products; cards open the PDP"
 
 - [ ] **Step 1: Confirm the existing quote-creation call**
 
-Find how the current cart/quote request creates a quote (search for `POST`/`/quotes` and `createQuote` in `frontend/src/stores/quoteStore.ts` and `CartPage.tsx`). Reuse that exact store action — do NOT invent a new endpoint. Note its name/signature for the code below (referred to here as `useQuoteStore().createQuote(...)`; use the real name found).
+Find how the current cart/quote request creates a quote (search for `POST`/`/quotes` and `createQuote` in `frontend/src/stores/quoteStore.ts` and `CartPage.tsx`). Reuse that exact store action - do NOT invent a new endpoint. Note its name/signature for the code below (referred to here as `useQuoteStore().createQuote(...)`; use the real name found).
 
 - [ ] **Step 2: Failing test (login gate)**
 
@@ -542,7 +542,7 @@ it('prompts anonymous users to log in before placing the order', () => {
 ```
 (Adjust `useAuthStore.setState` shape to the real store.)
 
-- [ ] **Step 3: Verify fail** — `npm test -- CheckoutPage.test` → FAIL.
+- [ ] **Step 3: Verify fail** - `npm test -- CheckoutPage.test` → FAIL.
 
 - [ ] **Step 4: Implement CheckoutPage** per spec §6.5:
   - Empty cart → `EmptyState` with "Browse products" → `/products`.
@@ -556,7 +556,7 @@ it('prompts anonymous users to log in before placing the order', () => {
 
 In `CartPage.tsx`, change the primary "Request a quote"/checkout CTA to navigate to `/checkout` (move the actual quote-creation into CheckoutPage). If CartPage currently creates the quote inline, relocate that logic to CheckoutPage and leave CartPage as cart management + "Proceed to checkout".
 
-- [ ] **Step 6: Verify green** — `npm test -- CheckoutPage.test` (PASS), `npm test` (all), `npm run typecheck`.
+- [ ] **Step 6: Verify green** - `npm test -- CheckoutPage.test` (PASS), `npm test` (all), `npm run typecheck`.
 
 - [ ] **Step 7: Commit**
 ```bash
@@ -566,7 +566,7 @@ git commit -m "feat(checkout): storefront checkout with login gate over quote fl
 
 ---
 
-## Phase 9 — Flip home route + retheme sweep
+## Phase 9 - Flip home route + retheme sweep
 
 ### Task 10: Activate HomePage as index + retheme remaining pages
 
@@ -576,9 +576,9 @@ git commit -m "feat(checkout): storefront checkout with login gate over quote fl
 
 - [ ] **Step 1: Flip index route** to `<HomePage />` and confirm redirects + all page imports resolve.
 
-- [ ] **Step 2: Retheme sweep** — visually verify each remaining page under Bold Studio tokens in BOTH themes; fix any hardcoded colors (replace literal hex with token utilities). "My Orders" label for `/quotes`. No behavioral/logic/store changes.
+- [ ] **Step 2: Retheme sweep** - visually verify each remaining page under Bold Studio tokens in BOTH themes; fix any hardcoded colors (replace literal hex with token utilities). "My Orders" label for `/quotes`. No behavioral/logic/store changes.
 
-- [ ] **Step 3: Verify green** — `npm run typecheck`, `npm test` (all pass), `npm run build` (succeeds).
+- [ ] **Step 3: Verify green** - `npm run typecheck`, `npm test` (all pass), `npm run build` (succeeds).
 
 - [ ] **Step 4: Commit**
 ```bash
@@ -588,7 +588,7 @@ git commit -m "feat(ui): activate homepage + Bold Studio retheme sweep"
 
 ---
 
-## Phase 10 — Mobile QA
+## Phase 10 - Mobile QA
 
 ### Task 11: Responsive QA pass (all pages, 360/768/1280)
 
@@ -600,7 +600,7 @@ git commit -m "feat(ui): activate homepage + Bold Studio retheme sweep"
 
 - [ ] **Step 3: Fix** any responsive defects found (Tailwind responsive utilities; no new deps).
 
-- [ ] **Step 4: Verify green** — `npm run typecheck`, `npm test`, `npm run build`.
+- [ ] **Step 4: Verify green** - `npm run typecheck`, `npm test`, `npm run build`.
 
 - [ ] **Step 5: Commit**
 ```bash

@@ -13,7 +13,7 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * Pushed to a PUBLIC channel keyed by the opaque tracking code so the
- * login-free tracking page updates live (no auth — the code is the handle).
+ * login-free tracking page updates live (no auth - the code is the handle).
  * Carries the coarse buyer-facing stage only: no pricing, no PII, mirroring
  * the /track HTTP response.
  */

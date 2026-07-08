@@ -24,7 +24,7 @@ interface CartState {
 }
 
 // Cart survives reloads/direct links via localStorage. Only the lines are
-// persisted — the estimate is server-derived and re-fetched, so a stale price
+// persisted - the estimate is server-derived and re-fetched, so a stale price
 // is never rehydrated.
 export const useCartStore = create<CartState>()(
   persist(
@@ -44,7 +44,7 @@ export const useCartStore = create<CartState>()(
       updateQty: (key, qty) =>
         set((s) => ({
           // Guard against NaN (an emptied number input sends Number('') === NaN,
-          // and Math.max(1, NaN) === NaN) — floor to a valid integer ≥ 1.
+          // and Math.max(1, NaN) === NaN) - floor to a valid integer ≥ 1.
           lines: s.lines.map((l) =>
             l.key === key ? { ...l, qty: Number.isFinite(qty) ? Math.max(1, Math.floor(qty)) : 1 } : l,
           ),

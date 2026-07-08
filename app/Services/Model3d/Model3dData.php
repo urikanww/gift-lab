@@ -28,7 +28,7 @@ final readonly class Model3dData
         /**
          * Direct, authenticated-fetchable URL of the printable model file
          * (STL/3MF/OBJ). Null when the source exposes no file download API
-         * (e.g. Cults3D) — the item then blocks on `missing_model_file`
+         * (e.g. Cults3D) - the item then blocks on `missing_model_file`
          * until staff attach the file manually.
          */
         public ?string $downloadUrl = null,

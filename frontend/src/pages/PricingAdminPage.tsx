@@ -129,7 +129,7 @@ export default function PricingAdminPage() {
         <header>
           <h1 className="font-display text-3xl text-fg">Pricing &amp; settings</h1>
           <p className="mt-1 text-sm text-fg-muted">
-            These numbers drive every quote. Changes apply to the next estimate straight away — no deploy — and
+            These numbers drive every quote. Changes apply to the next estimate straight away - no deploy - and
             every edit is logged.
           </p>
         </header>
@@ -146,7 +146,7 @@ export default function PricingAdminPage() {
             {showAdvanced && (
               <>
                 <p className="text-sm text-fg-muted">
-                  Expert knobs — catalogue automation, margin floor, and checkout rules. Leave these unless you know
+                  Expert knobs - catalogue automation, margin floor, and checkout rules. Leave these unless you know
                   what they do.
                 </p>
                 {advanced.map(renderGroup)}

@@ -137,7 +137,7 @@ it('forbids changing your own role', function (): void {
 it('protects the last active superadmin from demotion but allows demoting a spare one', function (): void {
     $secondSuperadmin = User::factory()->create(['role' => 'superadmin', 'company_id' => null]);
 
-    // Acting as the second superadmin, demote the first — fine because two exist.
+    // Acting as the second superadmin, demote the first - fine because two exist.
     Sanctum::actingAs($secondSuperadmin);
     $this->patchJson("/api/admin/users/{$this->superadmin->id}", ['role' => 'staff_admin'])
         ->assertOk()
@@ -183,12 +183,12 @@ it('forbids deactivating yourself and the last active superadmin', function (): 
     $secondSuperadmin = User::factory()->create(['role' => 'superadmin', 'company_id' => null]);
     Sanctum::actingAs($secondSuperadmin);
 
-    // Deactivating the other (non-self) superadmin is fine — two exist.
+    // Deactivating the other (non-self) superadmin is fine - two exist.
     $this->deleteJson("/api/admin/users/{$this->superadmin->id}")->assertOk();
 
     // Now $secondSuperadmin is the last one; deactivating self also triggers
     // the self-guard, but exercise the last-superadmin path by having a
-    // different actor attempt it isn't possible without self here — assert
+    // different actor attempt it isn't possible without self here - assert
     // 422 either way since both guards fire.
     $this->deleteJson("/api/admin/users/{$secondSuperadmin->id}")->assertStatus(422);
 });

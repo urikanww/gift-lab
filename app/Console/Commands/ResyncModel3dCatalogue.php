@@ -75,7 +75,7 @@ class ResyncModel3dCatalogue extends Command
                         if ($wasPublished && $product->publish_state === PublishState::CannotPublish) {
                             $pulled++;
                         } elseif ($wasPublished && $product->publish_state === PublishState::ReadyToApprove) {
-                            // Gate still clean — a re-ingest must not silently
+                            // Gate still clean - a re-ingest must not silently
                             // unpublish an already-approved item.
                             $product->publish_state = PublishState::Published;
                             $product->save();

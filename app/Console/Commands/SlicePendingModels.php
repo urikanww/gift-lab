@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 /**
  * Nightly slicer sweep: measure every MODEL_3D item whose estimates are still
  * unverified. With a slicer configured this removes the manual verify click
- * entirely — an item flows discover → licence gate → file store → slicer →
+ * entirely - an item flows discover → licence gate → file store → slicer →
  * (auto-publish, if enabled) with no human touch.
  */
 class SlicePendingModels extends Command
@@ -25,7 +25,7 @@ class SlicePendingModels extends Command
     public function handle(SlicerService $slicer, Model3dCatalogueService $catalogue): int
     {
         if (! $slicer->isConfigured()) {
-            $this->warn('SLICER_BINARY is not configured — manual estimate verification stays in effect.');
+            $this->warn('SLICER_BINARY is not configured - manual estimate verification stays in effect.');
 
             return self::SUCCESS;
         }
@@ -42,7 +42,7 @@ class SlicePendingModels extends Command
                 try {
                     if ($slicer->measure($product)) {
                         $measured++;
-                        // Estimates just verified — re-run the gate so a fully
+                        // Estimates just verified - re-run the gate so a fully
                         // cleared item auto-publishes (IP holds are respected).
                         $catalogue->autoPublishIfCleared($product);
                     } else {

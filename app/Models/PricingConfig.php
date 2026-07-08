@@ -95,7 +95,7 @@ class PricingConfig extends Model
     }
 
     /**
-     * Clear the per-request memo. Primarily for test isolation — the static memo
+     * Clear the per-request memo. Primarily for test isolation - the static memo
      * persists for the whole PHP process, so a value read in one test would leak
      * into the next. In production each request/worker tick starts fresh.
      */

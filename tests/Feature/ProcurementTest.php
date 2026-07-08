@@ -70,7 +70,7 @@ it('writes a stock re-check audit entry on shortfall', function (): void {
 });
 
 // D12 (Pass 2 F4): reconfirmation amend enforces the same margin floor as the
-// pre-send amend — the re-quote path is exactly where underpricing happened.
+// pre-send amend - the re-quote path is exactly where underpricing happened.
 it('rejects a reconfirmation amend below the margin floor', function (): void {
     Sanctum::actingAs($this->staff);
     $product = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);

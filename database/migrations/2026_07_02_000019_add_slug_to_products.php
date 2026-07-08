@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 /**
  * Public catalogue URLs use a human-readable slug instead of the numeric id
- * ("/products/geometric-desk-vase" not "/products/216") — friendlier links
+ * ("/products/geometric-desk-vase" not "/products/216") - friendlier links
  * and no catalogue enumeration via sequential ids. Slugs are generated once
  * from the name and stay stable across renames so shared links never break.
  */

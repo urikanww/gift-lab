@@ -41,7 +41,7 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
   autoPublishSaving: false,
 
   // A silent refetch keeps the current list rendered (no skeleton, no scroll
-  // jump) — used after a row mutation so the staffer stays exactly where they
+  // jump) - used after a row mutation so the staffer stays exactly where they
   // were. `filter` defaults to the last one used (including page), so filters
   // and pagination survive the reload.
   fetch: async (filter, opts) => {

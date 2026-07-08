@@ -6,7 +6,7 @@ import { Button, Select, Tooltip, Badge, Skeleton, cn, useOptionalToast } from '
 import { Motion, fadeIn, springSoft, useReducedMotionSafe } from '../motion';
 
 export interface CapturedArtwork {
-  // Production-grade export (high multiplier) — this is what becomes the proof
+  // Production-grade export (high multiplier) - this is what becomes the proof
   // and, once approved, the print file (spec 7). No separate re-processing.
   dataUrl: string;
   layout: object;
@@ -18,7 +18,7 @@ interface DesignerCanvasProps {
   height?: number;
   /**
    * Product photo shown behind the design so the buyer sees placement in
-   * context. Display-only: stripped from the print export — the artwork file
+   * context. Display-only: stripped from the print export - the artwork file
    * must contain ONLY the layers to be printed, never the product photo.
    */
   backgroundUrl?: string | null;
@@ -50,7 +50,7 @@ const LOGO_SIZE_LABELS: Record<LogoSize, string> = {
 };
 
 // Each size is a HARD footprint band: logo width as a fraction of the canvas
-// width, clamped to [min, max]. Contiguous, non-overlapping — picking Medium
+// width, clamped to [min, max]. Contiguous, non-overlapping - picking Medium
 // locks the logo between Medium's bounds; the resize handles cannot cross them.
 const LOGO_BANDS: Record<LogoSize, { min: number; max: number }> = {
   S: { min: 0.14, max: 0.26 },
@@ -86,7 +86,7 @@ export default function DesignerCanvas({
   const canvasRef = useRef<Canvas | null>(null);
   const [ready, setReady] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
-  // Name/text personalisation layers (audit D9) — combinable with the logo.
+  // Name/text personalisation layers (audit D9) - combinable with the logo.
   const [hasText, setHasText] = useState(false);
   const hasTextRef = useRef(false);
   const [logoSize, setLogoSize] = useState<LogoSize>('M');
@@ -148,7 +148,7 @@ export default function DesignerCanvas({
     // Transparent canvas: the product-photo backdrop is a DOM <img> layered
     // BEHIND this element (never drawn into it), so no CORS requirement on
     // the image host and no canvas-taint risk for toDataURL. The export is a
-    // transparent PNG containing only the design layers — exactly the print
+    // transparent PNG containing only the design layers - exactly the print
     // artwork.
     const canvas = new Canvas(elRef.current, {
       backgroundColor: '',
@@ -192,7 +192,7 @@ export default function DesignerCanvas({
         clampToPrintArea(e.target);
         canvas.requestRenderAll();
       }
-      // Drag/scale finished — retract the live guides.
+      // Drag/scale finished - retract the live guides.
       setGuides({ x: null, y: null });
     };
     const onRotating = (e: { target?: FabricObject }) => {
@@ -200,7 +200,7 @@ export default function DesignerCanvas({
     };
     // Keep every design element inside the producible print zone (audit C7/G5):
     // the at-add clamp alone let a drag push the logo outside the dashed frame
-    // — or fully off-canvas — and that uncorrected placement became the print
+    // - or fully off-canvas - and that uncorrected placement became the print
     // file (C9). Applied on move, scale, rotate and nudge.
     const clampToPrintArea = (obj: FabricObject) => {
       const minX = dims.w * PRINT_INSET;
@@ -267,7 +267,7 @@ export default function DesignerCanvas({
     };
   }, [dims.w, dims.h]);
 
-  // Backdrop <img> load state — hide it (and fall back to the plain stage)
+  // Backdrop <img> load state - hide it (and fall back to the plain stage)
   // if the image 404s.
   const [backdropOk, setBackdropOk] = useState(true);
   useEffect(() => setBackdropOk(true), [backgroundUrl]);
@@ -296,7 +296,7 @@ export default function DesignerCanvas({
     if (!canvas || snapshot === undefined) return;
     void canvas.loadFromJSON(snapshot).then(() => {
       canvas.discardActiveObject();
-      // Restored objects are fresh instances — re-enable the rotate handle
+      // Restored objects are fresh instances - re-enable the rotate handle
       // and the enlarged touch hit-area.
       canvas.getObjects().forEach((o) => {
         o.setControlsVisibility({ mtr: true });
@@ -324,7 +324,7 @@ export default function DesignerCanvas({
     const canvas = canvasRef.current;
     const img = canvas?.getObjects().find((o): o is FabricImage => o instanceof FabricImage);
     if (canvas && img) {
-      // Re-fitting the logo to a new band resizes it — snapshot so it's undoable.
+      // Re-fitting the logo to a new band resizes it - snapshot so it's undoable.
       pushHistory();
       img.scaleToWidth(dims.w * bandMid(size));
       img.setCoords();
@@ -335,7 +335,7 @@ export default function DesignerCanvas({
     onLogoChange?.({ hasLogo, size, hasText: hasTextRef.current });
   };
 
-  // Add a logo from a data URL (fresh upload OR the saved brand-kit logo —
+  // Add a logo from a data URL (fresh upload OR the saved brand-kit logo -
   // both are data URLs, so neither hits a CORS wall on fabric load).
   const addLogoFromDataUrl = async (dataUrl: string) => {
     const canvas = canvasRef.current;
@@ -351,7 +351,7 @@ export default function DesignerCanvas({
     // Rotation is a supported transform (audit C6): expose the rotate handle
     // and rotate around the centre so the band/zone clamps stay predictable.
     img.setControlsVisibility({ mtr: true });
-    // 44px touch hit-area on the corner handles (audit C5-mobile) — the
+    // 44px touch hit-area on the corner handles (audit C5-mobile) - the
     // rendered handle stays small; only the touch target grows.
     img.set({ centeredRotation: true, touchCornerSize: 44 });
     canvas.add(img);
@@ -394,20 +394,20 @@ export default function DesignerCanvas({
     onLogoChange?.({ hasLogo, size: logoSize, hasText: true });
   };
 
-  // Specific, actionable message for an unsupported file type (audit C1) —
+  // Specific, actionable message for an unsupported file type (audit C1) -
   // never a silent drop. SVG is deliberately excluded server-side (stored-XSS),
   // PDF is unsupported; both get their own copy.
   const uploadTypeError = (file: File): string | null => {
     if (ACCEPTED_UPLOAD_TYPES.includes(file.type)) return null;
     const name = file.name.toLowerCase();
     if (file.type === 'image/svg+xml' || name.endsWith('.svg')) {
-      return 'SVG isn’t supported — export your logo as PNG or JPG and try again.';
+      return 'SVG isn’t supported - export your logo as PNG or JPG and try again.';
     }
     if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
-      return 'PDF isn’t supported — export your artwork as PNG or JPG and try again.';
+      return 'PDF isn’t supported - export your artwork as PNG or JPG and try again.';
     }
     const ext = name.includes('.') ? `.${name.split('.').pop()}` : 'That file type';
-    return `${ext} isn’t supported — upload a PNG or JPG.`;
+    return `${ext} isn’t supported - upload a PNG or JPG.`;
   };
 
   // Pixel size of a just-read image, for the print-quality check (audit C3).
@@ -432,7 +432,7 @@ export default function DesignerCanvas({
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
       const mb = (file.size / (1024 * 1024)).toFixed(1);
       reportUploadIssue(
-        `This file is ${mb} MB — the limit is ${MAX_UPLOAD_MB} MB. Resize or compress it and try again.`,
+        `This file is ${mb} MB - the limit is ${MAX_UPLOAD_MB} MB. Resize or compress it and try again.`,
         'error',
       );
       return;
@@ -451,7 +451,7 @@ export default function DesignerCanvas({
       return;
     }
 
-    // Print-quality gate (C3): warn — without blocking — when the source has
+    // Print-quality gate (C3): warn - without blocking - when the source has
     // fewer pixels than the selected band needs at print resolution (the
     // export is width×4 px; the band floor is the smallest printed footprint).
     try {
@@ -459,7 +459,7 @@ export default function DesignerCanvas({
       const minPrintPx = Math.round(LOGO_BANDS[logoSizeRef.current].min * width * 4);
       if (w < minPrintPx) {
         reportUploadIssue(
-          `Heads up: this image is ${w}×${h}px — at the ${LOGO_SIZE_LABELS[logoSizeRef.current]} size it may print blurry. For crisp results use an image at least ${minPrintPx}px wide.`,
+          `Heads up: this image is ${w}×${h}px - at the ${LOGO_SIZE_LABELS[logoSizeRef.current]} size it may print blurry. For crisp results use an image at least ${minPrintPx}px wide.`,
           'warning',
         );
       } else {
@@ -519,7 +519,7 @@ export default function DesignerCanvas({
   const onStageKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (isTypingTarget(e.target)) return;
 
-    // Undo — Ctrl/Cmd+Z (never with Shift, which is conventionally redo).
+    // Undo - Ctrl/Cmd+Z (never with Shift, which is conventionally redo).
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
       e.preventDefault();
       undo();
@@ -597,7 +597,7 @@ export default function DesignerCanvas({
     // same high-res print file as a desktop one.
     const exportWidthPx = width * 4;
     const multiplier = exportWidthPx / dims.w;
-    // Transparent-background PNG of only the design layers — the product
+    // Transparent-background PNG of only the design layers - the product
     // photo lives in a DOM layer behind the canvas and is never exported
     // (spec 7: the artwork IS the production file, not a product mockup).
     const dataUrl = canvas.toDataURL({ format: 'png', multiplier });
@@ -673,7 +673,7 @@ export default function DesignerCanvas({
   const handleDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    // Validate the dropped file through the SAME gate as the picker — a
+    // Validate the dropped file through the SAME gate as the picker - a
     // rejected drop must explain itself, never vanish (audit C1/C2).
     const file = e.dataTransfer.files[0];
     if (file) void handleLogoUpload(file);
@@ -701,7 +701,7 @@ export default function DesignerCanvas({
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
         >
-          {/* Product-photo backdrop: DOM layer under the fabric canvas — never
+          {/* Product-photo backdrop: DOM layer under the fabric canvas - never
               drawn into it (no CORS requirement, no export taint). */}
           {backgroundUrl && backdropOk && (
             <img
@@ -722,12 +722,12 @@ export default function DesignerCanvas({
               contains ONLY the canvas, so fabric's DOM surgery stays invisible
               to sibling reconciliation. Never render anything else inside it. */}
           <div className="relative">
-            {/* fabric mounts here — DO NOT alter the element wiring */}
+            {/* fabric mounts here - DO NOT alter the element wiring */}
             <canvas ref={elRef} className="relative block touch-none" aria-label="Design canvas" />
           </div>
 
           {/* Producible print zone: the flat UV face the logo must sit within.
-              DOM overlay only — never drawn into the canvas, so it can't leak
+              DOM overlay only - never drawn into the canvas, so it can't leak
               into the exported print artwork. */}
           {ready && (
             <div
@@ -741,7 +741,7 @@ export default function DesignerCanvas({
             </div>
           )}
 
-          {/* Live alignment guides — appear only while a logo snaps mid-drag. */}
+          {/* Live alignment guides - appear only while a logo snaps mid-drag. */}
           {guides.x !== null && (
             <div
               className="pointer-events-none absolute inset-y-0 z-raised w-px bg-primary/70"
@@ -841,7 +841,7 @@ export default function DesignerCanvas({
               value={logoSize}
               onChange={(e) => applyBand(e.target.value as LogoSize)}
               options={LOGO_SIZES.map((s) => ({ value: s, label: LOGO_SIZE_LABELS[s] }))}
-              hint="Sets a fixed size band — resizing stays within it, and larger bands cost more."
+              hint="Sets a fixed size band - resizing stays within it, and larger bands cost more."
             />
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-fg">Upload logo</span>
@@ -910,7 +910,7 @@ export default function DesignerCanvas({
 
           <div className="h-px bg-border" aria-hidden="true" />
 
-          {/* Text personalisation group (audit D9) — combinable with the logo,
+          {/* Text personalisation group (audit D9) - combinable with the logo,
               priced per unit via the configured personalisation fee. */}
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-1 text-2xs font-semibold uppercase tracking-wide text-fg-subtle">
@@ -919,14 +919,14 @@ export default function DesignerCanvas({
             <TextTool onAdd={addText} brandColors={brandColors} />
             {hasText && (
               <p className="text-2xs text-fg-subtle">
-                Text added — drag to position it inside the print area.
+                Text added - drag to position it inside the print area.
               </p>
             )}
           </fieldset>
 
           <div className="h-px bg-border" aria-hidden="true" />
 
-          {/* Undo — mouse-accessible mirror of Ctrl/Cmd+Z; reverses the last
+          {/* Undo - mouse-accessible mirror of Ctrl/Cmd+Z; reverses the last
               destructive edit (delete / replace / transform). */}
           <Button variant="outline" size="sm" onClick={undo} disabled={!canUndo} fullWidth>
             Undo last change
@@ -1054,7 +1054,7 @@ function IconButton({
 }
 
 /* ------------------------------------------------------------------ */
-/* Inline icons (currentColor, decorative — labels live on the button) */
+/* Inline icons (currentColor, decorative - labels live on the button) */
 /* ------------------------------------------------------------------ */
 
 const iconProps = {

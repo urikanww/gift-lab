@@ -33,7 +33,7 @@ export async function ensureCsrf(): Promise<void> {
 // Global 401 handling: a session that expires mid-session should land the user
 // on a clean re-auth, not scatter generic "Something went wrong" toasts. The
 // /user probe legitimately 401s for anonymous visitors browsing the public
-// catalogue, and /login failures are handled inline — those are excluded.
+// catalogue, and /login failures are handled inline - those are excluded.
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {

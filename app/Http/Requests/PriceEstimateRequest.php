@@ -8,7 +8,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * Public live price estimate for the no-account designer (spec 6.1). Estimate
- * only — the authoritative price is frozen at quote time.
+ * only - the authoritative price is frozen at quote time.
  */
 class PriceEstimateRequest extends FormRequest
 {
@@ -29,7 +29,7 @@ class PriceEstimateRequest extends FormRequest
             'line_items.*.qty' => ['required', 'integer', 'min:1', 'max:100000'],
             'line_items.*.has_customization' => ['nullable', 'boolean'],
             'line_items.*.logo_size' => ['nullable', 'string', 'in:S,M,L'],
-            // Name/text personalisation present on the line (audit D9) — adds
+            // Name/text personalisation present on the line (audit D9) - adds
             // the per-unit text fee to the live estimate.
             'line_items.*.has_text' => ['nullable', 'boolean'],
         ];

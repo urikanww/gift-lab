@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * "On-demand" ordering: when true, a STOCKED (UV/CORE) product can be ordered at
- * stock 0. The short quantity drives on-hand negative — that negative balance is
+ * stock 0. The short quantity drives on-hand negative - that negative balance is
  * the procurement worklist (buy the blank from the affiliate source). 3D items
  * are MAKE_TO_ORDER and ignore this flag.
  */

@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * 3D model catalogue source (Phase 2 track — model present, API client stubbed).
+ * 3D model catalogue source (Phase 2 track - model present, API client stubbed).
  *
  * @property License $license
  * @property PublishState $publish_state

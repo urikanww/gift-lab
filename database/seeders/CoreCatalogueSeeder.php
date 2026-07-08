@@ -17,7 +17,7 @@ class CoreCatalogueSeeder extends Seeder
     /**
      * Self-hosted product photography, keyed by product name. The files live in
      * storage/app/public/products (mirrored royalty-free shots) and are served
-     * via the public storage symlink — same pattern as MODEL_3D mirrorImage()
+     * via the public storage symlink - same pattern as MODEL_3D mirrorImage()
      * in PullModel3dCatalogue, so catalogue images never depend on a remote CDN.
      *
      * @var array<string, string>
@@ -39,7 +39,7 @@ class CoreCatalogueSeeder extends Seeder
     {
         // Idempotent: if the CORE spine already exists, only backfill image
         // URLs (databases seeded before local images landed, or seeded with
-        // image_url null) — never duplicate products on a re-run of db:seed.
+        // image_url null) - never duplicate products on a re-run of db:seed.
         if (DB::table('products')->where('class', 'CORE')->exists()) {
             $this->backfillImageUrls();
 
@@ -96,7 +96,7 @@ class CoreCatalogueSeeder extends Seeder
         foreach ($catalogue as [$name, $baseCost, $method, $dims, $weight, $category, $variants]) {
             $productId = DB::table('products')->insertGetId([
                 'name' => $name,
-                'description' => $name.' — blank core stock, decorate via UV print.',
+                'description' => $name.' - blank core stock, decorate via UV print.',
                 'class' => 'CORE',
                 'category' => $category,
                 'base_cost' => $baseCost,

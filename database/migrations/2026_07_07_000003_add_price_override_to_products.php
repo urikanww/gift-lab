@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Superadmin price override: a fixed per-unit sell price that replaces the
  * dynamic PricingService computation (landed + margin + print + bulk). Null =
- * dynamic pricing (the default). Covers the product price only — delivery is
+ * dynamic pricing (the default). Covers the product price only - delivery is
  * still charged on shipment weight.
  */
 return new class extends Migration

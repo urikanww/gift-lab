@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Models\Product;
 use Illuminate\Support\Facades\Storage;
 
-// Audit B10: MODEL_3D dimensions derived from stored STL geometry — via the
+// Audit B10: MODEL_3D dimensions derived from stored STL geometry - via the
 // backfill command for pre-existing items and never overwriting set values.
 
 beforeEach(function (): void {

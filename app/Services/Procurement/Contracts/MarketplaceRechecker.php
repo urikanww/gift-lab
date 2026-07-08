@@ -9,7 +9,7 @@ use App\Models\Product;
 /**
  * Procurement-time re-check of a scraped-UV blank: the authoritative read of
  * live qty + unit price at the marketplace (spec principle 3). Distinct from the
- * daily catalogue re-sync — this fires when a line is actually being procured.
+ * daily catalogue re-sync - this fires when a line is actually being procured.
  */
 interface MarketplaceRechecker
 {

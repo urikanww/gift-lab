@@ -62,7 +62,7 @@ export const useProcurementStore = create<ProcurementStoreState>((set, get) => (
       await ensureCsrf();
       await api.post(`/line-items/${lineItemId}/reconfirm`, { action, ...payload });
       // Only drop the alert from the desk once the resolution actually persisted
-      // — a rejected request now surfaces `error` and keeps the alert visible
+      // - a rejected request now surfaces `error` and keeps the alert visible
       // (was an unhandled rejection that left the operator with no feedback).
       set((s) => ({ alerts: s.alerts.filter((a) => a.line_item_id !== lineItemId) }));
     } catch (err) {

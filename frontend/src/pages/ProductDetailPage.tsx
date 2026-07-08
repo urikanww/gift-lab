@@ -14,7 +14,7 @@ import {
 import { ErrorState } from '../components/ui/States';
 import { CardImage, ProductCard } from '../components/product/ProductCard';
 
-// three.js is heavy — load the viewer only on MODEL_3D pages that have a file.
+// three.js is heavy - load the viewer only on MODEL_3D pages that have a file.
 const ModelViewer = lazy(() => import('../components/ModelViewer'));
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import {
@@ -44,7 +44,7 @@ const TRUST = [
   { icon: '🏢', label: 'Bulk & corporate' },
 ];
 
-// Presentational reviews — no backend. Kept static so the PDP reads as a real
+// Presentational reviews - no backend. Kept static so the PDP reads as a real
 // storefront without inventing data-fetching for content that doesn't exist.
 const REVIEWS = [
   { name: 'Priya S.', rating: 5, body: 'Beautiful finish and the proof turnaround was fast. Ordered 200 for our launch.' },
@@ -129,7 +129,7 @@ export default function ProductDetailPage() {
     };
   }, [product?.id]);
 
-  // ── Tier pricing — re-fetch when product or selected variant changes. ─────
+  // ── Tier pricing - re-fetch when product or selected variant changes. ─────
   useEffect(() => {
     if (!product) return;
     let active = true;
@@ -217,7 +217,7 @@ export default function ProductDetailPage() {
     <div className="flex flex-col gap-10 pb-24 md:pb-0">
       {/* ── Two-column: gallery + info ────────────────────────────────────── */}
       <div className="grid items-start gap-8 md:grid-cols-2 md:gap-12">
-        {/* LEFT — gallery (sticky only at md+). */}
+        {/* LEFT - gallery (sticky only at md+). */}
         <div className="self-start md:sticky md:top-20">
           <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-4">
             {/* Interactive 3D model when we hold the file; static image otherwise */}
@@ -239,7 +239,7 @@ export default function ProductDetailPage() {
           </Motion>
         </div>
 
-        {/* RIGHT — info column. */}
+        {/* RIGHT - info column. */}
         <Motion
           variants={staggerContainer}
           initial="hidden"
@@ -293,7 +293,7 @@ export default function ProductDetailPage() {
               </span>
             </p>
 
-            {/* Availability — honest about made-to-order / on-demand items. */}
+            {/* Availability - honest about made-to-order / on-demand items. */}
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={AVAILABILITY[product.availability].tone} dot>
                 {AVAILABILITY[product.availability].label}
@@ -402,7 +402,7 @@ export default function ProductDetailPage() {
           <Motion variants={staggerItem}>
             <p className="text-xs text-fg-subtle">
               A sample is one unit at single-unit pricing. Volume discounts apply
-              to full orders — see the price breaks above.
+              to full orders - see the price breaks above.
             </p>
           </Motion>
 
@@ -484,7 +484,7 @@ export default function ProductDetailPage() {
         </section>
       )}
 
-      {/* Mobile sticky action bar — the in-flow CTAs sit far below the fold on a
+      {/* Mobile sticky action bar - the in-flow CTAs sit far below the fold on a
           phone, so mirror them in a fixed bar. Hidden at md+ where CTAs are visible. */}
       <div className="fixed inset-x-0 bottom-0 z-raised flex gap-2 border-t border-border bg-surface/95 p-3 backdrop-blur-md md:hidden">
         <LinkButton to={designPath(product)} variant="primary" size="md" className="min-h-[44px] flex-1">

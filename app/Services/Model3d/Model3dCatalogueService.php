@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Storage;
  * file (the floor prints from our copy, never a source link), and mirror the
  * decision onto a MODEL_3D catalogue Product that carries the filament spec
  * for procurement. Auto-publish additionally requires staff-verified filament
- * estimates — source APIs don't provide real grams/material, so ingest
+ * estimates - source APIs don't provide real grams/material, so ingest
  * defaults are placeholders until someone confirms them.
  */
 final class Model3dCatalogueService
@@ -37,7 +37,7 @@ final class Model3dCatalogueService
      */
     public function ingest(Model3dData $data): array
     {
-        // Download outside the DB transaction — an HTTP fetch must never hold
+        // Download outside the DB transaction - an HTTP fetch must never hold
         // a write transaction open. Only worth attempting for commercial-OK
         // licences; blocked items are never produced.
         $license = License::tryFrom($data->license) ?? License::Blocked;
@@ -144,7 +144,7 @@ final class Model3dCatalogueService
             $product->cannot_publish_reasons = $reasons;
         } elseif (! $product->estimates_verified) {
             // Placeholder filament estimates must be confirmed before ANY
-            // publication — approving unverified numbers would quote and
+            // publication - approving unverified numbers would quote and
             // procure against fiction. Held in the gate with the reason shown.
             $product->publish_state = PublishState::ReadyToApprove;
             $product->cannot_publish_reasons = ['estimates_unverified'];
@@ -164,7 +164,7 @@ final class Model3dCatalogueService
      * Post-slicer auto-publish: once measurements verify the estimates, run
      * the gate again so a fully cleared item publishes without a staff click
      * (when the auto-publish toggle is on). Items held for IP review keep
-     * their hold — only an explicit staff publish overrides an ip_flag.
+     * their hold - only an explicit staff publish overrides an ip_flag.
      */
     public function autoPublishIfCleared(Product $product): Product
     {
@@ -268,7 +268,7 @@ final class Model3dCatalogueService
         }
 
         if (! $hasFile) {
-            // No locally stored printable file — we cannot produce this item.
+            // No locally stored printable file - we cannot produce this item.
             // Kept in the admin gate (not deleted) so staff can attach the
             // file manually for sources without a download API.
             return [PublishState::CannotPublish, ['missing_model_file']];

@@ -21,7 +21,7 @@ function renderHeader() {
   );
 }
 
-// Replace-mode reset so no per-test state (e.g. a staff-role user) leaks —
+// Replace-mode reset so no per-test state (e.g. a staff-role user) leaks -
 // same idiom as LoginPage.test.tsx.
 const initialStore = useAuthStore.getState();
 afterEach(() => {

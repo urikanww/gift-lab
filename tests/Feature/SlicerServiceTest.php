@@ -52,7 +52,7 @@ it('measures grams and minutes from the sliced G-code and auto-verifies', functi
 
 it('computes grams from volume when the profile has no filament density', function (): void {
     // The PrusaSlicer console default profile emits "total filament used [g] = 0.00"
-    // (density 0) plus the volume line — grams must come from cm3 × density.
+    // (density 0) plus the volume line - grams must come from cm3 × density.
     config()->set('services.slicer.binary', 'prusa-slicer');
     config()->set('services.slicer.density_g_cm3', 1.24);
     Process::fake(['*' => Process::result(output: 'ok')]);

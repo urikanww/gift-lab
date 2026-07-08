@@ -27,7 +27,7 @@ export default function BrandKitPage() {
         setColors(kit.colors);
       })
       .catch(() => {
-        /* no kit yet — start blank */
+        /* no kit yet - start blank */
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -76,7 +76,7 @@ export default function BrandKitPage() {
       <header className="flex flex-col gap-2">
         <h1 className="font-display text-3xl leading-tight text-fg sm:text-4xl">Brand kit</h1>
         <p className="text-fg-muted">
-          Save your logo and colours once — apply them to any product in the design studio with one click.
+          Save your logo and colours once - apply them to any product in the design studio with one click.
         </p>
       </header>
 

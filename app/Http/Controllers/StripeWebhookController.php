@@ -15,7 +15,7 @@ use Stripe\Webhook;
  * Stripe webhook: confirms payment capture out-of-band. The signature is
  * verified with the endpoint secret; on checkout.session.completed the linked
  * quote is driven into production. Unauthenticated (Stripe calls it) but
- * authenticated by signature — never trust the body alone.
+ * authenticated by signature - never trust the body alone.
  */
 class StripeWebhookController extends Controller
 {
@@ -47,7 +47,7 @@ class StripeWebhookController extends Controller
                 $payments->confirmPaid($quote, (string) $session->id);
             } else {
                 // A verified event whose quote can't be resolved means a metadata
-                // regression (missing/renamed quote_id) or a deleted quote — log
+                // regression (missing/renamed quote_id) or a deleted quote - log
                 // it so the silent no-op is visible rather than invisibly dropped.
                 Log::warning('Stripe checkout.session.completed for unknown quote.', [
                     'quote_id' => $quoteId,

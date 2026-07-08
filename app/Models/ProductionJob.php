@@ -90,8 +90,8 @@ class ProductionJob extends Model
         return $query
             ->whereNotNull('ready_at')
             ->whereIn('state', [JobState::Ready->value, JobState::InProduction->value])
-            // Exclude jobs whose quote has been soft-deleted/cancelled — whereHas
-            // respects the parent's SoftDeletes global scope — so a cancelled
+            // Exclude jobs whose quote has been soft-deleted/cancelled - whereHas
+            // respects the parent's SoftDeletes global scope - so a cancelled
             // order never lingers on the shared production floor queue.
             ->whereHas('quote')
             ->orderBy('ready_at');

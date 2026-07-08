@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
  * anti-enumeration handle (sequential quote ids are guessable); the email
  * prefix is a light second factor. Route is rate-limited and every failure
  * returns the SAME generic error, so a caller can never learn whether a code
- * exists. Response carries status only — no pricing, no line detail, no PII.
+ * exists. Response carries status only - no pricing, no line detail, no PII.
  */
 class TrackingController extends Controller
 {
@@ -37,7 +37,7 @@ class TrackingController extends Controller
             ->where('tracking_code', $code)
             ->first();
 
-        // Same generic failure for an unknown code and a wrong email prefix —
+        // Same generic failure for an unknown code and a wrong email prefix -
         // no signal about which part was wrong (anti-enumeration).
         if ($quote === null || $quote->company === null) {
             return $generic();

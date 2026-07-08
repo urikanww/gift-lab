@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 
 // The public upload writes to the dedicated (private) artwork disk, not the
-// default disk — fake exactly that so assertions target where files really land.
+// default disk - fake exactly that so assertions target where files really land.
 beforeEach(function (): void {
     $this->artworkDisk = (string) config('filesystems.artwork_disk');
     Storage::fake($this->artworkDisk);

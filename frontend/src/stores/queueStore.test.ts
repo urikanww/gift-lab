@@ -48,7 +48,7 @@ describe('queueStore', () => {
   });
 
   // The discriminating assertion: fetchQueue's first statement is a synchronous
-  // set(), so loading reflects the silent decision immediately on call — before
+  // set(), so loading reflects the silent decision immediately on call - before
   // any await. A non-silent fetch flips loading true here (see test above); the
   // silent path must leave the existing list un-skeletoned.
   it('fetchQueue({ silent: true }) never flips loading true', async () => {

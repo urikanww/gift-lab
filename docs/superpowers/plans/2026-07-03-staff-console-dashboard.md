@@ -1,4 +1,4 @@
-# Staff Console — Sidebar Shell + Dashboard Implementation Plan
+# Staff Console - Sidebar Shell + Dashboard Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -15,26 +15,26 @@
 ## File Structure
 
 **Backend (create):**
-- `database/migrations/2026_07_03_000001_add_created_at_index_to_audit_logs.php` — index for the feed query.
-- `app/Services/Dashboard/DashboardMetrics.php` — one method per widget; each a single indexed query.
-- `app/Http/Controllers/DashboardController.php` — staff-gated, assembles payload.
-- `tests/Feature/DashboardTest.php` — endpoint behaviour + gating + bounds.
+- `database/migrations/2026_07_03_000001_add_created_at_index_to_audit_logs.php` - index for the feed query.
+- `app/Services/Dashboard/DashboardMetrics.php` - one method per widget; each a single indexed query.
+- `app/Http/Controllers/DashboardController.php` - staff-gated, assembles payload.
+- `tests/Feature/DashboardTest.php` - endpoint behaviour + gating + bounds.
 
 **Backend (modify):**
-- `routes/api.php` — register the route inside the existing `auth:sanctum` group.
+- `routes/api.php` - register the route inside the existing `auth:sanctum` group.
 
 **Frontend (create):**
-- `frontend/src/lib/dashboard.ts` — payload types + `fetchDashboard()`.
-- `frontend/src/stores/dashboardStore.ts` — snapshot + Reverb-driven refresh.
-- `frontend/src/components/StaffLayout.tsx` — sidebar shell (desktop + mobile drawer).
-- `frontend/src/components/RoleLayout.tsx` — picks StaffLayout vs Layout by role.
-- `frontend/src/pages/DashboardPage.tsx` — widgets.
+- `frontend/src/lib/dashboard.ts` - payload types + `fetchDashboard()`.
+- `frontend/src/stores/dashboardStore.ts` - snapshot + Reverb-driven refresh.
+- `frontend/src/components/StaffLayout.tsx` - sidebar shell (desktop + mobile drawer).
+- `frontend/src/components/RoleLayout.tsx` - picks StaffLayout vs Layout by role.
+- `frontend/src/pages/DashboardPage.tsx` - widgets.
 - `frontend/src/pages/DashboardPage.test.tsx`, `frontend/src/stores/dashboardStore.test.ts`.
 
 **Frontend (modify):**
-- `frontend/src/App.tsx` — re-parent staff routes under `StaffLayout`, shared auth routes under `RoleLayout`, add `/dashboard`.
-- `frontend/src/pages/LoginPage.tsx` — staff redirect `/catalogue-admin` → `/dashboard`.
-- `frontend/src/types.ts` — export dashboard payload types if colocated there (else in `lib/dashboard.ts`).
+- `frontend/src/App.tsx` - re-parent staff routes under `StaffLayout`, shared auth routes under `RoleLayout`, add `/dashboard`.
+- `frontend/src/pages/LoginPage.tsx` - staff redirect `/catalogue-admin` → `/dashboard`.
+- `frontend/src/types.ts` - export dashboard payload types if colocated there (else in `lib/dashboard.ts`).
 
 ---
 
@@ -143,7 +143,7 @@ it('gates the dashboard to staff', function (): void {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `php artisan test --filter=DashboardTest`
-Expected: FAIL — route `/api/admin/dashboard` not defined (404/500).
+Expected: FAIL - route `/api/admin/dashboard` not defined (404/500).
 
 - [ ] **Step 3: Create the service with empty-but-typed methods**
 
@@ -164,7 +164,7 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * Read-only aggregate metrics for the staff dashboard. Every method is a single
- * index-backed query (COUNT/GROUP BY/SUM) or a bounded, eager-loaded slice — no
+ * index-backed query (COUNT/GROUP BY/SUM) or a bounded, eager-loaded slice - no
  * row hydration for counting, no unbounded selects, no N+1.
  */
 class DashboardMetrics
@@ -414,7 +414,7 @@ it('caps activity at 20 newest-first and at-risk at 15', function (): void {
 - [ ] **Step 2: Run tests to verify they pass**
 
 Run: `php artisan test --filter=DashboardTest`
-Expected: PASS. If `Quote`/`AuditLog` factories differ (e.g. required columns), adjust the `create([...])` payloads to satisfy non-nullable columns — do NOT change the service. Confirm `Company` + `Quote` + `AuditLog` factories exist first with `ls database/factories`.
+Expected: PASS. If `Quote`/`AuditLog` factories differ (e.g. required columns), adjust the `create([...])` payloads to satisfy non-nullable columns - do NOT change the service. Confirm `Company` + `Quote` + `AuditLog` factories exist first with `ls database/factories`.
 
 - [ ] **Step 3: Commit**
 
@@ -463,7 +463,7 @@ it('runs a bounded number of queries regardless of data volume', function (): vo
 - [ ] **Step 2: Run test**
 
 Run: `php artisan test --filter=DashboardTest`
-Expected: PASS (eager `with('user:id,name')` keeps actor lookup to one query). If it FAILS with a high count, the feed lost its eager load — restore `->with('user:id,name')` in `DashboardMetrics::activity()`.
+Expected: PASS (eager `with('user:id,name')` keeps actor lookup to one query). If it FAILS with a high count, the feed lost its eager load - restore `->with('user:id,name')` in `DashboardMetrics::activity()`.
 
 - [ ] **Step 3: Commit**
 
@@ -474,7 +474,7 @@ git commit -m "test(api): guard dashboard against N+1 / unbounded queries"
 
 ---
 
-## Task 5: Frontend data layer — types + fetch + store
+## Task 5: Frontend data layer - types + fetch + store
 
 **Files:**
 - Create: `frontend/src/lib/dashboard.ts`
@@ -562,7 +562,7 @@ describe('dashboardStore', () => {
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `npm --prefix frontend run test -- dashboardStore`
-Expected: FAIL — `./dashboardStore` module not found.
+Expected: FAIL - `./dashboardStore` module not found.
 
 - [ ] **Step 4: Implement the store**
 
@@ -884,7 +884,7 @@ After the `Layout` group's closing `</Route>`, add two sibling groups:
 </Route>
 ```
 
-Note: `brand-kit` is buyer-only in the current guard (staff don't have a brand kit); it stays under `RoleLayout` which for a buyer is `Layout` — unchanged behaviour. `ProtectedRoute` used as a layout element renders its children (the shell) once authenticated; confirm `ProtectedRoute` returns `<>{children}</>` (it does) so it composes as a layout wrapper.
+Note: `brand-kit` is buyer-only in the current guard (staff don't have a brand kit); it stays under `RoleLayout` which for a buyer is `Layout` - unchanged behaviour. `ProtectedRoute` used as a layout element renders its children (the shell) once authenticated; confirm `ProtectedRoute` returns `<>{children}</>` (it does) so it composes as a layout wrapper.
 
 - [ ] **Step 3: Update the login redirect**
 
@@ -957,7 +957,7 @@ describe('DashboardPage', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm --prefix frontend run test -- DashboardPage`
-Expected: FAIL — module not found.
+Expected: FAIL - module not found.
 
 - [ ] **Step 3: Implement the page**
 
@@ -1133,6 +1133,6 @@ git commit -m "chore: staff console dashboard verification fixes"
 
 ## Self-review notes (addressed)
 
-- **Spec coverage:** sidebar shell (Task 6/7), dashboard widgets (Task 8), endpoint + all six data sources (Task 2), perf contract — indexes verified + audit index added (Task 1), bounded/no-N+1/cache enforced + guard-tested (Task 2/4), login redirect (Task 7), tests backend+frontend (Task 3/4/5/8). 
-- **Open item resolved:** shared `/quotes` uses `RoleLayout` (default from spec) — no page duplication.
+- **Spec coverage:** sidebar shell (Task 6/7), dashboard widgets (Task 8), endpoint + all six data sources (Task 2), perf contract - indexes verified + audit index added (Task 1), bounded/no-N+1/cache enforced + guard-tested (Task 2/4), login redirect (Task 7), tests backend+frontend (Task 3/4/5/8). 
+- **Open item resolved:** shared `/quotes` uses `RoleLayout` (default from spec) - no page duplication.
 - **Type consistency:** `DashboardPayload` shape identical in `lib/dashboard.ts`, store test, controller JSON, and page consumer (`queues.proofsPending`, `production.overdue`, `valueBooked`).

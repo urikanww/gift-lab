@@ -29,7 +29,7 @@ interface QueueStoreState {
   unsubscribe: () => void;
 }
 
-// FCFS by ready_at — the queue always renders in readiness order, never order time.
+// FCFS by ready_at - the queue always renders in readiness order, never order time.
 function sortQueue(jobs: ProductionJob[]): ProductionJob[] {
   return [...jobs].sort((a, b) => (a.ready_at ?? '').localeCompare(b.ready_at ?? ''));
 }

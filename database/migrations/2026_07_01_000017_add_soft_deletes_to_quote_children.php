@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Soft-delete cascade gap fix: Quote/Product/Company/Model3D/User use
- * SoftDeletes, but their children did not — a soft-deleted parent left live
+ * SoftDeletes, but their children did not - a soft-deleted parent left live
  * children (orphaned rows, cancelled quotes' jobs lingering on the floor queue).
  * Adds deleted_at to each child so the model-level cascade can soft-delete them.
  */

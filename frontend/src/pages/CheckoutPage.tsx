@@ -11,7 +11,7 @@ import { Motion, fadeInUp, staggerItem, useReducedMotionSafe } from '../motion';
 
 /**
  * Storefront-styled checkout: a thin, celebratory wrapper over the existing B2B
- * quote flow. It does NOT introduce a guest-checkout or direct-order endpoint —
+ * quote flow. It does NOT introduce a guest-checkout or direct-order endpoint -
  * "Place order" simply creates the DRAFT quote via useQuoteStore().createQuote,
  * exactly as the cart used to. Login is required first; because the cart is
  * client-side Zustand it survives the /login redirect, so the user returns here
@@ -40,7 +40,7 @@ export default function CheckoutPage() {
   }, [lines, refreshEstimate]);
 
   const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
-  // Delivery destination reuses the company's stored address — shown read-only
+  // Delivery destination reuses the company's stored address - shown read-only
   // so the buyer sees where the order ships (no per-order address entry).
   const company = user?.company ?? null;
   const neededByLabel = neededBy
@@ -48,7 +48,7 @@ export default function CheckoutPage() {
     : null;
 
   const placeOrder = async () => {
-    // Login gate — should be unreachable while anonymous (button is not
+    // Login gate - should be unreachable while anonymous (button is not
     // rendered), but guard defensively before touching the write path.
     if (!user) {
       navigate('/login', { state: { from: '/checkout' } });
@@ -136,8 +136,8 @@ export default function CheckoutPage() {
             </ul>
           </Card>
 
-          {/* Delivery destination — read-only, from the company's stored
-              address — plus the buyer's chosen need-by date. Only meaningful
+          {/* Delivery destination - read-only, from the company's stored
+              address - plus the buyer's chosen need-by date. Only meaningful
               once signed in (address comes from the authed company). */}
           {user && (
             <Card padding="lg" aria-labelledby="delivery-heading">

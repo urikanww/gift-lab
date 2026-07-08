@@ -13,7 +13,7 @@ import {
   useReducedMotionSafe,
 } from '../motion';
 
-/** Layout-animated exit/enter for cart rows — the signature moment. */
+/** Layout-animated exit/enter for cart rows - the signature moment. */
 const rowVariants = {
   hidden: { opacity: 0, y: 10 },
   visible: { opacity: 1, y: 0 },
@@ -25,7 +25,7 @@ export default function CartPage() {
     useCartStore();
   const animate = useReducedMotionSafe();
 
-  // Live estimate is event-driven (debounced on cart change) — never polled.
+  // Live estimate is event-driven (debounced on cart change) - never polled.
   useEffect(() => {
     const t = setTimeout(() => void refreshEstimate(), 400);
     return () => clearTimeout(t);

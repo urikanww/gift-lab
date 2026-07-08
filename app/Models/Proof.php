@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Immutable-once-approved proof (spec 6.3). Approval is recorded with
- * who/what-version/when; an approved proof can never be mutated — a new version
+ * who/what-version/when; an approved proof can never be mutated - a new version
  * is created instead. Guarded at the model layer via the saving() hook.
  *
  * @property int $id

@@ -31,7 +31,7 @@ it('fetches a listing and maps the feed fields', function (): void {
         ->and($data->name)->toBe('Ceramic Mug 350ml')
         ->and($data->price)->toBe(3.90)
         ->and($data->sourceUrl)->toBe('https://shopee.sg/product/111/4567')
-        // Physical attributes are staff judgements — never faked from the feed.
+        // Physical attributes are staff judgements - never faked from the feed.
         ->and($data->dimensions)->toBeNull()
         ->and($data->weight)->toBeNull()
         ->and($data->printable)->toBeFalse();

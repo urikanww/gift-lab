@@ -7,7 +7,7 @@ namespace App\Services\Scraper;
 /**
  * Normalised result of scraping/ingesting one marketplace listing. All fields
  * are non-authoritative estimates (spec principle 3); the procurement-time
- * re-check is the real read. Any field may be null when the scrape is partial —
+ * re-check is the real read. Any field may be null when the scrape is partial -
  * the completeness gate decides publishability from what is present.
  */
 final readonly class ScrapedProductData

@@ -17,7 +17,7 @@ use Illuminate\Http\Request;
  * Superadmin/staff catalogue gate (spec 6.7): review scraped + 3D items, approve
  * for publication, pull from public, and toggle global auto-publish. Staff-only;
  * the auto-publish setting is superadmin-only. Publish/unpublish route through
- * the class's own service — the scraped CompletenessGate checks price/dims/stock
+ * the class's own service - the scraped CompletenessGate checks price/dims/stock
  * that MODEL_3D items structurally never have, so 3D items get the 3D gate
  * (licence + credit + local file + verified estimates).
  */
@@ -33,7 +33,7 @@ class AdminCatalogueController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        // Bounded pagination (matches the public CatalogueController) — the admin
+        // Bounded pagination (matches the public CatalogueController) - the admin
         // gate previously did an unbounded ->get() over all SCRAPED_UV + MODEL_3D
         // rows, so response size/memory grew linearly with scraped inventory.
         $perPage = max(1, min((int) $request->integer('per_page', 24), 100));

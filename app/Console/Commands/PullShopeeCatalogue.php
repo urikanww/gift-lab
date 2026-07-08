@@ -11,7 +11,7 @@ use Illuminate\Console\Command;
 
 /**
  * Pull real UV-blank candidates from a marketplace affiliate feed (ToS-clean
- * product APIs — see HttpShopeeAffiliateClient / HttpLazadaAffiliateClient)
+ * product APIs - see HttpShopeeAffiliateClient / HttpLazadaAffiliateClient)
  * into the SCRAPED_UV admin gate. The feeds supply name/price/image/link;
  * dimensions, weight and printability are completed by staff in the gate, so
  * ingested items land as CANNOT_PUBLISH with concrete reason tags rather
@@ -49,7 +49,7 @@ class PullShopeeCatalogue extends Command
             : $this->searchLazada($lazada, $keyword, $count);
 
         if ($listings === null) {
-            // Missing credentials — already reported.
+            // Missing credentials - already reported.
             return self::FAILURE;
         }
 
@@ -72,7 +72,7 @@ class PullShopeeCatalogue extends Command
             }
         }
 
-        $this->info("Ingested {$ingested} of ".count($listings)." listing(s) for \"{$keyword}\" — complete dimensions/printability in the admin gate.");
+        $this->info("Ingested {$ingested} of ".count($listings)." listing(s) for \"{$keyword}\" - complete dimensions/printability in the admin gate.");
 
         return self::SUCCESS;
     }

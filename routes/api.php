@@ -39,7 +39,7 @@ use Illuminate\Support\Facades\Route;
 
 // Authentication (Sanctum stateful cookie).
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
-// Self-serve buyer registration (spec 6.1 Stage 0 — account created at
+// Self-serve buyer registration (spec 6.1 Stage 0 - account created at
 // Request Quote). Throttled like login to blunt bulk account creation.
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
 
@@ -63,11 +63,11 @@ Route::middleware('throttle:60,1')->group(function (): void {
 Route::post('/uploads/artwork', [UploadController::class, 'artwork'])
     ->middleware('throttle:artwork-uploads');
 
-// Login-free order tracking — opaque code + email-prefix check. Throttled
+// Login-free order tracking - opaque code + email-prefix check. Throttled
 // hard (anti-enumeration; the controller also returns a single generic error).
 Route::post('/track', TrackingController::class)->middleware('throttle:10,1');
 
-// Stripe webhook — unauthenticated, verified by signature (see controller).
+// Stripe webhook - unauthenticated, verified by signature (see controller).
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');
 
 Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
@@ -109,14 +109,14 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 
-    // CORE product/variant management (staff; audit E4) — ops add a blank or
+    // CORE product/variant management (staff; audit E4) - ops add a blank or
     // fix stock/price without seeders or DB access.
     Route::get('/admin/products', [AdminProductController::class, 'index']);
     Route::post('/admin/products', [AdminProductController::class, 'store']);
     // Must be registered before the /{product} wildcard routes below, or
     // "bulk-publish" would be captured as a {product} id.
     Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish']);
-    // Detail/edit fetch — withTrashed so the editor can open an archived row.
+    // Detail/edit fetch - withTrashed so the editor can open an archived row.
     Route::get('/admin/products/{product}', [AdminProductController::class, 'show'])->withTrashed();
     Route::get('/admin/products/{product}/history', [AdminProductController::class, 'history'])->withTrashed();
     Route::patch('/admin/products/{product}', [AdminProductController::class, 'update']);
@@ -134,7 +134,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::get('/admin/supplier-reorders', [AdminReorderController::class, 'index']);
     Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive']);
 
-    // Pricing/config editor (superadmin-only; audit E1/D7/E2) — every quote-time
+    // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
     Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update']);
@@ -144,7 +144,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Staff console overview (read-only aggregate snapshot).
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
 
-    // Superadmin user management (stricter than isStaff() — superadmin-only).
+    // Superadmin user management (stricter than isStaff() - superadmin-only).
     Route::get('/admin/companies', [AdminUserController::class, 'companies']);
     Route::get('/admin/users', [AdminUserController::class, 'index']);
     Route::post('/admin/users', [AdminUserController::class, 'store']);

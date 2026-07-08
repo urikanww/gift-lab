@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Source image/page URLs from live feeds exceed varchar(255) — Cults3D image
+ * Source image/page URLs from live feeds exceed varchar(255) - Cults3D image
  * URLs are proxy-wrapped (resize service + original URL nested inside) and
  * routinely run 300+ chars. TEXT columns; these are never indexed.
  */

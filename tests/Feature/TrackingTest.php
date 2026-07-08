@@ -31,7 +31,7 @@ it('returns order status for a matching code and email prefix', function (): voi
             'stage' => 'REVIEW',
             'stage_label' => 'In review',
         ])
-        // Status only — no pricing or line detail may leak on the public page.
+        // Status only - no pricing or line detail may leak on the public page.
         ->assertJsonMissing(['total'])
         ->assertJsonMissing(['subtotal']);
 });
@@ -98,7 +98,7 @@ it('gives the same generic 404 for a wrong email prefix and an unknown code', fu
         'email' => 'buyer@acme.com',
     ])->assertNotFound();
 
-    // Identical body — a caller cannot tell which field was wrong.
+    // Identical body - a caller cannot tell which field was wrong.
     expect($wrongEmail->json('message'))->toBe($unknownCode->json('message'))
         ->and($wrongEmail->json('message'))->toBe('No order matches those details.');
 });

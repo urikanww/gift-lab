@@ -78,7 +78,7 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
                 </Badge>
               </div>
             )}
-            {/* Availability corner — only when it's not plain in-stock, so the
+            {/* Availability corner - only when it's not plain in-stock, so the
                 grid stays quiet but made-to-order / unavailable items are honest. */}
             {product.availability !== 'in_stock' && (
               <div className="absolute right-2 top-2">

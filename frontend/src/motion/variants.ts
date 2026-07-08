@@ -14,21 +14,21 @@ export const fadeInUp: Variants = {
   exit: { opacity: 0, y: 8, transition: { duration: duration.fast, ease: easing.standard } },
 };
 
-/** Plain fade — use when vertical movement would fight the layout. */
+/** Plain fade - use when vertical movement would fight the layout. */
 export const fadeIn: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: tweenBase },
   exit: { opacity: 0, transition: { duration: duration.fast } },
 };
 
-/** Scale-in from slightly small — good for modals, popovers, cards. */
+/** Scale-in from slightly small - good for modals, popovers, cards. */
 export const scaleIn: Variants = {
   hidden: { opacity: 0, scale: 0.96 },
   visible: { opacity: 1, scale: 1, transition: springSnappy },
   exit: { opacity: 0, scale: 0.97, transition: { duration: duration.fast, ease: easing.standard } },
 };
 
-/** Slide up from the bottom edge — for sheets/toasts. */
+/** Slide up from the bottom edge - for sheets/toasts. */
 export const slideUp: Variants = {
   hidden: { opacity: 0, y: 24 },
   visible: { opacity: 1, y: 0, transition: springSnappy },

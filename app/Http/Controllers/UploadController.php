@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Storage;
 class UploadController extends Controller
 {
     /**
-     * How long a returned preview URL stays valid. Short by design — it is only
+     * How long a returned preview URL stays valid. Short by design - it is only
      * needed to render the just-uploaded thumbnail in the designer.
      */
     private const PREVIEW_URL_TTL_MINUTES = 30;

@@ -7,7 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Public marketplace category (drinkware, bags, …) — how buyers browse.
+ * Public marketplace category (drinkware, bags, …) - how buyers browse.
  * Orthogonal to `class`, which stays the internal production taxonomy.
  * Nullable so the model saving-hook (or catalogue:categorize) fills it in.
  */

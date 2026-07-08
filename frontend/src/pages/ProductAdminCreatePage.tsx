@@ -126,7 +126,7 @@ export default function ProductAdminCreatePage() {
             <option value="STOCKED">Stocked</option>
             <option value="MAKE_TO_ORDER">Make to order</option>
           </Select>
-          {/* On-demand: only meaningful for STOCKED items — sell at 0 stock and
+          {/* On-demand: only meaningful for STOCKED items - sell at 0 stock and
               backorder (drives on-hand negative + drafts a supplier reorder). */}
           <Select
             label="On-demand (backorder)"
@@ -134,8 +134,8 @@ export default function ProductAdminCreatePage() {
             onChange={(e) => setAllowBackorder(e.target.value === 'yes')}
             disabled={submitting || stockMode !== 'STOCKED'}
           >
-            <option value="no">Off — block at 0 stock</option>
-            <option value="yes">On — sell at 0, backorder</option>
+            <option value="no">Off - block at 0 stock</option>
+            <option value="yes">On - sell at 0, backorder</option>
           </Select>
           <label className="flex items-center gap-2 text-sm text-fg">
             <input

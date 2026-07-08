@@ -99,7 +99,7 @@ class AuthController extends Controller
     /**
      * Serialize the authenticated user, embedding a minimal company summary
      * (id/name/address) so the storefront can show the buyer where an order
-     * ships — read-only, reusing the company's stored address (no per-order
+     * ships - read-only, reusing the company's stored address (no per-order
      * address). Only the fields the SPA needs are exposed.
      *
      * @return array<string, mixed>

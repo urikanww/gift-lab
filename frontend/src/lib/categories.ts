@@ -1,4 +1,4 @@
-// Public marketplace taxonomy — how buyers browse. Decoupled from the internal
+// Public marketplace taxonomy - how buyers browse. Decoupled from the internal
 // print-class (CORE/SCRAPED_UV/MODEL_3D), which never appears in public UI.
 // Keys mirror backend App\Services\Catalogue\CategoryClassifier::CATEGORIES.
 

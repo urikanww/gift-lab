@@ -34,7 +34,7 @@ class CategoryClassifier
     {
         foreach (self::KEYWORDS as $category => $keywords) {
             foreach ($keywords as $keyword) {
-                // Tolerate simple plurals ("Mugs", "Pins") — except 'glass',
+                // Tolerate simple plurals ("Mugs", "Pins") - except 'glass',
                 // where +s would wrongly capture eyewear ("Reading Glasses").
                 $plural = $keyword === 'glass' ? '' : 's?';
 

@@ -12,7 +12,7 @@ export interface SkeletonProps {
 
 /**
  * Content placeholder with a subtle shimmer (reduced-motion users get a static
- * tint via the global media query). Decorative — hidden from the a11y tree; the
+ * tint via the global media query). Decorative - hidden from the a11y tree; the
  * surrounding region should expose an aria-busy/status state.
  */
 export function Skeleton({ className, width, height, variant = 'rect', style }: SkeletonProps) {

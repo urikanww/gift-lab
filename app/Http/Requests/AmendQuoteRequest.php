@@ -57,7 +57,7 @@ class AmendQuoteRequest extends FormRequest
                     continue;
                 }
 
-                // Class-aware landed cost — MODEL_3D has no blank; its cost is
+                // Class-aware landed cost - MODEL_3D has no blank; its cost is
                 // filament + machine time (PricingService::landedCost).
                 $landedCost = $pricing->landedCost($line->product, $line->variant);
 

@@ -1,7 +1,7 @@
 import { cn } from './cn';
 
 /**
- * GiftLab brand mark: a lab flask (the "lab" — made-to-order production) topped
+ * GiftLab brand mark: a lab flask (the "lab" - made-to-order production) topped
  * with a gift bow (the "gift"). The flask outline inherits the surrounding text
  * colour via `currentColor`; the liquid + bow use the brand primary token so the
  * mark re-tints correctly in light/dark themes.

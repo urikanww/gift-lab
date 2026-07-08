@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  * Scraped-UV catalogue lifecycle (spec 6.4): ingest to our own DB, gate on
  * completeness, honour the auto-publish toggle, and on daily re-sync detect
  * price drift / dead sources and auto-pull from public. A background re-sync
- * never mutates a quote's frozen snapshot — snapshots live on line_items and
+ * never mutates a quote's frozen snapshot - snapshots live on line_items and
  * are untouched here.
  */
 final class ScrapedCatalogueService
@@ -104,7 +104,7 @@ final class ScrapedCatalogueService
         }
 
         // Completeness/licence status drifted after the item reached
-        // ReadyToApprove — record the reasons and hold it out of public rather
+        // ReadyToApprove - record the reasons and hold it out of public rather
         // than trusting the stale state flag.
         return $this->markCannotPublish($product, $this->gate->reasons($product));
     }
@@ -128,7 +128,7 @@ final class ScrapedCatalogueService
         $product->weight = $data->weight;
         $product->stock_estimate = $data->stockEstimate;
         // TECH-DEBT (audit B8, tracked in docs/TECH_DEBT.md#scraped-images):
-        // v1 serves the source marketplace image as-is — no re-host, no clean
+        // v1 serves the source marketplace image as-is - no re-host, no clean
         // product render. Acceptable for catalogue thumbnails; replace with
         // re-hosted/cleaned imagery before scraped items get designer surfaces.
         $product->image_url = $data->imageUrl;

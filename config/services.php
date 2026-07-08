@@ -54,7 +54,7 @@ return [
         'binary' => env('SLICER_BINARY', ''),
         'timeout' => env('SLICER_TIMEOUT', 300),
         // Used when the slicer profile carries no filament density (the
-        // console default) — grams = volume [cm3] × density. PLA ≈ 1.24.
+        // console default) - grams = volume [cm3] × density. PLA ≈ 1.24.
         'density_g_cm3' => env('SLICER_FILAMENT_DENSITY', 1.24),
     ],
 
@@ -78,7 +78,7 @@ return [
         'model' => env('OLLAMA_MODEL', 'llama3.2'),
     ],
 
-    // Shopee Affiliate Open API (SCRAPED_UV feed — permitted product data,
+    // Shopee Affiliate Open API (SCRAPED_UV feed - permitted product data,
     // not scraping). When credentials are present the live client is bound.
     'shopee_affiliate' => [
         'app_id' => env('SHOPEE_AFFILIATE_APP_ID'),
@@ -87,7 +87,7 @@ return [
     ],
 
     // Lazada Open Platform affiliate feed (second SCRAPED_UV source). The
-    // search/detail API paths are configurable — Lazada scopes endpoints per
+    // search/detail API paths are configurable - Lazada scopes endpoints per
     // affiliate program; confirm them in your program's API console.
     'lazada_affiliate' => [
         'app_key' => env('LAZADA_AFFILIATE_APP_KEY'),

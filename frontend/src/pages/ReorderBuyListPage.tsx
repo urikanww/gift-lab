@@ -57,7 +57,7 @@ export default function ReorderBuyListPage() {
           {reorders && reorders.length > 0 && <Badge tone="warning">{reorders.length} open</Badge>}
         </div>
         <p className="mt-1 text-sm text-fg-muted">
-          Blanks to reorder — raised when stock falls below threshold or a backorder sells at zero.
+          Blanks to reorder - raised when stock falls below threshold or a backorder sells at zero.
           Buy from the source, then mark received to restock.
         </p>
       </Motion>
@@ -91,7 +91,7 @@ export default function ReorderBuyListPage() {
                     <div>
                       <dt className="text-fg-subtle">On hand</dt>
                       <dd className={r.stock_on_hand != null && r.stock_on_hand < 0 ? 'font-medium text-danger' : 'font-medium text-fg'}>
-                        {r.stock_on_hand ?? '—'}
+                        {r.stock_on_hand ?? '-'}
                       </dd>
                     </div>
                     <div>
@@ -106,7 +106,7 @@ export default function ReorderBuyListPage() {
                             Buy
                           </a>
                         ) : (
-                          <span className="text-fg-muted">—</span>
+                          <span className="text-fg-muted">-</span>
                         )}
                       </dd>
                     </div>

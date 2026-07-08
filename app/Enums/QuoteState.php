@@ -39,7 +39,7 @@ enum QuoteState: string
             self::PoIssued => [self::Confirmed, self::Cancelled],
             self::Confirmed => [self::Procuring, self::Cancelled],
             self::Procuring => [self::Ready, self::Cancelled],
-            // Once on the floor (READY) the order is in production — no cancel edge.
+            // Once on the floor (READY) the order is in production - no cancel edge.
             self::Ready => [self::Closed],
             self::Closed, self::Cancelled => [],
         };

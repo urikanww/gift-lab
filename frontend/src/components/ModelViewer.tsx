@@ -7,7 +7,7 @@ import api from '../lib/api';
 /**
  * Interactive 3D preview for MODEL_3D products. Streams the model from
  * /api/catalogue/{key}/model and renders it with orbit + auto-rotate.
- * Lazy-loaded (three.js is heavy) — only MODEL_3D detail pages pay the cost.
+ * Lazy-loaded (three.js is heavy) - only MODEL_3D detail pages pay the cost.
  */
 
 interface Props {
@@ -55,7 +55,7 @@ export default function ModelViewer({ productKey, className }: Props) {
       renderer.render(scene, camera);
     };
 
-    // Absolute API origin — the SPA dev server doesn't proxy /api.
+    // Absolute API origin - the SPA dev server doesn't proxy /api.
     new STLLoader().load(
       `${api.defaults.baseURL}/catalogue/${productKey}/model`,
       (geometry) => {

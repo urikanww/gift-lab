@@ -6,7 +6,7 @@ use App\Services\Model3d\StlDimensions;
 
 /**
  * Build a minimal binary STL: two degenerate triangles spanning a 10 x 20 x 30
- * bounding box (geometry validity doesn't matter — only the vertex extents do).
+ * bounding box (geometry validity doesn't matter - only the vertex extents do).
  */
 function makeBinaryStl(string $path): void
 {

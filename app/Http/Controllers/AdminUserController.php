@@ -200,7 +200,7 @@ class AdminUserController extends Controller
         $user->password = Hash::make($validated['password']);
         $user->save();
 
-        // Never log the password value itself — only that a reset occurred.
+        // Never log the password value itself - only that a reset occurred.
         $this->audit->log($user, 'user.password_reset', null, null);
 
         return response()->json(['data' => $this->serialize($user->fresh('company'))]);

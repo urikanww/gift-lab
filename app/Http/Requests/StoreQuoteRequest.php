@@ -33,7 +33,7 @@ class StoreQuoteRequest extends FormRequest
     public function rules(): array
     {
         // The authoritative tier set is the superadmin-configured surcharge
-        // table (spec principle 5) — an out-of-set size must be rejected, not
+        // table (spec principle 5) - an out-of-set size must be rejected, not
         // silently priced at zero surcharge (Pass 2 F1 / audit D11).
         $tiers = array_keys((array) PricingConfig::value('fee', 'customization_by_size', []));
         if ($tiers === []) {
@@ -62,7 +62,7 @@ class StoreQuoteRequest extends FormRequest
             // Machine-readable placement record captured by the designer
             // (position/size/rotation + export pixel mapping, audit C12).
             'line_items.*.customization.layout' => ['nullable', 'array'],
-            // Name/text personalisation content (spec 6.1, audit D9) — the
+            // Name/text personalisation content (spec 6.1, audit D9) - the
             // rendered layer ships inside the artwork; this is the recorded
             // source text, priced per unit via fee.customization_per_unit.
             'line_items.*.customization.text' => ['nullable', 'string', 'max:500'],
@@ -80,7 +80,7 @@ class StoreQuoteRequest extends FormRequest
 
             // Every referenced product must be publicly published. Batch-load
             // all referenced products in a single query (was Product::find per
-            // line — one query per cart line, compounding under bulk carts).
+            // line - one query per cart line, compounding under bulk carts).
             $lineItems = (array) $this->input('line_items', []);
 
             $productIds = array_values(array_filter(array_map(
@@ -107,7 +107,7 @@ class StoreQuoteRequest extends FormRequest
             // CORE products with no variants at all are structurally
             // unprocurable (CoreProcurement sources blanks from variant
             // stock), so quoting them only manufactures a stuck line
-            // (audit E4 interim guard — "Alpha Mug" case).
+            // (audit E4 interim guard - "Alpha Mug" case).
             $productIdsWithVariants = $productIds === []
                 ? collect()
                 : Variant::query()->whereIn('product_id', $productIds)->distinct()->pluck('product_id')->flip();
@@ -129,11 +129,11 @@ class StoreQuoteRequest extends FormRequest
                 ) {
                     $validator->errors()->add(
                         "line_items.{$index}.product_id",
-                        'This product cannot be ordered yet — no variants are configured.'
+                        'This product cannot be ordered yet - no variants are configured.'
                     );
                 }
 
-                // A line's variant must belong to that line's product — a
+                // A line's variant must belong to that line's product - a
                 // foreign variant mis-prices the line and procurement would
                 // draw down another product's stock (Pass 2 F3 / audit B9).
                 $variantId = isset($line['variant_id']) ? (int) $line['variant_id'] : null;
@@ -147,7 +147,7 @@ class StoreQuoteRequest extends FormRequest
                     }
                 }
 
-                // The ref must resolve to a real uploaded file — format alone
+                // The ref must resolve to a real uploaded file - format alone
                 // still lets a guessed/foreign key through to the floor.
                 $artworkRef = $line['customization']['artwork_ref'] ?? null;
                 if (is_string($artworkRef)

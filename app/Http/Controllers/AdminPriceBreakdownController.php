@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 
 /**
  * Staff-only "test a quote" breakdown for the pricing editor. Returns the full
- * itemised pricing — including internal landed cost + margin — so a superadmin
+ * itemised pricing - including internal landed cost + margin - so a superadmin
  * can see exactly what each config knob does. Staff-gated because it exposes
  * cost/margin the public price estimate hides.
  */

@@ -162,7 +162,7 @@ class Quote extends Model
     }
 
     /**
-     * Latest approved proof, if any — the source of the production print file.
+     * Latest approved proof, if any - the source of the production print file.
      */
     public function approvedProof(): ?Proof
     {
@@ -200,7 +200,7 @@ class Quote extends Model
 
         if ($this->state === QuoteState::Ready) {
             // pluck() returns JobState enum instances (the model casts `state`),
-            // so compare enum-to-enum — comparing against ->value never matched
+            // so compare enum-to-enum - comparing against ->value never matched
             // and left the tracker stuck on IN_PRODUCTION even once SHIPPED/CLOSED.
             $states = $this->jobs()->pluck('state');
 

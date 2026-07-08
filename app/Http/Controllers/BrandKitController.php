@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 
 /**
  * Per-company brand kit (saved logo + brand colours). Scoped to the caller's
- * own company — a buyer never sees or edits another company's kit.
+ * own company - a buyer never sees or edits another company's kit.
  */
 class BrandKitController extends Controller
 {

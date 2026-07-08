@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
  * MODEL_3D products consume filament rather than a sourced blank. These explicit
  * fields link a product to the filament it prints from and the estimated grams
  * per unit, so procurement can decrement the right Filament row deterministically
- * (spec Phase 2, 3D track). Nullable — irrelevant to CORE / SCRAPED_UV rows.
+ * (spec Phase 2, 3D track). Nullable - irrelevant to CORE / SCRAPED_UV rows.
  */
 return new class extends Migration
 {

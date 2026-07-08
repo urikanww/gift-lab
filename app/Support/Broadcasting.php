@@ -11,7 +11,7 @@ use Throwable;
  * Reverb is a soft dependency: a state change is committed to the DB first and
  * broadcasting is only a live-update convenience. If the Reverb server is down
  * (e.g. Pusher cURL error 7 "couldn't connect"), the transport throws while the
- * write has already persisted — letting it bubble would 500 an otherwise
+ * write has already persisted - letting it bubble would 500 an otherwise
  * successful request.
  *
  * dispatch() runs the event dispatch (which triggers the synchronous broadcast

@@ -187,7 +187,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await ensureCsrf();
       const { data } = await api.post<{ checkout_url: string; paid: boolean }>(`/quotes/${id}/pay`);
       if (data.paid) {
-        // Fixture/dev: captured immediately — refresh to show production status
+        // Fixture/dev: captured immediately - refresh to show production status
         // and report success so the caller can confirm (no redirect happens).
         await get().fetchQuote(id);
         return true;

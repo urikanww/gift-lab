@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 /**
  * Headless slicer pass (PrusaSlicer CLI): slices the stored model file and
  * reads real filament grams + print minutes from the generated G-code, then
- * marks the product's estimates verified — replacing the manual staff click
+ * marks the product's estimates verified - replacing the manual staff click
  * for items the slicer can measure. Config-gated: when no slicer binary is
  * configured (services.slicer.binary) everything silently stays on the
  * manual-verify path.

@@ -24,14 +24,14 @@ class ProductResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            // Canonical public URL key — frontends should link by slug, not id.
+            // Canonical public URL key - frontends should link by slug, not id.
             'slug' => $this->slug,
             'description' => $this->description,
             'class' => $this->class->value,
-            // Public marketplace category (how buyers browse) — see CategoryClassifier.
+            // Public marketplace category (how buyers browse) - see CategoryClassifier.
             'category' => $this->category,
             // Indicative sell price (qty 1, no variant), NOT the raw pre-margin
-            // supplier cost. base_cost is internal — exposing it on the public
+            // supplier cost. base_cost is internal - exposing it on the public
             // catalogue let anyone back out the margin (business-intel leak).
             'from_price' => app(PricingService::class)->unitPrice($this->resource, null, 1),
             'currency' => $this->currency,

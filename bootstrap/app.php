@@ -63,7 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         // Feature-gated (deferred-scope) capability invoked: 409 Conflict, not a
-        // 500. Logged at info — it's an expected guard, not a fault.
+        // 500. Logged at info - it's an expected guard, not a fault.
         $exceptions->render(function (FeatureNotEnabledException $e, Request $request): ?JsonResponse {
             if (! $request->expectsJson()) {
                 return null;
@@ -89,7 +89,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return response()->json([
-                'message' => 'We couldn’t reach the payment provider just now. No charge was made — please try again in a moment.',
+                'message' => 'We couldn’t reach the payment provider just now. No charge was made - please try again in a moment.',
             ], 502);
         });
     })->create();

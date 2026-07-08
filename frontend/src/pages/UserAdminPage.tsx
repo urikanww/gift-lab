@@ -59,7 +59,7 @@ export default function UserAdminPage() {
         if (!cancelled) setCompanies(data.data);
       })
       .catch(() => {
-        // Non-critical — the filter just stays empty.
+        // Non-critical - the filter just stays empty.
       });
     return () => {
       cancelled = true;
@@ -176,7 +176,7 @@ export default function UserAdminPage() {
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-sm text-fg-muted">{u.company?.name ?? '—'}</p>
+                      <p className="text-sm text-fg-muted">{u.company?.name ?? '-'}</p>
                     </div>
                   </button>
                 </li>

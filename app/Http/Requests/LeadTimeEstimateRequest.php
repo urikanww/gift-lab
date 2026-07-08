@@ -8,7 +8,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * Public delivery-estimate request for the no-account designer/cart. Estimate
- * only — the authoritative promise is made when the order is confirmed.
+ * only - the authoritative promise is made when the order is confirmed.
  */
 class LeadTimeEstimateRequest extends FormRequest
 {

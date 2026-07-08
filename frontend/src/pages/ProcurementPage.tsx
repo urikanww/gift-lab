@@ -113,7 +113,7 @@ export default function ProcurementPage() {
                       </div>
                       <div>
                         <dt className="text-fg-subtle">Procurable</dt>
-                        <dd className="font-medium text-fg">{a.procured_qty ?? '—'}</dd>
+                        <dd className="font-medium text-fg">{a.procured_qty ?? '-'}</dd>
                       </div>
                       <div>
                         <dt className="text-fg-subtle">Quoted price</dt>
@@ -121,7 +121,7 @@ export default function ProcurementPage() {
                       </div>
                       <div>
                         <dt className="text-fg-subtle">Re-checked</dt>
-                        <dd className="font-medium text-fg">{a.procured_price ?? '—'}</dd>
+                        <dd className="font-medium text-fg">{a.procured_price ?? '-'}</dd>
                       </div>
                     </dl>
 

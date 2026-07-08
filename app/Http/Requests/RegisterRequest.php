@@ -25,7 +25,7 @@ class RegisterRequest extends FormRequest
     protected function failedAuthorization(): never
     {
         // Friendly copy instead of the framework's generic "This action is
-        // unauthorized." — the only failure mode is an active session (A13).
+        // unauthorized." - the only failure mode is an active session (A13).
         throw new AuthorizationException('You are already signed in. Log out first to register a new company.');
     }
 

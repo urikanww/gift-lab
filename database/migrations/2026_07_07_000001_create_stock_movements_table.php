@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Append-only stock ledger. Every change to a variant's on-hand count is a row
  * here; variants.stock_on_hand is a cached SUM(delta) that can be rebuilt from
- * this table. Rows are never updated or deleted — a mistake is corrected by a
+ * this table. Rows are never updated or deleted - a mistake is corrected by a
  * compensating movement, so the history stays honest and reconcilable.
  */
 return new class extends Migration

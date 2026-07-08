@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * CORE blank procurement: decrement on-hand variant stock. Price is the known
- * internal cost, so a CORE line never PRICE_JUMPS — it only OK's or QTY_SHORTs.
+ * internal cost, so a CORE line never PRICE_JUMPS - it only OK's or QTY_SHORTs.
  * Drafts a bulk supplier reorder when a variant drops to/below its threshold.
  */
 final class CoreProcurement implements ProcurementStrategy
@@ -39,7 +39,7 @@ final class CoreProcurement implements ProcurementStrategy
             $variant = $variant->newQuery()->lockForUpdate()->find($variant->getKey());
 
             // Shortfall handling forks on the product's on-demand policy:
-            //  - allow_backorder OFF: keep today's behaviour — short-ship and send
+            //  - allow_backorder OFF: keep today's behaviour - short-ship and send
             //    the line to reconfirm (customer/staff decide on reduced qty).
             //  - allow_backorder ON: fulfil the full qty and let on-hand go
             //    negative. The negative balance is the procurement worklist (a
@@ -60,7 +60,7 @@ final class CoreProcurement implements ProcurementStrategy
 
             if ($variant->isBelowThreshold()) {
                 // A restock buffer (2× threshold) plus whatever a backorder drove
-                // negative — clamped to at least 1 so a zero-threshold variant
+                // negative - clamped to at least 1 so a zero-threshold variant
                 // never drafts a useless 0-qty reorder onto the buy-list.
                 $deficit = $variant->stock_on_hand < 0 ? -$variant->stock_on_hand : 0;
                 $reorderQty = max($variant->reorder_threshold * 2, 1) + $deficit;
