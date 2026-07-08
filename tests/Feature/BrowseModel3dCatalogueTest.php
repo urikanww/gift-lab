@@ -19,7 +19,8 @@ beforeEach(function (): void {
 
 it('ingests from the Thingiverse popular feed with no search query', function (): void {
     Http::fake([
-        'api.thingiverse.com/popular*' => Http::response(['hits' => [['id' => 501]]], 200),
+        // /popular returns a bare top-level array (unlike /search/'s {hits:[]}).
+        'api.thingiverse.com/popular*' => Http::response([['id' => 501]], 200),
     ]);
 
     app(StubModel3dApiClient::class)->with(new Model3dData(
@@ -56,7 +57,7 @@ it('paginates the popular feed until --count commercial-OK items are ingested', 
                 3 => [['id' => 603]],
             ];
 
-            return Http::response(['hits' => $idsByPage[$page] ?? []], 200);
+            return Http::response($idsByPage[$page] ?? [], 200);
         },
     ]);
 
@@ -90,7 +91,7 @@ it('paginates the popular feed until --count commercial-OK items are ingested', 
 
 it('still applies the licence gate in browse mode', function (): void {
     Http::fake([
-        'api.thingiverse.com/popular*' => Http::response(['hits' => [['id' => 701]]], 200),
+        'api.thingiverse.com/popular*' => Http::response([['id' => 701]], 200),
     ]);
 
     app(StubModel3dApiClient::class)->with(new Model3dData(
@@ -114,7 +115,7 @@ it('still applies the licence gate in browse mode', function (): void {
 it('ingests from the Cults3D browse feed with no search query', function (): void {
     Http::fake([
         'cults3d.com/graphql' => Http::response([
-            'data' => ['creationsBatch' => [['slug' => 'popular-vase']]],
+            'data' => ['creationsBatch' => ['results' => [['slug' => 'popular-vase']]]],
         ], 200),
     ]);
 
@@ -151,9 +152,9 @@ it('errors on an unsupported --browse value', function (): void {
 
 it('discover-3d default sweep uses browse mode and respects the configured cap', function (): void {
     Http::fake([
-        'api.thingiverse.com/popular*' => Http::response(['hits' => [['id' => 801]]], 200),
+        'api.thingiverse.com/popular*' => Http::response([['id' => 801]], 200),
         'cults3d.com/graphql' => Http::response([
-            'data' => ['creationsBatch' => [['slug' => 'browsed-item']]],
+            'data' => ['creationsBatch' => ['results' => [['slug' => 'browsed-item']]]],
         ], 200),
     ]);
 

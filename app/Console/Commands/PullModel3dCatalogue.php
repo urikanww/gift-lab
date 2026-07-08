@@ -375,9 +375,9 @@ class PullModel3dCatalogue extends Command
 
     /**
      * Page through Thingiverse's "popular" feed - no search query, sorted by
-     * the source's own popularity ranking. Same response shape as /search/
-     * (a top-level "hits" array of things), so the pluck mirrors
-     * searchThingiverse() exactly.
+     * the source's own popularity ranking. Unlike /search/ (which wraps hits in
+     * a "hits" key), /popular returns a bare top-level array of things, so we
+     * pluck ids straight off the response root.
      *
      * @return array<int, string>|null
      */
@@ -406,7 +406,7 @@ class PullModel3dCatalogue extends Command
             return null;
         }
 
-        return collect((array) $response->json('hits', []))
+        return collect((array) $response->json())
             ->pluck('id')
             ->filter()
             ->map(fn ($id): string => (string) $id)
@@ -417,11 +417,11 @@ class PullModel3dCatalogue extends Command
     /**
      * Page through a keyword-less "most downloaded" Cults3D feed.
      *
-     * BEST-GUESS Cults3D browse query - verify field names
-     * (creationsBatch/sort enum) against the live API before relying on live
-     * data. The searchCults3d() query (creationsSearchBatch) is confirmed
-     * against the existing integration; this browse variant has not been
-     * exercised against the live Cults3D GraphQL schema.
+     * creationsBatch returns a CreationBatch wrapper (results { slug }), same
+     * shape as creationsSearchBatch - verified against the live Cults3D GraphQL
+     * API. Introspection is disabled on their prod endpoint, so the field/enum
+     * names here (creationsBatch, sort: BY_DOWNLOADS, results) were confirmed by
+     * exercising the live query directly, not by schema introspection.
      *
      * @return array<int, string>|null
      */
@@ -441,7 +441,7 @@ class PullModel3dCatalogue extends Command
         $gql = <<<'GQL'
         query ($limit: Int, $offset: Int) {
           creationsBatch(sort: BY_DOWNLOADS, onlyFree: true, onlyCommercial: true, limit: $limit, offset: $offset) {
-            slug
+            results { slug }
           }
         }
         GQL;
@@ -462,7 +462,7 @@ class PullModel3dCatalogue extends Command
             return null;
         }
 
-        return collect((array) $response->json('data.creationsBatch', []))
+        return collect((array) $response->json('data.creationsBatch.results', []))
             ->pluck('slug')
             ->filter()
             ->map(fn ($slug): string => (string) $slug)
