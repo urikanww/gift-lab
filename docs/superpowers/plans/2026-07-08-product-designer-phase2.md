@@ -22,6 +22,24 @@
 - `frontend/src/components/DesignerCanvas.tsx` is the fabric canvas. The active logo is a `FabricImage`; `dims.w/dims.h` are the live canvas pixel size; logos use a centre origin (`originX/Y='center'`), so `obj.left/obj.top` ARE the centre. Size bands (S/M/L) live in `LOGO_BANDS`. It already emits `onLogoChange`.
 - `frontend/src/pages/ProductDesignerPage.tsx` renders `Model3dDecalPreview` (when `is3d && zone`) and `DesignerCanvas` with `canvasMm = { width: zone.width_mm, height: zone.height_mm }` for zoned items.
 
+**Live-refresh approach (performance-critical).** The decal texture IS the fabric
+canvas. Do NOT re-export a 4× PNG per frame during a drag (a PNG encode per frame
+janks badly). Instead wrap the fabric canvas DOM element in a `THREE.CanvasTexture`
+and set `texture.needsUpdate = true` when it changes. The decal GEOMETRY does not
+rebuild on a move (the zone is unchanged — only the texture content shifts);
+geometry rebuilds only if the zone itself changes. `toDataURL` is used ONLY for the
+final capture/print file, never in the drag loop.
+
+**Verification prerequisite.** The interaction is WebGL and can only be confirmed
+by driving the running app. Before implementing Group D, confirm a **flat
+`MODEL_3D` product WITH a print zone** exists to test against (seed one via the
+admin flow or a factory/seeder if none is present) and that the frontend dev
+server + backend API can be started. If the stack can't be started in the build
+environment, the D1 preview acceptance runs in the user's dev environment.
+
+**Rotate scope.** Move is the core value; rotate (Group C2) is lower value and can
+ship as a fast-follow if it complicates C1 — do C1 + the sync (D1) first, then C2.
+
 ---
 
 ## File Structure
@@ -31,9 +49,38 @@
 - `frontend/src/lib/zoneMapping.test.ts`
 
 **Modify:**
-- `frontend/src/components/DesignerCanvas.tsx` — expose an imperative handle (via `forwardRef`) to get/set the active logo's placement in normalized zone coords + emit a throttled live placement/artwork change.
-- `frontend/src/components/Model3dDecalPreview.tsx` — interactive drag (move) + a rotate handle on the flat face, calling back placement changes; disable auto-rotate while editing.
-- `frontend/src/pages/ProductDesignerPage.tsx` — wire the canvas ref ↔ preview so a drag on the model moves the fabric logo and the decal texture refreshes (throttled).
+- `frontend/src/components/DesignerCanvas.tsx` — expose an imperative handle (via `forwardRef`): get/set the active logo's placement in zone fractions, get the live canvas element, and emit `onPlacementChange`. Fabric stays authoritative.
+- `frontend/src/components/Model3dDecalPreview.tsx` — interactive drag (move, off-zone-guarded) + a rotate control on the flat face; a `CanvasTexture` over the live fabric canvas for zero-encode refresh; decal geometry built once per (mesh, zone); auto-rotate disabled while editing.
+- `frontend/src/pages/ProductDesignerPage.tsx` — wire the canvas ref ↔ preview (pass the live canvas element + a dirty tick) so a drag on the model moves the fabric logo and the `CanvasTexture` refreshes, and a 2D-pad move reflects on the model.
+
+---
+
+## Group 0 — Spike (throwaway, de-risk before committing)
+
+Purpose: prove the two risky things — the mesh→zone coordinate feel and the
+`CanvasTexture` live-refresh smoothness — on one real product BEFORE building the
+full, tested feature. This code is disposable; do not polish or test it.
+
+- [ ] **Step 1: Confirm a target product.** Identify (or seed) a flat `MODEL_3D`
+  product with a print zone and a streamable mesh. Note its id/slug.
+
+- [ ] **Step 2: Minimal spike branch.** In a scratch branch, hack `Model3dDecalPreview`
+  to: (a) build a `THREE.CanvasTexture` from a throwaway `<canvas>` you draw a
+  coloured rectangle into; (b) on `pointermove` over the mesh, raycast, project the
+  hit with `worldToZoneFraction` (write a quick inline version), redraw the rect at
+  that fraction, and set `texture.needsUpdate = true`. No fabric, no sync, no tests.
+
+- [ ] **Step 3: Run the app and judge two things.** `preview_start`, open the product:
+  - Does dragging on the face move the rectangle to roughly where the cursor is, on
+    the correct part of the model? (coordinate feel)
+  - Is it smooth (no per-frame PNG encode)? (perf)
+
+- [ ] **Step 4: Decide.** If the feel/perf are good → proceed to Group A with
+  confidence. If the mapping is off or perf is bad → STOP and report findings; the
+  full plan's assumptions need revisiting before investing in the tested build.
+
+- [ ] **Step 5: Discard the spike.** `git checkout -- .` / delete the scratch branch.
+  Nothing from the spike is merged.
 
 ---
 
@@ -182,16 +229,25 @@ The page (and the 3D preview via the page) needs to move/rotate the active logo 
 
 ```ts
 export interface DesignerCanvasHandle {
-  /** Move the active logo to a normalized canvas fraction (centre origin). */
+  /** Move the active logo to a zone fraction (fv is world-up; centre origin). */
   setLogoFraction: (fu: number, fv: number) => void;
   /** Set the active logo's rotation in degrees. */
   setLogoAngle: (deg: number) => void;
-  /** Current active-logo placement, or null if no logo. */
+  /** Current active-logo placement (zone fraction), or null if no logo. */
   getLogoPlacement: () => { fu: number; fv: number; angle: number } | null;
-  /** Live production-resolution PNG of the current design (same as capture's export). */
-  exportArtwork: () => string | null;
+  /**
+   * The live fabric render surface, for the 3D preview to wrap in a
+   * THREE.CanvasTexture (no per-frame PNG encode). Transparent-bg design layers
+   * only — exactly the decal artwork.
+   */
+  getCanvasElement: () => HTMLCanvasElement | null;
 }
 ```
+
+(No `exportArtwork` on the handle: the final capture keeps using the existing
+`DesignerCanvas` "Use this design" button → `onCapture` (4× PNG), and the decal
+print-file keeps using `Model3dDecalPreview.generatePrintFile()`. Nothing on the
+page re-exports the canvas.)
 
 Change the component signature to `forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(function DesignerCanvas(props, ref) { ... })` and add a default export wrapper if the file currently `export default function`. (It does — wrap it: `const DesignerCanvas = forwardRef(...); export default DesignerCanvas;`.)
 
@@ -254,14 +310,10 @@ Change the component signature to `forwardRef<DesignerCanvasHandle, DesignerCanv
       const { fu, fv } = canvasToZoneFraction({ x: img.left ?? 0, y: img.top ?? 0 }, px());
       return { fu, fv, angle: img.angle ?? 0 };
     },
-    exportArtwork: () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return null;
-      const exportWidthPx = width * 4;
-      const multiplier = exportWidthPx / dims.w;
-      return canvas.toDataURL({ format: 'png', multiplier });
-    },
-  }), [dims.w, dims.h, width, onPlacementChange]);
+    // fabric v6 renders into `lowerCanvasEl`; that element carries the pixels the
+    // CanvasTexture samples. Fall back to the mounted element defensively.
+    getCanvasElement: () => canvasRef.current?.lowerCanvasEl ?? elRef.current ?? null,
+  }), [dims.w, dims.h, onPlacementChange]);
 ```
 
 Then call `emitPlacement()` from the EXISTING `onMoving`, `onModified`, and `onRotating` handlers (so a drag on the 2D pad notifies the 3D view too) and after the arrow-key nudge. Import `forwardRef, useImperativeHandle` from React.
@@ -312,10 +364,15 @@ WebGL/three.js cannot run in the jsdom test env, so these tasks are verified in 
 ```ts
   /** When true, dragging on the flat face moves the logo (Phase 2). */
   interactive?: boolean;
-  /** Zone the logo is constrained to (same zone used for the decal). */
-  /* (already present as `zone`) */
-  /** Called with the new normalized zone fraction as the buyer drags on the face. */
+  /** Live fabric canvas to wrap as a CanvasTexture; null → use artworkDataUrl. */
+  liveCanvas?: HTMLCanvasElement | null;
+  /** Bumped by the page on any placement change → flag texture needsUpdate. */
+  dirtyTick?: number;
+  /** Called with the new zone fraction (v-up) as the buyer drags on the face. */
   onDragPlacement?: (fu: number, fv: number) => void;
+  /** Called with the accumulated angle (deg) from the rotate control. */
+  onRotate?: (deg: number) => void;
+  /* `zone` is already an existing prop. */
 ```
 
 - [ ] **Step 2: Add raycast drag handlers** mirroring `Model3dZoneEditor`'s click-vs-orbit discrimination. In the loader effect, after the mesh is added, wire pointer handlers on `renderer.domElement`:
@@ -327,6 +384,11 @@ WebGL/three.js cannot run in the jsdom test env, so these tasks are verified in 
     const raycaster = new THREE.Raycaster();
     let dragging = false;
     const ndc = new THREE.Vector2();
+    // Only accept hits on the PRINTABLE face: the hit's world normal must be
+    // ~parallel to the zone normal, else the buyer dragged onto a side face and
+    // we must ignore it (not snap the logo to the zone edge). ~25° tolerance.
+    const zoneNormal = new THREE.Vector3(...zone.normal).normalize();
+    const NORMAL_DOT_MIN = Math.cos((25 * Math.PI) / 180);
     const toFraction = (e: PointerEvent): { fu: number; fv: number } | null => {
       const mesh = meshRef.current;
       if (!mesh) return null;
@@ -334,8 +396,13 @@ WebGL/three.js cannot run in the jsdom test env, so these tasks are verified in 
       ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
       const hits = raycaster.intersectObject(mesh, false);
-      if (!hits.length) return null;
-      return worldToZoneFraction(hits[0].point.clone(), zone); // from zoneMapping
+      const hit = hits[0];
+      if (!hit || !hit.face) return null;
+      // World-space face normal.
+      const nm = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+      const worldNormal = hit.face.normal.clone().applyMatrix3(nm).normalize();
+      if (worldNormal.dot(zoneNormal) < NORMAL_DOT_MIN) return null; // off the printable face
+      return worldToZoneFraction(hit.point.clone(), zone); // from zoneMapping
     };
     const onDown = (e: PointerEvent) => {
       if (!interactiveRef.current) return;
@@ -362,13 +429,29 @@ WebGL/three.js cannot run in the jsdom test env, so these tasks are verified in 
 
 Use refs (`interactiveRef`, `onDragPlacementRef`) updated via `useEffect` so the loader effect (which runs once per product/colour) always sees the latest prop values without re-downloading the STL. Import `worldToZoneFraction` from `../lib/zoneMapping`. Remove all four listeners + set `controls.enableRotate = true` in the cleanup. Also set `controls.autoRotate = false` when `interactive` (auto-spin fights placement) — gate the existing `autoRotate = true` on `!interactive`.
 
-- [ ] **Step 3: Preview verification (coordinator).** No unit test (WebGL). Verified in Group D's preview pass: dragging on the face moves the logo; starting a drag off the face still orbits.
+- [ ] **Step 3: Live texture via `CanvasTexture` (no per-frame PNG encode).** Add a
+  prop `liveCanvas?: HTMLCanvasElement | null`. When `interactive && liveCanvas`,
+  the decal's texture is a `THREE.CanvasTexture(liveCanvas)` instead of the
+  `TextureLoader(artworkDataUrl)` path. Refresh rules:
+  - Build the decal GEOMETRY once per (mesh, zone) — NOT per texture change. The
+    existing artwork effect rebuilds geometry inside the texture `load` callback;
+    restructure so a texture/content change only sets `texture.needsUpdate = true`
+    and does NOT dispose/rebuild `decalGeo`. Geometry rebuilds only when `zone`
+    (or the mesh) changes.
+  - While a placement drag is in progress (and for one frame after any
+    `onDragPlacement`/external placement change), set `canvasTexture.needsUpdate =
+    true` in the render loop so the moved logo re-uploads to the GPU. When idle,
+    stop flagging it (avoid a needless per-frame canvas upload).
+  - Keep the non-interactive path (static `artworkDataUrl` → `TextureLoader`)
+    unchanged for display-only cases.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Preview verification (coordinator).** No unit test (WebGL). Verified in Group D's preview pass: dragging on the face moves the logo smoothly (no jank), and starting a drag off the printable face still orbits (off-zone guard).
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/Model3dDecalPreview.tsx
-git commit -m "feat: drag-to-move the logo on the flat face of the 3D model"
+git commit -m "feat: drag-to-move logo on the flat face via live CanvasTexture"
 ```
 
 ### Task C2: Rotate handle on the model
@@ -396,20 +479,23 @@ git commit -m "feat: rotate control for the logo on the 3D model"
 **Files:**
 - Modify: `frontend/src/pages/ProductDesignerPage.tsx`
 
-- [ ] **Step 1: Hold a canvas ref + live artwork state.** Add:
+- [ ] **Step 1: Hold a canvas ref + expose its element + a dirty tick.** Add:
 
 ```ts
   const canvasHandle = useRef<DesignerCanvasHandle>(null);
-  // Live artwork for the interactive decal, refreshed (throttled) as the logo moves.
-  const [liveArtwork, setLiveArtwork] = useState<string | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const refreshDecalThrottled = useCallback(() => {
-    if (rafRef.current != null) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      setLiveArtwork(canvasHandle.current?.exportArtwork() ?? null);
-    });
-  }, []);
+  // The fabric render surface the preview wraps in a CanvasTexture.
+  const [liveCanvas, setLiveCanvas] = useState<HTMLCanvasElement | null>(null);
+  // Bumped whenever placement changes (from EITHER editor) so the preview knows
+  // to flag its CanvasTexture needsUpdate for a frame. Cheap integer, no re-export.
+  const [decalDirty, setDecalDirty] = useState(0);
+```
+
+Populate `liveCanvas` after mount / when the product changes, from the handle:
+
+```ts
+  useEffect(() => {
+    setLiveCanvas(canvasHandle.current?.getCanvasElement() ?? null);
+  }, [product?.id]);
 ```
 
 - [ ] **Step 2: Pass the ref + placement callback to `DesignerCanvas`:**
@@ -418,7 +504,7 @@ git commit -m "feat: rotate control for the logo on the 3D model"
         <DesignerCanvas
           ref={canvasHandle}
           /* …existing props… */
-          onPlacementChange={refreshDecalThrottled}
+          onPlacementChange={() => setDecalDirty((n) => n + 1)}
         />
 ```
 
@@ -427,20 +513,25 @@ git commit -m "feat: rotate control for the logo on the 3D model"
 ```tsx
           <Model3dDecalPreview
             /* …existing props… */
-            artworkDataUrl={liveArtwork ?? artwork?.dataUrl ?? null}
+            artworkDataUrl={artwork?.dataUrl ?? null}   {/* static fallback / non-interactive */}
             interactive={is3d && !!zone}
+            liveCanvas={is3d && zone ? liveCanvas : null}
+            dirtyTick={decalDirty}
             onDragPlacement={(fu, fv) => {
               canvasHandle.current?.setLogoFraction(fu, fv);
-              refreshDecalThrottled();
+              setDecalDirty((n) => n + 1);
             }}
             onRotate={(deg) => {
               canvasHandle.current?.setLogoAngle(deg);
-              refreshDecalThrottled();
+              setDecalDirty((n) => n + 1);
             }}
           />
 ```
 
-Only flat zones are in scope this phase; the decal projection already handles the flat case. Cancel the pending rAF on unmount.
+`Model3dDecalPreview` (Task C1 Step 3) uses `liveCanvas` as a `CanvasTexture` when
+present and flags `needsUpdate` on `dirtyTick` changes + during a drag; otherwise
+it falls back to the static `artworkDataUrl`. Only flat zones are in scope; the
+decal projection already handles the flat case.
 
 - [ ] **Step 4: Typecheck**
 
@@ -489,4 +580,7 @@ git commit -m "feat: sync drag-on-model with the 2D pad in the product designer"
 - The three.js interaction (drag/rotate/orbit) is verified in the live preview, not unit-tested — the jsdom test env has no WebGL. The pure coordinate math (`zoneMapping`) and the fabric placement handle ARE unit-tested.
 - Rotate uses a corner control, not a full 3D gizmo on the mesh (YAGNI for Phase 1 of the interaction; revisit if buyers want direct-grab rotation).
 - Curved/cylindrical faces are Phase 3 — this phase gates on flat zones only.
-- Live decal refresh re-exports the canvas per animation frame during a drag; if profiling shows jank on large logos, switch to a lightweight sprite during drag and commit the full texture on pointer-up.
+- Live decal refresh uses a `THREE.CanvasTexture` over the fabric canvas element
+  (GPU re-upload of the canvas on `needsUpdate`, no PNG encode). This is the
+  cheap path; the Group 0 spike validates it feels smooth before the full build.
+  The decal geometry is built once per (mesh, zone) and never rebuilt on a move.
