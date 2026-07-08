@@ -37,6 +37,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const CylinderCalibrationSpike = lazy(() => import('./pages/CylinderCalibrationSpike'));
 
 function RedirectCatalogueToProduct() {
   const { id } = useParams();
@@ -97,6 +98,16 @@ export default function App() {
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
           <Routes>
+        {/* TEMP spike route (throwaway): standalone, no Layout/auth guard so it
+            loads without login. Remove when the calibration work is done. */}
+        <Route
+          path="/spike/cylinder"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <CylinderCalibrationSpike />
+            </Suspense>
+          }
+        />
         <Route path="/" element={<Layout />}>
           <Route element={<RouteBoundary />}>
             <Route index element={<HomePage />} />
