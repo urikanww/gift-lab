@@ -30,6 +30,19 @@ export type LineItemState =
   | 'DROPPED'
   | 'CANCELLED';
 
+/**
+ * Model-space print zone: where + how big the decoration surface is (mm).
+ * Structurally identical to the interface in `lib/printZone.ts`, re-declared
+ * here so pages/components can type props without importing three.
+ */
+export interface PrintZone {
+  normal: [number, number, number];
+  center: [number, number, number];
+  up: [number, number, number];
+  width_mm: number;
+  height_mm: number;
+}
+
 export type JobTrack = 'UV' | '3D';
 export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED';
 export type ProofState = 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
@@ -82,12 +95,21 @@ export interface Product {
   creator_credit: string | null;
   /** True when an interactive 3D model stream is available for this item. */
   has_model?: boolean;
+  /** Admin-authored decoration zone (model-space mm); null when unset. */
+  print_zone?: PrintZone | null;
+  /** True when an authored GLB is stored (preferred preview mesh). */
+  has_glb?: boolean;
   variants?: Variant[];
 }
 
 export interface Customization {
   logo_size?: string | null;
   artwork_ref?: string | null;
+  /**
+   * UV-flattened production print file (MODEL_3D zoned items): the decal
+   * unwrapped to its print space. Additive to artwork_ref (the buyer proof).
+   */
+  print_file_ref?: string | null;
   /** MODEL_3D filament colour chosen in the designer (Black/White/Grey). */
   filament_color?: string | null;
   /** Name/text personalisation content rendered into the artwork (audit D9). */
@@ -233,6 +255,14 @@ export interface AdminProduct {
   variants: AdminVariant[] | null;
   sold_count: number;
   stock_total: number;
+  /** True when a canonical 3D mesh is stored for this item (MODEL_3D). */
+  has_model?: boolean;
+  /** True when an authored GLB is stored (preferred for preview). */
+  has_glb?: boolean;
+  /** Persisted admin print zone for MODEL_3D items; null when unset. */
+  print_zone?: PrintZone | null;
+  /** Storage path of the canonical mesh file for MODEL_3D items; null when unset. */
+  model_file_ref?: string | null;
 }
 
 export interface AdminReorder {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
+import Model3dDecalPreview, { type DecalPreviewHandle } from '../components/Model3dDecalPreview';
 import Model3dPersonalizer, {
   DEFAULT_FILAMENT_COLOR,
   type Model3dCustomization,
@@ -63,6 +64,11 @@ export default function ProductDesignerPage() {
   const [faceSnapshot, setFaceSnapshot] = useState<ModelFaceSnapshot | null>(null);
   const [faceState, setFaceState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const filamentColor = model3dOptions?.filament_color ?? DEFAULT_FILAMENT_COLOR;
+  // Admin-authored decoration zone (model-space mm). When present on a 3D item
+  // it drives the live decal preview and constrains the designer's mm mapping
+  // to the real print surface; absent, we keep the neutral face-snapshot flow.
+  const zone = product?.print_zone ?? null;
+  const decalRef = useRef<DecalPreviewHandle>(null);
   const [qty, setQty] = useState(50);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
@@ -116,7 +122,9 @@ export default function ProductDesignerPage() {
     }
     let active = true;
     setFaceState('loading');
-    renderModelFace(id, filamentColor)
+    // Product has no model-version field yet, so cache by product id
+    // (pending a real version/updated_at token on Product).
+    renderModelFace(id, filamentColor, String(product.id))
       .then((snapshot) => {
         if (!active) return;
         setFaceSnapshot(snapshot);
@@ -226,6 +234,20 @@ export default function ProductDesignerPage() {
         return;
       } finally {
         setUploading(false);
+      }
+    }
+    // Additive: for a zoned 3D item, also flatten the decal into a UV
+    // production print file and store its ref. This never touches artwork_ref
+    // (the buyer's proof) and a failure here must not block add-to-cart - the
+    // artwork_ref still ships and the print file can be regenerated later.
+    if (is3d && zone && artwork?.dataUrl) {
+      try {
+        const printFile = decalRef.current?.generatePrintFile();
+        if (printFile) {
+          customization.print_file_ref = await uploadArtwork(printFile);
+        }
+      } catch (err) {
+        console.error('Print-file generation/upload failed; proceeding with artwork_ref only.', err);
       }
     }
     addLine(product, selectedVariant, customization, qty);
@@ -340,6 +362,19 @@ export default function ProductDesignerPage() {
               the formal proof before production.
             </p>
           )}
+          {/* Live 3D decal preview: an ADDITIONAL view showing the captured
+              artwork projected on the real mesh over the print zone. Only when
+              an admin zone exists; otherwise the neutral face-snapshot flow
+              stands alone unchanged. */}
+          {is3d && zone && (
+            <Model3dDecalPreview
+              ref={decalRef}
+              productKey={id!}
+              filamentColor={filamentColor}
+              zone={zone}
+              artworkDataUrl={artwork?.dataUrl ?? null}
+            />
+          )}
           <DesignerCanvas
             /* MODEL_3D: face render or neutral stage - never the scraped
                marketing photo as a design surface (audit G1/C16). */
@@ -349,9 +384,13 @@ export default function ProductDesignerPage() {
             brandLogo={brandKit?.logo ?? null}
             brandColors={brandKit?.colors ?? []}
             canvasMm={
-              faceSnapshot
-                ? { width: faceSnapshot.canvasWidthMm, height: faceSnapshot.canvasHeightMm }
-                : null
+              // The real zone footprint wins so mm-mapping matches the print
+              // surface; fall back to the face-snapshot footprint otherwise.
+              zone
+                ? { width: zone.width_mm, height: zone.height_mm }
+                : faceSnapshot
+                  ? { width: faceSnapshot.canvasWidthMm, height: faceSnapshot.canvasHeightMm }
+                  : null
             }
           />
 

@@ -12,6 +12,8 @@ use App\Services\Catalogue\ScrapedCatalogueService;
 use App\Services\Model3d\Model3dCatalogueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Superadmin/staff catalogue gate (spec 6.7): review scraped + 3D items, approve
@@ -169,24 +171,107 @@ class AdminCatalogueController extends Controller
         $upload = $request->file('file');
         $extension = strtolower((string) $upload->getClientOriginalExtension());
 
-        if (! in_array($extension, ['stl', '3mf', 'obj'], true)) {
-            return response()->json(['message' => 'Model file must be .stl, .3mf or .obj.'], 422);
+        $meshExts = ['stl', '3mf', 'obj'];
+        $isGlb = $extension === 'glb';
+
+        if (! $isGlb && ! in_array($extension, $meshExts, true)) {
+            return response()->json(['message' => 'Model file must be .stl, .3mf, .obj or .glb.'], 422);
         }
 
+        if ($isGlb) {
+            // GLB is display-only: replace the decoration model, leave the
+            // canonical mesh + slicer estimates + zone untouched.
+            $old = (string) ($product->decor_glb_ref ?? '');
+            $path = $upload->storeAs('models3d', "decor-{$product->id}.glb", 'local');
+            if ($old !== '' && $old !== $path && Storage::disk('local')->exists($old)) {
+                Storage::disk('local')->delete($old);
+            }
+            $product->decor_glb_ref = $path;
+            $product->save();
+
+            return response()->json([
+                'publish_state' => $product->publish_state->value,
+                'model_file_ref' => $product->model_file_ref,
+                'decor_glb_ref' => $product->decor_glb_ref,
+            ]);
+        }
+
+        // Mesh replace: new geometry invalidates the slicer measurement AND any
+        // marked print zone (the surface it referenced may no longer exist).
+        $old = (string) ($product->model_file_ref ?? '');
         $path = $upload->storeAs('models3d', "manual-{$product->id}.{$extension}", 'local');
+        if ($old !== '' && $old !== $path && ! str_starts_with($old, 'http') && Storage::disk('local')->exists($old)) {
+            Storage::disk('local')->delete($old);
+        }
 
         $product->model_file_ref = $path;
         $product->is_printable = true;
-        // New geometry invalidates any previous slicer measurement.
         $product->estimates_verified = false;
+        $product->print_zone = null;
         $product->save();
 
-        // Re-run the gate so the missing_model_file hold clears.
         $product = $this->model3d->regate($product);
 
         return response()->json([
             'publish_state' => $product->publish_state->value,
             'model_file_ref' => $product->model_file_ref,
+            'decor_glb_ref' => $product->decor_glb_ref,
+        ]);
+    }
+
+    /**
+     * Persist the admin-marked (or auto-detected) print zone for a MODEL_3D
+     * product. Model-space normal + center + up + size (mm); the single source
+     * of truth for the customer decal preview and the production print file.
+     */
+    public function savePrintZone(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        if ($product->class !== ProductClass::Model3d) {
+            return response()->json(['message' => 'Only MODEL_3D products carry a print zone.'], 422);
+        }
+
+        $validated = $request->validate([
+            'print_zone' => ['required', 'array'],
+            'print_zone.normal' => ['required', 'array', 'size:3'],
+            'print_zone.normal.*' => ['required', 'numeric'],
+            'print_zone.center' => ['required', 'array', 'size:3'],
+            'print_zone.center.*' => ['required', 'numeric'],
+            'print_zone.up' => ['required', 'array', 'size:3'],
+            'print_zone.up.*' => ['required', 'numeric'],
+            'print_zone.width_mm' => ['required', 'numeric', 'gt:0'],
+            'print_zone.height_mm' => ['required', 'numeric', 'gt:0'],
+        ]);
+
+        $product->print_zone = $validated['print_zone'];
+        $product->save();
+
+        return response()->json(['print_zone' => $product->print_zone]);
+    }
+
+    /**
+     * Staff-only model stream for the admin zone editor + decal preview, served
+     * for ANY publish state (the public CatalogueController::model requires a
+     * public product). `kind=glb` serves the authored decoration GLB when set;
+     * anything else serves the canonical mesh (STL/3MF/OBJ).
+     */
+    public function adminModel(Request $request, Product $product): StreamedResponse|JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $kind = $request->string('kind')->toString();
+        $ref = $kind === 'glb'
+            ? (string) ($product->decor_glb_ref ?? '')
+            : (string) ($product->model_file_ref ?? '');
+
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+            return response()->json(['message' => 'Model not available.'], 404);
+        }
+
+        return Storage::disk('local')->response($ref, basename($ref), [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'no-store',
         ]);
     }
 

@@ -5,6 +5,7 @@ import { AsyncBoundary } from '../components/ui/States';
 import { Badge, Button, Card, Input, Select, Textarea, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
+import Model3dZoneEditor from '../components/Model3dZoneEditor';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
 import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
@@ -56,6 +57,8 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
   const navigate = useNavigate();
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
   const archived = product.archived;
+  const [modelBusy, setModelBusy] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   const togglePublish = async () => {
     try {
@@ -89,6 +92,26 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
       onChanged();
     } catch (err) {
       toast({ title: 'Not restored', description: apiError(err), tone: 'danger' });
+    }
+  };
+
+  const uploadModel = async (file: File) => {
+    setModelBusy(true);
+    setModelError(null);
+    try {
+      await ensureCsrf();
+      const form = new FormData();
+      form.append('file', file);
+      await api.post(`/admin/products/${product.id}/model-file`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast({ title: 'Model updated', description: file.name, tone: 'success' });
+      onChanged();
+    } catch (err) {
+      setModelError(apiError(err));
+      toast({ title: 'Upload failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setModelBusy(false);
     }
   };
 
@@ -151,6 +174,53 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
       {!archived && <EditForm product={product} onChanged={onChanged} />}
 
       {!archived && <ImageSection product={product} onChanged={onChanged} />}
+
+      {product.class === 'MODEL_3D' && (
+        <Card padding="md" className="flex flex-col gap-3">
+          <h3 className="font-display text-lg">Model file</h3>
+          <div className="flex flex-col gap-1 text-sm text-fg">
+            <p>Mesh: {product.model_file_ref ? product.model_file_ref.split('/').pop() : 'none'}</p>
+            <p>Decoration model (GLB): {product.has_glb ? 'present' : 'none'}</p>
+          </div>
+          <p className="text-sm text-fg-muted">
+            Replacing the mesh clears the saved print zone; a .glb only updates the decoration
+            preview.
+          </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".stl,.3mf,.obj,.glb"
+              disabled={modelBusy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void uploadModel(file);
+              }}
+            />
+            {modelBusy && <span className="text-sm text-fg-subtle">Uploading&hellip;</span>}
+          </div>
+          {modelError && <p className="text-sm text-danger">{modelError}</p>}
+        </Card>
+      )}
+
+      {product.class === 'MODEL_3D' && product.has_model && (
+        <Card padding="md" className="flex flex-col gap-3">
+          <h3 className="font-display text-lg">Print zone</h3>
+          <p className="text-sm text-fg-muted">
+            Mark the surface your logo prints on. Auto-detected where possible — click the
+            model to reposition, and set the size in millimetres.
+          </p>
+          <Model3dZoneEditor
+            productId={product.id}
+            hasGlb={!!product.has_glb}
+            initialZone={product.print_zone ?? null}
+            onSaved={() => {
+              toast({ title: 'Print zone saved', tone: 'success' });
+              onChanged();
+            }}
+          />
+        </Card>
+      )}
 
       {/* Variants */}
       <Card padding="lg">
