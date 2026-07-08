@@ -16,8 +16,7 @@ import { uploadArtwork } from '../lib/uploadArtwork';
 import type { PriceEstimate, Product, Variant } from '../types';
 import { Button, Select, Badge, Card, Input, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
-
-const QTY_OPTIONS = [1, 25, 50, 100, 250, 500];
+import QuantityStepper from '../components/QuantityStepper';
 
 interface LeadEstimate {
   earliest: string;
@@ -68,7 +67,7 @@ export default function ProductDesignerPage() {
   // to the real print surface; absent, we keep the neutral face-snapshot flow.
   const zone = product?.print_zone ?? null;
   const decalRef = useRef<DecalPreviewHandle>(null);
-  const [qty, setQty] = useState(50);
+  const [qty, setQty] = useState(1);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
   const [lead, setLead] = useState<LeadEstimate | null>(null);
@@ -82,6 +81,7 @@ export default function ProductDesignerPage() {
     try {
       const { data } = await api.get<{ data: Product }>(`/catalogue/${id}`);
       setProduct(data.data);
+      setQty(Math.max(1, data.data.min_order_qty ?? 1));
       setVariantId(data.data.variants?.[0]?.id ?? null);
     } catch (err) {
       setError(apiError(err));
@@ -408,14 +408,16 @@ export default function ProductDesignerPage() {
                 )}
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <div className="w-28">
-                  <Select label="Quantity" value={String(qty)} onChange={(e) => setQty(Number(e.target.value))}>
-                    {QTY_OPTIONS.map((n) => (
-                      <option key={n} value={n}>
-                        {n} pcs
-                      </option>
-                    ))}
-                  </Select>
+                <div>
+                  <span className="mb-1 block text-2xs font-medium text-fg-subtle">Quantity</span>
+                  <QuantityStepper
+                    value={qty}
+                    min={Math.max(1, product.min_order_qty ?? 1)}
+                    onChange={setQty}
+                  />
+                  {(product.min_order_qty ?? 1) > 1 && (
+                    <p className="mt-1 text-2xs text-fg-subtle">Min order {product.min_order_qty}</p>
+                  )}
                 </div>
                 {logo.hasLogo && (
                   <Badge tone="neutral" size="sm">
