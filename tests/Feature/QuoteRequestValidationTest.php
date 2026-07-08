@@ -147,6 +147,15 @@ it('accepts buyer-uploaded fallback fields and persists them on the line', funct
     $line = LineItem::query()->latest('id')->firstOrFail();
     expect($line->customization['mode'])->toBe('buyer_uploaded');
     expect($line->customization['reference_refs'])->toBe(['artwork/ref-photo.png']);
+    expect($line->customization['placement_notes'])->toBe('Centre of the lid, ~4cm wide.');
+});
+
+it('rejects an out-of-set customization mode', function (): void {
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', quotePayload([
+        'customization' => ['mode' => 'nonsense'],
+    ]))->assertStatus(422)->assertJsonValidationErrors('line_items.0.customization.mode');
 });
 
 it('rejects a reference_ref that does not resolve to an uploaded file', function (): void {

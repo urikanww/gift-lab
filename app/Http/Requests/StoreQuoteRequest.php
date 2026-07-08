@@ -20,6 +20,14 @@ use Illuminate\Validation\Validator;
  */
 class StoreQuoteRequest extends FormRequest
 {
+    /**
+     * Storage key issued by POST /uploads/artwork: a single "artwork/" segment
+     * + generated filename. Anything else (traversal, foreign prefixes) is
+     * rejected before it can reach the print pipeline. Shared by the format
+     * rules and the on-disk existence guards in withValidator.
+     */
+    private const ARTWORK_REF_PATTERN = '#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#';
+
     public function authorize(): bool
     {
         $user = $this->user();
@@ -58,13 +66,13 @@ class StoreQuoteRequest extends FormRequest
             // segment + generated filename. Anything else (traversal, foreign
             // prefixes) is rejected before it can reach the print pipeline
             // (Pass 2 F2 / audit C15). Existence is checked in withValidator.
-            'line_items.*.customization.artwork_ref' => ['nullable', 'string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
+            'line_items.*.customization.artwork_ref' => ['nullable', 'string', 'max:2048', 'regex:'.self::ARTWORK_REF_PATTERN],
             // MODEL_3D lines additionally carry a UV-flattened production decal
             // (the file the printer/jig consumes, distinct from the proof
             // mockup above). It reaches the print pipeline too, so it gets the
             // same path guard - a "artwork/" key issued by POST /uploads/artwork.
             // Existence is checked in withValidator.
-            'line_items.*.customization.print_file_ref' => ['nullable', 'string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
+            'line_items.*.customization.print_file_ref' => ['nullable', 'string', 'max:2048', 'regex:'.self::ARTWORK_REF_PATTERN],
             // Machine-readable placement record captured by the designer
             // (position/size/rotation + export pixel mapping, audit C12).
             'line_items.*.customization.layout' => ['nullable', 'array'],
@@ -77,7 +85,7 @@ class StoreQuoteRequest extends FormRequest
             'line_items.*.customization.mode' => ['nullable', 'string', 'in:designer,buyer_uploaded'],
             'line_items.*.customization.placement_notes' => ['nullable', 'string', 'max:2000'],
             'line_items.*.customization.reference_refs' => ['nullable', 'array', 'max:6'],
-            'line_items.*.customization.reference_refs.*' => ['string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
+            'line_items.*.customization.reference_refs.*' => ['string', 'max:2048', 'regex:'.self::ARTWORK_REF_PATTERN],
         ];
     }
 
@@ -175,7 +183,7 @@ class StoreQuoteRequest extends FormRequest
                 foreach (['artwork_ref', 'print_file_ref'] as $refKey) {
                     $ref = $line['customization'][$refKey] ?? null;
                     if (is_string($ref)
-                        && preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) === 1
+                        && preg_match(self::ARTWORK_REF_PATTERN, $ref) === 1
                         && ! $artworkDisk->exists($ref)
                     ) {
                         $validator->errors()->add(
@@ -192,7 +200,7 @@ class StoreQuoteRequest extends FormRequest
                 if (is_array($refs)) {
                     foreach ($refs as $refIndex => $ref) {
                         if (is_string($ref)
-                            && preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) === 1
+                            && preg_match(self::ARTWORK_REF_PATTERN, $ref) === 1
                             && ! $artworkDisk->exists($ref)
                         ) {
                             $validator->errors()->add(
