@@ -91,6 +91,12 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
     const mount = mountRef.current;
     if (!mount) return;
 
+    // Force a real loading→ready transition on every (re)run. Without this, a
+    // filament-colour change re-runs this effect while state is already 'ready',
+    // so setState('ready') below is a no-op and the geometry/texture effects
+    // (gated on state === 'ready') never re-fire, leaving the decal missing.
+    setState('loading');
+
     let disposed = false;
     const width = mount.clientWidth;
     const height = mount.clientHeight || 360;
