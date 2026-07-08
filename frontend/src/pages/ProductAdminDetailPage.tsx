@@ -5,6 +5,7 @@ import { AsyncBoundary } from '../components/ui/States';
 import { Badge, Button, Card, Input, Select, Textarea, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
+import Model3dZoneEditor from '../components/Model3dZoneEditor';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
 import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
@@ -151,6 +152,25 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
       {!archived && <EditForm product={product} onChanged={onChanged} />}
 
       {!archived && <ImageSection product={product} onChanged={onChanged} />}
+
+      {product.class === 'MODEL_3D' && product.has_model && (
+        <Card padding="md" className="flex flex-col gap-3">
+          <h3 className="font-display text-lg">Print zone</h3>
+          <p className="text-sm text-fg-muted">
+            Mark the surface your logo prints on. Auto-detected where possible — click the
+            model to reposition, and set the size in millimetres.
+          </p>
+          <Model3dZoneEditor
+            productId={product.id}
+            hasGlb={!!product.has_glb}
+            initialZone={product.print_zone ?? null}
+            onSaved={() => {
+              toast({ title: 'Print zone saved', tone: 'success' });
+              onChanged();
+            }}
+          />
+        </Card>
+      )}
 
       {/* Variants */}
       <Card padding="lg">
