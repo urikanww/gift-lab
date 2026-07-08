@@ -23,15 +23,6 @@ class FakeImage {
   static fromURL = vi.fn(async () => new FakeImage());
 }
 
-class FakeTextbox extends FakeImage {
-  text = '';
-  constructor(text = '', opts: Record<string, unknown> = {}) {
-    super();
-    this.text = text;
-    Object.assign(this, opts);
-  }
-}
-
 const created: FakeCanvas[] = [];
 
 class FakeCanvas {
@@ -82,7 +73,6 @@ class FakeCanvas {
 vi.mock('fabric', () => ({
   Canvas: FakeCanvas,
   FabricImage: FakeImage,
-  Textbox: FakeTextbox,
 }));
 
 // framer-motion's ResizeObserver / rAF are not needed; jsdom lacks
@@ -125,6 +115,11 @@ it('shows the Delete / Ctrl+Z hint when an object is selected', async () => {
   expect(await screen.findByText(/Delete to/i)).toBeInTheDocument();
   expect(screen.getByText(/Ctrl\+Z to undo/i)).toBeInTheDocument();
   expect(stage).toBeInTheDocument();
+});
+
+it('does not render a name/text tool', async () => {
+  await renderCanvas();
+  expect(screen.queryByText(/name \/ text/i)).toBeNull();
 });
 
 it('Delete key removes the selected object', async () => {

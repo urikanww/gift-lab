@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Canvas, FabricImage, Textbox, type FabricObject } from 'fabric';
+import { Canvas, FabricImage, type FabricObject } from 'fabric';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Customization } from '../types';
 import { Button, Select, Tooltip, Badge, Skeleton, cn, useOptionalToast } from '../ui';
@@ -24,11 +24,11 @@ interface DesignerCanvasProps {
   backgroundUrl?: string | null;
   onCapture: (artwork: CapturedArtwork) => void;
   /**
-   * Fires whenever the logo/text layers change or the size band changes, so
-   * the page can price the design live (before "Use this design"). Size bands
-   * are a price tier; text adds the per-unit personalisation fee (audit D9).
+   * Fires whenever the logo layer changes or the size band changes, so the
+   * page can price the design live (before "Use this design"). Size bands are
+   * a price tier.
    */
-  onLogoChange?: (info: { hasLogo: boolean; size: LogoSize; hasText: boolean }) => void;
+  onLogoChange?: (info: { hasLogo: boolean; size: LogoSize }) => void;
   /** Company brand kit: a saved logo (data URL) + colour swatches to one-click apply. */
   brandLogo?: string | null;
   brandColors?: string[];
@@ -86,9 +86,6 @@ export default function DesignerCanvas({
   const canvasRef = useRef<Canvas | null>(null);
   const [ready, setReady] = useState(false);
   const [hasLogo, setHasLogo] = useState(false);
-  // Name/text personalisation layers (audit D9) - combinable with the logo.
-  const [hasText, setHasText] = useState(false);
-  const hasTextRef = useRef(false);
   const [logoSize, setLogoSize] = useState<LogoSize>('M');
   // Read the live band inside fabric event handlers (which close over stale
   // state) without re-registering listeners on every size change.
@@ -304,11 +301,8 @@ export default function DesignerCanvas({
       });
       canvas.requestRenderAll();
       const stillHasLogo = canvas.getObjects().some((o) => o instanceof FabricImage);
-      const stillHasText = canvas.getObjects().some((o) => o instanceof Textbox);
       setHasLogo(stillHasLogo);
-      setHasText(stillHasText);
-      hasTextRef.current = stillHasText;
-      onLogoChange?.({ hasLogo: stillHasLogo, size: logoSizeRef.current, hasText: stillHasText });
+      onLogoChange?.({ hasLogo: stillHasLogo, size: logoSizeRef.current });
       setObjectCount(canvas.getObjects().length);
       setHasSelection(false);
       setCanUndo(undoStackRef.current.length > 0);
@@ -332,7 +326,7 @@ export default function DesignerCanvas({
       canvas.requestRenderAll();
       markDirty();
     }
-    onLogoChange?.({ hasLogo, size, hasText: hasTextRef.current });
+    onLogoChange?.({ hasLogo, size });
   };
 
   // Add a logo from a data URL (fresh upload OR the saved brand-kit logo -
@@ -359,39 +353,7 @@ export default function DesignerCanvas({
     canvas.requestRenderAll();
     setHasLogo(true);
     markDirty();
-    onLogoChange?.({ hasLogo: true, size: logoSize, hasText: hasTextRef.current });
-  };
-
-  // Add a name/text personalisation layer (audit D9). Combinable with the
-  // logo; the rendered glyphs ship inside the same print export, and the
-  // source string is recorded on the customization for pricing + production.
-  const addText = (content: string, color: string) => {
-    const canvas = canvasRef.current;
-    const trimmed = content.trim();
-    if (!canvas || trimmed === '') return;
-    pushHistory();
-    const text = new Textbox(trimmed, {
-      left: dims.w / 2,
-      top: dims.h * 0.7,
-      originX: 'center',
-      originY: 'center',
-      width: dims.w * 0.5,
-      fontSize: Math.round(dims.w / 14),
-      fontFamily: 'Arial, sans-serif',
-      fill: color,
-      textAlign: 'center',
-      editable: false,
-    });
-    text.setControlsVisibility({ mtr: true });
-    text.set({ touchCornerSize: 44 });
-    canvas.add(text);
-    canvas.setActiveObject(text);
-    clampToPrintAreaRef.current?.(text);
-    canvas.requestRenderAll();
-    setHasText(true);
-    hasTextRef.current = true;
-    markDirty();
-    onLogoChange?.({ hasLogo, size: logoSize, hasText: true });
+    onLogoChange?.({ hasLogo: true, size: logoSize });
   };
 
   // Specific, actionable message for an unsupported file type (audit C1) -
@@ -488,12 +450,9 @@ export default function DesignerCanvas({
       canvas.remove(active);
       canvas.discardActiveObject();
       const stillHasLogo = canvas.getObjects().some((o) => o instanceof FabricImage);
-      const stillHasText = canvas.getObjects().some((o) => o instanceof Textbox);
-      if (stillHasLogo !== hasLogo || stillHasText !== hasTextRef.current) {
+      if (stillHasLogo !== hasLogo) {
         setHasLogo(stillHasLogo);
-        setHasText(stillHasText);
-        hasTextRef.current = stillHasText;
-        onLogoChange?.({ hasLogo: stillHasLogo, size: logoSize, hasText: stillHasText });
+        onLogoChange?.({ hasLogo: stillHasLogo, size: logoSize });
       }
     });
 
@@ -628,7 +587,6 @@ export default function DesignerCanvas({
         const hFraction = br.height / dims.h;
         return {
           type: o.type,
-          text: o instanceof Textbox ? o.text : undefined,
           center_x_fraction: +cxFraction.toFixed(4),
           center_y_fraction: +cyFraction.toFixed(4),
           width_fraction: +wFraction.toFixed(4),
@@ -645,13 +603,6 @@ export default function DesignerCanvas({
         };
       }),
     };
-    // Recorded source text (audit D9): the rendered glyphs are in the export;
-    // this is the machine-readable content for pricing + the production record.
-    const textContent = canvas
-      .getObjects()
-      .filter((o): o is Textbox => o instanceof Textbox)
-      .map((o) => o.text)
-      .join('\n');
 
     onCapture({
       dataUrl,
@@ -660,7 +611,6 @@ export default function DesignerCanvas({
         logo_size: hasLogo ? logoSize : null,
         artwork_ref: dataUrl,
         layout,
-        text: textContent || null,
       },
     });
     setCaptured(true);
@@ -910,22 +860,6 @@ export default function DesignerCanvas({
 
           <div className="h-px bg-border" aria-hidden="true" />
 
-          {/* Text personalisation group (audit D9) - combinable with the logo,
-              priced per unit via the configured personalisation fee. */}
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1 text-2xs font-semibold uppercase tracking-wide text-fg-subtle">
-              Name / text
-            </legend>
-            <TextTool onAdd={addText} brandColors={brandColors} />
-            {hasText && (
-              <p className="text-2xs text-fg-subtle">
-                Text added - drag to position it inside the print area.
-              </p>
-            )}
-          </fieldset>
-
-          <div className="h-px bg-border" aria-hidden="true" />
-
           {/* Undo - mouse-accessible mirror of Ctrl/Cmd+Z; reverses the last
               destructive edit (delete / replace / transform). */}
           <Button variant="outline" size="sm" onClick={undo} disabled={!canUndo} fullWidth>
@@ -949,70 +883,6 @@ export default function DesignerCanvas({
           </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Text personalisation input (audit D9).                              */
-/* ------------------------------------------------------------------ */
-
-const TEXT_COLORS = ['#1a1a1a', '#ffffff'];
-
-function TextTool({
-  onAdd,
-  brandColors,
-}: {
-  onAdd: (content: string, color: string) => void;
-  brandColors?: string[];
-}) {
-  const [draft, setDraft] = useState('');
-  const colors = [...TEXT_COLORS, ...(brandColors ?? [])];
-  const [color, setColor] = useState(colors[0]);
-
-  const add = () => {
-    onAdd(draft, color);
-    setDraft('');
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <input
-        type="text"
-        value={draft}
-        maxLength={100}
-        placeholder="e.g. Team NexGen 2026"
-        aria-label="Personalisation text"
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            add();
-          }
-        }}
-        className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
-      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Text colour">
-        {colors.map((c) => (
-          <button
-            key={c}
-            type="button"
-            role="radio"
-            aria-checked={color === c}
-            aria-label={`Text colour ${c}`}
-            title={c}
-            onClick={() => setColor(c)}
-            className={cn(
-              'h-6 w-6 rounded-full border',
-              color === c ? 'border-primary ring-2 ring-ring' : 'border-border',
-            )}
-            style={{ backgroundColor: c }}
-          />
-        ))}
-      </div>
-      <Button variant="outline" size="sm" onClick={add} disabled={draft.trim() === ''}>
-        Add text
-      </Button>
     </div>
   );
 }
