@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
@@ -313,6 +314,14 @@ it('lets a superadmin set min_order_qty, persisted and serialized', function ():
 
     $product->refresh();
     expect($product->min_order_qty)->toBe(50);
+
+    // The change is audited (price_override parity): new_values records the MOQ.
+    expect(
+        AuditLog::query()
+            ->where('event', 'product.updated')
+            ->whereJsonContains('new_values->min_order_qty', 50)
+            ->exists()
+    )->toBeTrue();
 });
 
 it('ignores a min_order_qty sent by a non-superadmin staff member', function (): void {

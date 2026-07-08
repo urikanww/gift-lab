@@ -411,6 +411,7 @@ class AdminProductController extends Controller
             'name' => $product->name,
             'base_cost' => $product->base_cost,
             'price_override' => $product->price_override,
+            'min_order_qty' => $product->min_order_qty,
             'publish_state' => $product->publish_state->value,
         ];
         $product->fill($validated);
@@ -420,6 +421,7 @@ class AdminProductController extends Controller
             'name' => $product->name,
             'base_cost' => $product->base_cost,
             'price_override' => $product->price_override,
+            'min_order_qty' => $product->min_order_qty,
             'publish_state' => $product->publish_state->value,
         ]);
 
