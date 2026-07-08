@@ -77,6 +77,7 @@ export default function FinishedLookUploader({ onChange }: Props) {
           accept="image/png,image/jpeg,image/webp"
           aria-label="Reference image"
           className="sr-only"
+          disabled={busy}
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void addReference(f);
@@ -94,6 +95,7 @@ export default function FinishedLookUploader({ onChange }: Props) {
           accept="image/png,image/jpeg,image/webp"
           aria-label="Logo file"
           className="sr-only"
+          disabled={busy}
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void addLogo(f);

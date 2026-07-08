@@ -490,13 +490,13 @@ export default function ProductDesignerPage() {
               {/* Customization mode toggle */}
               <div
                 className="flex overflow-hidden rounded-md border border-border text-sm"
-                role="tablist"
+                role="radiogroup"
                 aria-label="Customization mode"
               >
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={mode === 'designer'}
+                  role="radio"
+                  aria-checked={mode === 'designer'}
                   onClick={() => setMode('designer')}
                   className={cn(
                     'flex-1 px-3 py-2',
@@ -507,8 +507,8 @@ export default function ProductDesignerPage() {
                 </button>
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={mode === 'buyer_uploaded'}
+                  role="radio"
+                  aria-checked={mode === 'buyer_uploaded'}
                   onClick={() => setMode('buyer_uploaded')}
                   className={cn(
                     'flex-1 px-3 py-2',
