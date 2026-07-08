@@ -301,6 +301,35 @@ it('ignores a price_override sent by a non-superadmin staff member', function ()
     expect($product->price_override)->toBeNull();
 });
 
+it('lets a superadmin set min_order_qty, persisted and serialized', function (): void {
+    $product = Product::factory()->create(['min_order_qty' => 1]);
+
+    Sanctum::actingAs($this->superadmin);
+    $response = $this->patchJson("/api/admin/products/{$product->id}", [
+        'min_order_qty' => 50,
+    ])->assertOk();
+
+    expect($response->json('data.min_order_qty'))->toBe(50);
+
+    $product->refresh();
+    expect($product->min_order_qty)->toBe(50);
+});
+
+it('ignores a min_order_qty sent by a non-superadmin staff member', function (): void {
+    $product = Product::factory()->create(['min_order_qty' => 1]);
+
+    Sanctum::actingAs($this->staff);
+    $response = $this->patchJson("/api/admin/products/{$product->id}", [
+        'min_order_qty' => 50,
+    ])->assertOk();
+
+    // The field is silently dropped for non-superadmins; the value stays 1.
+    expect($response->json('data.min_order_qty'))->toBe(1);
+
+    $product->refresh();
+    expect($product->min_order_qty)->toBe(1);
+});
+
 it('blocks non-staff from image upload and removal', function (): void {
     Storage::fake('public');
     $product = Product::factory()->create();

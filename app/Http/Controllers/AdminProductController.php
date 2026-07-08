@@ -389,6 +389,10 @@ class AdminProductController extends Controller
         // back to dynamic pricing. Validated for everyone, then stripped below for
         // non-superadmins so only they can pin a price.
         $rules['price_override'] = ['sometimes', 'nullable', 'numeric', 'min:0'];
+        // Superadmin-only minimum order quantity (mirrors price_override): a
+        // buyer cannot order fewer than this many units. Validated for everyone,
+        // then stripped below for non-superadmins.
+        $rules['min_order_qty'] = ['sometimes', 'integer', 'min:1', 'max:100000'];
         $validated = $request->validate($rules);
 
         // Guard the override to superadmins: a staff_admin edit that carries the
@@ -396,6 +400,7 @@ class AdminProductController extends Controller
         // other optional fields degrade.
         if (! $request->user()->isSuperadmin()) {
             unset($validated['price_override']);
+            unset($validated['min_order_qty']);
         }
 
         if (isset($validated['dimensions'])) {
@@ -552,6 +557,8 @@ class AdminProductController extends Controller
             // Superadmin override: a fixed per-unit price that supersedes dynamic
             // pricing (null = dynamic). selling_price already reflects it.
             'price_override' => $product->price_override,
+            // Superadmin-set minimum order quantity (default 1).
+            'min_order_qty' => (int) $product->min_order_qty,
             // What a customer actually pays (qty 1, no variant): base cost is the
             // internal blank cost and is 0 for dynamically-priced 3D items, so the
             // list needs the computed sell price too.
