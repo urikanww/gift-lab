@@ -97,6 +97,8 @@ export interface Product {
   has_model?: boolean;
   /** Admin-authored decoration zone (model-space mm); null when unset. */
   print_zone?: PrintZone | null;
+  /** Minimum order quantity (superadmin-set); default 1. */
+  min_order_qty?: number;
   /** True when an authored GLB is stored (preferred preview mesh). */
   has_glb?: boolean;
   variants?: Variant[];
@@ -120,6 +122,12 @@ export interface Customization {
    * can read the layout without opening the PNG.
    */
   layout?: object | null;
+  /** Customization mode: in-app designer output, or buyer-uploaded intent. */
+  mode?: 'designer' | 'buyer_uploaded';
+  /** Fallback: reference images of the desired finished look (storage refs). */
+  reference_refs?: string[];
+  /** Fallback: free-text placement notes for production. */
+  placement_notes?: string | null;
 }
 
 export interface LineItem {
@@ -261,6 +269,8 @@ export interface AdminProduct {
   has_glb?: boolean;
   /** Persisted admin print zone for MODEL_3D items; null when unset. */
   print_zone?: PrintZone | null;
+  /** Minimum order quantity (superadmin-set); default 1. */
+  min_order_qty?: number;
   /** Storage path of the canonical mesh file for MODEL_3D items; null when unset. */
   model_file_ref?: string | null;
 }
