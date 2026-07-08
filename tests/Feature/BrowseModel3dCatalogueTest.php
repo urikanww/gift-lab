@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use App\Enums\Model3dSource;
+use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Services\Model3d\Model3dData;
+use App\Services\Model3d\SlicerService;
 use App\Services\Model3d\StubModel3dApiClient;
 use Illuminate\Support\Facades\Http;
 
@@ -136,6 +138,59 @@ it('ingests from the Cults3D browse feed with no search query', function (): voi
 
     $product = Product::query()->where('name', 'Popular vase')->first();
     expect($product)->not->toBeNull();
+});
+
+it('auto-publishes inline when the slicer verifies estimates during the pull', function (): void {
+    // The bug this guards: ingest parks a fresh item at READY_TO_APPROVE with
+    // placeholder estimates; the inline slicer then verifies them, but pull()
+    // used to leave the item in the queue (only slice-pending re-gated, and it
+    // skips already-verified items). With auto-publish ON the item must publish
+    // in the same run, no manual approve click.
+    PricingConfig::updateOrCreate(
+        ['group' => 'catalogue', 'key' => 'auto_publish'],
+        ['value' => true, 'label' => 'Auto publish', 'is_money' => false, 'currency' => 'SGD'],
+    );
+
+    Http::fake([
+        'api.thingiverse.com/popular*' => Http::response([['id' => 901]], 200),
+    ]);
+
+    app(StubModel3dApiClient::class)->with(new Model3dData(
+        source: Model3dSource::Thingiverse,
+        sourceId: '901',
+        name: 'Auto-published bracket',
+        license: 'CC0',
+        creatorCredit: null,
+        fileRef: 'models/bracket.stl',
+        filamentMaterial: 'PLA',
+        filamentColor: 'Black',
+        estGrams: 20.0,
+    ));
+
+    // Stand-in slicer: verifies estimates the way the real PrusaSlicer pass
+    // would, without needing a binary or a real STL on disk. Bound on the
+    // SlicerService key that pull() resolves via app(SlicerService::class).
+    $this->instance(SlicerService::class, new class
+    {
+        public function measure(Product $product): bool
+        {
+            $product->est_grams = 18.0;
+            $product->est_print_minutes = 90.0;
+            $product->is_printable = true;
+            $product->estimates_verified = true;
+            $product->save();
+
+            return true;
+        }
+    });
+
+    $this->artisan('catalogue:pull-3d', ['--browse' => 'popular', '--source' => 'thingiverse'])
+        ->assertSuccessful();
+
+    $product = Product::query()->where('name', 'Auto-published bracket')->first();
+    expect($product)->not->toBeNull()
+        ->and($product->publish_state->value)->toBe('PUBLISHED')
+        ->and((bool) $product->estimates_verified)->toBeTrue();
 });
 
 it('errors when neither a query nor --browse is given', function (): void {

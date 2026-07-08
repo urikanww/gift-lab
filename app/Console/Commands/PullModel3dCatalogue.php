@@ -260,6 +260,14 @@ class PullModel3dCatalogue extends Command
             app(SlicerService::class)->measure($product);
             $product->refresh();
 
+            // Re-run the gate now that the slicer may have verified estimates:
+            // ingest parked the item at READY_TO_APPROVE with placeholder
+            // estimates, so without this an item the inline slicer just verified
+            // would sit in the queue until a later sweep re-ingested it (and
+            // slice-pending skips it, being already verified). Honours the
+            // auto-publish toggle and IP holds - mirrors catalogue:slice-pending.
+            $product = $service->autoPublishIfCleared($product);
+
             if ($this->option('publish') && $product->publish_state === PublishState::ReadyToApprove) {
                 // --publish is the operator's explicit approval, replacing the
                 // admin-gate click; publish() re-runs the full gate.
