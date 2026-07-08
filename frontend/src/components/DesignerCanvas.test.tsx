@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ThemeProvider } from '../ui';
+import type { DesignerCanvasHandle } from './DesignerCanvas';
 
 /* -------------------------------------------------------------------------- */
 /* Fabric is a real <canvas> library; jsdom has no 2D context. Mock it with a  */
@@ -16,7 +18,12 @@ class FakeImage {
   angle = 0;
   scaleToWidth = vi.fn();
   setCoords = vi.fn();
-  set = vi.fn();
+  // Fabric's set() mutates the object; mirror that so placement round-trips
+  // (setLogoFraction -> getLogoPlacement) read back the values we wrote.
+  set = vi.fn((patch: Record<string, unknown>) => {
+    Object.assign(this, patch);
+    return this;
+  });
   setControlsVisibility = vi.fn();
   getScaledWidth = () => 100;
   getBoundingRect = () => ({ left: 100, top: 100, width: 100, height: 60 });
@@ -212,6 +219,30 @@ it('survives a backdrop that arrives after fabric re-parents the canvas (C17)', 
   );
   expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
   expect(container.querySelector('img[referrerpolicy="no-referrer"]')).toBeNull();
+});
+
+it('exposes an imperative handle whose zone-fraction placement round-trips', async () => {
+  const { default: DesignerCanvas } = await import('./DesignerCanvas');
+  const ref = createRef<DesignerCanvasHandle>();
+  render(
+    <ThemeProvider>
+      <DesignerCanvas ref={ref} onCapture={() => {}} />
+    </ThemeProvider>,
+  );
+
+  // Add a logo the same way the other tests seed the fake canvas.
+  const canvas = lastCanvas();
+  const img = new FakeImage();
+  canvas.objects.push(img);
+  canvas.active = img;
+
+  ref.current!.setLogoFraction(0.25, 0.75);
+  const p = ref.current!.getLogoPlacement();
+  expect(p!.fu).toBeCloseTo(0.25, 2);
+  expect(p!.fv).toBeCloseTo(0.75, 2);
+
+  // The live render surface is reachable for a THREE.CanvasTexture.
+  expect(ref.current!.getCanvasElement()).not.toBeNull();
 });
 
 /* ----------------------------- test helpers ------------------------------ */

@@ -1,7 +1,17 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+  type DragEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { Canvas, FabricImage, type FabricObject } from 'fabric';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Customization } from '../types';
+import { zoneFractionToCanvas, canvasToZoneFraction } from '../lib/zoneMapping';
 import { Button, Select, Tooltip, Badge, Skeleton, cn, useOptionalToast } from '../ui';
 import { Motion, fadeIn, springSoft, useReducedMotionSafe } from '../motion';
 
@@ -11,6 +21,18 @@ export interface CapturedArtwork {
   dataUrl: string;
   layout: object;
   customization: Customization;
+}
+
+/**
+ * Imperative surface an external 3D preview drives to move/rotate the active
+ * logo and read the live fabric render, keeping DesignerCanvas the single
+ * source of truth for placement (spec: Phase 2 Group B).
+ */
+export interface DesignerCanvasHandle {
+  setLogoFraction: (fu: number, fv: number) => void; // move active logo to a zone fraction (fv world-up, centre origin)
+  setLogoAngle: (deg: number) => void; // set active logo rotation (deg)
+  getLogoPlacement: () => { fu: number; fv: number; angle: number } | null;
+  getCanvasElement: () => HTMLCanvasElement | null; // live fabric render surface for a THREE.CanvasTexture
 }
 
 interface DesignerCanvasProps {
@@ -38,6 +60,11 @@ interface DesignerCanvasProps {
    * real-mm placement so production needs no pixel guesswork (audit C12/G2).
    */
   canvasMm?: { width: number; height: number } | null;
+  /**
+   * Fires whenever the active logo's placement changes via a drag, modify,
+   * rotate or arrow-nudge, so an external 3D preview can mirror the 2D edit.
+   */
+  onPlacementChange?: (p: { fu: number; fv: number; angle: number }) => void;
 }
 
 const LOGO_SIZES = ['S', 'M', 'L'] as const;
@@ -71,16 +98,20 @@ const ACCEPTED_UPLOAD_TYPES = ['image/png', 'image/jpeg'];
 // is not producible on the flat face, so the frame keeps buyer + floor honest.
 const PRINT_INSET = 0.1;
 
-export default function DesignerCanvas({
-  width = 500,
-  height = 380,
-  backgroundUrl,
-  onCapture,
-  onLogoChange,
-  brandLogo,
-  brandColors,
-  canvasMm = null,
-}: DesignerCanvasProps) {
+const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(function DesignerCanvas(
+  {
+    width = 500,
+    height = 380,
+    backgroundUrl,
+    onCapture,
+    onLogoChange,
+    brandLogo,
+    brandColors,
+    canvasMm = null,
+    onPlacementChange,
+  }: DesignerCanvasProps,
+  ref,
+) {
   const elRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<Canvas | null>(null);
@@ -191,9 +222,12 @@ export default function DesignerCanvas({
       }
       // Drag/scale finished - retract the live guides.
       setGuides({ x: null, y: null });
+      // Notify any external 3D preview of the settled placement.
+      emitPlacement();
     };
     const onRotating = (e: { target?: FabricObject }) => {
       if (e.target) clampToPrintArea(e.target);
+      emitPlacement();
     };
     // Keep every design element inside the producible print zone (audit C7/G5):
     // the at-add clamp alone let a drag push the logo outside the dashed frame
@@ -246,6 +280,7 @@ export default function DesignerCanvas({
       obj.setCoords();
       clampToPrintArea(obj);
       setGuides({ x: gx, y: gy });
+      emitPlacement();
     };
     // Snapshot ONCE at the start of a drag/resize gesture (not on every
     // incremental move/scale event) so Ctrl/Cmd+Z reverses the whole transform.
@@ -270,6 +305,62 @@ export default function DesignerCanvas({
   useEffect(() => setBackdropOk(true), [backgroundUrl]);
 
   const markDirty = () => setCaptured(false);
+
+  /* --------------------------------------------------------------------- */
+  /* Imperative bridge for an external 3D preview (spec: Phase 2 Group B).  */
+  /* DesignerCanvas stays the single source of truth: the 3D view drives    */
+  /* placement through these helpers and reads it back, reusing the shared  */
+  /* zone-fraction <-> canvas-pixel mapping (with its v-flip).              */
+  /* --------------------------------------------------------------------- */
+  const activeLogo = (): FabricImage | null => {
+    const img = canvasRef.current?.getObjects().find((o): o is FabricImage => o instanceof FabricImage);
+    return img ?? null;
+  };
+  const px = () => ({ w: dims.w, h: dims.h });
+  const emitPlacement = () => {
+    const img = activeLogo();
+    if (!img) return;
+    const { fu, fv } = canvasToZoneFraction({ x: img.left ?? 0, y: img.top ?? 0 }, px());
+    onPlacementChange?.({ fu, fv, angle: img.angle ?? 0 });
+  };
+  useImperativeHandle(
+    ref,
+    () => ({
+      setLogoFraction: (fu, fv) => {
+        const canvas = canvasRef.current;
+        const img = activeLogo();
+        if (!canvas || !img) return;
+        const { x, y } = zoneFractionToCanvas({ fu, fv }, px());
+        img.set({ left: x, top: y });
+        img.setCoords();
+        clampToPrintAreaRef.current?.(img);
+        canvas.requestRenderAll();
+        markDirty();
+      },
+      setLogoAngle: (deg) => {
+        const canvas = canvasRef.current;
+        const img = activeLogo();
+        if (!canvas || !img) return;
+        img.set({ angle: ((deg % 360) + 360) % 360 });
+        img.setCoords();
+        clampToPrintAreaRef.current?.(img);
+        canvas.requestRenderAll();
+        markDirty();
+      },
+      getLogoPlacement: () => {
+        const img = activeLogo();
+        if (!img) return null;
+        const { fu, fv } = canvasToZoneFraction({ x: img.left ?? 0, y: img.top ?? 0 }, px());
+        return { fu, fv, angle: img.angle ?? 0 };
+      },
+      getCanvasElement: () =>
+        (canvasRef.current as unknown as { lowerCanvasEl?: HTMLCanvasElement })?.lowerCanvasEl ??
+        elRef.current ??
+        null,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dims.w, dims.h, onPlacementChange],
+  );
 
   const MAX_UNDO = 30;
 
@@ -514,6 +605,8 @@ export default function DesignerCanvas({
     clampToPrintAreaRef.current?.(active);
     canvas.requestRenderAll();
     markDirty();
+    // A 2D-pad nudge must notify the 3D view too.
+    emitPlacement();
   };
 
   // End the nudge run when the arrow keys are released, so the next run starts
@@ -885,7 +978,9 @@ export default function DesignerCanvas({
       </div>
     </div>
   );
-}
+});
+
+export default DesignerCanvas;
 
 /* ------------------------------------------------------------------ */
 /* Icon button + tooltip: tactile, a11y-labelled control primitive.    */
