@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
-import DesignerCanvas, { type CapturedArtwork } from '../components/DesignerCanvas';
+import DesignerCanvas, { type CapturedArtwork, type DesignerCanvasHandle } from '../components/DesignerCanvas';
 import Model3dDecalPreview, { type DecalPreviewHandle } from '../components/Model3dDecalPreview';
 import Model3dPersonalizer, {
   DEFAULT_FILAMENT_COLOR,
@@ -70,6 +70,12 @@ export default function ProductDesignerPage() {
   // to the real print surface; absent, we keep the neutral face-snapshot flow.
   const zone = product?.print_zone ?? null;
   const decalRef = useRef<DecalPreviewHandle>(null);
+  // Drag-on-model wiring: the canvas handle lets the 3D preview push placement
+  // back into the fabric pad, and the live fabric canvas element feeds a THREE
+  // CanvasTexture so the decal refreshes without a per-frame PNG re-export.
+  const canvasHandle = useRef<DesignerCanvasHandle>(null);
+  const [liveCanvas, setLiveCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [decalDirty, setDecalDirty] = useState(0);
   const [qty, setQty] = useState(1);
   // Fallback flow: buyers who'd rather hand us a reference of the finished look
   // than lay it out themselves. The designer surface is swapped for an uploader.
@@ -150,6 +156,27 @@ export default function ProductDesignerPage() {
       active = false;
     };
   }, [product, id, filamentColor]);
+
+  // Grab the fabric render surface so the 3D decal can be driven by a live
+  // CanvasTexture. DesignerCanvas creates its fabric canvas inside its own
+  // effect, which may run AFTER this one, so the handle can be null right after
+  // mount - retry on the next frame a few times until it resolves. The first
+  // placement change also sets it defensively (see onPlacementChange below).
+  useEffect(() => {
+    setLiveCanvas(null);
+    let tries = 0;
+    let raf = 0;
+    const grab = () => {
+      const el = canvasHandle.current?.getCanvasElement() ?? null;
+      if (el) {
+        setLiveCanvas(el);
+        return;
+      }
+      if (tries++ < 20) raf = requestAnimationFrame(grab);
+    };
+    grab();
+    return () => cancelAnimationFrame(raf);
+  }, [product?.id]);
 
   // Delivery window: fetch once the product is known. Queue-depth aware, so a
   // busy floor honestly pushes the date out. Failure is non-fatal (hide it).
@@ -455,12 +482,28 @@ export default function ProductDesignerPage() {
                       filamentColor={filamentColor}
                       zone={zone}
                       artworkDataUrl={artwork?.dataUrl ?? null}
+                      interactive={is3d && !!zone}
+                      liveCanvas={is3d && zone ? liveCanvas : null}
+                      dirtyTick={decalDirty}
+                      onDragPlacement={(fu, fv) => {
+                        canvasHandle.current?.setLogoFraction(fu, fv);
+                        setDecalDirty((n) => n + 1);
+                      }}
+                      onRotate={(deg) => {
+                        canvasHandle.current?.setLogoAngle(deg);
+                        setDecalDirty((n) => n + 1);
+                      }}
                     />
                   )}
                   <DesignerCanvas
+                    ref={canvasHandle}
                     /* MODEL_3D: face render or neutral stage - never the scraped
                        marketing photo as a design surface (audit G1/C16). */
                     backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
+                    onPlacementChange={() => {
+                      if (!liveCanvas) setLiveCanvas(canvasHandle.current?.getCanvasElement() ?? null);
+                      setDecalDirty((n) => n + 1);
+                    }}
                     onCapture={handleCapture}
                     onLogoChange={setLogo}
                     brandLogo={brandKit?.logo ?? null}
