@@ -44,12 +44,11 @@ export default function ProductDesignerPage() {
   const [error, setError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<number | null>(null);
   const [artwork, setArtwork] = useState<CapturedArtwork | null>(null);
-  // Live logo/text state lifted from the canvas so the price bar reflects the
-  // selected size band and any text fee before the design is captured.
-  const [logo, setLogo] = useState<{ hasLogo: boolean; size: string; hasText: boolean }>({
+  // Live logo state lifted from the canvas so the price bar reflects the
+  // selected size band before the design is captured.
+  const [logo, setLogo] = useState<{ hasLogo: boolean; size: string }>({
     hasLogo: false,
     size: 'M',
-    hasText: false,
   });
   // MODEL_3D items add a filament-colour choice; logo placement uses the
   // shared canvas because the item is FDM-printed then UV-decorated on its
@@ -160,9 +159,8 @@ export default function ProductDesignerPage() {
 
   // Live quote: re-estimate whenever qty, variant, logo band, or captured
   // artwork changes. Event-driven single POST per change - never polled.
-  const hasCustomization = logo.hasLogo || logo.hasText || !!artwork;
+  const hasCustomization = logo.hasLogo || !!artwork;
   const logoSize = logo.hasLogo ? logo.size : null;
-  const hasText = logo.hasText;
   useEffect(() => {
     if (!product) return;
     let active = true;
@@ -175,7 +173,6 @@ export default function ProductDesignerPage() {
             qty,
             has_customization: hasCustomization,
             logo_size: logoSize,
-            has_text: hasText,
           },
         ],
       })
@@ -195,7 +192,7 @@ export default function ProductDesignerPage() {
     return () => {
       active = false;
     };
-  }, [product, variantId, qty, hasCustomization, logoSize, hasText]);
+  }, [product, variantId, qty, hasCustomization, logoSize]);
 
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === variantId) ?? null,
