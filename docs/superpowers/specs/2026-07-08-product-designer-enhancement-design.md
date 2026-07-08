@@ -206,18 +206,41 @@ Frontend-weight, low risk, immediately covers the biggest catalogue gap
 ### Phase 2 — Drag-the-logo-on-the-model (flat surfaces)
 
 The realistic-preview core: the buyer positions the logo by dragging it on the
-real 3D model, not on a side 2D pad. Flat first because it reuses the most
+real 3D model, not only on a side 2D pad. Flat first because it reuses the most
 existing machinery and de-risks the interaction before the harder round-surface
 maths.
 
-- Reuse the admin raycast-click-on-mesh (`Model3dZoneEditor`) in the customer
-  designer: drop/drag the logo directly on the model, clamped to the detected
-  flat face; dragging past the face edge snaps back.
-- The live decal follows the drag in real time (extends
-  `Model3dDecalPreview`). The 2D pad becomes an optional secondary view (preview
-  toggle), not the primary placement surface.
-- Capture output matches the existing flat flatten → flatbed UV file, so the
-  print path is unchanged.
+**Design principle — the 2D pad stays authoritative; the 3D view becomes a
+second controller.** A flat face has a known print zone (`detectPrintZone` or
+admin-set), so a point on the face maps to a `(u,v)` inside the zone — exactly
+what a position on the 2D `DesignerCanvas` already is. Drag-on-model and the 2D
+pad are therefore two views of ONE placement. We do NOT build a second capture
+or print pipeline; we add an input method.
+
+- **Single source of truth:** the fabric `DesignerCanvas` remains authoritative
+  and keeps the entire capture pipeline (artwork PNG + layout + UV print file)
+  unchanged. It exposes a small imperative API to read/set the active logo's
+  placement — position + rotation in normalized zone coords (and the current
+  size band, read-only from the 3D side).
+- **Interactive preview:** `Model3dDecalPreview` gains pointer handlers. A drag
+  on the flat face is raycast to the mesh, the hit projected into zone `(u,v)`
+  (reusing the plane projection the admin `Model3dZoneEditor` already does), and
+  written back via the canvas placement API. A rotate handle on the mesh sets
+  the angle. Because both the 2D pad and the decal reflect the same fabric
+  object, they stay in sync automatically — no duplicate state.
+- **On-model interaction:** drag to MOVE (clamped to the flat face/zone; snaps
+  back past the edge) + a rotate handle. Size stays on the existing S/M/L band
+  selector — no resize-on-model, so the pricing bands are untouched.
+- **Scope:** flat `MODEL_3D` items with a zone (detected or admin-set). No-zone
+  items keep today's flow. The 2D pad remains available (toggle) as the alternate
+  editor; neither is removed.
+- **Capture output unchanged** — the same placement flattens to the same
+  flatbed UV file.
+
+**Main risks:** (1) exposing a clean placement API from the fabric canvas
+without tangling its internals; (2) accurate raycast → zone `(u,v)` mapping
+including rotation; (3) drag feel + clamping on the mesh (distinguishing an orbit
+drag from a logo drag, as the admin editor already does with a move threshold).
 
 ### Phase 3 — Drag-on-model for round / cylindrical surfaces (Tier 2)
 
