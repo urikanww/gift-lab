@@ -14,9 +14,12 @@ import { useAuthStore } from '../stores/authStore';
 import { fetchBrandKit, type BrandKit } from '../lib/brandKit';
 import { uploadArtwork } from '../lib/uploadArtwork';
 import type { PriceEstimate, Product, Variant } from '../types';
-import { Button, Select, Badge, Card, Input, useToast } from '../ui';
+import { Button, Select, Badge, Card, Input, useToast, cn } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import QuantityStepper from '../components/QuantityStepper';
+import FinishedLookUploader, {
+  type FinishedLookValue,
+} from '../components/FinishedLookUploader';
 
 interface LeadEstimate {
   earliest: string;
@@ -68,6 +71,10 @@ export default function ProductDesignerPage() {
   const zone = product?.print_zone ?? null;
   const decalRef = useRef<DecalPreviewHandle>(null);
   const [qty, setQty] = useState(1);
+  // Fallback flow: buyers who'd rather hand us a reference of the finished look
+  // than lay it out themselves. The designer surface is swapped for an uploader.
+  const [mode, setMode] = useState<'designer' | 'buyer_uploaded'>('designer');
+  const [finishedLook, setFinishedLook] = useState<FinishedLookValue | null>(null);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
   const [lead, setLead] = useState<LeadEstimate | null>(null);
@@ -209,6 +216,25 @@ export default function ProductDesignerPage() {
 
   const addToCart = async () => {
     if (!product) return;
+    // Fallback path: the buyer handed us a reference of the finished look rather
+    // than laying it out on the canvas. No artwork capture / print-file step -
+    // production proofs it before printing.
+    if (mode === 'buyer_uploaded') {
+      if (!finishedLook || (finishedLook.reference_refs.length === 0 && !finishedLook.logo_ref)) {
+        toast({ title: 'Add a reference', description: 'Upload at least one image of the finished look.', tone: 'warning' });
+        return;
+      }
+      addLine(product, selectedVariant, {
+        ...(is3d ? { filament_color: filamentColor } : {}),
+        mode: 'buyer_uploaded',
+        reference_refs: finishedLook.reference_refs,
+        artwork_ref: finishedLook.logo_ref ?? undefined,
+        placement_notes: finishedLook.placement_notes || null,
+      }, qty);
+      toast({ title: 'Added to cart', description: product.name, tone: 'success' });
+      navigate('/cart');
+      return;
+    }
     setUploadError(null);
     // 3D lines carry both the filament colour and any canvas artwork; UV/CORE
     // lines carry artwork only.
@@ -252,6 +278,70 @@ export default function ProductDesignerPage() {
     navigate('/cart');
   };
 
+  const minQty = Math.max(1, product?.min_order_qty ?? 1);
+  const hasReference =
+    !!finishedLook && (finishedLook.reference_refs.length > 0 || !!finishedLook.logo_ref);
+
+  // Quantity + live price + primary CTA, rendered once and reused in the
+  // desktop rail and the mobile sticky bar so the two never diverge.
+  const purchaseControls = (
+    <>
+      <div className="flex items-center gap-2 text-sm">
+        {mode === 'buyer_uploaded' ? (
+          hasReference ? (
+            <Badge tone="success" dot size="md">
+              Reference attached
+            </Badge>
+          ) : (
+            <span className="text-fg-muted">Upload a reference of the finished look.</span>
+          )
+        ) : artwork ? (
+          <Badge tone="success" dot size="md">
+            Design captured
+          </Badge>
+        ) : (
+          <span className="text-fg-muted">
+            {is3d
+              ? 'Pick a colour, place your logo, then choose “Use this design” - or add to cart plain.'
+              : 'Add a logo, then choose “Use this design”.'}
+          </span>
+        )}
+      </div>
+      <div>
+        <span className="mb-1 block text-2xs font-medium text-fg-subtle">Quantity</span>
+        <QuantityStepper value={qty} min={minQty} onChange={setQty} />
+        {minQty > 1 && (
+          <p className="mt-1 text-2xs text-fg-subtle">Min order {minQty}</p>
+        )}
+      </div>
+      {mode === 'designer' && logo.hasLogo && (
+        <Badge tone="neutral" size="sm">
+          Logo {logo.size}
+        </Badge>
+      )}
+      {estimate && (
+        <p className="text-sm text-fg-muted" role="status" aria-live="polite">
+          <span className="font-semibold text-fg">
+            {estimate.currency} {(estimate.lineTotal / qty).toFixed(2)}
+          </span>{' '}
+          / unit ·{' '}
+          <span className="font-semibold text-fg">
+            {estimate.currency} {estimate.lineTotal.toFixed(2)}
+          </span>{' '}
+          for {qty}
+        </p>
+      )}
+      {uploadError && (
+        <p className="text-sm text-danger" role="alert">
+          {uploadError}
+        </p>
+      )}
+      <Button onClick={addToCart} disabled={!product || uploading} loading={uploading} size="lg">
+        {uploading ? 'Uploading…' : 'Add to cart'}
+      </Button>
+    </>
+  );
+
   return (
     <AsyncBoundary
       loading={loading}
@@ -265,186 +355,202 @@ export default function ProductDesignerPage() {
           variants={fadeInUp}
           initial="hidden"
           animate="visible"
-          className="mx-auto flex w-full max-w-5xl flex-col gap-6"
+          className="mx-auto flex w-full max-w-6xl flex-col gap-5"
         >
-          {/* Header */}
-          <header className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="brand" size="sm">
-                Design studio
-              </Badge>
-              {product.print_method && (
-                <Badge tone="neutral" size="sm">
-                  {product.print_method}
+          {/* Header + slim delivery bar share one row so the studio starts
+              high on the page - no tall standalone delivery card. */}
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="brand" size="sm">
+                  Design studio
                 </Badge>
+                {product.print_method && (
+                  <Badge tone="neutral" size="sm">
+                    {product.print_method}
+                  </Badge>
+                )}
+              </div>
+              <h1 className="font-display text-3xl leading-tight sm:text-4xl">{product.name}</h1>
+              {product.description && <p className="max-w-2xl text-fg-muted">{product.description}</p>}
+              {product.creator_credit && (
+                <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
               )}
             </div>
-            <h1 className="font-display text-3xl leading-tight sm:text-4xl">{product.name}</h1>
-            {product.description && <p className="max-w-2xl text-fg-muted">{product.description}</p>}
-            {product.creator_credit && (
-              <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
+
+            {/* Deadline-aware delivery window + feasibility check - compact */}
+            {lead && (
+              <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 lg:w-72 lg:shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-fg">Estimated delivery</p>
+                    <p className="text-sm text-fg-muted">
+                      Arrives {fmtDate(lead.earliest)} – {fmtDate(lead.latest)}
+                    </p>
+                  </div>
+                  {needBy &&
+                    (needBy < lead.latest ? (
+                      <Badge tone="warning" dot>
+                        At risk
+                      </Badge>
+                    ) : (
+                      <Badge tone="success" dot>
+                        On track
+                      </Badge>
+                    ))}
+                </div>
+                <Input
+                  type="date"
+                  label="Need it by (optional)"
+                  value={needBy}
+                  min={lead.earliest}
+                  onChange={(e) => setNeedBy(e.target.value)}
+                />
+                {needBy && needBy < lead.latest && (
+                  <p className="text-sm text-warning">
+                    Tight for {fmtDate(needBy)}.
+                    {lead.rush_available && lead.rush_earliest
+                      ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
+                          lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
+                        } - ask us to add it.`
+                      : ''}
+                  </p>
+                )}
+              </div>
             )}
           </header>
 
-          {/* Deadline-aware delivery window + feasibility check */}
-          {lead && (
-            <Card padding="md" className="flex flex-col gap-3 sm:max-w-lg">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium text-fg">Estimated delivery</p>
-                  <p className="text-sm text-fg-muted">
-                    Arrives {fmtDate(lead.earliest)} – {fmtDate(lead.latest)}
-                  </p>
-                </div>
-                {needBy &&
-                  (needBy < lead.latest ? (
-                    <Badge tone="warning" dot>
-                      At risk
-                    </Badge>
-                  ) : (
-                    <Badge tone="success" dot>
-                      On track
-                    </Badge>
-                  ))}
-              </div>
-              <Input
-                type="date"
-                label="Need it by (optional)"
-                value={needBy}
-                min={lead.earliest}
-                onChange={(e) => setNeedBy(e.target.value)}
-              />
-              {needBy && needBy < lead.latest && (
-                <p className="text-sm text-warning">
-                  Tight for {fmtDate(needBy)}.
-                  {lead.rush_available && lead.rush_earliest
-                    ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
-                        lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
-                      } - ask us to add it.`
-                    : ''}
-                </p>
-              )}
-            </Card>
-          )}
-
-          {/* Variant picker */}
-          {product.variants && product.variants.length > 0 && (
-            <Card padding="sm" className="max-w-xs">
-              <Select
-                label="Variant"
-                value={variantId ?? ''}
-                onChange={(e) => setVariantId(Number(e.target.value))}
-              >
-                {product.variants.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {Object.values(v.attributes).join(' / ')} {v.in_stock ? '' : '(made to order)'}
-                  </option>
-                ))}
-              </Select>
-            </Card>
-          )}
-
-          {/* Configurator - 3D items pick a filament colour, then everyone
-              places logo/text on the canvas over the product photo (3D items
-              are UV-decorated after printing) */}
-          {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
-          {is3d && faceState === 'loading' && (
-            <p className="text-sm text-fg-muted" role="status" aria-live="polite">
-              Rendering the product face in your chosen colour…
-            </p>
-          )}
-          {is3d && faceState === 'error' && (
-            <p className="text-sm text-warning" role="status">
-              3D face preview unavailable - design on the neutral stage; placement is confirmed on
-              the formal proof before production.
-            </p>
-          )}
-          {/* Live 3D decal preview: an ADDITIONAL view showing the captured
-              artwork projected on the real mesh over the print zone. Only when
-              an admin zone exists; otherwise the neutral face-snapshot flow
-              stands alone unchanged. */}
-          {is3d && zone && (
-            <Model3dDecalPreview
-              ref={decalRef}
-              productKey={id!}
-              filamentColor={filamentColor}
-              zone={zone}
-              artworkDataUrl={artwork?.dataUrl ?? null}
-            />
-          )}
-          <DesignerCanvas
-            /* MODEL_3D: face render or neutral stage - never the scraped
-               marketing photo as a design surface (audit G1/C16). */
-            backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
-            onCapture={handleCapture}
-            onLogoChange={setLogo}
-            brandLogo={brandKit?.logo ?? null}
-            brandColors={brandKit?.colors ?? []}
-            canvasMm={
-              // The real zone footprint wins so mm-mapping matches the print
-              // surface; fall back to the face-snapshot footprint otherwise.
-              zone
-                ? { width: zone.width_mm, height: zone.height_mm }
-                : faceSnapshot
-                  ? { width: faceSnapshot.canvasWidthMm, height: faceSnapshot.canvasHeightMm }
-                  : null
-            }
-          />
-
-          {/* Sticky action bar */}
-          <div className="sticky bottom-4 z-raised">
-            <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                {artwork ? (
-                  <Badge tone="success" dot size="md">
-                    Design captured
-                  </Badge>
-                ) : (
-                  <span className="text-fg-muted">
-                    {is3d
-                      ? 'Pick a colour, place your logo, then choose “Use this design” - or add to cart plain.'
-                      : 'Add a logo, then choose “Use this design”.'}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <div>
-                  <span className="mb-1 block text-2xs font-medium text-fg-subtle">Quantity</span>
-                  <QuantityStepper
-                    value={qty}
-                    min={Math.max(1, product.min_order_qty ?? 1)}
-                    onChange={setQty}
-                  />
-                  {(product.min_order_qty ?? 1) > 1 && (
-                    <p className="mt-1 text-2xs text-fg-subtle">Min order {product.min_order_qty}</p>
+          {/* Two-column studio: the live preview is the hero on the left; every
+              control (mode, variant, filament, quantity, price, CTA) lives in a
+              single narrow rail on the right. Collapses to one column < lg. */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start">
+            {/* LEFT: the design surface / preview hero */}
+            <div className="flex min-w-0 flex-col gap-3">
+              {mode === 'designer' ? (
+                <>
+                  {is3d && faceState === 'loading' && (
+                    <p className="text-sm text-fg-muted" role="status" aria-live="polite">
+                      Rendering the product face in your chosen colour…
+                    </p>
                   )}
-                </div>
-                {logo.hasLogo && (
-                  <Badge tone="neutral" size="sm">
-                    Logo {logo.size}
-                  </Badge>
-                )}
-                {estimate && (
-                  <p className="text-sm text-fg-muted" role="status" aria-live="polite">
-                    <span className="font-semibold text-fg">
-                      {estimate.currency} {(estimate.lineTotal / qty).toFixed(2)}
-                    </span>{' '}
-                    / unit ·{' '}
-                    <span className="font-semibold text-fg">
-                      {estimate.currency} {estimate.lineTotal.toFixed(2)}
-                    </span>{' '}
-                    for {qty}
-                  </p>
-                )}
-                {uploadError && (
-                  <p className="text-sm text-danger" role="alert">
-                    {uploadError}
-                  </p>
-                )}
-                <Button onClick={addToCart} disabled={!product || uploading} loading={uploading} size="lg">
-                  {uploading ? 'Uploading…' : 'Add to cart'}
-                </Button>
+                  {is3d && faceState === 'error' && (
+                    <p className="text-sm text-warning" role="status">
+                      3D face preview unavailable - design on the neutral stage; placement is
+                      confirmed on the formal proof before production.
+                    </p>
+                  )}
+                  {/* Live 3D decal preview: an ADDITIONAL view showing the
+                      captured artwork projected on the real mesh over the print
+                      zone. Only when an admin zone exists; otherwise the neutral
+                      face-snapshot flow stands alone unchanged. */}
+                  {is3d && zone && (
+                    <Model3dDecalPreview
+                      ref={decalRef}
+                      productKey={id!}
+                      filamentColor={filamentColor}
+                      zone={zone}
+                      artworkDataUrl={artwork?.dataUrl ?? null}
+                    />
+                  )}
+                  <DesignerCanvas
+                    /* MODEL_3D: face render or neutral stage - never the scraped
+                       marketing photo as a design surface (audit G1/C16). */
+                    backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
+                    onCapture={handleCapture}
+                    onLogoChange={setLogo}
+                    brandLogo={brandKit?.logo ?? null}
+                    brandColors={brandKit?.colors ?? []}
+                    canvasMm={
+                      // The real zone footprint wins so mm-mapping matches the
+                      // print surface; fall back to the face-snapshot footprint.
+                      zone
+                        ? { width: zone.width_mm, height: zone.height_mm }
+                        : faceSnapshot
+                          ? { width: faceSnapshot.canvasWidthMm, height: faceSnapshot.canvasHeightMm }
+                          : null
+                    }
+                  />
+                </>
+              ) : (
+                <Card padding="md" className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-fg">Upload the finished look</p>
+                    <p className="text-sm text-fg-muted">
+                      Send us reference image(s), your logo, and where it goes - we lay it out and
+                      proof it before printing.
+                    </p>
+                  </div>
+                  <FinishedLookUploader onChange={setFinishedLook} />
+                </Card>
+              )}
+            </div>
+
+            {/* RIGHT: the single control rail */}
+            <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+              {/* Customization mode toggle */}
+              <div
+                className="flex overflow-hidden rounded-md border border-border text-sm"
+                role="tablist"
+                aria-label="Customization mode"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'designer'}
+                  onClick={() => setMode('designer')}
+                  className={cn(
+                    'flex-1 px-3 py-2',
+                    mode === 'designer' ? 'bg-primary text-primary-fg' : 'text-fg-muted hover:text-fg',
+                  )}
+                >
+                  Design here
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'buyer_uploaded'}
+                  onClick={() => setMode('buyer_uploaded')}
+                  className={cn(
+                    'flex-1 px-3 py-2',
+                    mode === 'buyer_uploaded'
+                      ? 'bg-primary text-primary-fg'
+                      : 'text-fg-muted hover:text-fg',
+                  )}
+                >
+                  Upload finished look
+                </button>
               </div>
+
+              {/* Variant picker */}
+              {product.variants && product.variants.length > 0 && (
+                <Select
+                  label="Variant"
+                  value={variantId ?? ''}
+                  onChange={(e) => setVariantId(Number(e.target.value))}
+                >
+                  {product.variants.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {Object.values(v.attributes).join(' / ')} {v.in_stock ? '' : '(made to order)'}
+                    </option>
+                  ))}
+                </Select>
+              )}
+
+              {/* 3D items pick a filament colour (applies in both modes) */}
+              {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
+
+              {/* Purchase controls: quantity + live price + CTA. Hidden on
+                  mobile, where the sticky bar carries the same controls. */}
+              <Card padding="md" className="hidden flex-col gap-3 lg:flex">
+                {purchaseControls}
+              </Card>
+            </aside>
+          </div>
+
+          {/* Mobile sticky action bar - the reachable CTA on small screens */}
+          <div className="sticky bottom-4 z-raised lg:hidden">
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface/95 p-4 shadow-lg backdrop-blur">
+              {purchaseControls}
             </div>
           </div>
         </Motion>
