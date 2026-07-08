@@ -91,10 +91,16 @@ an edge case.
 On the designer, classify each `MODEL_3D` product's surface once, then route to
 the flow it can actually print:
 
+**Placement is drag-directly-on-the-3D-model for every producible tier** — the
+buyer drags the logo on the real mesh (realistic preview = the core confidence
+goal). The logo is constrained to the producible surface (flat face or round
+wall); dragging toward an unprintable spot snaps it back. What they drag is what
+prints.
+
 | Tier | Detection | Buyer flow | Print output |
 |------|-----------|-----------|--------------|
-| **1 · Flat** | `detectPrintZone` succeeds | Place/scale logo, clamped to the flat zone (2D pad today; drag-on-model in Phase 3) | Flatbed UV file (existing flatten) |
-| **2 · Cylindrical** | new `detectCylinder` succeeds | Place logo on the wall; drag around (θ) + height, clamped to the cylinder's angular + height extent | Rotary UV file (cylinder → flat unwrap) |
+| **1 · Flat** | `detectPrintZone` succeeds | Drag logo **on the model**, clamped to the flat face | Flatbed UV file (existing flatten) |
+| **2 · Cylindrical** | new `detectCylinder` succeeds | Drag logo **on the model**, around (θ) + height, clamped to the round wall's extent | Rotary UV file (cylinder → flat unwrap) |
 | **3 · Freeform** | neither detector succeeds | No live placement; **upload-finished-look fallback** | Human-proofed before print |
 
 Classification order: try flat → try cylinder → else freeform. Admin can
@@ -197,10 +203,26 @@ Frontend-weight, low risk, immediately covers the biggest catalogue gap
 - Staff/production surface: show the reference images + notes on the line item
   in the production/quote views so a proof can be raised or changes requested.
 
-### Phase 2 — Cylindrical placement (Tier 2)
+### Phase 2 — Drag-the-logo-on-the-model (flat surfaces)
 
-The real engineering. Everything here is additive; flat + fallback flows are
-untouched.
+The realistic-preview core: the buyer positions the logo by dragging it on the
+real 3D model, not on a side 2D pad. Flat first because it reuses the most
+existing machinery and de-risks the interaction before the harder round-surface
+maths.
+
+- Reuse the admin raycast-click-on-mesh (`Model3dZoneEditor`) in the customer
+  designer: drop/drag the logo directly on the model, clamped to the detected
+  flat face; dragging past the face edge snaps back.
+- The live decal follows the drag in real time (extends
+  `Model3dDecalPreview`). The 2D pad becomes an optional secondary view (preview
+  toggle), not the primary placement surface.
+- Capture output matches the existing flat flatten → flatbed UV file, so the
+  print path is unchanged.
+
+### Phase 3 — Drag-on-model for round / cylindrical surfaces (Tier 2)
+
+Same drag-on-model experience, extended to round walls. The real engineering.
+Additive; flat + fallback flows untouched.
 
 - **`lib/cylinderDetect.ts::detectCylinder(geometry)`** — detect the dominant
   cylindrical surface: axis, radius, height range, angular extent. Return
@@ -212,28 +234,17 @@ untouched.
     angle_extent }`
   - Migration/serialisation updated; existing flat zones map to
     `kind: 'flat'` (backward compatible).
-- **Placement UI** — for a cylinder, the buyer places the logo on the wall and
-  drags around (θ) and along height, clamped to the detected angular + height
-  extent.
-- **Preview** — wrap the decal on the cylinder in the three.js preview.
+- **Placement** — the buyer drags the logo on the round wall (raycast → wrap
+  onto the cylinder), around (θ) and along height, clamped to the detected
+  extent; the decal follows the drag on the real mesh.
 - **Print file** — unwrap the cylindrical region to a flat rectangle
   (θ → x arc-length, height → y) at the rotary's print resolution; store as
-  `print_file_ref` like the flat path.
+  `print_file_ref` like the flat path. **Validate the unwrap with a real test
+  print early** (a spike) before building the full UI.
 - **Admin editor** — extend `Model3dZoneEditor` to detect + edit a cylindrical
   surface (radius/height/angular extent controls).
 - **Metadata** — carry cylindrical placement in mm (arc length, height) in the
   captured layout for production.
-
-### Phase 3 — Flat drag-on-model polish (optional)
-
-Only after Phases 1–2, if the direct-manipulation feel is wanted on flat items.
-
-- Reuse the admin raycast-click-on-mesh (`Model3dZoneEditor`) in the customer
-  designer for Tier 1: drop/drag the logo directly on the model, clamped to the
-  detected flat zone; the 2D pad becomes secondary (still available via the
-  preview toggle).
-- Marginal capability gain (flat items already get a live decal preview), so
-  this is polish, deliberately last.
 
 ---
 
@@ -256,11 +267,12 @@ Only after Phases 1–2, if the direct-manipulation feel is wanted on flat items
   (no `has_text` in estimate payload); fallback line carries `mode`,
   `reference_refs`, `placement_notes`; freeform product opens in fallback mode;
   layout renders responsively (existing component tests updated).
-- **Phase 2**: `detectCylinder` unit tests against known geometries (tumbler
+- **Phase 2**: raycast drag-on-model clamps to the flat face; capture output
+  matches the existing flat flatten for the same placement; decal follows the
+  drag.
+- **Phase 3**: `detectCylinder` unit tests against known geometries (tumbler
   cylinder detected; flat plaque + sphere return `null`); unwrap round-trips a
   known placement to expected print-space coordinates; flat path unchanged.
-- **Phase 3**: raycast placement clamps to the flat zone; capture output matches
-  the 2D-pad path for the same placement.
 
 Follow the repo's existing Vitest (frontend) + PHPUnit (backend) patterns.
 
