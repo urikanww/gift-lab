@@ -93,6 +93,39 @@ it('accepts a genuine uploaded artwork_ref', function (): void {
     ]))->assertCreated();
 });
 
+// print_file_ref (the 3D UV-flattened decal) reaches the print pipeline, so it
+// gets the same path/existence guard as artwork_ref.
+it('rejects a print_file_ref outside the artwork/ prefix', function (): void {
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', quotePayload([
+        'customization' => ['logo_size' => 'M', 'print_file_ref' => 'models/secret.stl'],
+    ]))->assertStatus(422)->assertJsonValidationErrors('line_items.0.customization.print_file_ref');
+});
+
+it('rejects a print_file_ref that does not resolve to an uploaded file', function (): void {
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', quotePayload([
+        'customization' => ['logo_size' => 'M', 'print_file_ref' => 'artwork/doesnotexist.png'],
+    ]))->assertStatus(422)->assertJsonValidationErrors('line_items.0.customization.print_file_ref');
+});
+
+it('accepts a genuine uploaded print_file_ref alongside the proof artwork', function (): void {
+    $artwork = $this->postJson('/api/uploads/artwork', [
+        'artwork' => UploadedFile::fake()->image('proof.png', 400, 400),
+    ])->assertCreated()->json('ref');
+    $printFile = $this->postJson('/api/uploads/artwork', [
+        'artwork' => UploadedFile::fake()->image('decal.png', 400, 400),
+    ])->assertCreated()->json('ref');
+
+    Sanctum::actingAs($this->buyer);
+
+    $this->postJson('/api/quotes', quotePayload([
+        'customization' => ['logo_size' => 'M', 'artwork_ref' => $artwork, 'print_file_ref' => $printFile],
+    ]))->assertCreated();
+});
+
 // B9 (F3): a variant from another product cannot be attached to a line.
 it('rejects a variant that belongs to a different product', function (): void {
     Sanctum::actingAs($this->buyer);

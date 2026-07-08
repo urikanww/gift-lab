@@ -18,9 +18,10 @@ use Illuminate\Support\Facades\Storage;
  * sweep those files accumulate forever on the private artwork disk (P2-2).
  *
  * "Referenced" = the storage key appears in ANY of:
- *   - line_items.customization->artwork_ref   (the line's captured artwork)
- *   - proofs.artwork_version_ref              (a formal proof version)
- *   - production_jobs.artwork_ref             (the approved print file)
+ *   - line_items.customization->artwork_ref    (the line's captured artwork)
+ *   - line_items.customization->print_file_ref (the 3D UV-flattened decal)
+ *   - proofs.artwork_version_ref               (a formal proof version)
+ *   - production_jobs.artwork_ref              (the approved print file)
  * so a still-live design at any stage of the funnel is never pruned. Only files
  * older than the grace window (--days, default 7) are eligible, so an upload
  * mid-checkout (ref not yet persisted) is safe.
@@ -95,9 +96,14 @@ class PruneOrphanArtwork extends Command
             ->whereNotNull('customization')
             ->select(['id', 'customization'])
             ->each(function (LineItem $line) use (&$keys): void {
-                $ref = $line->customization['artwork_ref'] ?? null;
-                if (is_string($ref) && $ref !== '') {
-                    $keys[$ref] = true;
+                // Both the proof artwork and the 3D UV-flattened print file live
+                // on the artwork disk and must be treated as in-use, else the
+                // decal is pruned out from under a still-live order.
+                foreach (['artwork_ref', 'print_file_ref'] as $refKey) {
+                    $ref = $line->customization[$refKey] ?? null;
+                    if (is_string($ref) && $ref !== '') {
+                        $keys[$ref] = true;
+                    }
                 }
             });
 

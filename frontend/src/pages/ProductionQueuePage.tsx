@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueueStore } from '../stores/queueStore';
-import { Badge, Button, Card, EmptyState, Input, Skeleton } from '../ui';
+import api, { apiError } from '../lib/api';
+import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
@@ -43,9 +44,18 @@ function QueueSkeleton() {
   );
 }
 
+/** Pull the server-set filename out of a Content-Disposition header, if present. */
+function filenameFromDisposition(header: unknown): string | null {
+  if (typeof header !== 'string') return null;
+  const match = /filename="?([^"]+)"?/i.exec(header);
+  return match ? match[1] : null;
+}
+
 export default function ProductionQueuePage() {
   const { jobs, loading, error, fetchQueue, advance, subscribe, unsubscribe } = useQueueStore();
+  const { toast } = useToast();
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   // Shipping is confirm-gated: marking a job shipped requires a consignment ref
   // (that transition fires the buyer's "on the way" signal). This tracks which
   // card is mid-confirmation and its typed reference.
@@ -58,6 +68,29 @@ export default function ProductionQueuePage() {
     subscribe(); // live via Reverb; no polling
     return () => unsubscribe();
   }, [fetchQueue, subscribe, unsubscribe]);
+
+  // Download the job's print-ready file. The endpoint is Sanctum-gated, so the
+  // fetch goes through the authed axios client (cookie + XSRF) as a blob rather
+  // than a bare anchor, then a transient object URL triggers the save.
+  const onDownloadPrintFile = async (jobId: number) => {
+    if (downloadingId !== null) return;
+    setDownloadingId(jobId);
+    try {
+      const res = await api.get(`/production-jobs/${jobId}/print-file`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filenameFromDisposition(res.headers['content-disposition']) ?? `job-${jobId}-print-file`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({ title: 'Download failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   // Single-flight guard against a double-click firing a duplicate advance.
   const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string) => {
@@ -143,6 +176,19 @@ export default function ProductionQueuePage() {
                         {j.ready_at ? new Date(j.ready_at).toLocaleString() : '-'}
                       </dd>
                     </dl>
+
+                    {j.artwork_ref && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        fullWidth
+                        loading={downloadingId === j.id}
+                        disabled={downloadingId !== null && downloadingId !== j.id}
+                        onClick={() => void onDownloadPrintFile(j.id)}
+                      >
+                        Download print file
+                      </Button>
+                    )}
 
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
                       <div className="mt-auto flex flex-col gap-2">

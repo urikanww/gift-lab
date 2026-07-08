@@ -39,6 +39,19 @@ it('deletes an old orphan but keeps a referenced upload', function (): void {
     Storage::disk($this->artworkDisk)->assertExists($referenced);
 });
 
+it('keeps a 3D UV-flattened print file referenced via print_file_ref', function (): void {
+    $decal = 'artwork/decal-flat.png';
+    agedArtwork($this->artworkDisk, $decal, 30);
+
+    LineItem::factory()->create([
+        'customization' => ['artwork_ref' => 'artwork/proof.png', 'print_file_ref' => $decal],
+    ]);
+
+    $this->artisan('artwork:prune-orphans', ['--days' => 7])->assertSuccessful();
+
+    Storage::disk($this->artworkDisk)->assertExists($decal);
+});
+
 it('spares a recent unreferenced upload inside the grace window', function (): void {
     $fresh = 'artwork/just-uploaded.png';
     agedArtwork($this->artworkDisk, $fresh, 0); // uploaded today, ref not yet saved

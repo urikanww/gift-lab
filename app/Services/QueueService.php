@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\JobState;
+use App\Enums\JobTrack;
 use App\Enums\LineItemState;
 use App\Enums\QuoteState;
 use App\Events\OrderTrackingUpdated;
 use App\Events\ProductionQueueUpdated;
 use App\Events\QuoteStateChanged;
 use App\Models\ProductionJob;
+use App\Models\Proof;
 use App\Models\Quote;
 use App\Support\Broadcasting;
 use Illuminate\Support\Collection;
@@ -30,9 +32,14 @@ final class QueueService
 
     /**
      * Build production jobs for a quote whose line items are all resolved
-     * (READY or DROPPED). Groups READY lines by track, sets ready_at = now
-     * (spec principle 2), attaches the approved proof artwork as the print file,
-     * and moves the quote to READY. One job per track.
+     * (READY or DROPPED), sets ready_at = now (spec principle 2), attaches the
+     * print-ready file, and moves the quote to READY.
+     *
+     * Grouping: UV-track lines (CORE + SCRAPED_UV) share the one approved proof
+     * artwork, so they collapse into a single UV job. MODEL_3D lines each print
+     * on their own jig with their own UV-flattened decal (print_file_ref) - a
+     * distinct file, qty and print method per item - so every 3D line becomes
+     * its own job. One UV job + one job per 3D line.
      *
      * @return Collection<int, ProductionJob>
      */
@@ -60,18 +67,27 @@ final class QueueService
             fn ($line): bool => $line->line_state === LineItemState::Ready
         );
 
-        $byTrack = $readyLines->groupBy(fn ($line): string => $line->product->class->track()->value);
+        // UV lines fold into one bucket per track; each 3D line gets a bucket of
+        // its own (keyed by line id) so it materialises as a standalone job.
+        $groups = $readyLines->groupBy(function ($line): string {
+            $track = $line->product->class->track();
+
+            return $track === JobTrack::ThreeD
+                ? JobTrack::ThreeD->value.':'.$line->id
+                : $track->value;
+        });
 
         $jobs = collect();
 
-        DB::transaction(function () use ($quote, $byTrack, $approvedProof, &$jobs): void {
-            foreach ($byTrack as $trackValue => $lines) {
+        DB::transaction(function () use ($quote, $groups, $approvedProof, &$jobs): void {
+            foreach ($groups as $lines) {
+                $track = $lines->first()->product->class->track();
                 $job = ProductionJob::create([
                     'quote_id' => $quote->id,
-                    'track' => $trackValue,
+                    'track' => $track->value,
                     'ready_at' => now(),
                     'state' => JobState::Ready->value,
-                    'artwork_ref' => $approvedProof->artwork_version_ref,
+                    'artwork_ref' => $this->resolveArtworkRef($track, $lines, $approvedProof),
                     'print_method' => $lines->first()->product->print_method?->value,
                     'qty' => (int) $lines->sum('qty'),
                     'created_by' => auth()->id(),
@@ -92,6 +108,35 @@ final class QueueService
         });
 
         return $jobs;
+    }
+
+    /**
+     * The print-ready file a track's job hands the shop floor. MODEL_3D lines
+     * (3D track) carry a UV-flattened production decal in
+     * customization.print_file_ref - the file the UV printer/jig actually
+     * consumes - which must supersede the proof mockup (artwork_version_ref,
+     * the buyer's on-canvas sign-off). Everything else, and any legacy/flat 3D
+     * line predating the decal pipeline (no print_file_ref), falls back to the
+     * approved proof artwork.
+     *
+     * A 3D group is a single line (buildJobsForQuote gives each 3D line its own
+     * job), so the loop returns that one line's decal; the fallback covers the
+     * legacy no-print_file_ref case. UV groups skip straight to the proof.
+     *
+     * @param  Collection<int, \App\Models\LineItem>  $lines
+     */
+    private function resolveArtworkRef(JobTrack $track, Collection $lines, Proof $approvedProof): ?string
+    {
+        if ($track === JobTrack::ThreeD) {
+            foreach ($lines as $line) {
+                $printFileRef = $line->customization['print_file_ref'] ?? null;
+                if (is_string($printFileRef) && $printFileRef !== '') {
+                    return $printFileRef;
+                }
+            }
+        }
+
+        return $approvedProof->artwork_version_ref;
     }
 
     /**

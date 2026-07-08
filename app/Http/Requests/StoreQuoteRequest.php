@@ -59,6 +59,12 @@ class StoreQuoteRequest extends FormRequest
             // prefixes) is rejected before it can reach the print pipeline
             // (Pass 2 F2 / audit C15). Existence is checked in withValidator.
             'line_items.*.customization.artwork_ref' => ['nullable', 'string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
+            // MODEL_3D lines additionally carry a UV-flattened production decal
+            // (the file the printer/jig consumes, distinct from the proof
+            // mockup above). It reaches the print pipeline too, so it gets the
+            // same path guard - a "artwork/" key issued by POST /uploads/artwork.
+            // Existence is checked in withValidator.
+            'line_items.*.customization.print_file_ref' => ['nullable', 'string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
             // Machine-readable placement record captured by the designer
             // (position/size/rotation + export pixel mapping, audit C12).
             'line_items.*.customization.layout' => ['nullable', 'array'],
@@ -148,16 +154,19 @@ class StoreQuoteRequest extends FormRequest
                 }
 
                 // The ref must resolve to a real uploaded file - format alone
-                // still lets a guessed/foreign key through to the floor.
-                $artworkRef = $line['customization']['artwork_ref'] ?? null;
-                if (is_string($artworkRef)
-                    && preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $artworkRef) === 1
-                    && ! $artworkDisk->exists($artworkRef)
-                ) {
-                    $validator->errors()->add(
-                        "line_items.{$index}.customization.artwork_ref",
-                        'Artwork reference does not resolve to an uploaded file.'
-                    );
+                // still lets a guessed/foreign key through to the floor. Both
+                // the proof artwork and the 3D print file are guarded the same.
+                foreach (['artwork_ref', 'print_file_ref'] as $refKey) {
+                    $ref = $line['customization'][$refKey] ?? null;
+                    if (is_string($ref)
+                        && preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) === 1
+                        && ! $artworkDisk->exists($ref)
+                    ) {
+                        $validator->errors()->add(
+                            "line_items.{$index}.customization.{$refKey}",
+                            'Artwork reference does not resolve to an uploaded file.'
+                        );
+                    }
                 }
             }
         });

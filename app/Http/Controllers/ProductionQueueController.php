@@ -12,6 +12,8 @@ use App\Models\Quote;
 use App\Services\QueueService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Shared production queue (spec 6.6): staff-only, FCFS by readiness, no
@@ -37,5 +39,34 @@ class ProductionQueueController extends Controller
         $job = $this->queue->advance($job, $target, $consignmentRef !== null ? (string) $consignmentRef : null);
 
         return new ProductionJobResource($job);
+    }
+
+    /**
+     * Stream a job's print-ready file (the 3D UV-flattened decal or the approved
+     * proof artwork) off the PRIVATE artwork disk so the floor can print it.
+     * Staff-gated by the same policy as the queue itself.
+     *
+     * The ref is written by our own pipeline, but it is still validated at the
+     * boundary: only a well-formed key under the artwork/ prefix may stream, so
+     * a malformed, foreign, or traversal value can never reach a disk read. A
+     * missing file (e.g. pruned) yields 404, never a stack trace.
+     */
+    public function printFile(Request $request, ProductionJob $job): StreamedResponse
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        $ref = $job->artwork_ref;
+
+        if (! is_string($ref) || preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) !== 1) {
+            abort(404);
+        }
+
+        $disk = Storage::disk((string) config('filesystems.artwork_disk'));
+
+        if (! $disk->exists($ref)) {
+            abort(404);
+        }
+
+        return $disk->download($ref, basename($ref));
     }
 }
