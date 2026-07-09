@@ -41,6 +41,24 @@ class AdminCatalogueController extends Controller
         // rows, so response size/memory grew linearly with scraped inventory.
         $perPage = max(1, min((int) $request->integer('per_page', 24), 100));
 
+        // State breakdown across the WHOLE gate set (respecting the class filter
+        // but NOT the state filter), so the summary badges reflect the full
+        // catalogue total - not just the current page or the filtered subset.
+        $byState = Product::query()
+            ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
+            ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
+            ->selectRaw('publish_state, COUNT(*) as c')
+            ->groupBy('publish_state')
+            ->pluck('c', 'publish_state');
+
+        $counts = [
+            'total' => (int) $byState->sum(),
+            'pending' => (int) ($byState[PublishState::Pending->value] ?? 0),
+            'ready' => (int) ($byState[PublishState::ReadyToApprove->value] ?? 0),
+            'published' => (int) ($byState[PublishState::Published->value] ?? 0),
+            'blocked' => (int) ($byState[PublishState::CannotPublish->value] ?? 0),
+        ];
+
         $paginator = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
@@ -68,6 +86,8 @@ class AdminCatalogueController extends Controller
 
         return response()->json([
             'data' => $paginator->items(),
+            // Full-set state breakdown for the summary badges (page-independent).
+            'counts' => $counts,
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),

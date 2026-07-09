@@ -8,9 +8,19 @@ interface CatalogueMeta {
   total: number;
 }
 
+/** Full-set state breakdown (page-independent) for the summary badges. */
+export interface CatalogueCounts {
+  total: number;
+  pending: number;
+  ready: number;
+  published: number;
+  blocked: number;
+}
+
 interface CatalogueAdminState {
   items: AdminCatalogueItem[];
   meta: CatalogueMeta | null;
+  counts: CatalogueCounts | null;
   loading: boolean;
   error: string | null;
   autoPublish: boolean;
@@ -35,6 +45,7 @@ interface CatalogueAdminState {
 export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => ({
   items: [],
   meta: null,
+  counts: null,
   loading: false,
   error: null,
   autoPublish: false,
@@ -50,10 +61,12 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     try {
       const { data } = await api.get<{
         data: AdminCatalogueItem[];
+        counts?: CatalogueCounts;
         meta?: { auto_publish?: boolean; current_page?: number; last_page?: number; total?: number };
       }>('/admin/catalogue', { params: activeFilter });
       set({
         items: data.data,
+        counts: data.counts ?? null,
         meta:
           data.meta?.current_page != null && data.meta?.last_page != null && data.meta?.total != null
             ? { current_page: data.meta.current_page, last_page: data.meta.last_page, total: data.meta.total }

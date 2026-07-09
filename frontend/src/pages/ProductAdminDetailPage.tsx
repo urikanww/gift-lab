@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
-import { Badge, Button, Card, Input, Select, Textarea, useToast } from '../ui';
+import { Badge, Button, Card, Input, Select, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
 import Model3dZoneEditor from '../components/Model3dZoneEditor';
@@ -13,6 +13,11 @@ import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminPr
 
 export default function ProductAdminDetailPage() {
   const { id } = useParams();
+  const location = useLocation();
+  // Return to wherever we came from (e.g. the catalogue gate), defaulting to the
+  // product list. Set via navigate(..., { state: { from } }).
+  const from = (location.state as { from?: string } | null)?.from ?? '/product-admin';
+  const backLabel = from === '/catalogue-admin' ? 'Back to catalogue gate' : 'Back to products';
   const [product, setProduct] = useState<AdminProduct | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +41,8 @@ export default function ProductAdminDetailPage() {
 
   return (
     <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-6">
-      <Link to="/product-admin" className="text-sm text-fg-muted hover:text-fg">
-        &larr; Back to products
+      <Link to={from} className="text-sm text-fg-muted hover:text-fg">
+        &larr; {backLabel}
       </Link>
 
       <AsyncBoundary
@@ -379,7 +384,8 @@ function EditableTitle({
 function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: () => void }) {
   const { toast } = useToast();
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
-  const [description, setDescription] = useState(product.description ?? '');
+  // Preserved on save (still sent) but no longer editable - see the hidden field note.
+  const [description] = useState(product.description ?? '');
   const [baseCost, setBaseCost] = useState(String(product.base_cost));
   // Superadmin fixed sell price; blank = dynamic pricing. Only rendered/sent for
   // superadmins (the backend also strips it for anyone else).
@@ -449,13 +455,8 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
     <Card padding="lg">
       <h2 className="mb-4 font-display text-xl text-fg">Edit details</h2>
       <form onSubmit={save} className="flex flex-col gap-4">
-        <Textarea
-          label="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={saving}
-        />
-
+        {/* Description is intentionally hidden from staff editing - the public PDP
+            no longer shows it, so the stored value is preserved but not edited. */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Input
             label="Base cost (SGD)"

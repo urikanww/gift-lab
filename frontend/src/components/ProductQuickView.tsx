@@ -15,6 +15,8 @@ interface Props {
   productId: number | null;
   isSuperadmin: boolean;
   onClose: () => void;
+  /** Where the full editor should return to (router state.from). */
+  backTo?: string;
 }
 
 function formatDims(dims: AdminProduct['dimensions']): string | null {
@@ -33,7 +35,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function ProductQuickView({ productId, isSuperadmin, onClose }: Props) {
+export default function ProductQuickView({ productId, isSuperadmin, onClose, backTo }: Props) {
   const [product, setProduct] = useState<AdminProduct | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +76,11 @@ export default function ProductQuickView({ productId, isSuperadmin, onClose }: P
       size="lg"
       footer={
         product ? (
-          <LinkButton to={`/product-admin/${product.id}`} onClick={onClose}>
+          <LinkButton
+            to={`/product-admin/${product.id}`}
+            onClick={onClose}
+            state={backTo ? { from: backTo } : undefined}
+          >
             Open full editor
           </LinkButton>
         ) : undefined
@@ -129,10 +135,6 @@ export default function ProductQuickView({ productId, isSuperadmin, onClose }: P
               {dims && <Row label="Dimensions" value={dims} />}
               {is3d && <Row label="Model parts" value={String(product.model_parts?.length ?? 0)} />}
             </dl>
-
-            {product.description && (
-              <p className="line-clamp-4 text-sm text-fg-muted">{product.description}</p>
-            )}
           </div>
         </div>
       )}

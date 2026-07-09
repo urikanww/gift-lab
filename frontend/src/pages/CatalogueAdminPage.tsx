@@ -5,6 +5,8 @@ import { useAuthStore } from '../stores/authStore';
 import { safeHref } from '../lib/safeHref';
 import { Badge, Button, Card, EmptyState, Input, Select, Skeleton, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
+import ProductQuickView from '../components/ProductQuickView';
+import { EyeIcon } from '../components/icons';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import type { AdminCatalogueItem, ProductClass, PublishState } from '../types';
 
@@ -185,7 +187,7 @@ function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
 }
 
 export default function CatalogueAdminPage() {
-  const { items, meta, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
+  const { items, meta, counts, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
@@ -193,6 +195,7 @@ export default function CatalogueAdminPage() {
   const navigate = useNavigate();
 
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [quickViewId, setQuickViewId] = useState<number | null>(null);
   const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
   const [stateFilter, setStateFilter] = useState<'' | PublishState>('');
   const [page, setPage] = useState(1);
@@ -243,16 +246,6 @@ export default function CatalogueAdminPage() {
       setPendingId(null);
     }
   };
-
-  const counts = useMemo(() => {
-    const c = { total: items.length, ready: 0, published: 0, blocked: 0 };
-    items.forEach((it) => {
-      if (it.publish_state === 'READY_TO_APPROVE') c.ready += 1;
-      if (it.publish_state === 'PUBLISHED') c.published += 1;
-      if (it.publish_state === 'CANNOT_PUBLISH') c.blocked += 1;
-    });
-    return c;
-  }, [items]);
 
   // Only READY_TO_APPROVE rows can be bulk-published. Keep the eligible-id set
   // and prune any stale selections (a row that dropped out of the list or
@@ -325,10 +318,13 @@ export default function CatalogueAdminPage() {
           )}
         </div>
 
-        {/* Summary stats + bulk action */}
-        {!loading && !error && items.length > 0 && (
+        {/* Summary stats + bulk action. Counts are the full-set breakdown from
+            the server (page-independent), so total = pending + ready + published
+            + blocked across the whole gate. */}
+        {!loading && !error && counts && counts.total > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="neutral">{counts.total} in review</Badge>
+            <Badge tone="neutral">{counts.total} total</Badge>
+            {counts.pending > 0 && <Badge tone="neutral">{counts.pending} pending</Badge>}
             {counts.ready > 0 && <Badge tone="warning">{counts.ready} ready to approve</Badge>}
             {counts.published > 0 && <Badge tone="success">{counts.published} published</Badge>}
             {counts.blocked > 0 && <Badge tone="danger">{counts.blocked} blocked</Badge>}
@@ -455,10 +451,10 @@ export default function CatalogueAdminPage() {
                 </div>
                 <div className="flex min-w-0 items-center gap-3">
                   <ItemThumb item={it} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <button
                       type="button"
-                      onClick={() => navigate(`/product-admin/${it.id}`)}
+                      onClick={() => navigate(`/product-admin/${it.id}`, { state: { from: '/catalogue-admin' } })}
                       className="block w-full truncate text-left font-medium text-fg hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {it.name}
@@ -467,6 +463,14 @@ export default function CatalogueAdminPage() {
                       <p className="truncate text-xs text-fg-subtle">by {it.creator_credit}</p>
                     )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setQuickViewId(it.id)}
+                    aria-label={`Quick view ${it.name}`}
+                    className="shrink-0 rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <EyeIcon className="h-4 w-4" />
+                  </button>
                 </div>
 
                 <div>
@@ -564,6 +568,13 @@ export default function CatalogueAdminPage() {
           </div>
         </div>
       )}
+
+      <ProductQuickView
+        productId={quickViewId}
+        isSuperadmin={isSuperadmin}
+        backTo="/catalogue-admin"
+        onClose={() => setQuickViewId(null)}
+      />
     </div>
   );
 }

@@ -24,6 +24,25 @@ it('lists scraped and 3D items for staff', function (): void {
     expect($response->json('data'))->toHaveCount(2);
 });
 
+it('returns full-set state counts independent of pagination and the state filter', function (): void {
+    Product::factory()->count(3)->model3d()->create(['publish_state' => 'PUBLISHED']);
+    Product::factory()->count(2)->scrapedUv()->create(['publish_state' => 'READY_TO_APPROVE']);
+    Product::factory()->model3d()->create(['publish_state' => 'CANNOT_PUBLISH']);
+    Product::factory()->model3d()->create(['publish_state' => 'PENDING']);
+    Product::factory()->create(['class' => 'CORE', 'publish_state' => 'PUBLISHED']); // not in the gate
+
+    Sanctum::actingAs($this->staff);
+    // A single filtered page must not shrink the summary counts.
+    $res = $this->getJson('/api/admin/catalogue?per_page=2&state=PUBLISHED')->assertOk();
+
+    $res->assertJsonPath('counts.total', 7)
+        ->assertJsonPath('counts.published', 3)
+        ->assertJsonPath('counts.ready', 2)
+        ->assertJsonPath('counts.blocked', 1)
+        ->assertJsonPath('counts.pending', 1);
+    expect($res->json('data'))->toHaveCount(2); // page still limited + state-filtered
+});
+
 it('publishes an item awaiting approval', function (): void {
     $product = Product::factory()->scrapedUv()->create(['publish_state' => 'READY_TO_APPROVE']);
 
