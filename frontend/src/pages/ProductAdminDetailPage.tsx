@@ -65,6 +65,7 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
   const archived = product.archived;
   const [modelBusy, setModelBusy] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [pullBusy, setPullBusy] = useState(false);
 
   const togglePublish = async () => {
     try {
@@ -111,6 +112,20 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
       onChanged();
     } catch (err) {
       toast({ title: 'Not saved', description: apiError(err), tone: 'danger' });
+    }
+  };
+
+  const pullSource = async () => {
+    setPullBusy(true);
+    try {
+      await ensureCsrf();
+      await api.post(`/admin/products/${product.id}/pull-source`);
+      toast({ title: 'Pulled latest from source', description: product.name, tone: 'success' });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Pull failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setPullBusy(false);
     }
   };
 
@@ -205,6 +220,14 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
             Replacing the mesh clears the saved print zone; a .glb only updates the decoration
             preview.
           </p>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
+            <Button variant="outline" size="sm" loading={pullBusy} onClick={() => void pullSource()}>
+              Pull latest from source
+            </Button>
+            <span className="text-xs text-fg-subtle">
+              Re-fetch geometry, parts and dimensions from the model&apos;s source (scraped items only).
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <input
               type="file"
@@ -931,6 +954,17 @@ function ModelPartsSection({
     }
   };
 
+  const setPrimary = async (partId: number) => {
+    try {
+      await ensureCsrf();
+      await api.post(`/admin/products/${product.id}/parts/${partId}/primary`);
+      toast({ title: 'Primary model updated', tone: 'success' });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Not updated', description: apiError(err), tone: 'danger' });
+    }
+  };
+
   return (
     <Card padding="md" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -948,7 +982,7 @@ function ModelPartsSection({
       {parts.length > 1 && (
         <div className="flex flex-col gap-2">
           <Button variant="outline" size="sm" className="self-start" onClick={() => setAssembling((v) => !v)}>
-            {assembling ? 'Hide assembled view' : `Assemble all ${parts.length} parts`}
+            {assembling ? 'Hide all-parts view' : `View all ${parts.length} parts together`}
           </Button>
           {assembling && (
             <>
@@ -957,8 +991,8 @@ function ModelPartsSection({
                 className="h-72 w-full"
               />
               <p className="text-2xs text-fg-subtle">
-                Parts shown in their source coordinates, each a different colour. If the model was
-                exported with parts centred (rather than in-place), they may overlap here.
+                Parts are laid out in a grid (each a different colour) so nothing overlaps - source
+                files rarely carry the positions needed to assemble the whole figure.
               </p>
             </>
           )}
@@ -995,6 +1029,11 @@ function ModelPartsSection({
                 >
                   {viewing === part.id ? 'Hide' : 'View 3D'}
                 </Button>
+                {!part.is_primary && !disabled && (
+                  <Button variant="secondary" size="sm" onClick={() => void setPrimary(part.id)}>
+                    Set primary
+                  </Button>
+                )}
                 {!part.is_primary && !disabled && (
                   <Button variant="danger" size="sm" onClick={() => void remove(part.id)}>
                     Remove

@@ -10,9 +10,11 @@ use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\ProductModelPart;
 use App\Services\Catalogue\ScrapedCatalogueService;
+use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\Model3dCatalogueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -29,6 +31,7 @@ class AdminCatalogueController extends Controller
     public function __construct(
         private readonly ScrapedCatalogueService $scraped,
         private readonly Model3dCatalogueService $model3d,
+        private readonly Model3dApiClient $apiClient,
     ) {
     }
 
@@ -364,6 +367,69 @@ class AdminCatalogueController extends Controller
         ]);
 
         return response()->json(['data' => $this->serializePart($part)], 201);
+    }
+
+    /**
+     * Superadmin choose which stored part is the primary mesh. The primary
+     * mirrors products.model_file_ref (the mesh the slicer prints and the PDP
+     * previews), so this flips the is_primary flag and repoints model_file_ref,
+     * then recomputes dimensions from the new geometry.
+     */
+    public function setPrimaryPart(Request $request, Product $product, ProductModelPart $part): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+        abort_unless($part->product_id === $product->id, 404);
+
+        $ref = (string) $part->file_ref;
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+            return response()->json(['message' => 'That part has no stored file to make primary.'], 422);
+        }
+
+        DB::transaction(function () use ($product, $part, $ref): void {
+            $product->modelParts()->update(['is_primary' => false]);
+            $part->is_primary = true;
+            $part->save();
+
+            $product->model_file_ref = $ref;
+            $product->dimensions = null; // recompute from the new primary geometry
+            $product->save();
+            $this->model3d->fillDimensionsFromModel($product);
+            $product->save();
+        });
+
+        return response()->json(['model_file_ref' => $product->model_file_ref]);
+    }
+
+    /**
+     * Superadmin pull the latest model straight from its source (Thingiverse /
+     * Cults3D), refreshing geometry, parts and dimensions - a per-product
+     * forced re-ingest (the same path the nightly resync uses on a version
+     * change). Owned/manual items have no upstream and are refused.
+     */
+    public function pullFromSource(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        if ($product->class !== ProductClass::Model3d) {
+            return response()->json(['message' => 'Only MODEL_3D products pull from a source.'], 422);
+        }
+
+        $model = $product->model3d;
+        if ($model === null || $model->source === null || $model->source->value === 'OWNED') {
+            return response()->json(['message' => 'This product has no upstream source to pull from.'], 422);
+        }
+
+        $data = $this->apiClient->fetch($model->source, (string) $model->source_id);
+        if ($data === null) {
+            return response()->json(['message' => 'The source did not return this model (removed or rate-limited).'], 422);
+        }
+
+        ['product' => $product] = $this->model3d->ingest($data, forceFileRefresh: true);
+
+        return response()->json([
+            'publish_state' => $product->publish_state->value,
+            'model_file_ref' => $product->model_file_ref,
+        ]);
     }
 
     /**

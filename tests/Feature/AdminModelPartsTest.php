@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Enums\Model3dSource;
 use App\Models\Company;
+use App\Models\Model3D;
 use App\Models\Product;
 use App\Models\ProductModelPart;
 use App\Models\User;
+use App\Services\Model3d\Model3dData;
+use App\Services\Model3d\StubModel3dApiClient;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
@@ -134,6 +138,58 @@ it('forbids a buyer from deleting a part', function (): void {
     Sanctum::actingAs(buyerUser());
     $this->delete("/api/admin/products/{$this->product->id}/parts/{$part->id}")->assertForbidden();
     expect(ProductModelPart::find($part->id))->not->toBeNull();
+});
+
+it('lets staff set a different part as the primary mesh', function (): void {
+    Storage::disk('local')->put('models3d/x-1.stl', 'PRIMARY');
+    Storage::disk('local')->put('models3d/x-1-part1.stl', 'OTHER');
+    $this->product->update(['model_file_ref' => 'models3d/x-1.stl']);
+    $primary = makePart($this->product, ['file_ref' => 'models3d/x-1.stl', 'is_primary' => true, 'label' => 'Body', 'sort' => 0]);
+    $other = makePart($this->product, ['file_ref' => 'models3d/x-1-part1.stl', 'is_primary' => false, 'label' => 'Head', 'sort' => 1]);
+
+    Sanctum::actingAs($this->staff);
+    $this->post("/api/admin/products/{$this->product->id}/parts/{$other->id}/primary")->assertOk();
+
+    expect($other->fresh()->is_primary)->toBeTrue()
+        ->and($primary->fresh()->is_primary)->toBeFalse()
+        ->and($this->product->fresh()->model_file_ref)->toBe('models3d/x-1-part1.stl');
+});
+
+it('refuses to set a part with no stored file as primary', function (): void {
+    $part = makePart($this->product); // row exists, file never written
+    Sanctum::actingAs($this->staff);
+    $this->post("/api/admin/products/{$this->product->id}/parts/{$part->id}/primary")->assertStatus(422);
+});
+
+it('pulls the latest model from its source', function (): void {
+    config()->set('services.thingiverse.token', 'test-token');
+    $model = Model3D::create([
+        'source' => 'THINGIVERSE', 'source_id' => '999', 'license' => 'CC0', 'publish_state' => 'READY_TO_APPROVE',
+    ]);
+    $product = Product::factory()->create(['class' => 'MODEL_3D', 'model3d_id' => $model->id, 'name' => 'Old name']);
+
+    app(StubModel3dApiClient::class)->with(new Model3dData(
+        source: Model3dSource::Thingiverse,
+        sourceId: '999',
+        name: 'Refreshed name',
+        license: 'CC0',
+        creatorCredit: null,
+        fileRef: 'models3d/refreshed.stl', // local ref → passthrough, no HTTP
+        filamentMaterial: 'PLA',
+        filamentColor: 'Black',
+        estGrams: 20.0,
+    ));
+
+    Sanctum::actingAs($this->staff);
+    $this->post("/api/admin/products/{$product->id}/pull-source")->assertOk();
+
+    expect($product->fresh()->name)->toBe('Refreshed name');
+});
+
+it('refuses to pull a product that has no upstream source', function (): void {
+    $product = Product::factory()->create(['class' => 'MODEL_3D']); // no model3d link
+    Sanctum::actingAs($this->staff);
+    $this->post("/api/admin/products/{$product->id}/pull-source")->assertStatus(422);
 });
 
 it('clears the multi-part decomposition when the primary mesh is replaced', function (): void {

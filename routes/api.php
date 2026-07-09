@@ -121,7 +121,10 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Multi-part 3D models: stream, attach and remove individual parts (staff).
     Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel']);
     Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart']);
+    Route::post('/admin/products/{product}/parts/{part}/primary', [AdminCatalogueController::class, 'setPrimaryPart']);
     Route::delete('/admin/products/{product}/parts/{part}', [AdminCatalogueController::class, 'deleteModelPart']);
+    // Re-pull the latest geometry/parts/dimensions from the model's source (staff).
+    Route::post('/admin/products/{product}/pull-source', [AdminCatalogueController::class, 'pullFromSource']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 
     // CORE product/variant management (staff; audit E4) - ops add a blank or

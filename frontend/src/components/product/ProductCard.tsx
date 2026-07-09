@@ -6,6 +6,7 @@ import { categoryLabel } from '../../lib/categories';
 import { AVAILABILITY } from '../../lib/availability';
 import { Badge, Skeleton } from '../../ui';
 import { Motion, staggerItem } from '../../motion';
+import ImageLightbox from '../ImageLightbox';
 import type { Product } from '../../types';
 
 /**
@@ -61,48 +62,58 @@ export interface ProductCardProps {
 }
 
 export function ProductCard({ product, to, showMeta = false }: ProductCardProps) {
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const imageHref = safeHref(product.image_url);
+
   return (
     <Motion variants={staggerItem} className="h-full">
-      {/* Quick-action link is a SIBLING of the card link (never nested <a>). */}
-      <div className="group relative h-full">
+      {/* Image, text link, and personalize CTA are SIBLINGS (never nested <a>). */}
+      <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md">
+        {/* The image opens a zoom lightbox - it does NOT go to the detail page. */}
+        <button
+          type="button"
+          onClick={() => imageHref && setZoomOpen(true)}
+          aria-label={imageHref ? `Zoom image of ${product.name}` : product.name}
+          className="relative aspect-square w-full cursor-zoom-in overflow-hidden bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        >
+          <CardImage product={product} />
+          {showMeta && product.category && (
+            <div className="absolute left-2 top-2">
+              <Badge tone="brand" size="sm">
+                {categoryLabel(product.category)}
+              </Badge>
+            </div>
+          )}
+          {/* Availability corner - only when it's not plain in-stock, so the
+              grid stays quiet but made-to-order / unavailable items are honest. */}
+          {product.availability !== 'in_stock' && (
+            <div className="absolute right-2 top-2">
+              <Badge tone={AVAILABILITY[product.availability].tone} size="sm">
+                {AVAILABILITY[product.availability].label}
+              </Badge>
+            </div>
+          )}
+        </button>
+
+        {/* The text area links to the product detail page. */}
         <Link
           to={to}
-          className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          className="flex flex-1 flex-col gap-0.5 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
-          <div className="relative aspect-square w-full overflow-hidden bg-surface-2">
-            <CardImage product={product} />
-            {showMeta && product.category && (
-              <div className="absolute left-2 top-2">
-                <Badge tone="brand" size="sm">
-                  {categoryLabel(product.category)}
-                </Badge>
-              </div>
-            )}
-            {/* Availability corner - only when it's not plain in-stock, so the
-                grid stays quiet but made-to-order / unavailable items are honest. */}
-            {product.availability !== 'in_stock' && (
-              <div className="absolute right-2 top-2">
-                <Badge tone={AVAILABILITY[product.availability].tone} size="sm">
-                  {AVAILABILITY[product.availability].label}
-                </Badge>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-1 flex-col gap-0.5 p-3">
-            <h3 className="line-clamp-2 text-sm font-medium leading-snug text-fg transition-colors duration-fast group-hover:text-primary">
-              {product.name}
-            </h3>
-            {showMeta && product.creator_credit && (
-              <p className="text-xs text-fg-subtle">by {product.creator_credit}</p>
-            )}
-            <p className="mt-auto pt-1.5 text-sm">
-              <span className="text-2xs uppercase tracking-wide text-fg-subtle">from </span>
-              <span className="font-semibold text-fg">
-                {product.currency} {product.from_price.toFixed(2)}
-              </span>
-            </p>
-          </div>
+          <h3 className="line-clamp-2 text-sm font-medium leading-snug text-fg transition-colors duration-fast group-hover:text-primary">
+            {product.name}
+          </h3>
+          {showMeta && product.creator_credit && (
+            <p className="text-xs text-fg-subtle">by {product.creator_credit}</p>
+          )}
+          <p className="mt-auto pt-1.5 text-sm">
+            <span className="text-2xs uppercase tracking-wide text-fg-subtle">from </span>
+            <span className="font-semibold text-fg">
+              {product.currency} {product.from_price.toFixed(2)}
+            </span>
+          </p>
         </Link>
+
         {/* Pointer/keyboard enhancement only: inert while invisible so it never
             swallows taps over the price row; touch users personalize via the
             product page's studio CTA instead. Confined to a square overlay that
@@ -118,6 +129,8 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
           </Link>
         </div>
       </div>
+
+      <ImageLightbox src={imageHref ?? null} alt={product.name} open={zoomOpen} onClose={() => setZoomOpen(false)} />
     </Motion>
   );
 }

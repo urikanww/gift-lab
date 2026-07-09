@@ -87,32 +87,64 @@ export default function StlModelViewer({ src, className }: Props) {
     Promise.allSettled(srcs.map((s) => api.get(s, { responseType: 'arraybuffer' })))
       .then((results) => {
         if (disposed) return;
-        const box = new THREE.Box3();
-        let added = 0;
+
+        // Parse every part that loaded (skip non-STL/corrupt), keeping its index
+        // for a stable colour.
+        const geos: { geometry: THREE.BufferGeometry; i: number }[] = [];
         results.forEach((r, i) => {
           if (r.status !== 'fulfilled') return;
-          let geometry: THREE.BufferGeometry;
           try {
-            geometry = new STLLoader().parse(r.value.data as ArrayBuffer);
+            const geometry = new STLLoader().parse(r.value.data as ArrayBuffer);
+            geometry.computeVertexNormals();
+            geometry.computeBoundingBox();
+            geos.push({ geometry, i });
           } catch {
-            return; // non-STL (3mf/obj) or corrupt - skip this part.
+            // non-STL (3mf/obj) or corrupt - skip this part.
           }
-          geometry.computeVertexNormals();
+        });
+
+        if (geos.length === 0) {
+          setState('error');
+          return;
+        }
+
+        // Multi-part parts are often each exported centred on the origin, so a
+        // naive overlay stacks them. Lay them out in a grid (spaced by the
+        // largest part) so every piece is visible without overlap. A single
+        // mesh is shown in place.
+        const multi = geos.length > 1;
+        const cols = Math.ceil(Math.sqrt(geos.length));
+        const rows = Math.ceil(geos.length / cols);
+        let cell = 0;
+        if (multi) {
+          for (const { geometry } of geos) {
+            const s = new THREE.Vector3();
+            geometry.boundingBox!.getSize(s);
+            cell = Math.max(cell, s.x, s.y, s.z);
+          }
+          cell *= 1.3; // gap between parts
+        }
+
+        const box = new THREE.Box3();
+        geos.forEach(({ geometry, i }, k) => {
+          if (multi) {
+            // Centre each part, then move it to its grid cell.
+            const c = new THREE.Vector3();
+            geometry.boundingBox!.getCenter(c);
+            geometry.translate(-c.x, -c.y, -c.z);
+            const col = k % cols;
+            const row = Math.floor(k / cols);
+            geometry.translate((col - (cols - 1) / 2) * cell, 0, (row - (rows - 1) / 2) * cell);
+            geometry.computeBoundingBox();
+          }
           const material = new THREE.MeshStandardMaterial({
             color: colorFor(i, srcs.length),
             roughness: 0.55,
             metalness: 0.1,
           });
           scene.add(new THREE.Mesh(geometry, material));
-          geometry.computeBoundingBox();
           if (geometry.boundingBox) box.union(geometry.boundingBox);
-          added++;
         });
-
-        if (added === 0) {
-          setState('error');
-          return;
-        }
 
         const center = box.getCenter(new THREE.Vector3());
         const radius = box.getSize(new THREE.Vector3()).length() / 2 || 50;
