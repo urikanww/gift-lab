@@ -6,6 +6,7 @@ import { safeHref } from '../lib/safeHref';
 import { Badge, Button, Card, EmptyState, Input, Select, Skeleton, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import ProductQuickView from '../components/ProductQuickView';
+import ImageLightbox from '../components/ImageLightbox';
 import { EyeIcon } from '../components/icons';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import type { AdminCatalogueItem, ProductClass, PublishState } from '../types';
@@ -70,6 +71,7 @@ function hasInlineTools(item: AdminCatalogueItem): boolean {
 
 function ItemThumb({ item }: { item: AdminCatalogueItem }) {
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
   const href = safeHref(item.image_url);
   if (!href || failed) {
     return (
@@ -78,15 +80,26 @@ function ItemThumb({ item }: { item: AdminCatalogueItem }) {
       </div>
     );
   }
+  // Click to inspect the product photo up close (zoom/pan) without leaving the gate.
   return (
-    <img
-      src={href}
-      alt=""
-      className="h-11 w-11 shrink-0 rounded-md object-cover"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-    />
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`Zoom image of ${item.name}`}
+        className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <img
+          src={href}
+          alt=""
+          className="h-11 w-11 shrink-0 cursor-zoom-in rounded-md object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      </button>
+      <ImageLightbox src={href} alt={item.name} open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 

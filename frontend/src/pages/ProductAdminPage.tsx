@@ -363,12 +363,16 @@ export default function ProductAdminPage() {
             <ul className="flex min-w-[40rem] flex-col divide-y divide-border">
               {products.map((p) => (
                 <li key={p.id} className="flex items-center">
+                  {/* Thumb is a SIBLING of the navigate button (never nested):
+                      clicking it zooms the photo in place, not opens the row. */}
+                  <div className="shrink-0 pl-4">
+                    <ItemThumb name={p.name} imageUrl={p.image_url} zoomable />
+                  </div>
                   <button
                     type="button"
                     onClick={() => navigate(`/product-admin/${p.id}`)}
                     className="flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                   >
-                    <ItemThumb name={p.name} imageUrl={p.image_url} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-fg">{p.name}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
