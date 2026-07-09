@@ -998,7 +998,7 @@ function ModelPartsSection({
       {studioParts.length > 0 && (
         <div className="flex flex-col gap-2">
           <Button variant="outline" size="sm" className="self-start" onClick={() => setStudioOpen(true)}>
-            🖨 Open print studio{parts.length > 1 ? ` (${parts.length} plates)` : ''}
+            🖨 Open print studio
           </Button>
           <p className="text-2xs text-fg-subtle">
             Lays every plate flat on a virtual build bed (like a slicer) with per-plate colours and
