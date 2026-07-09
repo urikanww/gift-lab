@@ -14,14 +14,27 @@ import { Spinner, cn } from '../ui';
  * Model3dDecalPreview for the customer designer's decorated preview.
  */
 interface Props {
-  /** API path (relative to the axios baseURL) that streams the STL bytes. */
-  src: string;
+  /**
+   * API path(s) (relative to the axios baseURL) that stream STL bytes. Pass an
+   * array to assemble several parts into one scene - each part gets a distinct
+   * hue and the camera fits the combined bounds. Non-STL parts (3mf/obj) that
+   * fail to parse are skipped, not fatal.
+   */
+  src: string | string[];
   className?: string;
+}
+
+/** Distinct hue per part in an assembly; neutral grey for a lone mesh. */
+function colorFor(i: number, n: number): number {
+  if (n <= 1) return 0x8a8a8a;
+  return new THREE.Color().setHSL((i / n) * 0.85, 0.55, 0.55).getHex();
 }
 
 export default function StlModelViewer({ src, className }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  // Stable dep: an inline array prop would re-run the effect every render.
+  const srcKey = Array.isArray(src) ? src.join('|') : src;
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -68,22 +81,41 @@ export default function StlModelViewer({ src, className }: Props) {
     };
     window.addEventListener('resize', onResize);
 
-    // Fetch bytes through axios (carries the Sanctum cookie), then .parse().
-    api
-      .get(src, { responseType: 'arraybuffer' })
-      .then((res) => {
+    // Fetch each part through axios (carries the Sanctum cookie), then .parse().
+    // allSettled + per-part try/catch so one bad/non-STL part never kills the view.
+    const srcs = Array.isArray(src) ? src : [src];
+    Promise.allSettled(srcs.map((s) => api.get(s, { responseType: 'arraybuffer' })))
+      .then((results) => {
         if (disposed) return;
-        const geometry = new STLLoader().parse(res.data as ArrayBuffer);
-        geometry.computeVertexNormals();
+        const box = new THREE.Box3();
+        let added = 0;
+        results.forEach((r, i) => {
+          if (r.status !== 'fulfilled') return;
+          let geometry: THREE.BufferGeometry;
+          try {
+            geometry = new STLLoader().parse(r.value.data as ArrayBuffer);
+          } catch {
+            return; // non-STL (3mf/obj) or corrupt - skip this part.
+          }
+          geometry.computeVertexNormals();
+          const material = new THREE.MeshStandardMaterial({
+            color: colorFor(i, srcs.length),
+            roughness: 0.55,
+            metalness: 0.1,
+          });
+          scene.add(new THREE.Mesh(geometry, material));
+          geometry.computeBoundingBox();
+          if (geometry.boundingBox) box.union(geometry.boundingBox);
+          added++;
+        });
 
-        const material = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.55, metalness: 0.1 });
-        const mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
+        if (added === 0) {
+          setState('error');
+          return;
+        }
 
-        geometry.computeBoundingSphere();
-        const sphere = geometry.boundingSphere;
-        const center = sphere?.center ?? new THREE.Vector3();
-        const radius = sphere?.radius ?? 50;
+        const center = box.getCenter(new THREE.Vector3());
+        const radius = box.getSize(new THREE.Vector3()).length() / 2 || 50;
         camera.position.set(center.x + radius * 1.8, center.y + radius * 1.4, center.z + radius * 1.8);
         camera.lookAt(center);
         controls.target.copy(center);
@@ -109,7 +141,8 @@ export default function StlModelViewer({ src, className }: Props) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [src]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [srcKey]);
 
   return (
     <div className={cn('relative overflow-hidden rounded-lg bg-surface-2', className)}>

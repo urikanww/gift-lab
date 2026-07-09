@@ -897,6 +897,7 @@ function ModelPartsSection({
   const [busy, setBusy] = useState(false);
   const [label, setLabel] = useState('');
   const [viewing, setViewing] = useState<number | null>(null);
+  const [assembling, setAssembling] = useState(false);
 
   const upload = async (file: File) => {
     setBusy(true);
@@ -942,6 +943,26 @@ function ModelPartsSection({
         auto-populate on re-sync; attach any missing piece below. The primary mesh mirrors the main
         model file.
       </p>
+
+      {parts.length > 1 && (
+        <div className="flex flex-col gap-2">
+          <Button variant="outline" size="sm" className="self-start" onClick={() => setAssembling((v) => !v)}>
+            {assembling ? 'Hide assembled view' : `Assemble all ${parts.length} parts`}
+          </Button>
+          {assembling && (
+            <>
+              <StlModelViewer
+                src={parts.map((p) => `/admin/products/${product.id}/parts/${p.id}/model`)}
+                className="h-72 w-full"
+              />
+              <p className="text-2xs text-fg-subtle">
+                Parts shown in their source coordinates, each a different colour. If the model was
+                exported with parts centred (rather than in-place), they may overlap here.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {parts.length === 0 ? (
         <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-fg-subtle">
