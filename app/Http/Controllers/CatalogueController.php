@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\ProductClass;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Services\Catalogue\CategoryClassifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -73,6 +74,64 @@ class CatalogueController extends Controller
         }
 
         return new ProductResource($product->load('variants'));
+    }
+
+    /**
+     * Relevance-ranked "You might also like" for the PDP:
+     *   1. Same category      - true "similar" (a mug → more mugs)
+     *   2. Complementary cats  - curated pairs (the coaster/keychain that pairs)
+     *   3. Newest fill         - keeps the rail full when the above are thin
+     * Server-side so complements are found across the whole catalogue, not just
+     * the client's loaded page. Best-effort: unknown/unpublished key → empty rail.
+     */
+    public function related(string $key): AnonymousResourceCollection
+    {
+        $product = Product::query()->where('slug', $key)->first()
+            ?? (ctype_digit($key) ? Product::find((int) $key) : null);
+
+        if ($product === null || ! $product->publish_state->isPublic()) {
+            return ProductResource::collection(collect());
+        }
+
+        $limit = 10;
+        $category = (string) ($product->category ?? '');
+        $complements = CategoryClassifier::COMPLEMENTS[$category] ?? [];
+
+        $base = fn () => Product::query()
+            ->published()
+            ->whereKeyNot($product->id)
+            ->with('variants');
+
+        // Tier 1: same category.
+        $similar = $category !== ''
+            ? $base()->where('category', $category)->orderBy('name')->limit($limit)->get()
+            : collect();
+
+        // Tier 2: complementary categories, ordered by pairing strength (map order).
+        $complement = collect();
+        if ($complements !== [] && $similar->count() < $limit) {
+            $complement = $base()
+                ->whereIn('category', $complements)
+                ->whereNotIn('id', $similar->pluck('id'))
+                ->orderBy('name')
+                ->limit($limit)
+                ->get()
+                ->sortBy(fn (Product $p) => array_search($p->category, $complements, true))
+                ->values();
+        }
+
+        // Tier 3: newest fill to keep the rail full.
+        $picked = $similar->concat($complement);
+        if ($picked->count() < $limit) {
+            $fill = $base()
+                ->whereNotIn('id', $picked->pluck('id'))
+                ->orderByDesc('created_at')
+                ->limit($limit - $picked->count())
+                ->get();
+            $picked = $picked->concat($fill);
+        }
+
+        return ProductResource::collection($picked->take($limit)->values());
     }
 
     /**

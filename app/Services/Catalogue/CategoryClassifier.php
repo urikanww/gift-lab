@@ -19,6 +19,22 @@ class CategoryClassifier
         'drinkware', 'bags', 'stationery', 'apparel', 'tech', 'home', 'accessories', 'toys',
     ];
 
+    /**
+     * Curated cross-category gifting pairs: what naturally goes with what. Powers
+     * the PDP "You might also like" rail so a mug surfaces coasters/keychains, not
+     * random stock. Listed in pairing strength (earlier = stronger).
+     */
+    public const COMPLEMENTS = [
+        'drinkware' => ['home', 'accessories'],
+        'bags' => ['apparel', 'accessories'],
+        'stationery' => ['tech', 'accessories'],
+        'apparel' => ['bags', 'accessories'],
+        'tech' => ['stationery', 'accessories'],
+        'home' => ['drinkware', 'accessories'],
+        'accessories' => ['bags', 'drinkware'],
+        'toys' => ['accessories', 'home'],
+    ];
+
     private const KEYWORDS = [
         'drinkware' => ['mug', 'tumbler', 'bottle', 'cup', 'flask', 'thermos', 'stein', 'glass'],
         'bags' => ['tote', 'bag', 'pouch', 'backpack', 'sling', 'drawstring'],

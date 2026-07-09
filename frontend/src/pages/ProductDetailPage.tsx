@@ -21,8 +21,8 @@ const ModelViewer = lazy(() => import('../components/ModelViewer'));
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import {
   designPath,
-  fetchCatalogue,
   fetchProduct,
+  fetchRelated,
   fetchTierPrices,
   productPath,
   type TierPrice,
@@ -125,14 +125,13 @@ export default function ProductDetailPage() {
     };
   }, [id, reloadKey]);
 
-  // ── Related products (best-effort; failure is non-fatal). ─────────────────
+  // ── Related products: category-aware + complementary (best-effort). ───────
   useEffect(() => {
     if (!product) return;
     let active = true;
-    fetchCatalogue({})
-      .then((res) => {
-        if (!active) return;
-        setRelated(res.data.filter((p) => p.id !== product.id).slice(0, 3));
+    fetchRelated(product)
+      .then((list) => {
+        if (active) setRelated(list);
       })
       .catch(() => {
         if (active) setRelated([]);
@@ -140,6 +139,7 @@ export default function ProductDetailPage() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id]);
 
   // ── Tier pricing - re-fetch when product or selected variant changes. ─────
@@ -546,7 +546,7 @@ export default function ProductDetailPage() {
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+            className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
           >
             {related.map((p) => (
               <ProductCard key={p.id} product={p} to={productPath(p)} showMeta />

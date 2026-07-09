@@ -22,6 +22,18 @@ export function fetchCatalogue(query: CatalogueQuery = {}): Promise<Paginated<Pr
   return api.get<Paginated<Product>>('/catalogue', { params }).then((r) => r.data);
 }
 
+/**
+ * Related products for the PDP ("You might also like"), relevance-ranked
+ * server-side: same category first, then curated complementary categories, then
+ * newest fill. Best-effort - a failure yields an empty rail (non-fatal).
+ */
+export function fetchRelated(product: Pick<Product, 'id' | 'slug'>): Promise<Product[]> {
+  return api
+    .get<{ data: Product[] }>(`/catalogue/${productKey(product)}/related`)
+    .then((r) => r.data.data)
+    .catch(() => []);
+}
+
 export function fetchProduct(id: number | string): Promise<Product> {
   // The show endpoint wraps the product in a Laravel resource envelope
   // ({ data: {...} }), unlike the paginated index. Unwrap to the Product.
