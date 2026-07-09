@@ -7,6 +7,7 @@ import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
 import Model3dZoneEditor from '../components/Model3dZoneEditor';
 import StlModelViewer from '../components/StlModelViewer';
+import StlStudioViewer, { type StudioPart } from '../components/StlStudioViewer';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
 import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
@@ -921,7 +922,14 @@ function ModelPartsSection({
   const [busy, setBusy] = useState(false);
   const [label, setLabel] = useState('');
   const [viewing, setViewing] = useState<number | null>(null);
-  const [assembling, setAssembling] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
+
+  const studioParts: StudioPart[] = parts.map((p) => ({
+    id: p.id,
+    label: p.label ?? `Part ${p.sort + 1}`,
+    src: `/admin/products/${product.id}/parts/${p.id}/model`,
+    isPrimary: p.is_primary,
+  }));
 
   const upload = async (file: File) => {
     setBusy(true);
@@ -981,21 +989,19 @@ function ModelPartsSection({
 
       {parts.length > 1 && (
         <div className="flex flex-col gap-2">
-          <Button variant="outline" size="sm" className="self-start" onClick={() => setAssembling((v) => !v)}>
-            {assembling ? 'Hide all-parts view' : `View all ${parts.length} parts together`}
+          <Button variant="outline" size="sm" className="self-start" onClick={() => setStudioOpen(true)}>
+            🖨 Open print studio ({parts.length} plates)
           </Button>
-          {assembling && (
-            <>
-              <StlModelViewer
-                src={parts.map((p) => `/admin/products/${product.id}/parts/${p.id}/model`)}
-                className="h-72 w-full"
-              />
-              <p className="text-2xs text-fg-subtle">
-                Parts are laid out in a grid (each a different colour) so nothing overlaps - source
-                files rarely carry the positions needed to assemble the whole figure.
-              </p>
-            </>
-          )}
+          <p className="text-2xs text-fg-subtle">
+            Lays every plate flat on a virtual build bed (like a slicer) with per-plate colours and
+            view presets. Visualisation only - nothing is saved.
+          </p>
+          <StlStudioViewer
+            parts={studioParts}
+            open={studioOpen}
+            onClose={() => setStudioOpen(false)}
+            title={product.name}
+          />
         </div>
       )}
 
