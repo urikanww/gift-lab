@@ -121,7 +121,7 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
       <Card padding="lg">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <ItemThumb name={product.name} imageUrl={product.image_url} />
+            <ItemThumb name={product.name} imageUrl={product.image_url} zoomable />
             <div className="min-w-0">
               <EditableTitle product={product} onChanged={onChanged} editable={!archived} />
               <p className="mt-1 text-sm text-fg">
@@ -564,7 +564,7 @@ function ImageSection({ product, onChanged }: { product: AdminProduct; onChanged
     <Card padding="lg">
       <h2 className="mb-4 font-display text-xl text-fg">Image</h2>
       <div className="flex flex-wrap items-center gap-4">
-        <ItemThumb name={product.name} imageUrl={product.image_url} />
+        <ItemThumb name={product.name} imageUrl={product.image_url} zoomable />
         <input
           ref={fileInput}
           type="file"

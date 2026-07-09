@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Badge } from '../ui';
+import { Badge, cn } from '../ui';
 import { safeHref } from '../lib/safeHref';
+import ImageLightbox from '../components/ImageLightbox';
 import type { LicenseTier, ProductClass } from '../types';
 
 /** Shared labels/badges for the admin product list + detail pages. */
@@ -57,9 +58,22 @@ export function LicenseTierBadge({ tier }: { tier: LicenseTier }) {
   );
 }
 
-/** Thumbnail with a letter fallback, mirroring CatalogueAdminPage's ItemThumb. */
-export function ItemThumb({ name, imageUrl }: { name: string; imageUrl: string | null }) {
+/**
+ * Thumbnail with a letter fallback, mirroring CatalogueAdminPage's ItemThumb.
+ * Pass `zoomable` to make it open a full-screen zoom/pan viewer on click - staff
+ * inspect the product photo up close without leaving the page.
+ */
+export function ItemThumb({
+  name,
+  imageUrl,
+  zoomable = false,
+}: {
+  name: string;
+  imageUrl: string | null;
+  zoomable?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState(false);
   const href = safeHref(imageUrl);
   if (!href || failed) {
     return (
@@ -68,14 +82,28 @@ export function ItemThumb({ name, imageUrl }: { name: string; imageUrl: string |
       </div>
     );
   }
-  return (
+  const img = (
     <img
       src={href}
       alt=""
-      className="h-11 w-11 shrink-0 rounded-md object-cover"
+      className={cn('h-11 w-11 shrink-0 rounded-md object-cover', zoomable && 'cursor-zoom-in')}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
+  );
+  if (!zoomable) return img;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`View ${name} image`}
+        className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {img}
+      </button>
+      <ImageLightbox src={href} alt={name} open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
