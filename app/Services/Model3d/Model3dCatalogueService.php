@@ -68,6 +68,7 @@ final class Model3dCatalogueService
                 $data->creatorCredit,
                 $productionFile !== null,
                 (bool) $product->estimates_verified,
+                $this->hasMultiplePrintableFiles($data),
             );
 
             $model->publish_state = $publishState;
@@ -190,6 +191,7 @@ final class Model3dCatalogueService
             $product->creator_credit,
             $this->existingLocalFile($product) !== null,
             (bool) $product->estimates_verified,
+            $this->wasMultiFileFlagged($product),
         );
 
         $product->publish_state = $state;
@@ -211,6 +213,7 @@ final class Model3dCatalogueService
             $product->creator_credit,
             $this->existingLocalFile($product) !== null,
             (bool) $product->estimates_verified,
+            $this->wasMultiFileFlagged($product),
         );
 
         // Never jump straight to Published from a re-gate; publication is an
@@ -251,6 +254,7 @@ final class Model3dCatalogueService
             $product->creator_credit,
             $this->existingLocalFile($product) !== null,
             true,
+            $this->wasMultiFileFlagged($product),
         );
 
         $product->publish_state = $state;
@@ -263,12 +267,17 @@ final class Model3dCatalogueService
 
     /**
      * Publish gate. Reason tags: license_blocked, missing_credit,
-     * missing_model_file, estimates_unverified.
+     * missing_model_file, multi_file_review, estimates_unverified.
      *
      * @return array{0: PublishState, 1: array<int, string>|null}
      */
-    private function gate(License $license, ?string $creatorCredit, bool $hasFile, bool $estimatesVerified): array
-    {
+    private function gate(
+        License $license,
+        ?string $creatorCredit,
+        bool $hasFile,
+        bool $estimatesVerified,
+        bool $multiFile = false,
+    ): array {
         if (! $license->isCommercialOk()) {
             return [PublishState::CannotPublish, ['license_blocked']];
         }
@@ -285,14 +294,62 @@ final class Model3dCatalogueService
         }
 
         $autoPublish = (bool) PricingConfig::value('catalogue', 'auto_publish', false);
+        $reasons = [];
+
+        // Several printable files could be parts, variants, or alternate print
+        // layouts of one model; we store the richest single file, but a human
+        // confirms it is the right geometry (or attaches assembled parts) before
+        // it can auto-publish.
+        if ($multiFile) {
+            $reasons[] = 'multi_file_review';
+        }
 
         // Placeholder estimates must pass through a human (or slicer) before
         // the item can skip the approval queue.
         if ($autoPublish && ! $estimatesVerified) {
-            return [PublishState::ReadyToApprove, ['estimates_unverified']];
+            $reasons[] = 'estimates_unverified';
         }
 
-        return [$autoPublish ? PublishState::Published : PublishState::ReadyToApprove, null];
+        $canAutoPublish = $autoPublish && $estimatesVerified && ! $multiFile;
+        $state = $canAutoPublish ? PublishState::Published : PublishState::ReadyToApprove;
+
+        return [$state, $reasons === [] ? null : $reasons];
+    }
+
+    /**
+     * More than one printable file (or a zip bundle) means the source ships
+     * parts/variants/alternate layouts - staff should confirm the stored file.
+     */
+    private function hasMultiplePrintableFiles(Model3dData $data): bool
+    {
+        $printable = array_filter(
+            $data->downloadFiles,
+            static fn (array $f): bool => preg_match('/\.(stl|3mf|obj|zip)$/i', (string) ($f['name'] ?? '')) === 1,
+        );
+
+        if (count($printable) > 1) {
+            return true;
+        }
+
+        // A single zip may itself bundle several parts.
+        foreach ($printable as $f) {
+            if (str_ends_with(strtolower((string) ($f['name'] ?? '')), '.zip')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The multi-file review flag is set at ingest from the source file list, but
+     * the source data isn't available on later re-gates (autoPublishIfCleared,
+     * regate, verifyEstimates), so it persists via the existing reason until a
+     * staff action clears it.
+     */
+    private function wasMultiFileFlagged(Product $product): bool
+    {
+        return in_array('multi_file_review', (array) ($product->cannot_publish_reasons ?? []), true);
     }
 
     /**

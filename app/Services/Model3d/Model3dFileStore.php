@@ -80,15 +80,14 @@ final class Model3dFileStore
             }
         }
 
-        // Prefer STL: a single part is stored as-is, multiple parts are merged.
-        if (count($stls) === 1) {
-            return $this->store($data, 'stl', $stls[0]);
-        }
-        if (count($stls) > 1) {
-            $merged = $this->merger->mergeToBinary($stls);
-            if ($merged !== null) {
-                return $this->store($data, 'stl', $merged);
-            }
+        // Prefer STL. When a model ships several printable files they are a mix
+        // of the complete model, individual parts, and alternate print layouts,
+        // with no reliable way to tell them apart automatically - so we store the
+        // richest single file (most triangles) rather than merge (merging stacks
+        // overlapping duplicates). The catalogue service flags multi-file models
+        // for staff review. A staff-triggered merge can use StlMerger later.
+        if ($stls !== []) {
+            return $this->store($data, 'stl', $this->largest($stls));
         }
 
         // No STL geometry: fall back to a single 3MF/OBJ (unmergeable formats).
@@ -156,6 +155,27 @@ final class Model3dFileStore
 
             return null;
         }
+    }
+
+    /**
+     * The richest STL (most triangles) - the best-effort "most complete" file
+     * when a model ships several.
+     *
+     * @param  list<string>  $stls
+     */
+    private function largest(array $stls): string
+    {
+        $best = $stls[0];
+        $bestCount = $this->merger->triangleCount($best);
+        foreach (array_slice($stls, 1) as $stl) {
+            $count = $this->merger->triangleCount($stl);
+            if ($count > $bestCount) {
+                $best = $stl;
+                $bestCount = $count;
+            }
+        }
+
+        return $best;
     }
 
     private function store(Model3dData $data, string $ext, string $content): string

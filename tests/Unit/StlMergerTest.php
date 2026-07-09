@@ -92,4 +92,20 @@ class StlMergerTest extends TestCase
         $this->assertNull((new StlMerger)->mergeToBinary(['not an stl at all']));
         $this->assertNull((new StlMerger)->mergeToBinary([]));
     }
+
+    public function test_counts_triangles_of_binary_and_ascii(): void
+    {
+        $binary = $this->binaryStl([
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+            [[0, 0, 0], [0, 0, 1], [1, 0, 0]],
+        ]);
+        $ascii = "solid p\nfacet normal 0 0 0\nouter loop\n"
+            ."vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n"
+            ."endloop\nendfacet\nendsolid p\n";
+
+        $merger = new StlMerger;
+        $this->assertSame(2, $merger->triangleCount($binary));
+        $this->assertSame(1, $merger->triangleCount($ascii));
+        $this->assertSame(0, $merger->triangleCount('garbage'));
+    }
 }

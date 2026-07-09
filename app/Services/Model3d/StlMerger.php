@@ -20,6 +20,15 @@ namespace App\Services\Model3d;
 final class StlMerger
 {
     /**
+     * Triangle count of one STL (binary or ASCII) - used to pick the richest
+     * (largest) file when a model ships several printable files.
+     */
+    public function triangleCount(string $content): int
+    {
+        return $this->triangleRecords($content)[1];
+    }
+
+    /**
      * @param  list<string>  $contents  raw STL file contents (binary or ASCII)
      * @return string|null  binary STL bytes, or null when no triangles were read
      */

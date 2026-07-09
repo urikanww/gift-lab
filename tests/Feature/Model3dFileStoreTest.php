@@ -29,6 +29,22 @@ function triangleCountOf(string $stl): int
     return (int) unpack('V', substr($stl, 80, 4))[1];
 }
 
+// A lone small part (1 triangle) - the "head only" artifact.
+function smallPart(): string
+{
+    return binaryStlWith([[[0, 0, 0], [1, 0, 0], [0, 1, 1]]]);
+}
+
+// The richest / most-complete file (3 triangles, larger footprint).
+function bigPart(): string
+{
+    return binaryStlWith([
+        [[0, 0, 0], [8, 0, 0], [0, 3, 0]],
+        [[0, 0, 0], [0, 3, 3], [8, 0, 0]],
+        [[8, 0, 0], [8, 3, 3], [0, 3, 3]],
+    ]);
+}
+
 function makeData(array $downloadFiles): Model3dData
 {
     return new Model3dData(
@@ -50,27 +66,26 @@ beforeEach(function (): void {
     config()->set('services.thingiverse.token', 'test-token');
 });
 
-it('merges multi-part STL downloads into one stored file', function (): void {
-    $head = binaryStlWith([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
-    $body = binaryStlWith([[[0, 0, 0], [0, 0, 5], [5, 0, 0]]]);
+it('stores the richest STL when a model ships several files (never merges)', function (): void {
+    // Small + big must NOT be stacked - the store keeps the richest single file.
     Http::fake([
-        'https://dl/head' => Http::response($head, 200),
-        'https://dl/body' => Http::response($body, 200),
+        'https://dl/small' => Http::response(smallPart(), 200),
+        'https://dl/big' => Http::response(bigPart(), 200),
     ]);
 
     $path = (new Model3dFileStore)->ensure(makeData([
-        ['url' => 'https://dl/head', 'name' => 'groot_head.stl'],
-        ['url' => 'https://dl/body', 'name' => 'groot_body.stl'],
+        ['url' => 'https://dl/small', 'name' => 'part_small.stl'],
+        ['url' => 'https://dl/big', 'name' => 'part_big.stl'],
     ]));
 
     expect($path)->not->toBeNull();
     Storage::disk('local')->assertExists($path);
     expect(str_ends_with($path, '.stl'))->toBeTrue();
-    expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(2);
+    expect(Storage::disk('local')->get($path))->toBe(bigPart());
 });
 
-it('stores a single STL file unchanged (byte-identical, no merge)', function (): void {
-    $one = binaryStlWith([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
+it('stores a single STL file unchanged (byte-identical)', function (): void {
+    $one = smallPart();
     Http::fake(['https://dl/one' => Http::response($one, 200)]);
 
     $path = (new Model3dFileStore)->ensure(makeData([
@@ -81,14 +96,12 @@ it('stores a single STL file unchanged (byte-identical, no merge)', function ():
     expect(Storage::disk('local')->get($path))->toBe($one);
 });
 
-it('extracts STL members from a downloaded zip and merges them', function (): void {
-    $a = binaryStlWith([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
-    $b = binaryStlWith([[[0, 0, 0], [0, 0, 2], [2, 0, 0]]]);
+it('stores the richest STL member from a downloaded zip', function (): void {
     $zipPath = tempnam(sys_get_temp_dir(), 'z').'.zip';
     $zip = new ZipArchive;
     $zip->open($zipPath, ZipArchive::CREATE);
-    $zip->addFromString('parts/a.stl', $a);
-    $zip->addFromString('parts/b.stl', $b);
+    $zip->addFromString('parts/small.stl', smallPart());
+    $zip->addFromString('parts/big.stl', bigPart());
     $zip->addFromString('readme.txt', 'ignore me');
     $zip->close();
     $zipBytes = file_get_contents($zipPath);
@@ -102,48 +115,44 @@ it('extracts STL members from a downloaded zip and merges them', function (): vo
 
     expect($path)->not->toBeNull();
     expect(str_ends_with($path, '.stl'))->toBeTrue();
-    expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(2);
+    expect(Storage::disk('local')->get($path))->toBe(bigPart());
 });
 
 it('returns null when no printable file is available', function (): void {
     expect((new Model3dFileStore)->ensure(makeData([])))->toBeNull();
 });
 
-it('re-downloads and re-merges an already-stored file only when forced', function (): void {
-    // Pre-seed a stale single-part file - the artifact of the head-only bug.
-    $head = binaryStlWith([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
-    Storage::disk('local')->put('models3d/thingiverse-999.stl', $head);
+it('re-downloads and re-stores an already-stored file only when forced', function (): void {
+    // Pre-seed a stale lone-part file - the artifact of the head-only bug.
+    Storage::disk('local')->put('models3d/thingiverse-999.stl', smallPart());
 
-    $body = binaryStlWith([[[0, 0, 0], [0, 0, 5], [5, 0, 0]]]);
     Http::fake([
-        'https://dl/head' => Http::response($head, 200),
-        'https://dl/body' => Http::response($body, 200),
+        'https://dl/small' => Http::response(smallPart(), 200),
+        'https://dl/big' => Http::response(bigPart(), 200),
     ]);
     $data = makeData([
-        ['url' => 'https://dl/head', 'name' => 'groot_head.stl'],
-        ['url' => 'https://dl/body', 'name' => 'groot_body.stl'],
+        ['url' => 'https://dl/small', 'name' => 'part_small.stl'],
+        ['url' => 'https://dl/big', 'name' => 'part_big.stl'],
     ]);
     $store = new Model3dFileStore;
 
-    // Default: cache hit, the stale single-part file is left untouched.
+    // Default: cache hit, the stale lone-part file is left untouched.
     $path = $store->ensure($data);
     expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(1);
 
-    // Forced: re-fetch every part and re-merge over the stale file.
+    // Forced: re-fetch and re-store the richest file over the stale one.
     $path = $store->ensure($data, force: true);
-    expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(2);
+    expect(Storage::disk('local')->get($path))->toBe(bigPart());
 });
 
-it('heals a stale single-part model file end-to-end via resync --force', function (): void {
+it('heals a stale lone-part model file end-to-end via resync --force', function (): void {
     seedPricing();
     config()->set('services.thingiverse.base_url', 'https://api.thingiverse.com');
 
-    $head = binaryStlWith([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
-    $body = binaryStlWith([[[0, 0, 0], [0, 0, 5], [5, 0, 0]]]);
     Http::fake([
         'api.thingiverse.com/search/*' => Http::response(['hits' => [['id' => 999]]], 200),
-        'https://dl/head' => Http::response($head, 200),
-        'https://dl/body' => Http::response($body, 200),
+        'https://dl/small' => Http::response(smallPart(), 200),
+        'https://dl/big' => Http::response(bigPart(), 200),
     ]);
 
     app(StubModel3dApiClient::class)->with(new Model3dData(
@@ -157,18 +166,20 @@ it('heals a stale single-part model file end-to-end via resync --force', functio
         filamentColor: 'Black',
         estGrams: 30.0,
         downloadFiles: [
-            ['url' => 'https://dl/head', 'name' => 'bot_head.stl'],
-            ['url' => 'https://dl/body', 'name' => 'bot_body.stl'],
+            ['url' => 'https://dl/small', 'name' => 'bot_small.stl'],
+            ['url' => 'https://dl/big', 'name' => 'bot_big.stl'],
         ],
     ));
 
-    // Initial ingest creates the product with the correctly merged file.
+    // Initial ingest creates the product, storing the richest file and flagging
+    // it for staff review (several printable files present).
     $this->artisan('catalogue:pull-3d', ['query' => 'bot', '--source' => 'thingiverse'])->assertSuccessful();
     $product = Product::query()->where('name', 'Multi Part Bot')->firstOrFail();
+    expect($product->cannot_publish_reasons)->toContain('multi_file_review');
 
-    // Simulate a product ingested BEFORE the fix: only the head was stored, and
-    // its (too-small) dimensions were derived from that lone part.
-    Storage::disk('local')->put($product->model_file_ref, $head);
+    // Simulate a product ingested BEFORE the fix: only the small part was stored,
+    // and its (too-small) dimensions were derived from it.
+    Storage::disk('local')->put($product->model_file_ref, smallPart());
     $product->update(['dimensions' => ['l' => 1.0, 'w' => 1.0, 'h' => 1.0, 'unit' => 'mm']]);
 
     // Plain resync leaves the stale file and dimensions (cache hit).
@@ -177,9 +188,9 @@ it('heals a stale single-part model file end-to-end via resync --force', functio
     expect(triangleCountOf(Storage::disk('local')->get($product->model_file_ref)))->toBe(1)
         ->and((float) $product->dimensions['l'])->toBe(1.0);
 
-    // Forced resync re-downloads, re-merges AND recomputes the footprint.
+    // Forced resync re-downloads, stores the richest file AND recomputes the footprint.
     $this->artisan('catalogue:resync-3d', ['--force' => true])->assertSuccessful();
     $product->refresh();
-    expect(triangleCountOf(Storage::disk('local')->get($product->model_file_ref)))->toBe(2)
-        ->and((float) $product->dimensions['l'])->toBe(5.0); // combined bounding box
+    expect(Storage::disk('local')->get($product->model_file_ref))->toBe(bigPart())
+        ->and((float) $product->dimensions['l'])->toBe(8.0); // bigPart spans x 0..8
 });
