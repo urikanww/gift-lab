@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   LinkButton,
+  Select,
   Skeleton,
   Spinner,
   cn,
@@ -32,6 +33,11 @@ import { useCartStore } from '../stores/cartStore';
 import type { PrintMethod, Product, Variant } from '../types';
 
 const TIER_QUANTITIES = [25, 100, 250, 500];
+
+// Keep aligned with the studio's Model3dPersonalizer / spool inventory. White
+// default: light colours give the best UV-print contrast.
+const FILAMENT_COLORS = ['Black', 'White', 'Grey'];
+const DEFAULT_FILAMENT_COLOR = 'White';
 
 const PRINT_METHOD_LABELS: Record<PrintMethod, string> = {
   UV: 'UV print',
@@ -79,8 +85,12 @@ export default function ProductDetailPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [selectedTierQty, setSelectedTierQty] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
+  const [filamentColor, setFilamentColor] = useState(DEFAULT_FILAMENT_COLOR);
+  // Live unit/total price for the CURRENTLY chosen quantity (reflects the volume
+  // discount) - the quantity is the single source of truth; the tier tiles are
+  // quick presets + reference.
+  const [livePrice, setLivePrice] = useState<{ unit: number; currency: string } | null>(null);
 
   const [related, setRelated] = useState<Product[]>([]);
 
@@ -95,7 +105,7 @@ export default function ProductDetailPage() {
     setProduct(null);
     // Per-product UI state must not leak across same-route navigation
     // (related-product clicks reuse this component instance).
-    setSelectedTierQty(null);
+    setFilamentColor(DEFAULT_FILAMENT_COLOR);
     fetchProduct(id ?? '')
       .then((p) => {
         if (!active) return;
@@ -153,6 +163,23 @@ export default function ProductDetailPage() {
     };
   }, [product?.id, selectedVariantId]);
 
+  // ── Live price for the chosen quantity (reuses the tier-price endpoint). ──
+  useEffect(() => {
+    if (!product) return;
+    let active = true;
+    fetchTierPrices(product.id, selectedVariantId, [qty])
+      .then((res) => {
+        if (!active) return;
+        setLivePrice(res[0] ? { unit: res[0].unitPrice, currency: res[0].currency } : null);
+      })
+      .catch(() => {
+        if (active) setLivePrice(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [product?.id, selectedVariantId, qty]);
+
   const selectedVariant: Variant | null = useMemo(
     () => product?.variants?.find((v) => v.id === selectedVariantId) ?? null,
     [product, selectedVariantId],
@@ -208,11 +235,13 @@ export default function ProductDetailPage() {
   const currency = product.currency;
 
   const minQty = Math.max(1, product.min_order_qty ?? 1);
+  const is3d = product.class === 'MODEL_3D';
 
   // Customization is optional, so buyers can order the product plain straight
-  // from the PDP with a chosen quantity - no detour through the studio.
+  // from the PDP with a chosen quantity - no detour through the studio. 3D items
+  // still carry the chosen filament colour (otherwise it silently defaults).
   const handleAddToCart = () => {
-    addLine(product, selectedVariant, {}, qty);
+    addLine(product, selectedVariant, is3d ? { filament_color: filamentColor } : {}, qty);
     toast({
       title: 'Added to cart',
       description: `${qty} × ${product.name}`,
@@ -344,7 +373,8 @@ export default function ProductDetailPage() {
             </Motion>
           )}
 
-          {/* Quantity tier pricing */}
+          {/* Volume pricing - price breaks that also set the quantity when tapped.
+              The quantity control below is the single source of truth. */}
           <Motion variants={staggerItem} className="flex flex-col gap-2">
             <span className="text-sm font-medium text-fg">Volume pricing</span>
             {tiersLoading ? (
@@ -357,13 +387,14 @@ export default function ProductDetailPage() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {tiers.map((t) => {
-                  const active = selectedTierQty === t.qty;
+                  const active = qty === t.qty;
                   return (
                     <button
                       key={t.qty}
                       type="button"
-                      onClick={() => setSelectedTierQty(t.qty)}
+                      onClick={() => setQty(Math.max(minQty, t.qty))}
                       aria-pressed={active}
+                      title={`Set quantity to ${t.qty}`}
                       className={cn(
                         'flex min-w-[6rem] flex-1 flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
                         active
@@ -382,14 +413,42 @@ export default function ProductDetailPage() {
             )}
           </Motion>
 
-          {/* Quantity + CTAs. Customization is optional, so "Add to cart" is the
-              primary action and the studio is a secondary opt-in. */}
+          {/* Filament colour (3D) + Quantity + CTAs. Customization is optional, so
+              "Add to cart" is primary and the studio is a secondary opt-in. */}
           <Motion variants={staggerItem} className="flex flex-col gap-4">
+            {is3d && (
+              <div className="sm:max-w-xs">
+                <Select
+                  label="Filament colour"
+                  value={filamentColor}
+                  onChange={(e) => setFilamentColor(e.target.value)}
+                  hint="3D-printed in this colour. Light colours give the best contrast for UV-printed logos."
+                >
+                  {FILAMENT_COLORS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-sm font-medium text-fg">Quantity</span>
               <QuantityStepper value={qty} min={minQty} onChange={setQty} />
               {minQty > 1 && <span className="text-xs text-fg-subtle">Min order {minQty}</span>}
             </div>
+            {livePrice && (
+              <p className="text-sm text-fg-muted" role="status" aria-live="polite">
+                <span className="font-semibold text-fg">
+                  {livePrice.currency} {livePrice.unit.toFixed(2)}
+                </span>{' '}
+                / unit ·{' '}
+                <span className="font-semibold text-fg">
+                  {livePrice.currency} {(livePrice.unit * qty).toFixed(2)}
+                </span>{' '}
+                for {qty}
+              </p>
+            )}
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button
                 variant="primary"
