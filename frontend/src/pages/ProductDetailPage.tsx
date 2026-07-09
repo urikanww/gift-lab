@@ -14,7 +14,9 @@ import {
 } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { CardImage, ProductCard } from '../components/product/ProductCard';
+import ImageLightbox from '../components/ImageLightbox';
 import QuantityStepper from '../components/QuantityStepper';
+import { safeHref } from '../lib/safeHref';
 
 // three.js is heavy - load the viewer only on MODEL_3D pages that have a file.
 const ModelViewer = lazy(() => import('../components/ModelViewer'));
@@ -93,6 +95,7 @@ export default function ProductDetailPage() {
   const [livePrice, setLivePrice] = useState<{ unit: number; currency: string } | null>(null);
 
   const [related, setRelated] = useState<Product[]>([]);
+  const [zoomOpen, setZoomOpen] = useState(false);
 
   const [tiers, setTiers] = useState<TierPrice[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
@@ -233,6 +236,7 @@ export default function ProductDetailPage() {
   }
 
   const currency = product.currency;
+  const previewHref = safeHref(product.image_url);
 
   const minQty = Math.max(1, product.min_order_qty ?? 1);
   const is3d = product.class === 'MODEL_3D';
@@ -264,7 +268,14 @@ export default function ProductDetailPage() {
                 <ModelViewer productKey={product.slug ?? String(product.id)} />
               </Suspense>
             )}
-            <div className="group relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-surface-2">
+            {/* The still image is a zoomable preview - click to open the
+                pan/zoom viewer. (The 3D viewer above handles model rotation.) */}
+            <button
+              type="button"
+              onClick={() => previewHref && setZoomOpen(true)}
+              aria-label={previewHref ? `Zoom image of ${product.name}` : product.name}
+              className="group relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
               <CardImage product={product} />
               {product.class === 'MODEL_3D' && !product.has_model && (
                 <div className="absolute left-3 top-3">
@@ -273,7 +284,15 @@ export default function ProductDetailPage() {
                   </Badge>
                 </div>
               )}
-            </div>
+              {previewHref && (
+                <span
+                  aria-hidden="true"
+                  className="absolute bottom-3 right-3 rounded-full bg-ink-900/60 px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-opacity duration-base group-hover:opacity-100"
+                >
+                  🔍 Zoom
+                </span>
+              )}
+            </button>
           </Motion>
         </div>
 
@@ -571,6 +590,13 @@ export default function ProductDetailPage() {
           </LinkButton>
         </div>
       </div>
+
+      <ImageLightbox
+        src={previewHref ?? null}
+        alt={product.name}
+        open={zoomOpen}
+        onClose={() => setZoomOpen(false)}
+      />
     </div>
   );
 }

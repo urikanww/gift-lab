@@ -71,3 +71,28 @@ it('marks a dead source CANNOT_PUBLISH', function (): void {
 
     expect($product->fresh()->cannot_publish_reasons)->toContain('source_dead');
 });
+
+it('never pulls an already-published item on price drift', function (): void {
+    // Owner decision: a resync must not unpublish a live listing. A drifted
+    // price is reflected, but the item stays PUBLISHED (staff pull manually).
+    $product = $this->service->ingest(listing(['price' => 4.00]));
+    $product->update(['publish_state' => 'PUBLISHED', 'cannot_publish_reasons' => null]);
+    $this->client->with(listing(['price' => 6.00])); // +50%, past the 10% threshold
+
+    $this->service->resync($product->fresh());
+
+    expect($product->fresh()->publish_state->value)->toBe('PUBLISHED')
+        ->and($product->fresh()->cannot_publish_reasons)->toBeNull()
+        ->and((float) $product->fresh()->base_cost)->toBe(6.00); // price still refreshed
+});
+
+it('never pulls an already-published item when the source blips dead', function (): void {
+    $product = $this->service->ingest(listing());
+    $product->update(['publish_state' => 'PUBLISHED', 'cannot_publish_reasons' => null]);
+    $this->client->with(listing(['dead' => true]));
+
+    $this->service->resync($product->fresh());
+
+    expect($product->fresh()->publish_state->value)->toBe('PUBLISHED')
+        ->and($product->fresh()->cannot_publish_reasons)->toBeNull();
+});

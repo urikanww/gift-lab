@@ -41,7 +41,9 @@ it('ingests an IP-flagged model but holds it in the gate instead of skipping', f
         ->and($product->cannot_publish_reasons)->toContain('ip_flag:blocklist:pikachu');
 });
 
-it('still hard-deletes licence-blocked models', function (): void {
+it('brings a licence-blocked model in for review instead of deleting it', function (): void {
+    // Owner decision: any licence with a valid model is brought IN and held for
+    // a staff licence decision (no longer hard-deleted). It never auto-publishes.
     Http::fake([
         'api.thingiverse.com/search/*' => Http::response(['hits' => [['id' => 988]]], 200),
     ]);
@@ -61,5 +63,8 @@ it('still hard-deletes licence-blocked models', function (): void {
     $this->artisan('catalogue:pull-3d', ['query' => 'vase', '--source' => 'thingiverse'])
         ->assertSuccessful();
 
-    expect(Product::query()->where('name', 'NC licensed vase')->exists())->toBeFalse();
+    $product = Product::query()->where('name', 'NC licensed vase')->first();
+    expect($product)->not->toBeNull()
+        ->and($product->publish_state->value)->toBe('READY_TO_APPROVE')
+        ->and($product->cannot_publish_reasons)->toContain('license_review');
 });

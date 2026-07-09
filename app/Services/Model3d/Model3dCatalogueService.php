@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Model3d;
 
 use App\Enums\License;
+use App\Enums\Model3dSource;
 use App\Enums\PrintMethod;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
@@ -58,12 +59,22 @@ final class Model3dCatalogueService
             && $storedVersion !== $data->sourceVersion;
         $force = $forceFileRefresh || $versionChanged;
 
-        $stored = $license->isCommercialOk()
-            ? $this->files->ensureAll($data, $force)
-            : ['primary' => null, 'parts' => []];
+        // Owner decision: any licence with a valid model is brought in for staff
+        // review, so we attempt the download regardless of licence (a blocked
+        // licence no longer short-circuits intake). The gate still refuses to
+        // AUTO-publish a non-commercial/uncredited licence - staff approve those.
+        $stored = $this->files->ensureAll($data, $force);
         $localFile = $stored['primary'];
 
-        return DB::transaction(function () use ($data, $license, $localFile, $stored, $force): array {
+        // Thingiverse HAS a download API: if a listing exposes no printable file
+        // it genuinely ships no 3D model (images/renders only) → skip it until a
+        // model can be pulled. Cults3D has no download API, so a missing file
+        // there means "staff attach manually", not "no model exists".
+        $skipUntilModel = $data->source === Model3dSource::Thingiverse
+            && $data->downloadUrl === null
+            && $data->downloadFiles === [];
+
+        return DB::transaction(function () use ($data, $license, $localFile, $stored, $force, $skipUntilModel): array {
             $model = Model3D::where('source', $data->source->value)
                 ->where('source_id', $data->sourceId)
                 ->first()
@@ -94,6 +105,7 @@ final class Model3dCatalogueService
                 // Parts we're about to persist, or ones already recorded from a
                 // prior ingest (a cache-hit resync returns no fresh parts).
                 $stored['parts'] !== [] || $this->productHasParts($product),
+                $skipUntilModel,
             );
 
             $model->publish_state = $publishState;
@@ -316,8 +328,14 @@ final class Model3dCatalogueService
     }
 
     /**
-     * Publish gate. Reason tags: license_blocked, missing_credit,
-     * missing_model_file, multi_file_review, estimates_unverified.
+     * Publish gate. Reason tags: awaiting_model_file, missing_model_file,
+     * license_review, multi_file_review, estimates_unverified.
+     *
+     * Licence no longer HARD-blocks intake (owner decision: any licence with a
+     * valid model is brought in for staff review). The only hard block left is
+     * the absence of a locally producible file. A non-commercial / uncredited
+     * licence is surfaced as `license_review` and held out of AUTO-publish -
+     * staff must approve it consciously.
      *
      * @return array{0: PublishState, 1: array<int, string>|null}
      */
@@ -328,24 +346,31 @@ final class Model3dCatalogueService
         bool $estimatesVerified,
         bool $multiFile = false,
         bool $partsRecorded = false,
+        bool $skipUntilModel = false,
     ): array {
-        if (! $license->isCommercialOk()) {
-            return [PublishState::CannotPublish, ['license_blocked']];
-        }
-
-        if ($license->requiresCreatorCredit() && ($creatorCredit === null || $creatorCredit === '')) {
-            return [PublishState::CannotPublish, ['missing_credit']];
-        }
-
         if (! $hasFile) {
             // No locally stored printable file - we cannot produce this item.
-            // Kept in the admin gate (not deleted) so staff can attach the
-            // file manually for sources without a download API.
-            return [PublishState::CannotPublish, ['missing_model_file']];
+            // Kept in the admin gate (not deleted), two shades:
+            //  - the source (Thingiverse) shipped no printable model at all →
+            //    skip until one can be pulled (a listing that is images/renders only);
+            //  - the source lists files we couldn't store locally (e.g. Cults3D
+            //    has no download API) → staff attach the file manually.
+            $reason = $skipUntilModel ? 'awaiting_model_file' : 'missing_model_file';
+
+            return [PublishState::CannotPublish, [$reason]];
         }
 
         $autoPublish = (bool) PricingConfig::value('catalogue', 'auto_publish', false);
         $reasons = [];
+
+        // A licence that isn't cleanly commercial-OK - blocked/unknown, or an
+        // attribution licence with no creator credit - is brought IN but flagged
+        // for a staff decision and never allowed to auto-publish.
+        $licenceNeedsReview = ! $license->isCommercialOk()
+            || ($license->requiresCreatorCredit() && ($creatorCredit === null || $creatorCredit === ''));
+        if ($licenceNeedsReview) {
+            $reasons[] = 'license_review';
+        }
 
         // A source that ships several printable files needed a human to confirm
         // the stored geometry back when ingest kept only the largest file and
@@ -364,7 +389,7 @@ final class Model3dCatalogueService
             $reasons[] = 'estimates_unverified';
         }
 
-        $canAutoPublish = $autoPublish && $estimatesVerified && ! $needsReview;
+        $canAutoPublish = $autoPublish && $estimatesVerified && ! $needsReview && ! $licenceNeedsReview;
         $state = $canAutoPublish ? PublishState::Published : PublishState::ReadyToApprove;
 
         return [$state, $reasons === [] ? null : $reasons];

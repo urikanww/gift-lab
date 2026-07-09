@@ -63,28 +63,42 @@ final class ScrapedCatalogueService
      */
     public function resync(Product $product): Product
     {
+        // Owner decision: a re-sync never PULLS an already-public listing. A
+        // transient scrape failure, a dead-source blip, or a price wobble must
+        // not silently unpublish a live product - staff unpublish manually if a
+        // change warrants it. We still refresh its indicative fields.
+        $keepPublic = $product->publish_state === PublishState::Published;
+
         $data = $product->source_product_id !== null
             ? $this->scraper->fetch($product->source_product_id)
             : null;
 
         if ($data === null || $data->sourceDead) {
-            return $this->markCannotPublish($product, ['source_dead']);
+            return $keepPublic ? $product : $this->markCannotPublish($product, ['source_dead']);
         }
 
         $oldPrice = (float) $product->base_cost;
         $threshold = (float) PricingConfig::value('catalogue', 'drift_pct', 10);
 
+        $this->applyData($product, $data);
+
+        if ($keepPublic) {
+            $product->publish_state = PublishState::Published;
+            $product->cannot_publish_reasons = null;
+            $product->save();
+
+            return $product;
+        }
+
         if ($oldPrice > 0 && $data->price !== null) {
             $driftPct = abs($data->price - $oldPrice) / $oldPrice * 100;
             if ($driftPct > $threshold) {
-                // Reflect the drifted price, then pull from public for re-review.
-                $this->applyData($product, $data);
-
+                // Price drifted past the threshold on a not-yet-public item -
+                // hold it for re-review rather than auto-publishing stale data.
                 return $this->markCannotPublish($product, ['needs_re-review']);
             }
         }
 
-        $this->applyData($product, $data);
         $this->evaluateAndSetState($product);
 
         return $product;
