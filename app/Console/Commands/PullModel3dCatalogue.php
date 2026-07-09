@@ -6,7 +6,6 @@ namespace App\Console\Commands;
 
 use App\Enums\Model3dSource;
 use App\Enums\PublishState;
-use App\Models\LineItem;
 use App\Models\Product;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\IpScreenService;
@@ -227,31 +226,15 @@ class PullModel3dCatalogue extends Command
                 $this->line("  hold  [{$source->value}] {$id} {$data->name} [IP: {$verdict['reason']}] → gate");
             }
 
-            $reasons = (array) ($product->cannot_publish_reasons ?? []);
-            $licenceBlocked = array_intersect($reasons, ['license_blocked', 'missing_credit']) !== [];
-
-            if ($product->publish_state === PublishState::CannotPublish && $licenceBlocked) {
-                // Licence not commercial-OK - remove the blocked rows again so a
-                // discovery sweep doesn't fill the gate with unusable items.
-                // Hard delete: model3ds has a unique(source, source_id) index and
-                // ingest() ignores trashed rows, so a soft-deleted leftover would
-                // blow up the next sweep that meets the same source id.
-                // Items blocked only on missing_model_file are KEPT - staff can
-                // attach the file manually (e.g. Cults3D has no download API).
-                // A product referenced by order lines can't be hard-deleted (FK)
-                // - that history must survive, so it stays as a CANNOT_PUBLISH
-                // row in the gate instead.
-                if (LineItem::query()->where('product_id', $product->id)->exists()) {
-                    $skipped++;
-                    $this->line("  hold  [{$source->value}] {$id} {$data->name} [{$data->license}] → gate (has order history)");
-
-                    continue;
-                }
-
-                $product->forceDelete();
-                $product->model3d?->forceDelete();
+            // Anything the gate holds (no producible file yet, IP flag, licence
+            // review) stays in the admin gate for staff to resolve - nothing is
+            // deleted (owner decision: any licence with a valid model is brought
+            // in; a no-file item is skipped until its model can be pulled). Held
+            // items don't count as ingested, so an uncapped sweep keeps paging.
+            if ($product->publish_state === PublishState::CannotPublish) {
                 $skipped++;
-                $this->line("  skip  [{$source->value}] {$id} {$data->name} [{$data->license}]");
+                $held = implode(',', (array) ($product->cannot_publish_reasons ?? []));
+                $this->line("  hold  [{$source->value}] {$id} {$data->name} [{$data->license}] → gate ({$held})");
 
                 continue;
             }

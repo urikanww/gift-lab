@@ -48,38 +48,69 @@ it('publishes CC0 to READY_TO_APPROVE and creates a MODEL_3D product', function 
         ->and((float) $product->est_grams)->toBe(40.0);
 });
 
-it('publishes CC_BY only with creator credit', function (): void {
+it('brings a CC_BY item in without credit but holds it for licence review', function (): void {
+    // Owner decision: any licence with a valid model is brought IN for staff
+    // review. A CC_BY item missing its attribution is no longer hard-blocked -
+    // it reaches READY_TO_APPROVE flagged license_review, and staff add credit
+    // (or consciously publish).
     ['model' => $withCredit] = $this->service->ingest(modelData('CC_BY', 'Jane Maker'));
     ['model' => $noCredit] = $this->service->ingest(modelData('CC_BY', null));
 
     expect($withCredit->publish_state->value)->toBe('READY_TO_APPROVE')
-        ->and($noCredit->publish_state->value)->toBe('CANNOT_PUBLISH')
-        ->and($noCredit->cannot_publish_reasons)->toContain('missing_credit');
+        ->and($withCredit->cannot_publish_reasons)->toBeNull()
+        ->and($noCredit->publish_state->value)->toBe('READY_TO_APPROVE')
+        ->and($noCredit->cannot_publish_reasons)->toContain('license_review');
 });
 
-it('blocks a non-commercial licence', function (): void {
+it('brings a blocked-licence item in for review instead of deleting it', function (): void {
+    // A blocked/unknown licence with a valid model is now brought in for staff
+    // review rather than blocked outright (owner decision) - but flagged
+    // license_review so it never auto-publishes.
     ['model' => $model, 'product' => $product] = $this->service->ingest(modelData('BLOCKED', null));
 
-    expect($model->publish_state->value)->toBe('CANNOT_PUBLISH')
-        ->and($model->cannot_publish_reasons)->toContain('license_blocked')
-        ->and($product->publish_state->value)->toBe('CANNOT_PUBLISH');
+    expect($model->publish_state->value)->toBe('READY_TO_APPROVE')
+        ->and($model->cannot_publish_reasons)->toContain('license_review')
+        ->and($product->publish_state->value)->toBe('READY_TO_APPROVE');
 });
 
-it('clears a Share-Alike item through the gate when it carries creator credit', function (): void {
+it('holds a Share-Alike item for licence review when it carries no credit', function (): void {
     ['model' => $withCredit] = $this->service->ingest(modelData('CC_BY_SA', 'Jane Maker'));
     ['model' => $noCredit] = $this->service->ingest(modelData('CC_BY_SA', null));
 
-    // SA is now commercial-OK; still attribution-bound like CC-BY.
+    // SA is attribution-bound like CC-BY; missing credit → licence review, not a block.
     expect($withCredit->publish_state->value)->toBe('READY_TO_APPROVE')
-        ->and($noCredit->publish_state->value)->toBe('CANNOT_PUBLISH')
-        ->and($noCredit->cannot_publish_reasons)->toContain('missing_credit');
+        ->and($withCredit->cannot_publish_reasons)->toBeNull()
+        ->and($noCredit->publish_state->value)->toBe('READY_TO_APPROVE')
+        ->and($noCredit->cannot_publish_reasons)->toContain('license_review');
 });
 
-it('blocks an item with no locally producible model file', function (): void {
-    // Live-source shape: fileRef is the source page URL, no download API.
+it('skips a Thingiverse listing that ships no 3D model until one can be pulled', function (): void {
+    // Thingiverse has a download API: a listing that exposes no printable file
+    // genuinely has no model → held as awaiting_model_file (skip), retried on
+    // the next resync when a model may appear.
     ['product' => $product] = $this->service->ingest(
-        modelData('CC0', null, fileRef: 'https://cults3d.com/thing/widget'),
+        modelData('CC0', null, fileRef: 'https://www.thingiverse.com/thing:5'),
     );
+
+    expect($product->publish_state->value)->toBe('CANNOT_PUBLISH')
+        ->and($product->cannot_publish_reasons)->toContain('awaiting_model_file')
+        ->and((bool) $product->is_printable)->toBeFalse();
+});
+
+it('holds a Cults3D item with no download API for manual file attach', function (): void {
+    // Cults3D has no download API: a missing file means "staff attach manually",
+    // not "no model exists" - so it holds on missing_model_file, not skip.
+    ['product' => $product] = $this->service->ingest(new Model3dData(
+        source: Model3dSource::Cults3d,
+        sourceId: 'CULTS-'.uniqid(),
+        name: 'Cults Widget',
+        license: 'CC0',
+        creatorCredit: null,
+        fileRef: 'https://cults3d.com/thing/widget',
+        filamentMaterial: 'PLA',
+        filamentColor: 'Black',
+        estGrams: 40.0,
+    ));
 
     expect($product->publish_state->value)->toBe('CANNOT_PUBLISH')
         ->and($product->cannot_publish_reasons)->toContain('missing_model_file')

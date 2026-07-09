@@ -91,7 +91,9 @@ it('paginates the popular feed until --count commercial-OK items are ingested', 
     expect($page3Requests)->toBeEmpty();
 });
 
-it('still applies the licence gate in browse mode', function (): void {
+it('brings a blocked-licence browse hit in for review instead of deleting it', function (): void {
+    // Owner decision: any licence with a valid model is brought IN for staff
+    // review (no longer deleted). It's held out of publication with license_review.
     Http::fake([
         'api.thingiverse.com/popular*' => Http::response([['id' => 701]], 200),
     ]);
@@ -111,7 +113,10 @@ it('still applies the licence gate in browse mode', function (): void {
     $this->artisan('catalogue:pull-3d', ['--browse' => 'popular', '--source' => 'thingiverse'])
         ->assertSuccessful();
 
-    expect(Product::query()->where('name', 'NC licensed gadget')->exists())->toBeFalse();
+    $product = Product::query()->where('name', 'NC licensed gadget')->first();
+    expect($product)->not->toBeNull()
+        ->and($product->publish_state->value)->toBe('READY_TO_APPROVE')
+        ->and($product->cannot_publish_reasons)->toContain('license_review');
 });
 
 it('ingests from the Cults3D browse feed with no search query', function (): void {
@@ -259,9 +264,15 @@ it('errors on an unsupported --browse value', function (): void {
         ->assertFailed();
 });
 
-it('discover-3d default sweep uses browse mode and respects the configured cap', function (): void {
+it('discover-3d sweeps Thingiverse only (Cults3D disabled) via browse mode', function (): void {
     Http::fake([
-        'api.thingiverse.com/popular*' => Http::response([['id' => 801]], 200),
+        'api.thingiverse.com/popular*' => function ($request) {
+            // One hit on page 1, then an empty feed so the uncapped sweep stops.
+            $page = (int) ($request->data()['page'] ?? 1);
+
+            return Http::response($page === 1 ? [['id' => 801]] : [], 200);
+        },
+        // Present but must never be hit - Cults3D pulling is disabled.
         'cults3d.com/graphql' => Http::response([
             'data' => ['creationsBatch' => ['results' => [['slug' => 'browsed-item']]]],
         ], 200),
@@ -294,7 +305,11 @@ it('discover-3d default sweep uses browse mode and respects the configured cap',
     $this->artisan('catalogue:discover-3d')->assertSuccessful();
 
     expect(Product::query()->where('name', 'Browsed phone stand')->exists())->toBeTrue()
-        ->and(Product::query()->where('name', 'Browsed vase')->exists())->toBeTrue();
+        // Cults3D is disabled - its hit must not be ingested and its GraphQL
+        // endpoint must never be called.
+        ->and(Product::query()->where('name', 'Browsed vase')->exists())->toBeFalse();
+
+    expect(Http::recorded(fn ($request) => str_contains($request->url(), 'cults3d.com')))->toBeEmpty();
 
     // Browse mode never runs a per-keyword search.
     $searchRequests = Http::recorded(fn ($request) => str_contains($request->url(), '/search/'));

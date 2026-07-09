@@ -37,6 +37,9 @@ const STATE_LABELS: Record<PublishState, string> = {
  */
 const BLOCKER_LABELS: Record<string, string> = {
   missing_model_file: 'No printable model file',
+  awaiting_model_file: 'Awaiting 3D model (skipped until pulled)',
+  license_review: 'Licence needs review',
+  multi_file_review: 'Multi-file set needs review',
   estimates_unverified: 'Filament estimates unverified',
   missing_price: 'No price from source',
   missing_dimensions: 'Missing dimensions or weight',

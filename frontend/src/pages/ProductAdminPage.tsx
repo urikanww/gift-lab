@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
@@ -38,6 +38,19 @@ const PER_PAGE_OPTIONS = [15, 30, 50, 100] as const;
 type SortKey = 'newest' | 'most_sold' | 'name' | 'base_cost' | 'stock';
 
 const SORT_KEYS = new Set<SortKey>(['newest', 'most_sold', 'name', 'base_cost', 'stock']);
+
+/**
+ * Inline count pill that reads as PART of its parent button (the "new chat
+ * badge" look) rather than a separate floating Badge: a compact filled circle
+ * hugging the label, using the button's own primary tint.
+ */
+function CountPill({ children }: { children: ReactNode }) {
+  return (
+    <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-2xs font-semibold leading-none text-primary-fg">
+      {children}
+    </span>
+  );
+}
 
 /**
  * Server-driven product browser (route /product-admin). All filtering, sorting
@@ -199,11 +212,7 @@ export default function ProductAdminPage() {
           <LinkButton to="/product-admin/new">New product</LinkButton>
           <LinkButton to="/catalogue-admin" variant="outline">
             Catalogue gate
-            {!!gateCount && (
-              <Badge tone="brand" size="sm" className="ml-2">
-                {gateCount}
-              </Badge>
-            )}
+            {!!gateCount && <CountPill>{gateCount}</CountPill>}
           </LinkButton>
         </div>
       </header>
@@ -222,11 +231,7 @@ export default function ProductAdminPage() {
           <Button variant="outline" onClick={() => setFiltersOpen(true)} className="sm:mb-0.5">
             <FilterIcon />
             Filters
-            {filterChips.length > 0 && (
-              <Badge tone="brand" size="sm" className="ml-2">
-                {filterChips.length}
-              </Badge>
-            )}
+            {filterChips.length > 0 && <CountPill>{filterChips.length}</CountPill>}
           </Button>
         </div>
 
