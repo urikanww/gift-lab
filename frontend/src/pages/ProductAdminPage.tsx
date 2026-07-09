@@ -197,16 +197,14 @@ export default function ProductAdminPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LinkButton to="/product-admin/new">New product</LinkButton>
-          <div className="relative inline-flex">
-            <LinkButton to="/catalogue-admin" variant="outline">
-              Catalogue gate
-            </LinkButton>
+          <LinkButton to="/catalogue-admin" variant="outline">
+            Catalogue gate
             {!!gateCount && (
-              <Badge tone="brand" size="sm" className="ml-2 self-center">
+              <Badge tone="brand" size="sm" className="ml-2">
                 {gateCount}
               </Badge>
             )}
-          </div>
+          </LinkButton>
         </div>
       </header>
 
