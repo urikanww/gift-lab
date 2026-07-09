@@ -75,7 +75,10 @@ class AppServiceProvider extends ServiceProvider
                 $clients[] = $app->make(HttpThingiverseClient::class);
             }
 
-            if (config('services.cults3d.username') && config('services.cults3d.token')) {
+            if (config('services.cults3d.enabled')
+                && config('services.cults3d.username')
+                && config('services.cults3d.token')
+            ) {
                 $clients[] = $app->make(HttpCults3dClient::class);
             }
 

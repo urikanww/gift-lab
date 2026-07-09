@@ -42,6 +42,10 @@ return [
         'base_url' => env('THINGIVERSE_BASE_URL', 'https://api.thingiverse.com'),
     ],
     'cults3d' => [
+        // Disabled for now: Cults3D has no public file-download API, so every
+        // item lands as missing_model_file. Set CULTS3D_ENABLED=true (with
+        // credentials) to re-enable the live client.
+        'enabled' => env('CULTS3D_ENABLED', false),
         'username' => env('CULTS3D_USERNAME'),
         'token' => env('CULTS3D_TOKEN'),
         'base_url' => env('CULTS3D_BASE_URL', 'https://cults3d.com/graphql'),
