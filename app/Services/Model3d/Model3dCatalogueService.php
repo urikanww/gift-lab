@@ -33,17 +33,20 @@ final class Model3dCatalogueService
     }
 
     /**
+     * @param  bool  $forceFileRefresh  bypass the stored-file cache and
+     *                                   re-download/re-merge (heals pre-multi-part
+     *                                   models whose stored file is a lone part).
      * @return array{model: Model3D, product: Product}
      */
-    public function ingest(Model3dData $data): array
+    public function ingest(Model3dData $data, bool $forceFileRefresh = false): array
     {
         // Download outside the DB transaction - an HTTP fetch must never hold
         // a write transaction open. Only worth attempting for commercial-OK
         // licences; blocked items are never produced.
         $license = License::tryFrom($data->license) ?? License::Blocked;
-        $localFile = $license->isCommercialOk() ? $this->files->ensure($data) : null;
+        $localFile = $license->isCommercialOk() ? $this->files->ensure($data, $forceFileRefresh) : null;
 
-        return DB::transaction(function () use ($data, $license, $localFile): array {
+        return DB::transaction(function () use ($data, $license, $localFile, $forceFileRefresh): array {
             $model = Model3D::where('source', $data->source->value)
                 ->where('source_id', $data->sourceId)
                 ->first()
@@ -93,6 +96,13 @@ final class Model3dCatalogueService
 
             $product->publish_state = $publishState;
             $product->cannot_publish_reasons = $reasons;
+
+            // A forced heal replaces the geometry (a lone part → the full merged
+            // mesh), so stale auto-derived dimensions must be recomputed too -
+            // unless staff have verified this product's estimates.
+            if ($forceFileRefresh && ! $product->estimates_verified) {
+                $product->dimensions = null;
+            }
 
             // Physical footprint from the stored geometry (audit B10): source
             // APIs don't supply dimensions, but the STL we print from does.

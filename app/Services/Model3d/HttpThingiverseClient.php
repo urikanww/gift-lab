@@ -64,7 +64,8 @@ final class HttpThingiverseClient implements Model3dApiClient
         }
 
         $data = $response->json();
-        $file = $this->printableFile($base, $token, $sourceId);
+        $files = $this->printableFiles($base, $token, $sourceId);
+        $first = $files[0] ?? null;
 
         return new Model3dData(
             source: Model3dSource::Thingiverse,
@@ -80,20 +81,22 @@ final class HttpThingiverseClient implements Model3dApiClient
             description: isset($data['description'])
                 ? Str::limit(trim(strip_tags((string) $data['description'])), 500)
                 : null,
-            downloadUrl: $file['url'] ?? null,
-            downloadFileName: $file['name'] ?? null,
+            // Single fields kept for back-compat; the store prefers downloadFiles.
+            downloadUrl: $first['url'] ?? null,
+            downloadFileName: $first['name'] ?? null,
+            downloadFiles: $files,
         );
     }
 
     /**
-     * Resolve the direct download URL + filename of the thing's first
-     * printable file (STL preferred, then 3MF/OBJ) via /things/{id}/files.
-     * Null on any failure - the ingest gate then blocks the item on
+     * Resolve the direct download URL + filename of EVERY printable file
+     * (STL/3MF/OBJ or a `.zip` bundle) for the thing, via /things/{id}/files.
+     * Empty on any failure - the ingest gate then blocks the item on
      * `missing_model_file` instead of publishing something we cannot produce.
      *
-     * @return array{url: string, name: string}|null
+     * @return list<array{url: string, name: string}>
      */
-    private function printableFile(string $base, string $token, string $sourceId): ?array
+    private function printableFiles(string $base, string $token, string $sourceId): array
     {
         try {
             $response = Http::withToken($token)
@@ -108,7 +111,7 @@ final class HttpThingiverseClient implements Model3dApiClient
                 'error' => $e->getMessage(),
             ]);
 
-            return null;
+            return [];
         }
 
         if (! $response->successful()) {
@@ -117,25 +120,36 @@ final class HttpThingiverseClient implements Model3dApiClient
                 'status' => $response->status(),
             ]);
 
-            return null;
+            return [];
         }
 
         $files = collect((array) $response->json());
 
-        foreach (['stl', '3mf', 'obj'] as $extension) {
-            $match = $files->first(fn ($file): bool => is_array($file)
-                && str_ends_with(Str::lower((string) ($file['name'] ?? '')), ".{$extension}")
-                && ! empty($file['download_url']));
+        // Every printable file (STL/3MF/OBJ) plus any `.zip` bundle - multi-part
+        // models split their geometry across several files, and keeping only the
+        // first loses parts (the "Baby Groot head only" bug). The store merges
+        // STL parts into one printable file downstream.
+        return $files
+            ->filter(fn ($file): bool => is_array($file)
+                && $this->isPrintableName((string) ($file['name'] ?? ''))
+                && ! empty($file['download_url']))
+            ->map(fn ($file): array => [
+                'url' => (string) $file['download_url'],
+                'name' => (string) $file['name'],
+            ])
+            ->values()
+            ->all();
+    }
 
-            if ($match !== null) {
-                return [
-                    'url' => (string) $match['download_url'],
-                    'name' => (string) $match['name'],
-                ];
+    private function isPrintableName(string $name): bool
+    {
+        foreach (['stl', '3mf', 'obj', 'zip'] as $extension) {
+            if (str_ends_with(Str::lower($name), ".{$extension}")) {
+                return true;
             }
         }
 
-        return null;
+        return false;
     }
 
     /**

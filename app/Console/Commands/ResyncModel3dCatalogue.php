@@ -22,7 +22,8 @@ use Illuminate\Console\Command;
  */
 class ResyncModel3dCatalogue extends Command
 {
-    protected $signature = 'catalogue:resync-3d';
+    protected $signature = 'catalogue:resync-3d
+        {--force : Re-download and re-merge every model file, healing pre-multi-part items whose stored file is a lone part}';
 
     protected $description = 'Re-check licences of MODEL_3D products against their source APIs.';
 
@@ -30,12 +31,13 @@ class ResyncModel3dCatalogue extends Command
     {
         $count = 0;
         $pulled = 0;
+        $force = (bool) $this->option('force');
 
         Product::query()
             ->where('class', ProductClass::Model3d->value)
             ->whereNotNull('model3d_id')
             ->with('model3d')
-            ->chunkById(100, function ($products) use ($client, $service, &$count, &$pulled): void {
+            ->chunkById(100, function ($products) use ($client, $service, $force, &$count, &$pulled): void {
                 foreach ($products as $product) {
                     try {
                         $model = $product->model3d;
@@ -68,7 +70,7 @@ class ResyncModel3dCatalogue extends Command
 
                         $wasPublished = $product->publish_state === PublishState::Published;
 
-                        ['product' => $product] = $service->ingest($data);
+                        ['product' => $product] = $service->ingest($data, $force);
 
                         // ingest() re-runs the licence/file gate; a licence that
                         // drifted off CC0/CC-BY lands in CANNOT_PUBLISH.

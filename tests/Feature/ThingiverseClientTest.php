@@ -81,3 +81,26 @@ it('blocks an unknown licence label', function (): void {
 it('returns null for a non-Thingiverse source', function (): void {
     expect($this->client->fetch(Model3dSource::Cults3d, '1'))->toBeNull();
 });
+
+it('collects every printable file for a multi-part thing (not just the first)', function (): void {
+    Http::fake([
+        'api.thingiverse.com/things/123/files' => Http::response([
+            ['name' => 'groot_head.stl', 'download_url' => 'https://dl/head'],
+            ['name' => 'groot_body.stl', 'download_url' => 'https://dl/body'],
+            ['name' => 'readme.txt', 'download_url' => 'https://dl/readme'],
+        ], 200),
+        'api.thingiverse.com/things/*' => Http::response([
+            'name' => 'Baby Groot',
+            'license' => 'Creative Commons - Attribution',
+            'creator' => ['name' => 'Maker'],
+        ], 200),
+    ]);
+
+    $data = $this->client->fetch(Model3dSource::Thingiverse, '123');
+
+    expect($data->downloadFiles)->toHaveCount(2)
+        ->and($data->downloadFiles[0]['url'])->toBe('https://dl/head')
+        ->and($data->downloadFiles[1]['url'])->toBe('https://dl/body')
+        // Back-compat: the single fields still point at the first file.
+        ->and($data->downloadUrl)->toBe('https://dl/head');
+});
