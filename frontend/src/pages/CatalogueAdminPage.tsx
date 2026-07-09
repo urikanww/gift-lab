@@ -214,26 +214,40 @@ export default function CatalogueAdminPage() {
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
   const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
   const [stateFilter, setStateFilter] = useState<'' | PublishState>('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Debounce the search box so keystrokes don't fire a request each character.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const runFetch = () =>
     void fetch({
       class: classFilter || undefined,
       state: stateFilter || undefined,
+      search: debouncedSearch || undefined,
       page,
     });
 
-  // Changing class/state filters resets to page 1 (a filtered set has fewer pages).
+  // Changing any filter resets to page 1 (a filtered set has fewer pages).
   useEffect(() => {
     setPage(1);
-  }, [classFilter, stateFilter]);
+  }, [classFilter, stateFilter, debouncedSearch]);
 
   useEffect(() => {
-    void fetch({ class: classFilter || undefined, state: stateFilter || undefined, page });
+    void fetch({
+      class: classFilter || undefined,
+      state: stateFilter || undefined,
+      search: debouncedSearch || undefined,
+      page,
+    });
     // Re-fetch when server-side filters or the page change.
-  }, [fetch, classFilter, stateFilter, page]);
+  }, [fetch, classFilter, stateFilter, debouncedSearch, page]);
 
   const toggleAutoPublish = async () => {
     const next = !autoPublish;
@@ -361,6 +375,15 @@ export default function CatalogueAdminPage() {
 
         {/* Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="sm:flex-1">
+            <Input
+              label="Search"
+              type="search"
+              placeholder="Search by product name or creator…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <div className="sm:w-52">
             <Select
               label="Class"
