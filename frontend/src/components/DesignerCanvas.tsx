@@ -550,6 +550,20 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
   const bringForward = () => withActive((canvas, active) => canvas.bringObjectForward(active));
   const sendBackward = () => withActive((canvas, active) => canvas.sendObjectBackwards(active));
 
+  // Rotate the selected object by a fixed step. Arrow buttons give a precise
+  // alternative to drag-rotate; emitPlacement keeps the 3D decal preview and the
+  // controlled rotate angle in sync, and the change is pushed for undo.
+  const ROTATE_STEP = 5;
+  const rotateActive = (delta: number) =>
+    withActive((_canvas, active) => {
+      pushHistory();
+      const next = ((((active.angle ?? 0) + delta) % 360) + 360) % 360;
+      active.set({ angle: next });
+      active.setCoords();
+      clampToPrintAreaRef.current?.(active);
+      emitPlacement();
+    });
+
   // True while a run of arrow-key nudges is in flight, so we snapshot ONCE at
   // the start of the run (Ctrl/Cmd+Z then reverses the whole nudge sequence)
   // rather than flooding the undo stack with one entry per pixel.
@@ -843,6 +857,13 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
                 transition={springSoft}
                 className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface/95 p-1 shadow-md backdrop-blur"
               >
+                <IconButton label={`Rotate left ${ROTATE_STEP}°`} onClick={() => rotateActive(-ROTATE_STEP)}>
+                  <RotateCcwIcon />
+                </IconButton>
+                <IconButton label={`Rotate right ${ROTATE_STEP}°`} onClick={() => rotateActive(ROTATE_STEP)}>
+                  <RotateCwIcon />
+                </IconButton>
+                <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />
                 <IconButton label="Bring forward" onClick={bringForward}>
                   <LayerUpIcon />
                 </IconButton>
@@ -1078,6 +1099,24 @@ function LayerDownIcon() {
   return (
     <svg {...iconProps}>
       <path d="M4 7l6 3 6-3M10 13 4 16l6 3 6-3-6-3Z" />
+    </svg>
+  );
+}
+
+function RotateCcwIcon() {
+  return (
+    <svg {...iconProps} viewBox="0 0 24 24">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}
+
+function RotateCwIcon() {
+  return (
+    <svg {...iconProps} viewBox="0 0 24 24">
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
     </svg>
   );
 }

@@ -390,8 +390,8 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
               variant="ghost"
               size="sm"
               className="h-7 w-7 px-0"
-              aria-label="Rotate left"
-              onClick={() => bump(-15)}
+              aria-label="Rotate left 5°"
+              onClick={() => bump(-5)}
             >
               ↺
             </Button>
@@ -407,8 +407,8 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
               variant="ghost"
               size="sm"
               className="h-7 w-7 px-0"
-              aria-label="Rotate right"
-              onClick={() => bump(15)}
+              aria-label="Rotate right 5°"
+              onClick={() => bump(5)}
             >
               ↻
             </Button>
