@@ -13,6 +13,7 @@ import {
 } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { CardImage, ProductCard } from '../components/product/ProductCard';
+import QuantityStepper from '../components/QuantityStepper';
 
 // three.js is heavy - load the viewer only on MODEL_3D pages that have a file.
 const ModelViewer = lazy(() => import('../components/ModelViewer'));
@@ -79,6 +80,7 @@ export default function ProductDetailPage() {
 
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [selectedTierQty, setSelectedTierQty] = useState<number | null>(null);
+  const [qty, setQty] = useState(1);
 
   const [related, setRelated] = useState<Product[]>([]);
 
@@ -99,6 +101,7 @@ export default function ProductDetailPage() {
         if (!active) return;
         setProduct(p);
         setSelectedVariantId(p.variants?.[0]?.id ?? null);
+        setQty(Math.max(1, p.min_order_qty ?? 1));
       })
       .catch(() => {
         if (!active) return;
@@ -204,11 +207,15 @@ export default function ProductDetailPage() {
 
   const currency = product.currency;
 
-  const handleAddSample = () => {
-    addLine(product, selectedVariant, {});
+  const minQty = Math.max(1, product.min_order_qty ?? 1);
+
+  // Customization is optional, so buyers can order the product plain straight
+  // from the PDP with a chosen quantity - no detour through the studio.
+  const handleAddToCart = () => {
+    addLine(product, selectedVariant, {}, qty);
     toast({
-      title: 'Sample added to cart',
-      description: product.name,
+      title: 'Added to cart',
+      description: `${qty} × ${product.name}`,
       tone: 'success',
     });
   };
@@ -305,10 +312,6 @@ export default function ProductDetailPage() {
               )}
             </div>
 
-            {product.description && <p className="text-fg-muted">{product.description}</p>}
-            {product.creator_credit && (
-              <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
-            )}
           </Motion>
 
           {/* Colour swatches */}
@@ -379,32 +382,39 @@ export default function ProductDetailPage() {
             )}
           </Motion>
 
-          {/* CTAs */}
-          <Motion variants={staggerItem} className="flex flex-col gap-3 sm:flex-row">
-            <LinkButton
-              to={designPath(product)}
-              variant="primary"
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              Customize in studio
-            </LinkButton>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={handleAddSample}
-              className="w-full sm:w-auto"
-            >
-              Add sample to cart
-            </Button>
+          {/* Quantity + CTAs. Customization is optional, so "Add to cart" is the
+              primary action and the studio is a secondary opt-in. */}
+          <Motion variants={staggerItem} className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-medium text-fg">Quantity</span>
+              <QuantityStepper value={qty} min={minQty} onChange={setQty} />
+              {minQty > 1 && <span className="text-xs text-fg-subtle">Min order {minQty}</span>}
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleAddToCart}
+                className="w-full sm:w-auto"
+              >
+                Add to cart
+              </Button>
+              <LinkButton
+                to={designPath(product)}
+                variant="outline"
+                size="lg"
+                className="w-full sm:w-auto"
+              >
+                Customize in studio
+              </LinkButton>
+            </div>
           </Motion>
 
-          {/* Sample = one physical unit, priced at the single-unit rate. Spell it
-              out so the higher-than-"from" price isn't a surprise at checkout. */}
+          {/* Volume discounts apply to larger orders - the price breaks above show
+              the per-unit rate at each tier. */}
           <Motion variants={staggerItem}>
             <p className="text-xs text-fg-subtle">
-              A sample is one unit at single-unit pricing. Volume discounts apply
-              to full orders - see the price breaks above.
+              Volume discounts apply to larger orders - see the price breaks above.
             </p>
           </Motion>
 
@@ -488,13 +498,19 @@ export default function ProductDetailPage() {
 
       {/* Mobile sticky action bar - the in-flow CTAs sit far below the fold on a
           phone, so mirror them in a fixed bar. Hidden at md+ where CTAs are visible. */}
-      <div className="fixed inset-x-0 bottom-0 z-raised flex gap-2 border-t border-border bg-surface/95 p-3 backdrop-blur-md md:hidden">
-        <LinkButton to={designPath(product)} variant="primary" size="md" className="min-h-[44px] flex-1">
-          Customize
-        </LinkButton>
-        <Button variant="outline" size="md" onClick={handleAddSample} className="min-h-[44px] flex-1">
-          Add sample
-        </Button>
+      <div className="fixed inset-x-0 bottom-0 z-raised flex flex-col gap-2 border-t border-border bg-surface/95 p-3 backdrop-blur-md md:hidden">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-fg">Qty</span>
+          <QuantityStepper value={qty} min={minQty} onChange={setQty} />
+        </div>
+        <div className="flex gap-2">
+          <Button variant="primary" size="md" onClick={handleAddToCart} className="min-h-[44px] flex-1">
+            Add to cart
+          </Button>
+          <LinkButton to={designPath(product)} variant="outline" size="md" className="min-h-[44px] flex-1">
+            Customize
+          </LinkButton>
+        </div>
       </div>
     </div>
   );
