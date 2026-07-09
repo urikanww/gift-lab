@@ -924,12 +924,20 @@ function ModelPartsSection({
   const [viewing, setViewing] = useState<number | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
 
-  const studioParts: StudioPart[] = parts.map((p) => ({
-    id: p.id,
-    label: p.label ?? `Part ${p.sort + 1}`,
-    src: `/admin/products/${product.id}/parts/${p.id}/model`,
-    isPrimary: p.is_primary,
-  }));
+  // Studio plates: the recorded multi-part set when present, otherwise fall back
+  // to the single primary mesh so the studio is available for ANY 3D product
+  // that has a model file (not just multi-part ones).
+  const studioParts: StudioPart[] =
+    parts.length > 0
+      ? parts.map((p) => ({
+          id: p.id,
+          label: p.label ?? `Part ${p.sort + 1}`,
+          src: `/admin/products/${product.id}/parts/${p.id}/model`,
+          isPrimary: p.is_primary,
+        }))
+      : product.has_model
+        ? [{ id: 0, label: product.name, src: `/admin/products/${product.id}/model`, isPrimary: true }]
+        : [];
 
   const upload = async (file: File) => {
     setBusy(true);
@@ -987,10 +995,10 @@ function ModelPartsSection({
         model file.
       </p>
 
-      {parts.length > 1 && (
+      {studioParts.length > 0 && (
         <div className="flex flex-col gap-2">
           <Button variant="outline" size="sm" className="self-start" onClick={() => setStudioOpen(true)}>
-            🖨 Open print studio ({parts.length} plates)
+            🖨 Open print studio{parts.length > 1 ? ` (${parts.length} plates)` : ''}
           </Button>
           <p className="text-2xs text-fg-subtle">
             Lays every plate flat on a virtual build bed (like a slicer) with per-plate colours and
