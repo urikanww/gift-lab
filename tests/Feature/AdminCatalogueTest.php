@@ -109,6 +109,43 @@ it('streams the model file for a published 3D product and hides unpublished ones
     $this->get("/api/catalogue/{$hidden->slug}/model")->assertNotFound();
 });
 
+it('serves the model with a revalidating validator (304 when unchanged)', function (): void {
+    Illuminate\Support\Facades\Storage::fake('local');
+    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid x');
+    $product = Product::factory()->model3d()->create([
+        'publish_state' => 'PUBLISHED',
+        'model_file_ref' => 'models3d/pub.stl',
+    ]);
+
+    $res = $this->get("/api/catalogue/{$product->slug}/model");
+    $res->assertOk();
+    $etag = $res->headers->get('ETag');
+    expect($etag)->not->toBeNull();
+    expect($res->headers->get('Cache-Control'))->toContain('must-revalidate');
+
+    // A conditional GET with the same validator must not re-send the model.
+    $this->get("/api/catalogue/{$product->slug}/model", ['If-None-Match' => $etag])
+        ->assertStatus(304);
+});
+
+it('changes the model validator when the stored file is replaced', function (): void {
+    Illuminate\Support\Facades\Storage::fake('local');
+    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid x');
+    $product = Product::factory()->model3d()->create([
+        'publish_state' => 'PUBLISHED',
+        'model_file_ref' => 'models3d/pub.stl',
+    ]);
+
+    $first = $this->get("/api/catalogue/{$product->slug}/model")->headers->get('ETag');
+
+    // resync --force swaps the file at the same path - the validator must change
+    // so the browser refetches instead of showing the stale (wrong) geometry.
+    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid xxxxxxxxxxxxxxxxxxxx');
+    $second = $this->get("/api/catalogue/{$product->slug}/model")->headers->get('ETag');
+
+    expect($second)->not->toBeNull()->and($second)->not->toBe($first);
+});
+
 it('forbids non-staff from the admin catalogue', function (): void {
     $buyer = User::factory()->create(['role' => 'buyer']);
     Sanctum::actingAs($buyer);

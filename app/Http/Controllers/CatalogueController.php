@@ -11,7 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Public, no-account catalogue (spec 6.1). Only PUBLISHED products are exposed;
@@ -81,7 +81,7 @@ class CatalogueController extends Controller
      * credit is displayed alongside the viewer. Cache-friendly (immutable
      * per slug - slugs are stable).
      */
-    public function model(string $key): StreamedResponse|JsonResponse
+    public function model(Request $request, string $key): SymfonyResponse
     {
         $product = Product::query()->where('slug', $key)->first()
             ?? (ctype_digit($key) ? Product::find((int) $key) : null);
@@ -99,9 +99,24 @@ class CatalogueController extends Controller
             return response()->json(['message' => 'Model not available.'], 404);
         }
 
+        // Validate on a content signature (mtime + size), NOT a long fixed
+        // max-age: the model URL is stable (models3d/{source}-{id}.stl) but the
+        // file behind it is replaced when a model is re-pulled (resync --force).
+        // A fixed 24h cache would keep serving the OLD geometry - the classic
+        // "preview shows the wrong model after a re-pull". must-revalidate makes
+        // the browser send a cheap conditional GET and only refetch on change.
+        $abs = Storage::disk('local')->path($ref);
+        $etag = sprintf('"%d-%d"', (int) filemtime($abs), (int) filesize($abs));
+        $cacheControl = 'public, max-age=0, must-revalidate';
+
+        if (trim((string) $request->header('If-None-Match')) === $etag) {
+            return response('', 304, ['ETag' => $etag, 'Cache-Control' => $cacheControl]);
+        }
+
         return Storage::disk('local')->response($ref, basename($ref), [
             'Content-Type' => 'application/octet-stream',
-            'Cache-Control' => 'public, max-age=86400',
+            'Cache-Control' => $cacheControl,
+            'ETag' => $etag,
         ]);
     }
 }
