@@ -50,6 +50,8 @@ Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/catalogue/{key}', [CatalogueController::class, 'show']);
     // 3D model stream for the interactive viewer (published MODEL_3D only).
     Route::get('/catalogue/{key}/model', [CatalogueController::class, 'model']);
+    // Relevance-ranked "you might also like" (same category + complements).
+    Route::get('/catalogue/{key}/related', [CatalogueController::class, 'related']);
     Route::post('/price-estimate', PriceEstimateController::class);
     // Deadline-aware delivery window (queue-depth aware, ranged/conservative).
     Route::post('/lead-time-estimate', LeadTimeEstimateController::class);
@@ -116,6 +118,10 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone']);
     Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel']);
+    // Multi-part 3D models: stream, attach and remove individual parts (staff).
+    Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel']);
+    Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart']);
+    Route::delete('/admin/products/{product}/parts/{part}', [AdminCatalogueController::class, 'deleteModelPart']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 
     // CORE product/variant management (staff; audit E4) - ops add a blank or

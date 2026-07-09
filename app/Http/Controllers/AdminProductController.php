@@ -165,7 +165,7 @@ class AdminProductController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        $product->load('variants')->loadSum('variants', 'stock_on_hand');
+        $product->load('variants', 'modelParts')->loadSum('variants', 'stock_on_hand');
         $product->sold_count = (int) DB::table('line_items')
             ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
             ->where('line_items.product_id', $product->id)
@@ -586,6 +586,17 @@ class AdminProductController extends Controller
             'license_tier' => $product->license?->tier() ?? 'standard',
             'archived' => $product->trashed(),
             'variants' => $product->relationLoaded('variants') ? $product->variants : null,
+            // Individual parts of a multi-part figure (Groot: head/body/arms/legs).
+            // Empty for single-mesh products - the primary model covers them.
+            'model_parts' => $product->relationLoaded('modelParts')
+                ? $product->modelParts->map(fn ($part) => [
+                    'id' => $part->id,
+                    'label' => $part->label,
+                    'triangle_count' => $part->triangle_count,
+                    'is_primary' => (bool) $part->is_primary,
+                    'sort' => $part->sort,
+                ])->values()
+                : [],
             'sold_count' => (int) ($product->sold_count ?? 0),
             'stock_total' => (int) ($product->variants_sum_stock_on_hand ?? 0),
         ];

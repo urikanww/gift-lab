@@ -6,6 +6,7 @@ import { Badge, Button, Card, Input, Select, Textarea, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
 import Model3dZoneEditor from '../components/Model3dZoneEditor';
+import StlModelViewer from '../components/StlModelViewer';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
 import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
@@ -251,6 +252,10 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
             }}
           />
         </Card>
+      )}
+
+      {product.class === 'MODEL_3D' && (
+        <ModelPartsSection product={product} onChanged={onChanged} disabled={archived} />
       )}
 
       {/* Variants */}
@@ -870,5 +875,144 @@ function HistorySection({ productId }: { productId: number }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Multi-part 3D figures (e.g. Groot: head/body/arms/legs) list every printable
+ * part here so a superadmin can view each in 3D and attach any piece the scrape
+ * missed. Empty for single-mesh products - the primary model file covers them.
+ */
+function ModelPartsSection({
+  product,
+  onChanged,
+  disabled,
+}: {
+  product: AdminProduct;
+  onChanged: () => void;
+  disabled: boolean;
+}) {
+  const { toast } = useToast();
+  const parts = product.model_parts ?? [];
+  const [busy, setBusy] = useState(false);
+  const [label, setLabel] = useState('');
+  const [viewing, setViewing] = useState<number | null>(null);
+
+  const upload = async (file: File) => {
+    setBusy(true);
+    try {
+      await ensureCsrf();
+      const form = new FormData();
+      form.append('file', file);
+      if (label.trim()) form.append('label', label.trim());
+      await api.post(`/admin/products/${product.id}/parts`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast({ title: 'Part added', description: file.name, tone: 'success' });
+      setLabel('');
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Upload failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (partId: number) => {
+    try {
+      await ensureCsrf();
+      await api.delete(`/admin/products/${product.id}/parts/${partId}`);
+      toast({ title: 'Part removed', tone: 'success' });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Not removed', description: apiError(err), tone: 'danger' });
+    }
+  };
+
+  return (
+    <Card padding="md" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-display text-lg">Model parts</h3>
+        <Badge tone="neutral" size="sm">
+          {parts.length}
+        </Badge>
+      </div>
+      <p className="text-sm text-fg-muted">
+        Every printable piece of a multi-part figure (head, body, arms, legs…). Scraped models
+        auto-populate on re-sync; attach any missing piece below. The primary mesh mirrors the main
+        model file.
+      </p>
+
+      {parts.length === 0 ? (
+        <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-fg-subtle">
+          No separate parts recorded — this product is a single mesh, or its parts haven’t been
+          re-synced yet.
+        </p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {parts.map((part) => (
+            <li key={part.id} className="flex flex-col gap-2 py-3">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-fg">{part.label ?? `Part ${part.sort + 1}`}</p>
+                  <p className="text-xs text-fg-subtle">
+                    {part.triangle_count != null
+                      ? `${part.triangle_count.toLocaleString()} triangles`
+                      : 'unknown size'}
+                  </p>
+                </div>
+                {part.is_primary && (
+                  <Badge tone="brand" size="sm">
+                    Primary
+                  </Badge>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setViewing((v) => (v === part.id ? null : part.id))}
+                >
+                  {viewing === part.id ? 'Hide' : 'View 3D'}
+                </Button>
+                {!part.is_primary && !disabled && (
+                  <Button variant="danger" size="sm" onClick={() => void remove(part.id)}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+              {viewing === part.id && (
+                <StlModelViewer
+                  src={`/admin/products/${product.id}/parts/${part.id}/model`}
+                  className="h-64 w-full"
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {!disabled && (
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <Input
+            label="New part label (optional)"
+            placeholder="e.g. Left arm"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+          <div className="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".stl"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void upload(file);
+              }}
+            />
+            {busy && <span className="text-sm text-fg-subtle">Uploading&hellip;</span>}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

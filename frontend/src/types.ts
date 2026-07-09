@@ -192,6 +192,30 @@ export interface ProductionJob {
   consignment_ref?: string | null;
   print_method: PrintMethod | null;
   qty: number;
+  /**
+   * Line items this job produces, with their saved customization + the product's
+   * model/zone - lets the floor view and visualize the decorated final product.
+   * Present on the queue fetch; carried across realtime updates.
+   */
+  line_items?: JobLineItem[];
+}
+
+/** One line of a production job, as surfaced to the production floor. */
+export interface JobLineItem {
+  id: number;
+  qty: number;
+  product: {
+    id: number;
+    name: string;
+    slug: string | null;
+    class: ProductClass;
+    /** True when a printable 3D mesh is stored (enables the decorated preview). */
+    has_model: boolean;
+    print_zone: PrintZone | null;
+    /** Every printable part (head/body/limbs) the floor can download; empty for single-mesh. */
+    model_parts: ModelPart[];
+  } | null;
+  customization: Customization | null;
 }
 
 export interface PriceEstimateLine {
@@ -277,6 +301,23 @@ export interface AdminProduct {
   min_order_qty?: number;
   /** Storage path of the canonical mesh file for MODEL_3D items; null when unset. */
   model_file_ref?: string | null;
+  /**
+   * Individual printable parts of a multi-part figure (e.g. Groot: head, body,
+   * arms, legs). Empty for single-mesh products - the primary model covers them.
+   */
+  model_parts?: ModelPart[];
+}
+
+/** One printable part of a multi-part MODEL_3D product. */
+export interface ModelPart {
+  id: number;
+  /** Human label (from the source filename, e.g. "Head"). */
+  label: string | null;
+  /** Mesh complexity - shown so staff can spot an empty/placeholder part. */
+  triangle_count: number | null;
+  /** The largest part; mirrors products.model_file_ref. */
+  is_primary: boolean;
+  sort: number;
 }
 
 export interface AdminReorder {

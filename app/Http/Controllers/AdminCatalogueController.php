@@ -8,6 +8,7 @@ use App\Enums\ProductClass;
 use App\Enums\PublishState;
 use App\Models\PricingConfig;
 use App\Models\Product;
+use App\Models\ProductModelPart;
 use App\Services\Catalogue\ScrapedCatalogueService;
 use App\Services\Model3d\Model3dCatalogueService;
 use Illuminate\Http\JsonResponse;
@@ -273,6 +274,100 @@ class AdminCatalogueController extends Controller
             'Content-Type' => 'application/octet-stream',
             'Cache-Control' => 'no-store',
         ]);
+    }
+
+    /**
+     * Stream one part's STL mesh for the superadmin multi-part viewer. Staff-only
+     * and scoped to the parent product so a part id can't be used to reach an
+     * unrelated product's file.
+     */
+    public function partModel(Request $request, Product $product, ProductModelPart $part): StreamedResponse|JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+        abort_unless($part->product_id === $product->id, 404);
+
+        $ref = (string) $part->file_ref;
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+            return response()->json(['message' => 'Part not available.'], 404);
+        }
+
+        return Storage::disk('local')->response($ref, basename($ref), [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
+     * Superadmin attach an extra STL part to a multi-part product (e.g. a missing
+     * limb the scrape never shipped). Stored under the product's part namespace.
+     */
+    public function uploadModelPart(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        if ($product->class !== ProductClass::Model3d) {
+            return response()->json(['message' => 'Only MODEL_3D products carry model parts.'], 422);
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:102400'], // 100 MB
+            'label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $upload = $request->file('file');
+        if (strtolower((string) $upload->getClientOriginalExtension()) !== 'stl') {
+            return response()->json(['message' => 'A model part must be an .stl file.'], 422);
+        }
+
+        $nextSort = (int) ($product->modelParts()->max('sort') ?? -1) + 1;
+        $path = $upload->storeAs('models3d', "manual-{$product->id}-part{$nextSort}.stl", 'local');
+
+        $label = trim((string) $request->input('label', ''));
+        $part = $product->modelParts()->create([
+            'label' => $label !== '' ? $label : 'Part '.($nextSort + 1),
+            'file_ref' => $path,
+            // Manual uploads are supplementary; the scraped/primary mesh stays primary.
+            'is_primary' => false,
+            'sort' => $nextSort,
+        ]);
+
+        return response()->json(['data' => $this->serializePart($part)], 201);
+    }
+
+    /**
+     * Superadmin remove a part. The primary part is refused here - it mirrors
+     * products.model_file_ref and is replaced via the model-file upload instead.
+     */
+    public function deleteModelPart(Request $request, Product $product, ProductModelPart $part): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+        abort_unless($part->product_id === $product->id, 404);
+
+        if ($part->is_primary) {
+            return response()->json(['message' => 'The primary mesh cannot be removed here; replace it via the model file.'], 422);
+        }
+
+        $ref = (string) $part->file_ref;
+        if ($ref !== '' && ! str_starts_with($ref, 'http') && Storage::disk('local')->exists($ref)) {
+            Storage::disk('local')->delete($ref);
+        }
+        $part->delete();
+
+        return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializePart(ProductModelPart $part): array
+    {
+        return [
+            'id' => $part->id,
+            'label' => $part->label,
+            'triangle_count' => $part->triangle_count,
+            'is_primary' => $part->is_primary,
+            'sort' => $part->sort,
+        ];
     }
 
     public function setAutoPublish(Request $request): JsonResponse

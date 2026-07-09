@@ -161,6 +161,17 @@ class Product extends Model
     }
 
     /**
+     * Printable parts of a multi-part MODEL_3D figure, ordered as the source
+     * shipped them (primary/largest first).
+     *
+     * @return HasMany<ProductModelPart>
+     */
+    public function modelParts(): HasMany
+    {
+        return $this->hasMany(ProductModelPart::class)->orderByDesc('is_primary')->orderBy('sort');
+    }
+
+    /**
      * Only publicly browsable products (no-account catalogue).
      *
      * @param  Builder<Product>  $query

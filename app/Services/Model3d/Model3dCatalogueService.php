@@ -44,9 +44,12 @@ final class Model3dCatalogueService
         // a write transaction open. Only worth attempting for commercial-OK
         // licences; blocked items are never produced.
         $license = License::tryFrom($data->license) ?? License::Blocked;
-        $localFile = $license->isCommercialOk() ? $this->files->ensure($data, $forceFileRefresh) : null;
+        $stored = $license->isCommercialOk()
+            ? $this->files->ensureAll($data, $forceFileRefresh)
+            : ['primary' => null, 'parts' => []];
+        $localFile = $stored['primary'];
 
-        return DB::transaction(function () use ($data, $license, $localFile, $forceFileRefresh): array {
+        return DB::transaction(function () use ($data, $license, $localFile, $stored, $forceFileRefresh): array {
             $model = Model3D::where('source', $data->source->value)
                 ->where('source_id', $data->sourceId)
                 ->first()
@@ -69,6 +72,9 @@ final class Model3dCatalogueService
                 $productionFile !== null,
                 (bool) $product->estimates_verified,
                 $this->hasMultiplePrintableFiles($data),
+                // Parts we're about to persist, or ones already recorded from a
+                // prior ingest (a cache-hit resync returns no fresh parts).
+                $stored['parts'] !== [] || $this->productHasParts($product),
             );
 
             $model->publish_state = $publishState;
@@ -110,6 +116,17 @@ final class Model3dCatalogueService
             $this->fillDimensionsFromModel($product);
 
             $product->save();
+
+            // Persist the individual parts of a multi-part figure. A fresh
+            // multi-file download replaces the recorded set; a forced single-file
+            // download clears any stale parts; a cache-hit resync (empty parts,
+            // not forced) leaves the existing rows untouched.
+            if ($stored['parts'] !== []) {
+                $product->modelParts()->delete();
+                $product->modelParts()->createMany($stored['parts']);
+            } elseif ($forceFileRefresh && $stored['primary'] !== null) {
+                $product->modelParts()->delete();
+            }
 
             return ['model' => $model, 'product' => $product];
         });
@@ -192,6 +209,7 @@ final class Model3dCatalogueService
             $this->existingLocalFile($product) !== null,
             (bool) $product->estimates_verified,
             $this->wasMultiFileFlagged($product),
+            $this->productHasParts($product),
         );
 
         $product->publish_state = $state;
@@ -214,6 +232,7 @@ final class Model3dCatalogueService
             $this->existingLocalFile($product) !== null,
             (bool) $product->estimates_verified,
             $this->wasMultiFileFlagged($product),
+            $this->productHasParts($product),
         );
 
         // Never jump straight to Published from a re-gate; publication is an
@@ -255,6 +274,7 @@ final class Model3dCatalogueService
             $this->existingLocalFile($product) !== null,
             true,
             $this->wasMultiFileFlagged($product),
+            $this->productHasParts($product),
         );
 
         $product->publish_state = $state;
@@ -263,6 +283,16 @@ final class Model3dCatalogueService
         $this->syncModelState($product);
 
         return $product;
+    }
+
+    /**
+     * Whether the product has recorded individual model parts. When it does, a
+     * multi-file source is fully captured (every part persisted), so the
+     * multi_file_review hold no longer applies.
+     */
+    private function productHasParts(Product $product): bool
+    {
+        return $product->exists && $product->modelParts()->exists();
     }
 
     /**
@@ -277,6 +307,7 @@ final class Model3dCatalogueService
         bool $hasFile,
         bool $estimatesVerified,
         bool $multiFile = false,
+        bool $partsRecorded = false,
     ): array {
         if (! $license->isCommercialOk()) {
             return [PublishState::CannotPublish, ['license_blocked']];
@@ -296,11 +327,14 @@ final class Model3dCatalogueService
         $autoPublish = (bool) PricingConfig::value('catalogue', 'auto_publish', false);
         $reasons = [];
 
-        // Several printable files could be parts, variants, or alternate print
-        // layouts of one model; we store the richest single file, but a human
-        // confirms it is the right geometry (or attaches assembled parts) before
-        // it can auto-publish.
-        if ($multiFile) {
+        // A source that ships several printable files needed a human to confirm
+        // the stored geometry back when ingest kept only the largest file and
+        // dropped the rest. Now ensureAll() persists EVERY part, so once parts
+        // are recorded the full set is captured and no review is needed. Only
+        // hold when the files couldn't be persisted (e.g. an alternate 3MF/OBJ
+        // dropped alongside a single stored STL).
+        $needsReview = $multiFile && ! $partsRecorded;
+        if ($needsReview) {
             $reasons[] = 'multi_file_review';
         }
 
@@ -310,7 +344,7 @@ final class Model3dCatalogueService
             $reasons[] = 'estimates_unverified';
         }
 
-        $canAutoPublish = $autoPublish && $estimatesVerified && ! $multiFile;
+        $canAutoPublish = $autoPublish && $estimatesVerified && ! $needsReview;
         $state = $canAutoPublish ? PublishState::Published : PublishState::ReadyToApprove;
 
         return [$state, $reasons === [] ? null : $reasons];

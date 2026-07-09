@@ -26,74 +26,85 @@ final class Model3dFileStore
     public function __construct(private readonly StlMerger $merger = new StlMerger) {}
 
     /**
-     * Ensure a local copy of the model file exists; returns the storage path
-     * (on the `local` disk) or null when no file could be obtained.
-     *
-     * Multi-part models expose several printable files (and sometimes a `.zip`
-     * bundle). All STL parts are merged into a single stored file so nothing is
-     * dropped - the fix for the "Baby Groot head only" bug where only the first
-     * file was kept. A lone file is stored byte-for-byte unchanged.
-     *
-     * Pass $force to bypass the cache and re-download/re-merge - the way to heal
-     * products ingested before the multi-part fix, whose stored file is the lone
-     * part. Their dimensions are NOT recomputed here (they may be staff-set); a
-     * separate backfill owns that.
+     * Ensure a local copy of the model's primary printable file exists; returns
+     * its storage path (on the `local` disk) or null when none could be obtained.
+     * Thin wrapper over {@see ensureAll()} for callers that only need the primary.
      */
     public function ensure(Model3dData $data, bool $force = false): ?string
     {
+        return $this->ensureAll($data, $force)['primary'];
+    }
+
+    /**
+     * Download and store the model's printable geometry, returning the primary
+     * file plus every individual part.
+     *
+     * Multi-part models expose several printable STL files (and sometimes a
+     * `.zip` bundle). We keep the richest single file as the primary (mirrored to
+     * products.model_file_ref - the mesh the slicer prints and the PDP previews),
+     * AND persist each part separately so nothing is dropped - the fix for the
+     * "Baby Groot head only" bug where only one file survived. Parts are stored
+     * as models3d/{source}-{id}-partN.stl; the primary reuses the legacy
+     * models3d/{source}-{id}.stl path (no duplicate on disk). A single-file model
+     * yields an empty parts list - the primary alone is the whole model.
+     *
+     * Pass $force to bypass the cache and re-download - the way to heal products
+     * ingested before multi-part persistence, whose parts were never stored.
+     *
+     * @return array{primary: ?string, parts: list<array{file_ref: string, label: ?string, triangle_count: int, is_primary: bool, sort: int}>}
+     */
+    public function ensureAll(Model3dData $data, bool $force = false): array
+    {
         // Fixture/owned entries may already reference a local (non-http) file.
         if ($data->fileRef !== null && $data->fileRef !== '' && ! str_starts_with($data->fileRef, 'http')) {
-            return $data->fileRef;
+            return ['primary' => $data->fileRef, 'parts' => []];
         }
 
         $files = $this->downloadTargets($data);
         if ($files === []) {
-            return null;
+            return ['primary' => null, 'parts' => []];
         }
 
-        // Cache hit: a previous ingest already stored the file in any supported
-        // format. Avoids re-downloading on the daily resync (skipped when forced).
+        // Cache hit: a previous ingest already stored the primary file. Avoids
+        // re-downloading on the daily resync (skipped when forced). Recorded part
+        // rows already stand, so we don't re-derive them here.
         if (! $force) {
             foreach (self::ALLOWED_EXTENSIONS as $ext) {
                 $existing = sprintf('models3d/%s-%s.%s', strtolower($data->source->value), $data->sourceId, $ext);
                 if (Storage::disk('local')->exists($existing)) {
-                    return $existing;
+                    return ['primary' => $existing, 'parts' => []];
                 }
             }
         }
 
         // Download every file, expanding any zip bundles into their mesh members.
-        $stls = [];
-        $others = []; // ext => content (3MF/OBJ cannot be merged; keep the first)
+        // Each entry keeps its source filename so a part can be labelled.
+        $stls = [];   // list<array{name: ?string, body: string}>
+        $others = []; // ext => array{name: ?string, body: string} (3MF/OBJ: keep first)
         foreach ($files as $file) {
             $body = $this->download($data->source, (string) $file['url']);
             if ($body === null) {
                 continue;
             }
+            $name = isset($file['name']) ? (string) $file['name'] : null;
             $ext = $this->extensionFor((string) ($file['name'] ?? $file['url']));
             if ($ext === 'zip' || $this->looksLikeZip($body)) {
                 $this->collectFromZip($body, $stls, $others);
             } elseif ($ext === 'stl') {
-                $stls[] = $body;
+                $stls[] = ['name' => $name, 'body' => $body];
             } elseif ($ext !== null) {
-                $others[$ext] ??= $body;
+                $others[$ext] ??= ['name' => $name, 'body' => $body];
             }
         }
 
-        // Prefer STL. When a model ships several printable files they are a mix
-        // of the complete model, individual parts, and alternate print layouts,
-        // with no reliable way to tell them apart automatically - so we store the
-        // richest single file (most triangles) rather than merge (merging stacks
-        // overlapping duplicates). The catalogue service flags multi-file models
-        // for staff review. A staff-triggered merge can use StlMerger later.
         if ($stls !== []) {
-            return $this->store($data, 'stl', $this->largest($stls));
+            return $this->storeStlSet($data, $stls);
         }
 
         // No STL geometry: fall back to a single 3MF/OBJ (unmergeable formats).
         foreach (['3mf', 'obj'] as $ext) {
             if (isset($others[$ext])) {
-                return $this->store($data, $ext, $others[$ext]);
+                return ['primary' => $this->store($data, $ext, $others[$ext]['body']), 'parts' => []];
             }
         }
 
@@ -102,7 +113,77 @@ final class Model3dFileStore
             'source_id' => $data->sourceId,
         ]);
 
-        return null;
+        return ['primary' => null, 'parts' => []];
+    }
+
+    /**
+     * Store the primary STL (richest, on the legacy path) and, when the model
+     * ships more than one part, persist each part as -partN.stl and describe it.
+     *
+     * @param  list<array{name: ?string, body: string}>  $stls
+     * @return array{primary: ?string, parts: list<array{file_ref: string, label: ?string, triangle_count: int, is_primary: bool, sort: int}>}
+     */
+    private function storeStlSet(Model3dData $data, array $stls): array
+    {
+        // Triangle count per file; the richest is the primary geometry.
+        $counts = array_map(fn (array $p): int => $this->merger->triangleCount($p['body']), $stls);
+        $primaryIdx = 0;
+        foreach ($counts as $i => $c) {
+            if ($c > $counts[$primaryIdx]) {
+                $primaryIdx = $i;
+            }
+        }
+
+        // Primary always lives on the legacy models3d/{source}-{id}.stl path so
+        // model_file_ref and the existing stream endpoints keep working.
+        $primaryPath = $this->store($data, 'stl', $stls[$primaryIdx]['body']);
+
+        // A single-file model is just the primary - no separate part rows.
+        if (count($stls) <= 1) {
+            return ['primary' => $primaryPath, 'parts' => []];
+        }
+
+        $parts = [];
+        foreach ($stls as $i => $p) {
+            $isPrimary = $i === $primaryIdx;
+            $fileRef = $isPrimary ? $primaryPath : $this->storePart($data, $i, $p['body']);
+            $parts[] = [
+                'file_ref' => $fileRef,
+                'label' => $this->labelFrom($p['name'], $i),
+                'triangle_count' => $counts[$i],
+                'is_primary' => $isPrimary,
+                'sort' => $i,
+            ];
+        }
+
+        return ['primary' => $primaryPath, 'parts' => $parts];
+    }
+
+    /**
+     * Derive a human part label from the source filename ("Groot_Head.stl" →
+     * "Groot Head"); falls back to a 1-based ordinal when unnamed.
+     */
+    private function labelFrom(?string $name, int $index): ?string
+    {
+        if ($name === null || trim($name) === '') {
+            return 'Part '.($index + 1);
+        }
+        $base = trim((string) preg_replace('/[_\-]+/', ' ', pathinfo($name, PATHINFO_FILENAME)));
+
+        return $base === '' ? 'Part '.($index + 1) : $base;
+    }
+
+    private function storePart(Model3dData $data, int $index, string $content): string
+    {
+        $path = sprintf(
+            'models3d/%s-%s-part%d.stl',
+            strtolower($data->source->value),
+            $data->sourceId,
+            $index + 1,
+        );
+        Storage::disk('local')->put($path, $content);
+
+        return $path;
     }
 
     /**
@@ -157,27 +238,6 @@ final class Model3dFileStore
         }
     }
 
-    /**
-     * The richest STL (most triangles) - the best-effort "most complete" file
-     * when a model ships several.
-     *
-     * @param  list<string>  $stls
-     */
-    private function largest(array $stls): string
-    {
-        $best = $stls[0];
-        $bestCount = $this->merger->triangleCount($best);
-        foreach (array_slice($stls, 1) as $stl) {
-            $count = $this->merger->triangleCount($stl);
-            if ($count > $bestCount) {
-                $best = $stl;
-                $bestCount = $count;
-            }
-        }
-
-        return $best;
-    }
-
     private function store(Model3dData $data, string $ext, string $content): string
     {
         $path = sprintf('models3d/%s-%s.%s', strtolower($data->source->value), $data->sourceId, $ext);
@@ -192,10 +252,11 @@ final class Model3dFileStore
     }
 
     /**
-     * Expand a zip bundle's mesh members into the running STL / other lists.
+     * Expand a zip bundle's mesh members into the running STL / other lists,
+     * carrying each member's name so a part can be labelled.
      *
-     * @param  list<string>  $stls
-     * @param  array<string, string>  $others
+     * @param  list<array{name: ?string, body: string}>  $stls
+     * @param  array<string, array{name: ?string, body: string}>  $others
      */
     private function collectFromZip(string $zipBytes, array &$stls, array &$others): void
     {
@@ -218,9 +279,9 @@ final class Model3dFileStore
                     continue;
                 }
                 if ($ext === 'stl') {
-                    $stls[] = $member;
+                    $stls[] = ['name' => $name, 'body' => $member];
                 } else {
-                    $others[$ext] ??= $member;
+                    $others[$ext] ??= ['name' => $name, 'body' => $member];
                 }
             }
             $zip->close();
