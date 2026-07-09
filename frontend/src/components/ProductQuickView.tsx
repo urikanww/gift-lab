@@ -28,10 +28,10 @@ function formatDims(dims: AdminProduct['dimensions']): string | null {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <>
+    <div className="flex items-baseline justify-between gap-4">
       <dt className="text-fg-subtle">{label}</dt>
       <dd className="text-right font-medium text-fg">{value}</dd>
-    </>
+    </div>
   );
 }
 
@@ -94,7 +94,7 @@ export default function ProductQuickView({ productId, isSuperadmin, onClose, bac
       {error && <p className="py-6 text-sm text-danger">{error}</p>}
 
       {product && (
-        <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="sm:w-1/2">
             {is3d ? (
               <StlModelViewer src={`/admin/products/${product.id}/model`} className="h-64 w-full" />
@@ -127,7 +127,7 @@ export default function ProductQuickView({ productId, isSuperadmin, onClose, bac
               </span>
             </p>
 
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <dl className="flex flex-col gap-1.5 text-sm">
               <Row label="Category" value={product.category ? categoryLabel(product.category) : '—'} />
               <Row label="Sold" value={String(product.sold_count)} />
               <Row label="In stock" value={String(product.stock_total)} />
