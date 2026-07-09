@@ -135,3 +135,21 @@ it('forbids a buyer from deleting a part', function (): void {
     $this->delete("/api/admin/products/{$this->product->id}/parts/{$part->id}")->assertForbidden();
     expect(ProductModelPart::find($part->id))->not->toBeNull();
 });
+
+it('clears the multi-part decomposition when the primary mesh is replaced', function (): void {
+    Storage::disk('local')->put('models3d/x-1.stl', 'PRIMARY');
+    Storage::disk('local')->put('models3d/x-1-part1.stl', 'EXTRA');
+    $this->product->update(['model_file_ref' => 'models3d/x-1.stl']);
+    $this->product->modelParts()->createMany([
+        ['label' => 'Body', 'file_ref' => 'models3d/x-1.stl', 'triangle_count' => 3, 'is_primary' => true, 'sort' => 0],
+        ['label' => 'Head', 'file_ref' => 'models3d/x-1-part1.stl', 'triangle_count' => 1, 'is_primary' => false, 'sort' => 1],
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $file = UploadedFile::fake()->createWithContent('replacement.stl', 'NEWMESH');
+    $this->post("/api/admin/products/{$this->product->id}/model-file", ['file' => $file])->assertOk();
+
+    // A manual single-file mesh supersedes the scraped part set (no skew).
+    expect($this->product->modelParts()->count())->toBe(0);
+    Storage::disk('local')->assertMissing('models3d/x-1-part1.stl');
+});

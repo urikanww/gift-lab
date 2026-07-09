@@ -205,6 +205,11 @@ class AdminCatalogueController extends Controller
             Storage::disk('local')->delete($old);
         }
 
+        // A manual single-file mesh supersedes any scraped multi-part set, so drop
+        // the recorded parts (and their files) - otherwise the stale is_primary
+        // row would point at the file we just deleted, skewing model_file_ref.
+        $this->clearModelParts($product);
+
         $product->model_file_ref = $path;
         $product->is_printable = true;
         $product->estimates_verified = false;
@@ -375,6 +380,24 @@ class AdminCatalogueController extends Controller
             'is_primary' => $part->is_primary,
             'sort' => $part->sort,
         ];
+    }
+
+    /**
+     * Drop the recorded multi-part decomposition and its non-primary files. Used
+     * when the primary mesh is replaced wholesale, so model_file_ref stays the
+     * single source of truth for the printable geometry. The primary part shares
+     * model_file_ref (deleted by the caller), so only the extra part files are
+     * removed here.
+     */
+    private function clearModelParts(Product $product): void
+    {
+        foreach ($product->modelParts()->get() as $part) {
+            $ref = (string) $part->file_ref;
+            if ($ref !== '' && ! $part->is_primary && ! str_starts_with($ref, 'http') && Storage::disk('local')->exists($ref)) {
+                Storage::disk('local')->delete($ref);
+            }
+        }
+        $product->modelParts()->delete();
     }
 
     public function setAutoPublish(Request $request): JsonResponse

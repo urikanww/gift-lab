@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -169,6 +170,19 @@ class Product extends Model
     public function modelParts(): HasMany
     {
         return $this->hasMany(ProductModelPart::class)->orderByDesc('is_primary')->orderBy('sort');
+    }
+
+    /**
+     * The primary part of a multi-part figure - its file_ref mirrors
+     * model_file_ref, the single source of truth for the printable mesh. (The
+     * separate model3d_id records catalogue provenance/licence, not the mesh.)
+     * Null for single-mesh products, which have no part rows.
+     *
+     * @return HasOne<ProductModelPart>
+     */
+    public function primaryPart(): HasOne
+    {
+        return $this->hasOne(ProductModelPart::class)->where('is_primary', true);
     }
 
     /**
