@@ -41,8 +41,9 @@ final readonly class Model3dData
         /**
          * All printable files for the model (STL/3MF/OBJ, or a `.zip` bundle),
          * each ['url' => string, 'name' => string]. When more than one STL part
-         * is present the store merges them into one file so no geometry is lost
-         * (the multi-part "head only" bug). Empty ⇒ fall back to $downloadUrl.
+         * is present the store persists every part (largest = primary) so no
+         * geometry is lost (the multi-part "head only" bug). Empty ⇒ fall back
+         * to $downloadUrl.
          *
          * @var list<array{url: string, name: string}>
          */

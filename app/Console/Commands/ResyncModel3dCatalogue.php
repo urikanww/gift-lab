@@ -23,7 +23,7 @@ use Illuminate\Console\Command;
 class ResyncModel3dCatalogue extends Command
 {
     protected $signature = 'catalogue:resync-3d
-        {--force : Re-download and re-merge every model file, healing pre-multi-part items whose stored file is a lone part}';
+        {--force : Re-download every model and re-record all its parts, healing pre-multi-part items whose stored file is a lone part}';
 
     protected $description = 'Re-check licences of MODEL_3D products against their source APIs.';
 

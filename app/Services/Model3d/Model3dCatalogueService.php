@@ -34,8 +34,9 @@ final class Model3dCatalogueService
 
     /**
      * @param  bool  $forceFileRefresh  bypass the stored-file cache and
-     *                                   re-download/re-merge (heals pre-multi-part
-     *                                   models whose stored file is a lone part).
+     *                                   re-download/re-record every part (heals
+     *                                   pre-multi-part models whose stored file
+     *                                   is a lone part).
      * @return array{model: Model3D, product: Product}
      */
     public function ingest(Model3dData $data, bool $forceFileRefresh = false): array
@@ -104,9 +105,10 @@ final class Model3dCatalogueService
             $product->publish_state = $publishState;
             $product->cannot_publish_reasons = $reasons;
 
-            // A forced heal replaces the geometry (a lone part → the full merged
-            // mesh), so stale auto-derived dimensions must be recomputed too -
-            // unless staff have verified this product's estimates.
+            // A forced heal replaces the primary geometry (a lone part → the
+            // richest part, with the rest recorded), so stale auto-derived
+            // dimensions must be recomputed too - unless staff have verified
+            // this product's estimates.
             if ($forceFileRefresh && ! $product->estimates_verified) {
                 $product->dimensions = null;
             }

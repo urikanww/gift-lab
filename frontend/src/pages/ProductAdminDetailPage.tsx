@@ -1001,7 +1001,7 @@ function ModelPartsSection({
           <div className="flex items-center gap-3">
             <input
               type="file"
-              accept=".stl"
+              accept=".stl,.3mf,.obj"
               disabled={busy}
               onChange={(e) => {
                 const file = e.target.files?.[0];

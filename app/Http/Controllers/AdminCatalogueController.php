@@ -297,9 +297,15 @@ class AdminCatalogueController extends Controller
         ]);
     }
 
+    /** Printable mesh formats a staff member may attach as a part. */
+    private const PART_EXTENSIONS = ['stl', '3mf', 'obj'];
+
     /**
-     * Superadmin attach an extra STL part to a multi-part product (e.g. a missing
-     * limb the scrape never shipped). Stored under the product's part namespace.
+     * Superadmin attach an extra mesh part to a multi-part product (e.g. a missing
+     * limb the scrape never shipped). Accepts the same printable formats as the
+     * primary mesh (.stl/.3mf/.obj); the in-browser 3D viewer only renders STL,
+     * but the floor can still download any format. Stored under the product's
+     * part namespace.
      */
     public function uploadModelPart(Request $request, Product $product): JsonResponse
     {
@@ -315,12 +321,13 @@ class AdminCatalogueController extends Controller
         ]);
 
         $upload = $request->file('file');
-        if (strtolower((string) $upload->getClientOriginalExtension()) !== 'stl') {
-            return response()->json(['message' => 'A model part must be an .stl file.'], 422);
+        $ext = strtolower((string) $upload->getClientOriginalExtension());
+        if (! in_array($ext, self::PART_EXTENSIONS, true)) {
+            return response()->json(['message' => 'A model part must be an .stl, .3mf or .obj file.'], 422);
         }
 
         $nextSort = (int) ($product->modelParts()->max('sort') ?? -1) + 1;
-        $path = $upload->storeAs('models3d', "manual-{$product->id}-part{$nextSort}.stl", 'local');
+        $path = $upload->storeAs('models3d', "manual-{$product->id}-part{$nextSort}.{$ext}", 'local');
 
         $label = trim((string) $request->input('label', ''));
         $part = $product->modelParts()->create([

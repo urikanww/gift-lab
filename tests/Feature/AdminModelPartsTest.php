@@ -85,9 +85,17 @@ it('lets staff attach an STL part', function (): void {
     expect($this->product->modelParts()->count())->toBe(1);
 });
 
-it('rejects a non-STL part upload', function (): void {
+it('accepts a .3mf or .obj part', function (): void {
     Sanctum::actingAs($this->staff);
-    $file = UploadedFile::fake()->createWithContent('model.obj', 'OBJBYTES');
+    $file = UploadedFile::fake()->createWithContent('arm.obj', 'OBJBYTES');
+
+    $this->post("/api/admin/products/{$this->product->id}/parts", ['file' => $file])->assertCreated();
+    expect($this->product->modelParts()->first()->file_ref)->toEndWith('.obj');
+});
+
+it('rejects a non-mesh part upload', function (): void {
+    Sanctum::actingAs($this->staff);
+    $file = UploadedFile::fake()->createWithContent('render.png', 'PNGBYTES');
 
     $this->post("/api/admin/products/{$this->product->id}/parts", ['file' => $file])->assertStatus(422);
     expect($this->product->modelParts()->count())->toBe(0);

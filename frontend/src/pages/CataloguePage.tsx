@@ -6,6 +6,7 @@ import { CATEGORIES } from '../lib/categories';
 import { Button, EmptyState, Input, Select, cn } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { ProductCard, CardSkeleton } from '../components/product/ProductCard';
+import Pagination from '../components/Pagination';
 import { Motion, staggerContainer } from '../motion';
 import type { Product } from '../types';
 
@@ -99,6 +100,9 @@ export default function CataloguePage() {
       // Push a history entry so browser back steps through pages.
       { replace: false },
     );
+    // A page change is a search-param change (same pathname), so the global
+    // ScrollToTop doesn't fire - scroll the new page up to the results top.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const hasActiveFilter = query.trim() !== '' || category !== '' || sort !== 'name';
@@ -197,31 +201,7 @@ export default function CataloguePage() {
             ))}
           </Motion>
 
-          {lastPage > 1 && (
-            <nav className="flex items-center justify-center gap-4" aria-label="Pagination">
-              <Button
-                variant="outline"
-                size="md"
-                className="min-h-[44px]"
-                disabled={loading || page <= 1}
-                onClick={() => goToPage(page - 1)}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-fg-muted">
-                Page {page} of {lastPage}
-              </span>
-              <Button
-                variant="outline"
-                size="md"
-                className="min-h-[44px]"
-                disabled={loading || page >= lastPage}
-                onClick={() => goToPage(page + 1)}
-              >
-                Next
-              </Button>
-            </nav>
-          )}
+          <Pagination page={page} lastPage={lastPage} onGoto={goToPage} disabled={loading} />
         </>
       )}
     </div>

@@ -127,8 +127,8 @@ final class HttpThingiverseClient implements Model3dApiClient
 
         // Every printable file (STL/3MF/OBJ) plus any `.zip` bundle - multi-part
         // models split their geometry across several files, and keeping only the
-        // first loses parts (the "Baby Groot head only" bug). The store merges
-        // STL parts into one printable file downstream.
+        // first loses parts (the "Baby Groot head only" bug). The store persists
+        // every part downstream (largest = primary).
         return $files
             ->filter(fn ($file): bool => is_array($file)
                 && $this->isPrintableName((string) ($file['name'] ?? ''))

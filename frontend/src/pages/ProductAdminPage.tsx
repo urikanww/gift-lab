@@ -8,6 +8,7 @@ import { CATEGORIES } from '../lib/categories';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct } from '../types';
 import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
+import Pagination from '../components/Pagination';
 
 interface Meta {
   current_page: number;
@@ -69,6 +70,14 @@ export default function ProductAdminPage() {
       );
     },
     [setSearchParams],
+  );
+
+  const goToPage = useCallback(
+    (target: number) => {
+      setParam('page', target <= 1 ? '' : String(target));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [setParam],
   );
 
   // Free-text search: local input for responsiveness, debounced into the URL.
@@ -294,26 +303,9 @@ export default function ProductAdminPage() {
 
       {/* Pagination */}
       {meta && meta.last_page > 1 && (
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col items-center gap-2">
+          <Pagination page={meta.current_page} lastPage={meta.last_page} onGoto={goToPage} disabled={loading} />
           <span className="text-sm text-fg-muted">{rangeLabel}</span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={loading || meta.current_page <= 1}
-              onClick={() => setParam('page', page - 1 <= 1 ? '' : String(page - 1))}
-            >
-              Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={loading || meta.current_page >= meta.last_page}
-              onClick={() => setParam('page', String(page + 1))}
-            >
-              Next
-            </Button>
-          </div>
         </div>
       )}
     </Motion>
