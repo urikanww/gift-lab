@@ -17,8 +17,16 @@ import type { PrintZone } from '../lib/printZone';
  */
 
 interface Props {
-  /** Product slug (or legacy id) used by the model stream endpoint. */
+  /** Product slug (or legacy id) used by the default (public) model stream. */
   productKey: string;
+  /**
+   * Override the model stream path (relative to the API base). Defaults to the
+   * public `/catalogue/{productKey}/model`. Staff surfaces (e.g. the production
+   * queue) pass the staff-gated `/admin/products/{id}/model` so an unpublished
+   * or gated item still renders. Bytes are fetched via axios, so the Sanctum
+   * cookie rides along either way.
+   */
+  modelSrc?: string;
   /** Filament colour name (Black/White/Grey). */
   filamentColor: string;
   /** Admin-authored decoration zone (model-space mm). */
@@ -58,7 +66,7 @@ const FILAMENT_HEX: Record<string, number> = {
 };
 
 const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model3dDecalPreview(
-  { productKey, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement, onRotate, angle },
+  { productKey, modelSrc, filamentColor, zone, artworkDataUrl, className, interactive, liveCanvas, dirtyTick, onDragPlacement, onRotate, angle },
   ref,
 ) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -140,10 +148,14 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
       renderer.render(scene, camera);
     };
 
-    new STLLoader().load(
-      `${api.defaults.baseURL}/catalogue/${productKey}/model`,
-      (geometry) => {
+    // Fetch bytes through axios (carries the Sanctum cookie), then .parse() -
+    // the same auth-safe path the admin zone editor uses, so a staff modelSrc
+    // (an unpublished/gated item) loads just like the public catalogue stream.
+    api
+      .get(modelSrc ?? `/catalogue/${productKey}/model`, { responseType: 'arraybuffer' })
+      .then((res) => {
         if (disposed) return;
+        const geometry = new STLLoader().parse(res.data as ArrayBuffer);
         // Do NOT recenter: keep model space aligned with the zone coordinates.
         geometry.computeVertexNormals();
 
@@ -166,12 +178,10 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
 
         setState('ready');
         animate();
-      },
-      undefined,
-      () => {
+      })
+      .catch(() => {
         if (!disposed) setState('error');
-      },
-    );
+      });
 
     // ---- Drag-to-move on the flat face (with an off-zone guard) ----
     const raycaster = new THREE.Raycaster();
@@ -253,7 +263,7 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
       });
       mount.removeChild(renderer.domElement);
     };
-  }, [productKey, filamentColor]);
+  }, [productKey, modelSrc, filamentColor]);
 
   // Build the decal GEOMETRY once per (mesh, zone) - and add/remove it as the
   // source toggles. A texture/content change (below) does NOT rebuild geometry,

@@ -146,10 +146,14 @@ final class QueueService
      */
     public function queue(): Collection
     {
-        // No eager-load: ProductionJobResource emits only quote_id (the FK on the
-        // job row itself) and never reads the quote relation, so with('quote')
-        // was a dead extra whereIn query + hydration on every queue read.
-        return ProductionJob::query()->queueOrder()->get();
+        // Eager-load the line items + their product so the floor can see each
+        // saved customization and render the decorated 3D model (final-product
+        // visualization) without an N+1 per card. The quote relation stays
+        // unloaded - the resource only needs the quote_id FK on the job row.
+        return ProductionJob::query()
+            ->queueOrder()
+            ->with(['lineItems.product.modelParts'])
+            ->get();
     }
 
     /**

@@ -256,3 +256,60 @@ it('restricts the queue endpoint to staff', function (): void {
     Sanctum::actingAs($this->staff);
     $this->getJson('/api/production-queue')->assertOk();
 });
+
+it('exposes every model part + the customization/zone on a job line for the floor', function (): void {
+    $zone = ['normal' => [0, 0, 1], 'center' => [0, 0, 5], 'up' => [0, 1, 0], 'width_mm' => 40, 'height_mm' => 30];
+    $model3d = Product::factory()->create([
+        'class' => 'MODEL_3D',
+        'print_method' => 'FDM',
+        'model_file_ref' => 'models3d/x-1.stl',
+        'print_zone' => $zone,
+    ]);
+    $model3d->modelParts()->createMany([
+        ['label' => 'Body', 'file_ref' => 'models3d/x-1.stl', 'triangle_count' => 300, 'is_primary' => true, 'sort' => 0],
+        ['label' => 'Head', 'file_ref' => 'models3d/x-1-part1.stl', 'triangle_count' => 100, 'is_primary' => false, 'sort' => 1],
+    ]);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
+    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $model3d->id,
+        'customization' => ['print_file_ref' => 'artwork/decal.png', 'filament_color' => 'Black', 'text' => 'HELLO'],
+    ]);
+    $this->queue->buildJobsForQuote($quote->load('lineItems.product'));
+
+    Sanctum::actingAs($this->staff);
+    $this->getJson('/api/production-queue')
+        ->assertOk()
+        ->assertJsonPath('data.0.line_items.0.product.id', $model3d->id)
+        ->assertJsonPath('data.0.line_items.0.product.class', 'MODEL_3D')
+        ->assertJsonPath('data.0.line_items.0.product.has_model', true)
+        ->assertJsonPath('data.0.line_items.0.product.print_zone.width_mm', 40)
+        ->assertJsonCount(2, 'data.0.line_items.0.product.model_parts')
+        // Relation orders primary first.
+        ->assertJsonPath('data.0.line_items.0.product.model_parts.0.is_primary', true)
+        ->assertJsonPath('data.0.line_items.0.product.model_parts.0.label', 'Body')
+        ->assertJsonPath('data.0.line_items.0.customization.filament_color', 'Black')
+        ->assertJsonPath('data.0.line_items.0.customization.text', 'HELLO');
+});
+
+it('lets the floor download an individual model part, and forbids buyers', function (): void {
+    Storage::fake('local');
+    Storage::disk('local')->put('models3d/x-1-part1.stl', 'STLBYTES');
+    $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+    $part = $model3d->modelParts()->create([
+        'label' => 'Head',
+        'file_ref' => 'models3d/x-1-part1.stl',
+        'triangle_count' => 100,
+        'is_primary' => false,
+        'sort' => 0,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->get("/api/admin/products/{$model3d->id}/parts/{$part->id}/model")->assertOk();
+    expect($res->streamedContent())->toBe('STLBYTES');
+
+    $buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
+    Sanctum::actingAs($buyer);
+    $this->get("/api/admin/products/{$model3d->id}/parts/{$part->id}/model")->assertForbidden();
+});

@@ -5,8 +5,11 @@ import api, { apiError } from '../lib/api';
 import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
 import { ErrorState } from '../components/ui/States';
+import Model3dDecalPreview from '../components/Model3dDecalPreview';
+import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
-import type { JobState } from '../types';
+import type { JobLineItem, JobState, ModelPart } from '../types';
+import type { PrintZone } from '../lib/printZone';
 
 const NEXT_STATE: Partial<Record<JobState, { label: string; to: JobState }>> = {
   READY: { label: 'Start production', to: 'IN_PRODUCTION' },
@@ -61,6 +64,8 @@ export default function ProductionQueuePage() {
   // card is mid-confirmation and its typed reference.
   const [shippingId, setShippingId] = useState<number | null>(null);
   const [consignment, setConsignment] = useState('');
+  // Which job's customization/final-product panel is expanded (view-only).
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const animate = useReducedMotionSafe();
 
   useEffect(() => {
@@ -177,6 +182,25 @@ export default function ProductionQueuePage() {
                       </dd>
                     </dl>
 
+                    {!!j.line_items?.length && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        fullWidth
+                        onClick={() => setExpandedId((v) => (v === j.id ? null : j.id))}
+                      >
+                        {expandedId === j.id ? 'Hide customization' : 'View customization & final look'}
+                      </Button>
+                    )}
+
+                    {expandedId === j.id && j.line_items && (
+                      <div className="flex flex-col gap-3 border-t border-border pt-3">
+                        {j.line_items.map((li) => (
+                          <JobLineDetail key={li.id} line={li} />
+                        ))}
+                      </div>
+                    )}
+
                     {j.artwork_ref && (
                       <Button
                         variant="ghost"
@@ -251,5 +275,167 @@ export default function ProductionQueuePage() {
         </motion.ul>
       )}
     </section>
+  );
+}
+
+const FILAMENT_DOT: Record<string, string> = {
+  Black: '#2e2e2e',
+  White: '#f1f1ee',
+  Grey: '#9c9c9c',
+};
+
+/**
+ * One production line's saved customization, plus a visualization of the final
+ * product: for a 3D item with a stored mesh + print zone, the decorated model
+ * (buyer's artwork projected onto the zone in the chosen filament colour);
+ * otherwise the saved artwork image. View-only - the floor inspects, edits
+ * nothing. The artwork ref is re-signed to a short-lived preview URL on demand.
+ */
+function JobLineDetail({ line }: { line: JobLineItem }) {
+  const product = line.product;
+  const c = line.customization;
+  const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const ref = c?.artwork_ref;
+    if (!ref) {
+      setArtworkUrl(null);
+      return;
+    }
+    void fetchArtworkPreviewUrl(ref).then((url) => {
+      if (active) setArtworkUrl(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, [c?.artwork_ref]);
+
+  const filament = c?.filament_color ?? null;
+  const show3d = !!product && product.class === 'MODEL_3D' && product.has_model && !!product.print_zone;
+
+  const { toast } = useToast();
+  const parts = product?.model_parts ?? [];
+  const [dlPart, setDlPart] = useState<number | null>(null);
+
+  // Download one part's STL for the floor. The admin part stream is staff-gated,
+  // so fetch through the authed axios client (cookie + XSRF) as a blob, then a
+  // transient object URL triggers the save - same pattern as the print file.
+  const downloadPart = async (part: ModelPart) => {
+    if (!product || dlPart !== null) return;
+    setDlPart(part.id);
+    try {
+      const res = await api.get(`/admin/products/${product.id}/parts/${part.id}/model`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safe = (part.label ?? `part-${part.sort + 1}`).replace(/[^\w.-]+/g, '_');
+      a.download = `${product.slug ?? product.id}-${safe}.stl`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({ title: 'Download failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setDlPart(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-sm font-medium text-fg">{product?.name ?? 'Item'}</p>
+        <span className="shrink-0 text-xs text-fg-subtle">&times;{line.qty}</span>
+      </div>
+
+      {show3d && product ? (
+        <Model3dDecalPreview
+          productKey={product.slug ?? String(product.id)}
+          // Staff-gated stream: renders even when the product is unpublished.
+          modelSrc={`/admin/products/${product.id}/model`}
+          filamentColor={filament ?? 'Grey'}
+          zone={product.print_zone as PrintZone}
+          artworkDataUrl={artworkUrl}
+          className="h-56 w-full overflow-hidden rounded-md bg-bg"
+        />
+      ) : artworkUrl ? (
+        <img
+          src={artworkUrl}
+          alt="Saved artwork"
+          className="max-h-56 w-full rounded-md bg-bg object-contain"
+        />
+      ) : null}
+
+      {c ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+          {filament && (
+            <>
+              <dt className="text-fg-subtle">Filament</dt>
+              <dd className="flex items-center gap-1.5 text-fg">
+                <span
+                  className="inline-block h-3 w-3 rounded-full border border-border"
+                  style={{ background: FILAMENT_DOT[filament] ?? '#9c9c9c' }}
+                />
+                {filament}
+              </dd>
+            </>
+          )}
+          {c.text && (
+            <>
+              <dt className="text-fg-subtle">Text</dt>
+              <dd className="break-words text-fg">{c.text}</dd>
+            </>
+          )}
+          {c.logo_size && (
+            <>
+              <dt className="text-fg-subtle">Logo size</dt>
+              <dd className="text-fg">{c.logo_size}</dd>
+            </>
+          )}
+          {c.placement_notes && (
+            <>
+              <dt className="text-fg-subtle">Notes</dt>
+              <dd className="break-words text-fg">{c.placement_notes}</dd>
+            </>
+          )}
+          {c.mode && (
+            <>
+              <dt className="text-fg-subtle">Mode</dt>
+              <dd className="text-fg">{c.mode}</dd>
+            </>
+          )}
+        </dl>
+      ) : (
+        <p className="text-xs text-fg-subtle">No customization on this line.</p>
+      )}
+
+      {parts.length > 0 && (
+        <div className="flex flex-col gap-1 border-t border-border pt-2">
+          <p className="text-xs font-medium text-fg-subtle">Printable parts ({parts.length})</p>
+          <ul className="flex flex-col divide-y divide-border/60">
+            {parts.map((part) => (
+              <li key={part.id} className="flex items-center justify-between gap-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-xs text-fg">
+                  {part.label ?? `Part ${part.sort + 1}`}
+                  {part.is_primary && <span className="ml-1 text-2xs text-fg-subtle">(primary)</span>}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={dlPart === part.id}
+                  disabled={dlPart !== null && dlPart !== part.id}
+                  onClick={() => void downloadPart(part)}
+                >
+                  Download
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

@@ -89,6 +89,9 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
           artwork_ref: existing?.artwork_ref ?? null,
           print_method: existing?.print_method ?? null,
           qty: e.qty,
+          // The lightweight broadcast carries no line items; keep what we loaded
+          // so the customization/preview panel survives a state change.
+          line_items: existing?.line_items,
         };
         const others = s.jobs.filter((j) => j.id !== e.job_id);
         return { jobs: sortQueue([...others, next]) };
