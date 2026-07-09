@@ -44,12 +44,24 @@ class AdminCatalogueController extends Controller
         // rows, so response size/memory grew linearly with scraped inventory.
         $perPage = max(1, min((int) $request->integer('per_page', 24), 100));
 
-        // State breakdown across the WHOLE gate set (respecting the class filter
-        // but NOT the state filter), so the summary badges reflect the full
-        // catalogue total - not just the current page or the filtered subset.
+        // Name/creator search. LIKE wildcards in the term are escaped so a stray
+        // % or _ narrows literally instead of broadening the match.
+        $search = trim((string) $request->string('search'));
+        $searchScope = function ($q) use ($search): void {
+            if ($search === '') {
+                return;
+            }
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $q->where(fn ($w) => $w->where('name', 'like', $term)->orWhere('creator_credit', 'like', $term));
+        };
+
+        // State breakdown across the WHOLE gate set (respecting the class + search
+        // filters but NOT the state filter), so the summary badges reflect the
+        // filtered catalogue total - not just the current page or the state subset.
         $byState = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
+            ->where($searchScope)
             ->selectRaw('publish_state, COUNT(*) as c')
             ->groupBy('publish_state')
             ->pluck('c', 'publish_state');
@@ -66,8 +78,10 @@ class AdminCatalogueController extends Controller
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->when($request->filled('state'), fn ($q) => $q->where('publish_state', $request->string('state')->toString()))
+            ->where($searchScope)
             ->orderByDesc('updated_at')
-            ->paginate($perPage);
+            ->paginate($perPage)
+            ->withQueryString();
 
         $paginator->getCollection()->transform(fn (Product $p): array => [
             'id' => $p->id,

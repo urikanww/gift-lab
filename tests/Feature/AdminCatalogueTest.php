@@ -43,6 +43,34 @@ it('returns full-set state counts independent of pagination and the state filter
     expect($res->json('data'))->toHaveCount(2); // page still limited + state-filtered
 });
 
+it('filters the gate list and counts by a name/creator search term', function (): void {
+    Product::factory()->model3d()->create(['name' => 'Baby Groot Planter', 'publish_state' => 'READY_TO_APPROVE']);
+    Product::factory()->model3d()->create(['name' => 'Cable Holder', 'creator_credit' => 'GrootFan', 'publish_state' => 'PUBLISHED']);
+    Product::factory()->scrapedUv()->create(['name' => 'Ceramic Mug', 'publish_state' => 'READY_TO_APPROVE']);
+
+    Sanctum::actingAs($this->staff);
+    // Matches the name of one item and the creator_credit of another.
+    $res = $this->getJson('/api/admin/catalogue?search=groot')->assertOk();
+
+    $names = collect($res->json('data'))->pluck('name')->all();
+    expect($names)->toContain('Baby Groot Planter')
+        ->and($names)->toContain('Cable Holder')
+        ->and($names)->not->toContain('Ceramic Mug')
+        // Counts reflect the searched subset, not the whole gate.
+        ->and($res->json('counts.total'))->toBe(2);
+});
+
+it('escapes LIKE wildcards in the search term', function (): void {
+    Product::factory()->model3d()->create(['name' => 'Plain Widget', 'publish_state' => 'READY_TO_APPROVE']);
+
+    Sanctum::actingAs($this->staff);
+    // A bare % must match literally (nothing), not act as a wildcard-all.
+    $res = $this->getJson('/api/admin/catalogue?search=%25')->assertOk();
+
+    expect($res->json('data'))->toHaveCount(0)
+        ->and($res->json('counts.total'))->toBe(0);
+});
+
 it('publishes an item awaiting approval', function (): void {
     $product = Product::factory()->scrapedUv()->create(['publish_state' => 'READY_TO_APPROVE']);
 
