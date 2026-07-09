@@ -6,10 +6,12 @@ namespace App\Http\Controllers;
 
 use App\Enums\ProductClass;
 use App\Http\Resources\ProductResource;
+use App\Models\LineItem;
 use App\Models\Product;
 use App\Services\Catalogue\CategoryClassifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -78,6 +80,8 @@ class CatalogueController extends Controller
 
     /**
      * Relevance-ranked "You might also like" for the PDP:
+     *   0. Frequently bought together - products that co-appear in real quotes
+     *      (a learned signal; empty until there's order history)
      *   1. Same category      - true "similar" (a mug → more mugs)
      *   2. Complementary cats  - curated pairs (the coaster/keychain that pairs)
      *   3. Newest fill         - keeps the rail full when the above are thin
@@ -102,36 +106,78 @@ class CatalogueController extends Controller
             ->whereKeyNot($product->id)
             ->with('variants');
 
+        $picked = collect();
+        // Ids to skip on each subsequent tier (already picked + the product itself).
+        $exclude = fn (): array => $picked->pluck('id')->push($product->id)->all();
+
+        // Tier 0: frequently bought together (data signal; strongest when present).
+        $picked = $picked->concat($this->coOrderedProducts($product, $limit));
+
         // Tier 1: same category.
-        $similar = $category !== ''
-            ? $base()->where('category', $category)->orderBy('name')->limit($limit)->get()
-            : collect();
+        if ($category !== '' && $picked->count() < $limit) {
+            $picked = $picked->concat(
+                $base()->where('category', $category)->whereNotIn('id', $exclude())->orderBy('name')->limit($limit)->get()
+            );
+        }
 
         // Tier 2: complementary categories, ordered by pairing strength (map order).
-        $complement = collect();
-        if ($complements !== [] && $similar->count() < $limit) {
-            $complement = $base()
-                ->whereIn('category', $complements)
-                ->whereNotIn('id', $similar->pluck('id'))
-                ->orderBy('name')
-                ->limit($limit)
-                ->get()
-                ->sortBy(fn (Product $p) => array_search($p->category, $complements, true))
-                ->values();
+        if ($complements !== [] && $picked->count() < $limit) {
+            $picked = $picked->concat(
+                $base()->whereIn('category', $complements)->whereNotIn('id', $exclude())->orderBy('name')->limit($limit)->get()
+                    ->sortBy(fn (Product $p) => array_search($p->category, $complements, true))
+                    ->values()
+            );
         }
 
         // Tier 3: newest fill to keep the rail full.
-        $picked = $similar->concat($complement);
         if ($picked->count() < $limit) {
-            $fill = $base()
-                ->whereNotIn('id', $picked->pluck('id'))
-                ->orderByDesc('created_at')
-                ->limit($limit - $picked->count())
-                ->get();
-            $picked = $picked->concat($fill);
+            $picked = $picked->concat(
+                $base()->whereNotIn('id', $exclude())->orderByDesc('created_at')->limit($limit - $picked->count())->get()
+            );
         }
 
         return ProductResource::collection($picked->take($limit)->values());
+    }
+
+    /**
+     * Products frequently bought together with the given one: other published
+     * products that co-appear in the same quotes, ranked by how many distinct
+     * quotes they share. A learned "also bought" signal that sharpens as orders
+     * accrue; returns empty when the product has no order history yet.
+     */
+    private function coOrderedProducts(Product $product, int $limit): Collection
+    {
+        $quoteIds = LineItem::query()
+            ->where('product_id', $product->id)
+            ->distinct()
+            ->pluck('quote_id');
+
+        if ($quoteIds->isEmpty()) {
+            return collect();
+        }
+
+        $counts = LineItem::query()
+            ->whereIn('quote_id', $quoteIds)
+            ->where('product_id', '!=', $product->id)
+            ->selectRaw('product_id, COUNT(DISTINCT quote_id) as co_count')
+            ->groupBy('product_id')
+            ->orderByDesc('co_count')
+            ->limit($limit)
+            ->pluck('co_count', 'product_id');
+
+        if ($counts->isEmpty()) {
+            return collect();
+        }
+
+        // Keep only publishable co-orders, preserving the co-occurrence ranking.
+        return Product::query()
+            ->published()
+            ->whereKeyNot($product->id)
+            ->whereIn('id', $counts->keys())
+            ->with('variants')
+            ->get()
+            ->sortByDesc(fn (Product $p): int => (int) ($counts[$p->id] ?? 0))
+            ->values();
     }
 
     /**
