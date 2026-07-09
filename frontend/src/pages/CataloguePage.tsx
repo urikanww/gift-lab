@@ -30,11 +30,12 @@ export default function CataloguePage() {
   const category = rawCategory && CATEGORY_KEYS.has(rawCategory) ? rawCategory : '';
   const rawSort = searchParams.get('sort');
   const sort: CatalogueSort = rawSort && SORT_KEYS.has(rawSort) ? (rawSort as CatalogueSort) : 'name';
+  const rawPage = Number(searchParams.get('page'));
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
   const [total, setTotal] = useState(0);
 
@@ -51,7 +52,6 @@ export default function CataloguePage() {
       const data = await fetchCatalogue({ page: target, category: category || undefined, q: query, sort });
       if (!isCurrent()) return;
       setProducts(data.data);
-      setPage(data.meta?.current_page ?? target);
       setLastPage(data.meta?.last_page ?? 1);
       setTotal(data.meta?.total ?? data.data.length);
     } catch (err) {
@@ -61,17 +61,18 @@ export default function CataloguePage() {
     }
   };
 
-  // Server-side search/filter/sort: reload page 1 whenever any input changes.
+  // URL-driven: reload whenever query/filter/sort/page changes. Page lives in the
+  // URL so returning from a product detail (back-nav) restores the same page.
   // Text input is debounced so we don't fire a request per keystroke.
   useEffect(() => {
-    const timer = setTimeout(() => void load(1), query ? 250 : 0);
+    const timer = setTimeout(() => void load(page), query ? 250 : 0);
     return () => {
       clearTimeout(timer);
       // Invalidate any in-flight load from the superseded filter state.
       requestSeq.current++;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, category, sort]);
+  }, [query, category, sort, page]);
 
   const setParam = (key: string, value: string) => {
     setSearchParams(
@@ -79,9 +80,24 @@ export default function CataloguePage() {
         const params = new URLSearchParams(prev);
         if (value) params.set(key, value);
         else params.delete(key);
+        // Any filter change resets to page 1.
+        if (key !== 'page') params.delete('page');
         return params;
       },
       { replace: true },
+    );
+  };
+
+  const goToPage = (target: number) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (target <= 1) params.delete('page');
+        else params.set('page', String(target));
+        return params;
+      },
+      // Push a history entry so browser back steps through pages.
+      { replace: false },
     );
   };
 
@@ -188,7 +204,7 @@ export default function CataloguePage() {
                 size="md"
                 className="min-h-[44px]"
                 disabled={loading || page <= 1}
-                onClick={() => void load(page - 1)}
+                onClick={() => goToPage(page - 1)}
               >
                 Previous
               </Button>
@@ -200,7 +216,7 @@ export default function CataloguePage() {
                 size="md"
                 className="min-h-[44px]"
                 disabled={loading || page >= lastPage}
-                onClick={() => void load(page + 1)}
+                onClick={() => goToPage(page + 1)}
               >
                 Next
               </Button>

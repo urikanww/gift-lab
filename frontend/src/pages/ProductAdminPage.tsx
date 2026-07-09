@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import { Badge, Button, Card, Input, LinkButton, Select } from '../ui';
@@ -20,6 +20,8 @@ const PER_PAGE_OPTIONS = [15, 30, 50, 100] as const;
 
 type SortKey = 'newest' | 'most_sold' | 'name' | 'base_cost' | 'stock';
 
+const SORT_KEYS = new Set<SortKey>(['newest', 'most_sold', 'name', 'base_cost', 'stock']);
+
 /**
  * Server-driven product browser (route /product-admin). All filtering, sorting
  * and pagination happen on the API; this page just reflects the query state.
@@ -29,34 +31,57 @@ export default function ProductAdminPage() {
   const navigate = useNavigate();
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
 
+  // URL is the single source of truth for pagination + every filter, so returning
+  // from a product detail (back-nav) restores the exact list state.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawPage = Number(searchParams.get('page'));
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const rawPerPage = Number(searchParams.get('per_page'));
+  const perPage = (PER_PAGE_OPTIONS as readonly number[]).includes(rawPerPage) ? rawPerPage : 15;
+  const status: 'active' | 'archived' = searchParams.get('status') === 'archived' ? 'archived' : 'active';
+  const classFilter = searchParams.get('class') ?? '';
+  const publishState = searchParams.get('publish_state') ?? '';
+  const licenseTier = searchParams.get('license_tier') ?? '';
+  const category = searchParams.get('category') ?? '';
+  const q = searchParams.get('q') ?? '';
+  const rawSort = searchParams.get('sort');
+  const sort: SortKey = rawSort && SORT_KEYS.has(rawSort as SortKey) ? (rawSort as SortKey) : 'newest';
+  const dir: 'asc' | 'desc' = searchParams.get('dir') === 'asc' ? 'asc' : 'desc';
+
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(15);
-  const [status, setStatus] = useState<'active' | 'archived'>('active');
-  const [classFilter, setClassFilter] = useState('');
-  const [publishState, setPublishState] = useState('');
-  const [licenseTier, setLicenseTier] = useState('');
-  const [category, setCategory] = useState('');
-  const [q, setQ] = useState('');
-  const [debouncedQ, setDebouncedQ] = useState('');
-  const [sort, setSort] = useState<SortKey>('newest');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
+  // Write a single param. Any filter change (not page itself) resets to page 1.
+  // Defaults are written empty (deleted) to keep the URL clean.
+  const setParam = useCallback(
+    (key: string, value: string) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (value) p.set(key, value);
+          else p.delete(key);
+          if (key !== 'page') p.delete('page');
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
-  // Debounce the free-text search so typing doesn't fire a request per keystroke.
+  // Free-text search: local input for responsiveness, debounced into the URL.
+  const [qInput, setQInput] = useState(q);
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 300);
-    return () => clearTimeout(t);
+    setQInput(q);
   }, [q]);
-
-  // Any filter/sort/page-size change resets to page 1 (a filtered/resized set
-  // has fewer pages).
   useEffect(() => {
-    setPage(1);
-  }, [status, classFilter, publishState, licenseTier, category, debouncedQ, sort, dir, perPage]);
+    if (qInput === q) return;
+    const t = setTimeout(() => setParam('q', qInput), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qInput]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,7 +96,7 @@ export default function ProductAdminPage() {
           publish_state: publishState || undefined,
           license_tier: licenseTier || undefined,
           category: category || undefined,
-          q: debouncedQ || undefined,
+          q: q || undefined,
           sort,
           dir: dir || undefined,
         },
@@ -83,7 +108,7 @@ export default function ProductAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, perPage, status, classFilter, publishState, licenseTier, category, debouncedQ, sort, dir]);
+  }, [page, perPage, status, classFilter, publishState, licenseTier, category, q, sort, dir]);
 
   useEffect(() => {
     void load();
@@ -143,17 +168,17 @@ export default function ProductAdminPage() {
         <Input
           label="Search"
           placeholder="Search by name…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
         />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Select label="Class" value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+          <Select label="Class" value={classFilter} onChange={(e) => setParam('class', e.target.value)}>
             <option value="">All classes</option>
             <option value="CORE">Core</option>
             <option value="SCRAPED_UV">UV Print</option>
             <option value="MODEL_3D">3D Printed</option>
           </Select>
-          <Select label="Publish state" value={publishState} onChange={(e) => setPublishState(e.target.value)}>
+          <Select label="Publish state" value={publishState} onChange={(e) => setParam('publish_state', e.target.value)}>
             <option value="">All states</option>
             <option value="PENDING">Pending</option>
             <option value="READY_TO_APPROVE">Ready to approve</option>
@@ -161,14 +186,14 @@ export default function ProductAdminPage() {
             <option value="CANNOT_PUBLISH">Cannot publish</option>
           </Select>
           {isSuperadmin && (
-            <Select label="Licence tier" value={licenseTier} onChange={(e) => setLicenseTier(e.target.value)}>
+            <Select label="Licence tier" value={licenseTier} onChange={(e) => setParam('license_tier', e.target.value)}>
               <option value="">All tiers</option>
               <option value="standard">Standard</option>
               <option value="extended">Extended</option>
               <option value="high_risk">High risk</option>
             </Select>
           )}
-          <Select label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <Select label="Category" value={category} onChange={(e) => setParam('category', e.target.value)}>
             <option value="">All categories</option>
             {CATEGORIES.map((c) => (
               <option key={c.key} value={c.key}>
@@ -176,11 +201,19 @@ export default function ProductAdminPage() {
               </option>
             ))}
           </Select>
-          <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'archived')}>
+          <Select
+            label="Status"
+            value={status}
+            onChange={(e) => setParam('status', e.target.value === 'active' ? '' : e.target.value)}
+          >
             <option value="active">Active</option>
             <option value="archived">Archived</option>
           </Select>
-          <Select label="Per page" value={String(perPage)} onChange={(e) => setPerPage(Number(e.target.value))}>
+          <Select
+            label="Per page"
+            value={String(perPage)}
+            onChange={(e) => setParam('per_page', Number(e.target.value) === 15 ? '' : e.target.value)}
+          >
             {PER_PAGE_OPTIONS.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -189,7 +222,11 @@ export default function ProductAdminPage() {
           </Select>
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Select label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              <Select
+                label="Sort by"
+                value={sort}
+                onChange={(e) => setParam('sort', e.target.value === 'newest' ? '' : e.target.value)}
+              >
                 <option value="newest">Newest</option>
                 <option value="most_sold">Most sold</option>
                 <option value="name">Name</option>
@@ -202,7 +239,7 @@ export default function ProductAdminPage() {
               size="sm"
               className="mb-0.5"
               aria-label={dir === 'asc' ? 'Ascending - click for descending' : 'Descending - click for ascending'}
-              onClick={() => setDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+              onClick={() => setParam('dir', dir === 'asc' ? '' : 'asc')}
             >
               {dir === 'asc' ? '↑ Asc' : '↓ Desc'}
             </Button>
@@ -264,7 +301,7 @@ export default function ProductAdminPage() {
               variant="outline"
               size="sm"
               disabled={loading || meta.current_page <= 1}
-              onClick={() => setPage((n) => Math.max(1, n - 1))}
+              onClick={() => setParam('page', page - 1 <= 1 ? '' : String(page - 1))}
             >
               Prev
             </Button>
@@ -272,7 +309,7 @@ export default function ProductAdminPage() {
               variant="outline"
               size="sm"
               disabled={loading || meta.current_page >= meta.last_page}
-              onClick={() => setPage((n) => n + 1)}
+              onClick={() => setParam('page', String(page + 1))}
             >
               Next
             </Button>

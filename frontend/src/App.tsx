@@ -1,5 +1,14 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+  useParams,
+} from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -42,6 +51,22 @@ const CylinderCalibrationSpike = lazy(() => import('./pages/CylinderCalibrationS
 function RedirectCatalogueToProduct() {
   const { id } = useParams();
   return <Navigate to={`/products/${id}`} replace />;
+}
+
+/**
+ * Reset scroll to the top on forward navigation (PUSH/REPLACE) so a new page -
+ * e.g. a product opened from the bottom of the grid - starts at the top, not
+ * mid-footer. POP (browser back) is left alone so returning to the catalogue
+ * keeps the previous scroll position. Search-param-only changes (filters,
+ * pagination) don't change pathname, so they never trigger a jump.
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const navType = useNavigationType();
+  useEffect(() => {
+    if (navType !== 'POP') window.scrollTo(0, 0);
+  }, [pathname, navType]);
+  return null;
 }
 
 /** Shared fallback for lazily-loaded routes. */
@@ -97,6 +122,7 @@ export default function App() {
         <BrowserRouter
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
+          <ScrollToTop />
           <Routes>
         {/* TEMP spike route (throwaway): standalone, no Layout/auth guard so it
             loads without login. Remove when the calibration work is done. */}
