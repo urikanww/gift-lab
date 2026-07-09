@@ -193,6 +193,60 @@ it('auto-publishes inline when the slicer verifies estimates during the pull', f
         ->and((bool) $product->estimates_verified)->toBeTrue();
 });
 
+it('ingests from the Thingiverse newest feed via --browse=newest', function (): void {
+    Http::fake([
+        'api.thingiverse.com/newest*' => Http::response([['id' => 511]], 200),
+        'api.thingiverse.com/popular*' => Http::response([], 200), // must not be hit
+    ]);
+
+    app(StubModel3dApiClient::class)->with(new Model3dData(
+        source: Model3dSource::Thingiverse,
+        sourceId: '511',
+        name: 'Freshly uploaded clip',
+        license: 'CC0',
+        creatorCredit: null,
+        fileRef: 'models/clip.stl',
+        filamentMaterial: 'PLA',
+        filamentColor: 'Black',
+        estGrams: 10.0,
+    ));
+
+    $this->artisan('catalogue:pull-3d', ['--browse' => 'newest', '--source' => 'thingiverse'])
+        ->assertSuccessful();
+
+    expect(Product::query()->where('name', 'Freshly uploaded clip')->exists())->toBeTrue();
+    expect(Http::recorded(fn ($request) => str_contains($request->url(), '/newest')))->not->toBeEmpty();
+    expect(Http::recorded(fn ($request) => str_contains($request->url(), '/popular')))->toBeEmpty();
+});
+
+it('browses Cults3D by publication date for --browse=newest', function (): void {
+    Http::fake([
+        'cults3d.com/graphql' => Http::response([
+            'data' => ['creationsBatch' => ['results' => [['slug' => 'fresh-vase']]]],
+        ], 200),
+    ]);
+
+    app(StubModel3dApiClient::class)->with(new Model3dData(
+        source: Model3dSource::Cults3d,
+        sourceId: 'fresh-vase',
+        name: 'Fresh vase',
+        license: 'CC0',
+        creatorCredit: null,
+        fileRef: 'models/vase.stl',
+        filamentMaterial: 'PLA',
+        filamentColor: 'White',
+        estGrams: 40.0,
+    ));
+
+    $this->artisan('catalogue:pull-3d', ['--browse' => 'newest', '--source' => 'cults3d'])
+        ->assertSuccessful();
+
+    expect(Product::query()->where('name', 'Fresh vase')->exists())->toBeTrue();
+    // The GraphQL query must sort by publication date, not downloads.
+    expect(Http::recorded(fn ($request) => str_contains((string) ($request->data()['query'] ?? ''), 'BY_PUBLICATION')))
+        ->not->toBeEmpty();
+});
+
 it('errors when neither a query nor --browse is given', function (): void {
     $this->artisan('catalogue:pull-3d', [])
         ->assertFailed();

@@ -47,7 +47,7 @@ class PullModel3dCatalogue extends Command
 
     protected $signature = 'catalogue:pull-3d
         {query? : Search term (omit in --browse mode), e.g. "keychain"}
-        {--browse= : Browse a keyword-less feed instead of searching: "popular"}
+        {--browse= : Browse a keyword-less feed instead of searching: "popular" or "newest"}
         {--count=6 : Commercial-OK models to ingest per source before stopping}
         {--source=all : Source to pull from: all, thingiverse, cults3d}
         {--publish : Publish licence-cleared items immediately (skip the approval queue)}';
@@ -75,17 +75,19 @@ class PullModel3dCatalogue extends Command
         }
 
         $browse = false;
+        $browseMode = '';
 
         if ($browseOpt !== null) {
-            if (strtolower((string) $browseOpt) !== 'popular') {
-                $this->error("Unsupported --browse \"{$browseOpt}\" (only \"popular\" is supported).");
+            $browseMode = strtolower((string) $browseOpt);
+            if (! in_array($browseMode, ['popular', 'newest'], true)) {
+                $this->error("Unsupported --browse \"{$browseOpt}\" (use \"popular\" or \"newest\").");
 
                 return self::FAILURE;
             }
 
             $browse = true;
         } elseif ($query === '') {
-            $this->error('Provide a search term or use --browse=popular.');
+            $this->error('Provide a search term or use --browse=popular|newest.');
 
             return self::FAILURE;
         }
@@ -94,7 +96,7 @@ class PullModel3dCatalogue extends Command
 
         foreach ($sources as $source) {
             if ($browse) {
-                $failed = $this->pullBrowse($source, $target, $client, $service) ? $failed : true;
+                $failed = $this->pullBrowse($source, $target, $browseMode, $client, $service) ? $failed : true;
 
                 continue;
             }
@@ -129,6 +131,7 @@ class PullModel3dCatalogue extends Command
     private function pullBrowse(
         Model3dSource $source,
         int $target,
+        string $mode,
         Model3dApiClient $client,
         Model3dCatalogueService $service,
     ): bool {
@@ -137,8 +140,8 @@ class PullModel3dCatalogue extends Command
 
         for ($page = 1; $page <= self::MAX_BROWSE_PAGES; $page++) {
             $ids = match ($source) {
-                Model3dSource::Thingiverse => $this->browseThingiverse($page),
-                Model3dSource::Cults3d => $this->browseCults3d($page),
+                Model3dSource::Thingiverse => $this->browseThingiverse($page, $mode),
+                Model3dSource::Cults3d => $this->browseCults3d($page, $mode),
                 default => null,
             };
 
@@ -156,7 +159,7 @@ class PullModel3dCatalogue extends Command
                 break;
             }
 
-            $totalIngested += $this->pull($source, $ids, 'popular', $target - $totalIngested, $client, $service);
+            $totalIngested += $this->pull($source, $ids, $mode, $target - $totalIngested, $client, $service);
 
             if ($totalIngested >= $target) {
                 // Target met - no need to page further tonight.
@@ -382,14 +385,14 @@ class PullModel3dCatalogue extends Command
     }
 
     /**
-     * Page through Thingiverse's "popular" feed - no search query, sorted by
-     * the source's own popularity ranking. Unlike /search/ (which wraps hits in
-     * a "hits" key), /popular returns a bare top-level array of things, so we
-     * pluck ids straight off the response root.
+     * Page through a Thingiverse keyword-less feed - "popular" (its own
+     * popularity ranking) or "newest" (most recently published). Both are
+     * top-level collection endpoints that return a bare array of things (unlike
+     * /search/, which wraps hits in a "hits" key), so we pluck ids off the root.
      *
      * @return array<int, string>|null
      */
-    private function browseThingiverse(int $page): ?array
+    private function browseThingiverse(int $page, string $mode): ?array
     {
         $token = (string) config('services.thingiverse.token');
         if ($token === '') {
@@ -398,12 +401,13 @@ class PullModel3dCatalogue extends Command
             return null;
         }
 
+        $endpoint = $mode === 'newest' ? '/newest' : '/popular';
         $response = Http::withToken($token)
             ->acceptJson()
             ->connectTimeout(5)
             ->timeout(20)
             ->retry(2, 500, throw: false)
-            ->get(config('services.thingiverse.base_url').'/popular', [
+            ->get(config('services.thingiverse.base_url').$endpoint, [
                 'page' => $page,
                 'per_page' => 30,
             ]);
@@ -423,17 +427,19 @@ class PullModel3dCatalogue extends Command
     }
 
     /**
-     * Page through a keyword-less "most downloaded" Cults3D feed.
+     * Page through a keyword-less Cults3D feed - "most downloaded"
+     * (BY_DOWNLOADS) or "newest" (BY_PUBLICATION).
      *
      * creationsBatch returns a CreationBatch wrapper (results { slug }), same
      * shape as creationsSearchBatch - verified against the live Cults3D GraphQL
      * API. Introspection is disabled on their prod endpoint, so the field/enum
-     * names here (creationsBatch, sort: BY_DOWNLOADS, results) were confirmed by
-     * exercising the live query directly, not by schema introspection.
+     * names here (creationsBatch, sort: BY_DOWNLOADS / BY_PUBLICATION, results)
+     * were confirmed by exercising the live query directly, not by schema
+     * introspection.
      *
      * @return array<int, string>|null
      */
-    private function browseCults3d(int $page): ?array
+    private function browseCults3d(int $page, string $mode): ?array
     {
         $username = (string) config('services.cults3d.username');
         $token = (string) config('services.cults3d.token');
@@ -446,9 +452,12 @@ class PullModel3dCatalogue extends Command
         $limit = 30;
         $offset = ($page - 1) * $limit;
 
-        $gql = <<<'GQL'
-        query ($limit: Int, $offset: Int) {
-          creationsBatch(sort: BY_DOWNLOADS, onlyFree: true, onlyCommercial: true, limit: $limit, offset: $offset) {
+        // Enum injected (not user input) - GraphQL enums can't be bound as string
+        // variables, so it's interpolated into the query body.
+        $sort = $mode === 'newest' ? 'BY_PUBLICATION' : 'BY_DOWNLOADS';
+        $gql = <<<GQL
+        query (\$limit: Int, \$offset: Int) {
+          creationsBatch(sort: {$sort}, onlyFree: true, onlyCommercial: true, limit: \$limit, offset: \$offset) {
             results { slug }
           }
         }
