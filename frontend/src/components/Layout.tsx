@@ -1,8 +1,16 @@
+import { useLocation } from 'react-router-dom';
 import { AnimatedOutlet } from './AnimatedOutlet';
 import SiteHeader from './SiteHeader';
 import SiteFooter from './SiteFooter';
+import { cn } from '../ui';
 
 export default function Layout() {
+  // The product designer is a wide "studio" surface, so it opts out of the
+  // site-wide readable content cap and runs to a wider studio width. Every
+  // other route keeps the standard max-w-content chrome.
+  const { pathname } = useLocation();
+  const isStudio = pathname.startsWith('/design/');
+
   return (
     <div className="min-h-screen bg-bg">
       <a
@@ -14,7 +22,13 @@ export default function Layout() {
 
       <SiteHeader />
 
-      <main id="main-content" className="mx-auto max-w-content px-4 py-8 sm:px-6 sm:py-10">
+      <main
+        id="main-content"
+        className={cn(
+          'mx-auto px-4 py-8 sm:px-6 sm:py-10',
+          isStudio ? 'max-w-[1600px]' : 'max-w-content',
+        )}
+      >
         <AnimatedOutlet />
       </main>
 

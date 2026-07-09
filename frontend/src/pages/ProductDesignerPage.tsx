@@ -391,77 +391,93 @@ export default function ProductDesignerPage() {
           variants={fadeInUp}
           initial="hidden"
           animate="visible"
-          className="mx-auto flex w-full max-w-6xl flex-col gap-5"
+          className="mx-auto flex w-full flex-col gap-4"
         >
-          {/* Header + slim delivery bar share one row so the studio starts
-              high on the page - no tall standalone delivery card. */}
-          <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="brand" size="sm">
-                  Design studio
+          {/* Compact header - delivery moved into the purchase dock below so
+              the customization surface can run full width. */}
+          <header className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="brand" size="sm">
+                Design studio
+              </Badge>
+              {product.print_method && (
+                <Badge tone="neutral" size="sm">
+                  {product.print_method}
                 </Badge>
-                {product.print_method && (
-                  <Badge tone="neutral" size="sm">
-                    {product.print_method}
-                  </Badge>
-                )}
-              </div>
-              <h1 className="font-display text-3xl leading-tight sm:text-4xl">{product.name}</h1>
-              {product.description && <p className="max-w-2xl text-fg-muted">{product.description}</p>}
-              {product.creator_credit && (
-                <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
               )}
             </div>
-
-            {/* Deadline-aware delivery window + feasibility check - compact */}
-            {lead && (
-              <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 lg:w-72 lg:shrink-0">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-fg">Estimated delivery</p>
-                    <p className="text-sm text-fg-muted">
-                      Arrives {fmtDate(lead.earliest)} – {fmtDate(lead.latest)}
-                    </p>
-                  </div>
-                  {needBy &&
-                    (needBy < lead.latest ? (
-                      <Badge tone="warning" dot>
-                        At risk
-                      </Badge>
-                    ) : (
-                      <Badge tone="success" dot>
-                        On track
-                      </Badge>
-                    ))}
-                </div>
-                <Input
-                  type="date"
-                  label="Need it by (optional)"
-                  value={needBy}
-                  min={lead.earliest}
-                  onChange={(e) => setNeedBy(e.target.value)}
-                />
-                {needBy && needBy < lead.latest && (
-                  <p className="text-sm text-warning">
-                    Tight for {fmtDate(needBy)}.
-                    {lead.rush_available && lead.rush_earliest
-                      ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
-                          lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
-                        } - ask us to add it.`
-                      : ''}
-                  </p>
-                )}
-              </div>
+            <h1 className="font-display text-3xl leading-tight sm:text-4xl">{product.name}</h1>
+            {product.description && (
+              <p className="line-clamp-2 max-w-3xl text-sm text-fg-muted">{product.description}</p>
+            )}
+            {product.creator_credit && (
+              <p className="text-sm text-fg-subtle">Design by {product.creator_credit}</p>
             )}
           </header>
 
-          {/* Two-column studio: the live preview is the hero on the left; every
-              control (mode, variant, filament, quantity, price, CTA) lives in a
-              single narrow rail on the right. Collapses to one column < lg. */}
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start">
-            {/* LEFT: the design surface / preview hero */}
-            <div className="flex min-w-0 flex-col gap-3">
+          {/* Design inputs that drive the preview (mode, variant, filament) sit
+              above the full-width customization surface, so a colour change is
+              visible on the canvas without scrolling past it. */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
+            {/* Customization mode toggle (hidden until buyer-uploaded pricing exists) */}
+            {FINISHED_LOOK_ENABLED && (
+              <div
+                className="flex overflow-hidden rounded-md border border-border text-sm"
+                role="radiogroup"
+                aria-label="Customization mode"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === 'designer'}
+                  onClick={() => setMode('designer')}
+                  className={cn(
+                    'flex-1 px-3 py-2',
+                    mode === 'designer' ? 'bg-primary text-primary-fg' : 'text-fg-muted hover:text-fg',
+                  )}
+                >
+                  Design here
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === 'buyer_uploaded'}
+                  onClick={() => setMode('buyer_uploaded')}
+                  className={cn(
+                    'flex-1 px-3 py-2',
+                    mode === 'buyer_uploaded'
+                      ? 'bg-primary text-primary-fg'
+                      : 'text-fg-muted hover:text-fg',
+                  )}
+                >
+                  Upload finished look
+                </button>
+              </div>
+            )}
+
+            {/* Variant picker */}
+            {product.variants && product.variants.length > 0 && (
+              <Card padding="md" className="flex flex-col gap-3 sm:max-w-xs">
+                <Select
+                  label="Variant"
+                  value={variantId ?? ''}
+                  onChange={(e) => setVariantId(Number(e.target.value))}
+                >
+                  {product.variants.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {Object.values(v.attributes).join(' / ')} {v.in_stock ? '' : '(made to order)'}
+                    </option>
+                  ))}
+                </Select>
+              </Card>
+            )}
+
+            {/* 3D items pick a filament colour (applies in both modes) */}
+            {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
+          </div>
+
+          {/* Full-width customization surface - the hero of the page. */}
+          <div className="flex min-w-0 flex-col gap-3">
               {mode === 'designer' ? (
                 <>
                   {is3d && faceState === 'loading' && (
@@ -506,6 +522,11 @@ export default function ProductDesignerPage() {
                   )}
                   <DesignerCanvas
                     ref={canvasHandle}
+                    /* Big base so the preview fills the full-width row (capped to
+                       the available column width); 1000x760 matches the model
+                       face-render aspect exactly. */
+                    width={1000}
+                    height={760}
                     /* MODEL_3D: face render or neutral stage - never the scraped
                        marketing photo as a design surface (audit G1/C16). */
                     backgroundUrl={is3d ? (faceSnapshot?.dataUrl ?? null) : product.image_url}
@@ -543,74 +564,56 @@ export default function ProductDesignerPage() {
               )}
             </div>
 
-            {/* RIGHT: the single control rail */}
-            <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
-              {/* Customization mode toggle (hidden until buyer-uploaded pricing exists) */}
-              {FINISHED_LOOK_ENABLED && (
-              <div
-                className="flex overflow-hidden rounded-md border border-border text-sm"
-                role="radiogroup"
-                aria-label="Customization mode"
-              >
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === 'designer'}
-                  onClick={() => setMode('designer')}
-                  className={cn(
-                    'flex-1 px-3 py-2',
-                    mode === 'designer' ? 'bg-primary text-primary-fg' : 'text-fg-muted hover:text-fg',
+          {/* Purchase footer: delivery window + quantity + live price + CTA,
+              in-flow below the full-width customization surface so it never
+              floats over the design controls. */}
+          <div>
+            <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
+              {/* Deadline-aware delivery window + feasibility check */}
+              {lead && (
+                <div className="flex flex-col gap-2 lg:max-w-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-fg">Estimated delivery</p>
+                      <p className="text-sm text-fg-muted">
+                        Arrives {fmtDate(lead.earliest)} – {fmtDate(lead.latest)}
+                      </p>
+                    </div>
+                    {needBy &&
+                      (needBy < lead.latest ? (
+                        <Badge tone="warning" dot>
+                          At risk
+                        </Badge>
+                      ) : (
+                        <Badge tone="success" dot>
+                          On track
+                        </Badge>
+                      ))}
+                  </div>
+                  <Input
+                    type="date"
+                    label="Need it by (optional)"
+                    value={needBy}
+                    min={lead.earliest}
+                    onChange={(e) => setNeedBy(e.target.value)}
+                  />
+                  {needBy && needBy < lead.latest && (
+                    <p className="text-sm text-warning">
+                      Tight for {fmtDate(needBy)}.
+                      {lead.rush_available && lead.rush_earliest
+                        ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
+                            lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
+                          } - ask us to add it.`
+                        : ''}
+                    </p>
                   )}
-                >
-                  Design here
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === 'buyer_uploaded'}
-                  onClick={() => setMode('buyer_uploaded')}
-                  className={cn(
-                    'flex-1 px-3 py-2',
-                    mode === 'buyer_uploaded'
-                      ? 'bg-primary text-primary-fg'
-                      : 'text-fg-muted hover:text-fg',
-                  )}
-                >
-                  Upload finished look
-                </button>
-              </div>
+                </div>
               )}
 
-              {/* Variant picker */}
-              {product.variants && product.variants.length > 0 && (
-                <Select
-                  label="Variant"
-                  value={variantId ?? ''}
-                  onChange={(e) => setVariantId(Number(e.target.value))}
-                >
-                  {product.variants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {Object.values(v.attributes).join(' / ')} {v.in_stock ? '' : '(made to order)'}
-                    </option>
-                  ))}
-                </Select>
-              )}
-
-              {/* 3D items pick a filament colour (applies in both modes) */}
-              {is3d && <Model3dPersonalizer onChange={setModel3dOptions} />}
-
-              {/* Purchase controls: quantity + live price + CTA. Hidden on
-                  mobile, where the sticky bar carries the same controls. */}
-              <Card padding="md" className="hidden flex-col gap-3 lg:flex">
+              {/* Quantity + live price + primary CTA */}
+              <div className="flex flex-col gap-3 lg:w-80 lg:shrink-0">
                 {purchaseControls}
-              </Card>
-            </aside>
-          </div>
-
-          {/* Mobile sticky action bar - the reachable CTA on small screens */}
-          <div className="sticky bottom-4 z-raised lg:hidden">
-            <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface/95 p-4 shadow-lg backdrop-blur">
-              {purchaseControls}
+              </div>
             </div>
           </div>
         </Motion>

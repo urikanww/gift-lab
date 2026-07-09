@@ -28,23 +28,25 @@ export default function Model3dPersonalizer({ onChange }: Props) {
   const [color, setColor] = useState(DEFAULT_FILAMENT_COLOR);
 
   return (
-    <Card padding="md" className="flex flex-col gap-3 sm:max-w-sm">
-      <Select
-        label="Filament colour"
-        value={color}
-        onChange={(e) => {
-          setColor(e.target.value);
-          onChange({ filament_color: e.target.value });
-        }}
-        hint="Light colours give the best contrast for UV-printed logos."
-      >
-        {FILAMENT_COLORS.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </Select>
-      <p className="text-sm text-fg-muted">
+    <Card padding="md" className="flex w-full flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
+      <div className="sm:w-64 sm:shrink-0">
+        <Select
+          label="Filament colour"
+          value={color}
+          onChange={(e) => {
+            setColor(e.target.value);
+            onChange({ filament_color: e.target.value });
+          }}
+          hint="Light colours give the best contrast for UV-printed logos."
+        >
+          {FILAMENT_COLORS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <p className="text-sm text-fg-muted sm:flex-1">
         Your item is 3D-printed in this colour - the design preview shows the
         model in your chosen colour. Place your logo on the decoration face
         shown; it is UV-printed exactly where you place it, and the formal
