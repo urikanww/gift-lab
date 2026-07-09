@@ -88,6 +88,8 @@ final class HttpCults3dClient implements Model3dApiClient
             description: isset($creation['description'])
                 ? Str::limit(trim(strip_tags((string) $creation['description'])), 500)
                 : null,
+            // Creation's last-updated marker - drives the version-aware resync.
+            sourceVersion: isset($creation['updatedAt']) ? (string) $creation['updatedAt'] : null,
         );
     }
 

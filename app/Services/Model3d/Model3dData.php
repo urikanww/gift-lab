@@ -48,6 +48,12 @@ final readonly class Model3dData
          * @var list<array{url: string, name: string}>
          */
         public array $downloadFiles = [],
+        /**
+         * Upstream last-modified marker (Thingiverse `modified`, Cults3D
+         * `updatedAt`). Lets the resync re-download only when the model changed.
+         * Null when the source doesn't expose one.
+         */
+        public ?string $sourceVersion = null,
     ) {
     }
 }

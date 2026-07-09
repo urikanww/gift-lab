@@ -45,12 +45,25 @@ final class Model3dCatalogueService
         // a write transaction open. Only worth attempting for commercial-OK
         // licences; blocked items are never produced.
         $license = License::tryFrom($data->license) ?? License::Blocked;
+
+        // Version-aware refresh: when the source's last-modified marker changed
+        // since we stored it, re-download (and re-record parts) even on a normal
+        // resync - so an updated upstream model refreshes without a global
+        // --force sweep. Unchanged models stay cache-hit (cheap).
+        $storedVersion = Model3D::where('source', $data->source->value)
+            ->where('source_id', $data->sourceId)
+            ->value('source_version');
+        $versionChanged = $data->sourceVersion !== null
+            && $storedVersion !== null
+            && $storedVersion !== $data->sourceVersion;
+        $force = $forceFileRefresh || $versionChanged;
+
         $stored = $license->isCommercialOk()
-            ? $this->files->ensureAll($data, $forceFileRefresh)
+            ? $this->files->ensureAll($data, $force)
             : ['primary' => null, 'parts' => []];
         $localFile = $stored['primary'];
 
-        return DB::transaction(function () use ($data, $license, $localFile, $stored, $forceFileRefresh): array {
+        return DB::transaction(function () use ($data, $license, $localFile, $stored, $force): array {
             $model = Model3D::where('source', $data->source->value)
                 ->where('source_id', $data->sourceId)
                 ->first()
@@ -59,6 +72,11 @@ final class Model3dCatalogueService
             $model->license = $license;
             $model->creator_credit = $data->creatorCredit;
             $model->file_ref = $data->fileRef;
+            // Record the source version we just fetched, so the next resync can
+            // tell whether the upstream model changed.
+            if ($data->sourceVersion !== null) {
+                $model->source_version = $data->sourceVersion;
+            }
 
             $product = Product::where('model3d_id', $model->id)->first()
                 ?? new Product(['class' => ProductClass::Model3d->value]);
@@ -109,7 +127,7 @@ final class Model3dCatalogueService
             // richest part, with the rest recorded), so stale auto-derived
             // dimensions must be recomputed too - unless staff have verified
             // this product's estimates.
-            if ($forceFileRefresh && ! $product->estimates_verified) {
+            if ($force && ! $product->estimates_verified) {
                 $product->dimensions = null;
             }
 
@@ -126,7 +144,7 @@ final class Model3dCatalogueService
             if ($stored['parts'] !== []) {
                 $product->modelParts()->delete();
                 $product->modelParts()->createMany($stored['parts']);
-            } elseif ($forceFileRefresh && $stored['primary'] !== null) {
+            } elseif ($force && $stored['primary'] !== null) {
                 $product->modelParts()->delete();
             }
 

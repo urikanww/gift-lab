@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\Model3dSource;
+use App\Models\Model3D;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Services\Model3d\Model3dCatalogueService;
@@ -270,6 +271,43 @@ it('auto-clears a legacy multi_file_review hold once parts are recorded', functi
     ]);
     $service->regate($product->fresh());
     expect($product->fresh()->cannot_publish_reasons ?? [])->not->toContain('multi_file_review');
+});
+
+it('re-downloads on a normal resync only when the source version changed', function (): void {
+    Storage::fake('local');
+    $service = app(Model3dCatalogueService::class);
+    $path = 'models3d/thingiverse-555.stl';
+
+    $makeData = fn (string $version, string $fileUrl): Model3dData => new Model3dData(
+        source: Model3dSource::Thingiverse,
+        sourceId: '555',
+        name: 'Versioned',
+        license: 'CC0',
+        creatorCredit: null,
+        fileRef: 'https://www.thingiverse.com/thing:555',
+        filamentMaterial: 'PLA',
+        filamentColor: 'Black',
+        estGrams: 20.0,
+        downloadFiles: [['url' => $fileUrl, 'name' => 'part.stl']],
+        sourceVersion: $version,
+    );
+
+    // v1 ingest stores the small part and records the version.
+    Http::fake(['https://dl/v1' => Http::response(smallPart(), 200)]);
+    $service->ingest($makeData('2026-01-01', 'https://dl/v1'));
+    expect(Model3D::where('source_id', '555')->value('source_version'))->toBe('2026-01-01');
+    expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(1);
+
+    // Same version, richer file upstream: NOT re-downloaded (cache hit) - geometry stays.
+    Http::fake(['https://dl/v1b' => Http::response(bigPart(), 200)]);
+    $service->ingest($makeData('2026-01-01', 'https://dl/v1b'));
+    expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(1);
+
+    // Version bumped: re-download, geometry refreshed, new version recorded.
+    Http::fake(['https://dl/v2' => Http::response(bigPart(), 200)]);
+    $service->ingest($makeData('2026-02-01', 'https://dl/v2'));
+    expect(triangleCountOf(Storage::disk('local')->get($path)))->toBe(3);
+    expect(Model3D::where('source_id', '555')->value('source_version'))->toBe('2026-02-01');
 });
 
 it('auto-publishes a formerly-held multi-part item once parts exist (no manual clear)', function (): void {

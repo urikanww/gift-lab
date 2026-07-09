@@ -85,6 +85,8 @@ final class HttpThingiverseClient implements Model3dApiClient
             downloadUrl: $first['url'] ?? null,
             downloadFileName: $first['name'] ?? null,
             downloadFiles: $files,
+            // Thing's last-modified timestamp - drives the version-aware resync.
+            sourceVersion: isset($data['modified']) ? (string) $data['modified'] : null,
         );
     }
 

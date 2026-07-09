@@ -29,6 +29,7 @@ class Model3D extends Model
         'license',
         'creator_credit',
         'file_ref',
+        'source_version',
         'publish_state',
         'cannot_publish_reasons',
         'created_by',
