@@ -56,7 +56,12 @@ class ResyncModel3dCatalogue extends Command
                             // Source dead/unreachable: we still hold the file, so
                             // production isn't blocked, but flag for review
                             // rather than silently keeping the item public.
-                            if ($product->publish_state === PublishState::Published) {
+                            //
+                            // During a forced heal a null is very likely a
+                            // transient rate-limit (the sweep hammers the API), so
+                            // NEVER demote a published item then - only the normal
+                            // daily resync treats a null as a dead source.
+                            if (! $force && $product->publish_state === PublishState::Published) {
                                 $product->publish_state = PublishState::CannotPublish;
                                 $product->cannot_publish_reasons = ['needs_re-review', 'source_dead'];
                                 $product->save();
