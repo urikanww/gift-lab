@@ -1006,6 +1006,7 @@ function ModelPartsSection({
           </p>
           <StlStudioViewer
             parts={studioParts}
+            productId={product.id}
             open={studioOpen}
             onClose={() => setStudioOpen(false)}
             title={product.name}

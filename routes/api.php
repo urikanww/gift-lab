@@ -123,6 +123,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart']);
     Route::post('/admin/products/{product}/parts/{part}/primary', [AdminCatalogueController::class, 'setPrimaryPart']);
     Route::delete('/admin/products/{product}/parts/{part}', [AdminCatalogueController::class, 'deleteModelPart']);
+    // Download selected plates as a ZIP for the print floor's slicer.
+    Route::post('/admin/products/{product}/parts/export', [AdminCatalogueController::class, 'exportParts']);
     // Re-pull the latest geometry/parts/dimensions from the model's source (staff).
     Route::post('/admin/products/{product}/pull-source', [AdminCatalogueController::class, 'pullFromSource']);
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);

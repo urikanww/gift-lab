@@ -192,6 +192,44 @@ it('refuses to pull a product that has no upstream source', function (): void {
     $this->post("/api/admin/products/{$product->id}/pull-source")->assertStatus(422);
 });
 
+it('exports selected parts as a zip', function (): void {
+    Storage::disk('local')->put('models3d/x-1-part1.stl', 'BODYBYTES');
+    Storage::disk('local')->put('models3d/x-1-part2.stl', 'HEADBYTES');
+    $a = makePart($this->product, ['file_ref' => 'models3d/x-1-part1.stl', 'label' => 'Body', 'sort' => 0]);
+    $b = makePart($this->product, ['file_ref' => 'models3d/x-1-part2.stl', 'label' => 'Head', 'sort' => 1]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->post("/api/admin/products/{$this->product->id}/parts/export", ['part_ids' => [$a->id, $b->id]]);
+
+    $res->assertOk();
+    expect($res->headers->get('content-type'))->toContain('application/zip')
+        ->and(str_starts_with($res->streamedContent(), 'PK'))->toBeTrue(); // zip magic bytes
+});
+
+it('exports the primary model file when no part ids are given', function (): void {
+    Storage::disk('local')->put('models3d/x-1.stl', 'PRIMARYBYTES');
+    $this->product->update(['model_file_ref' => 'models3d/x-1.stl']);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->post("/api/admin/products/{$this->product->id}/parts/export", ['part_ids' => []]);
+
+    $res->assertOk();
+    expect(str_starts_with($res->streamedContent(), 'PK'))->toBeTrue();
+});
+
+it('404s an export with no locally stored files', function (): void {
+    // No parts, and the primary ref is empty → nothing to zip.
+    Sanctum::actingAs($this->staff);
+    $this->post("/api/admin/products/{$this->product->id}/parts/export", ['part_ids' => []])
+        ->assertNotFound();
+});
+
+it('forbids a buyer from exporting plates', function (): void {
+    Sanctum::actingAs(buyerUser());
+    $this->post("/api/admin/products/{$this->product->id}/parts/export", ['part_ids' => []])
+        ->assertForbidden();
+});
+
 it('clears the multi-part decomposition when the primary mesh is replaced', function (): void {
     Storage::disk('local')->put('models3d/x-1.stl', 'PRIMARY');
     Storage::disk('local')->put('models3d/x-1-part1.stl', 'EXTRA');

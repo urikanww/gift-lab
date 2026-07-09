@@ -26,6 +26,8 @@ export interface StudioPart {
 
 interface Props {
   parts: StudioPart[];
+  /** Owning product id - used for the ZIP export endpoint. */
+  productId: number;
   open: boolean;
   onClose: () => void;
   /** Product name, shown in the studio header. */
@@ -56,14 +58,19 @@ interface SceneRefs {
   frame: number;
 }
 
-export default function StlStudioViewer({ parts, open, onClose, title }: Props) {
+export default function StlStudioViewer({ parts, productId, open, onClose, title }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<SceneRefs | null>(null);
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [showBed, setShowBed] = useState(true);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [visible, setVisible] = useState<Record<number, boolean>>({});
+  // focusId = the plate the camera frames / highlights (also the solo target).
+  const [focusId, setFocusId] = useState<number | null>(null);
+  // selected = plates shown on the bed + included in the export (default: all).
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // solo = view one plate at a time (focusId), stepped with prev/next.
+  const [solo, setSolo] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [colors, setColors] = useState<Record<number, string>>({});
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const [fromColor, setFromColor] = useState('#000000');
@@ -164,7 +171,7 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
         const loaded: { part: StudioPart; geometry: THREE.BufferGeometry; footprint: number; depth: number }[] = [];
         const nextThumbs: Record<number, string> = {};
         const nextColors: Record<number, string> = {};
-        const nextVisible: Record<number, boolean> = {};
+        const allIds: number[] = [];
 
         // A tiny dedicated renderer for plate thumbnails (disposed after).
         const thumbRenderer =
@@ -193,7 +200,7 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
           const part = parts[i];
           const color = defaultColor(i, parts.length);
           nextColors[part.id] = color;
-          nextVisible[part.id] = true;
+          allIds.push(part.id);
 
           // Snapshot for the plate list BEFORE reorienting/packing.
           if (thumbRenderer) {
@@ -277,9 +284,10 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
         r.controls.target.copy(center);
 
         setColors(nextColors);
-        setVisible(nextVisible);
+        setSelected(new Set(allIds));
         setThumbs(nextThumbs);
-        setSelectedId(null);
+        setFocusId(null);
+        setSolo(false);
         setStatus('ready');
 
         // Initial iso framing.
@@ -323,16 +331,15 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
     });
   }, [colors, status]);
 
-  // ── State → scene: visibility ─────────────────────────────────────────────
+  // ── State → scene: visibility (solo shows only the focused plate) ─────────
   useEffect(() => {
     if (status !== 'ready') return;
     const r = refs.current;
     if (!r) return;
-    Object.entries(visible).forEach(([id, on]) => {
-      const mesh = r.meshes.get(Number(id));
-      if (mesh) mesh.visible = on;
+    r.meshes.forEach((mesh, id) => {
+      mesh.visible = solo ? id === focusId : selected.has(id);
     });
-  }, [visible, status]);
+  }, [selected, solo, focusId, status]);
 
   // ── State → scene: bed toggle ─────────────────────────────────────────────
   useEffect(() => {
@@ -341,17 +348,17 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
     if (r) r.bed.visible = showBed;
   }, [showBed, status]);
 
-  // ── State → scene: selection highlight + focus ────────────────────────────
+  // ── State → scene: focus highlight + camera framing ───────────────────────
   useEffect(() => {
     if (status !== 'ready') return;
     const r = refs.current;
     if (!r) return;
     r.meshes.forEach((mesh, id) => {
       const mat = mesh.material as THREE.MeshStandardMaterial;
-      mat.emissive.set(id === selectedId ? 0x2a2a2a : 0x000000);
+      mat.emissive.set(id === focusId ? 0x2a2a2a : 0x000000);
     });
-    if (selectedId != null) {
-      const mesh = r.meshes.get(selectedId);
+    if (focusId != null) {
+      const mesh = r.meshes.get(focusId);
       if (mesh?.geometry.boundingBox) {
         const c = mesh.geometry.boundingBox.getCenter(new THREE.Vector3());
         r.controls.target.copy(c);
@@ -361,7 +368,7 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
       r.controls.target.copy(r.center);
       r.controls.update();
     }
-  }, [selectedId, status]);
+  }, [focusId, status]);
 
   // Escape closes; lock body scroll while open.
   useEffect(() => {
@@ -381,7 +388,55 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
   if (!open) return null;
 
   const setPartColor = (id: number, hex: string) => setColors((c) => ({ ...c, [id]: hex }));
-  const toggleVisible = (id: number) => setVisible((v) => ({ ...v, [id]: !(v[id] ?? true) }));
+
+  const toggleSelected = (id: number) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const selectAll = () => setSelected(new Set(parts.map((p) => p.id)));
+  const selectNone = () => setSelected(new Set());
+
+  const enterSolo = () => {
+    setSolo(true);
+    setFocusId((f) => f ?? parts[0]?.id ?? null);
+  };
+  const stepSolo = (dir: 1 | -1) => {
+    if (parts.length === 0) return;
+    const idx = Math.max(0, parts.findIndex((p) => p.id === focusId));
+    const next = parts[(idx + dir + parts.length) % parts.length];
+    setFocusId(next.id);
+  };
+
+  const exportSelected = async () => {
+    if (exporting || selected.size === 0) return;
+    // id 0 is the single-primary fallback plate → send [] so the backend
+    // exports the product's primary model file.
+    const partIds = [...selected].filter((id) => id > 0);
+    setExporting(true);
+    try {
+      const res = await api.post(
+        `/admin/products/${productId}/parts/export`,
+        { part_ids: partIds },
+        { responseType: 'blob' },
+      );
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(title || 'model').replace(/[^\w.-]+/g, '-').toLowerCase()}-plates.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Surfaced by the disabled/again-clickable button; no toast host here.
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const applyColorSwap = () => {
     setColors((c) => {
       const next = { ...c };
@@ -418,25 +473,63 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
 
       <div className="relative flex min-h-0 flex-1">
         {/* Plate list */}
-        <aside className="z-raised flex w-64 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-ink-900/60">
-          <div className="px-3 py-2 text-2xs font-semibold uppercase tracking-wide text-white/50">
-            Plates ({parts.length})
+        <aside className="z-raised flex w-64 shrink-0 flex-col border-r border-white/10 bg-ink-900/60">
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            <span className="text-2xs font-semibold uppercase tracking-wide text-white/50">
+              Plates ({selected.size}/{parts.length})
+            </span>
+            <div className="flex items-center gap-1">
+              <SidebarBtn onClick={selectAll} label="Show all plates">All</SidebarBtn>
+              <SidebarBtn onClick={selectNone} label="Hide all plates">None</SidebarBtn>
+              <SidebarBtn
+                onClick={() => (solo ? setSolo(false) : enterSolo())}
+                label={solo ? 'Exit solo view' : 'View one plate at a time'}
+                active={solo}
+              >
+                Solo
+              </SidebarBtn>
+            </div>
           </div>
-          <ul className="flex flex-col">
+
+          {/* Solo stepper: view one plate at a time. */}
+          {solo && (
+            <div className="flex items-center justify-between gap-2 border-y border-white/10 bg-white/5 px-3 py-1.5">
+              <SidebarBtn onClick={() => stepSolo(-1)} label="Previous plate">◀</SidebarBtn>
+              <span className="min-w-0 flex-1 truncate text-center text-2xs text-white/80">
+                {(() => {
+                  const idx = Math.max(0, parts.findIndex((p) => p.id === focusId));
+                  return `Plate ${idx + 1} of ${parts.length}`;
+                })()}
+              </span>
+              <SidebarBtn onClick={() => stepSolo(1)} label="Next plate">▶</SidebarBtn>
+            </div>
+          )}
+
+          <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {parts.map((p, i) => {
-              const on = visible[p.id] ?? true;
-              const selected = selectedId === p.id;
+              const isSelected = selected.has(p.id);
+              const isFocus = focusId === p.id;
               return (
                 <li key={p.id}>
                   <div
                     className={cn(
                       'flex items-center gap-2 px-2 py-2 transition-colors',
-                      selected ? 'bg-white/15' : 'hover:bg-white/5',
+                      isFocus ? 'bg-white/15' : 'hover:bg-white/5',
                     )}
                   >
+                    {/* Multi-select: include the plate on the bed + in the export. */}
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelected(p.id)}
+                      aria-label={`Select plate ${i + 1}`}
+                      className="h-3.5 w-3.5 shrink-0 accent-brand-500"
+                    />
                     <button
                       type="button"
-                      onClick={() => setSelectedId((s) => (s === p.id ? null : p.id))}
+                      onClick={() => {
+                        setFocusId((f) => (f === p.id && !solo ? null : p.id));
+                      }}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
                     >
                       <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded bg-white/10">
@@ -467,19 +560,26 @@ export default function StlStudioViewer({ parts, open, onClose, title }: Props) 
                         aria-label={`Colour for plate ${i + 1}`}
                       />
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => toggleVisible(p.id)}
-                      aria-label={on ? `Hide plate ${i + 1}` : `Show plate ${i + 1}`}
-                      className="shrink-0 rounded p-1 text-white/60 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                    >
-                      {on ? '👁' : '🚫'}
-                    </button>
                   </div>
                 </li>
               );
             })}
           </ul>
+
+          {/* Export: hand the selected plates to the print floor's slicer. */}
+          <div className="border-t border-white/10 p-2">
+            <button
+              type="button"
+              onClick={() => void exportSelected()}
+              disabled={selected.size === 0 || exporting}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-brand-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+            >
+              {exporting ? 'Preparing…' : `⬇ Export selected (${selected.size})`}
+            </button>
+            <p className="mt-1 text-center text-[10px] leading-tight text-white/40">
+              Downloads STL plates for your slicer — the app doesn’t generate G-code.
+            </p>
+          </div>
         </aside>
 
         {/* Canvas + floating controls */}
@@ -580,6 +680,34 @@ function ColorSwatch({ value, onChange, label }: { value: string; onChange: (v: 
         aria-label={label}
       />
     </label>
+  );
+}
+
+function SidebarBtn({
+  onClick,
+  label,
+  active,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      className={cn(
+        'rounded px-1.5 py-0.5 text-2xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
+        active ? 'bg-brand-500 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

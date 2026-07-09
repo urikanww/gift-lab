@@ -16,7 +16,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use ZipArchive;
 
 /**
  * Superadmin/staff catalogue gate (spec 6.7): review scraped + 3D items, approve
@@ -337,6 +339,85 @@ class AdminCatalogueController extends Controller
             'Content-Type' => 'application/octet-stream',
             'Cache-Control' => 'no-store',
         ]);
+    }
+
+    /**
+     * Stream a ZIP of the selected printable plates for the print floor.
+     * `part_ids` lists the model parts to include; when empty (a single-mesh
+     * product with no separate parts) the product's primary model file is
+     * exported instead. Visualisation aside, this is the "hand it to the slicer"
+     * step - the floor loads these STLs into their own slicer to produce
+     * printer G-code (the app does not slice).
+     */
+    public function exportParts(Request $request, Product $product): StreamedResponse|JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $ids = collect($request->input('part_ids', []))
+            ->map(fn ($i): int => (int) $i)
+            ->filter()
+            ->unique()
+            ->all();
+
+        /** @var array<string, string> $files name => absolute local path */
+        $files = [];
+
+        if ($ids !== []) {
+            $parts = $product->modelParts()->whereIn('id', $ids)->orderBy('sort')->get();
+            foreach ($parts as $part) {
+                $this->collectExportFile($files, (string) $part->file_ref, $part->label ?? 'part');
+            }
+        } else {
+            $this->collectExportFile($files, (string) $product->model_file_ref, $product->name);
+        }
+
+        if ($files === []) {
+            return response()->json(['message' => 'No exportable model files.'], 404);
+        }
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'plates').'.zip';
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return response()->json(['message' => 'Could not build the export.'], 500);
+        }
+        foreach ($files as $name => $path) {
+            $zip->addFile($path, $name);
+        }
+        $zip->close();
+
+        $download = Str::slug($product->name ?: 'model').'-plates.zip';
+
+        return response()->streamDownload(function () use ($zipPath): void {
+            readfile($zipPath);
+            @unlink($zipPath);
+        }, $download, [
+            'Content-Type' => 'application/zip',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
+     * Add a stored (local, existing) model file to the export map under a unique,
+     * slugged filename that keeps its extension. Remote-ref / missing files skip.
+     *
+     * @param  array<string, string>  $files
+     */
+    private function collectExportFile(array &$files, string $ref, string $label): void
+    {
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+            return;
+        }
+
+        $ext = strtolower(pathinfo($ref, PATHINFO_EXTENSION) ?: 'stl');
+        $base = Str::slug($label) ?: 'part';
+        $name = "{$base}.{$ext}";
+        $n = 2;
+        while (isset($files[$name])) {
+            $name = "{$base}-{$n}.{$ext}";
+            $n++;
+        }
+
+        $files[$name] = Storage::disk('local')->path($ref);
     }
 
     /** Printable mesh formats a staff member may attach as a part. */
