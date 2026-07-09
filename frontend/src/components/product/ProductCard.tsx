@@ -6,6 +6,7 @@ import { categoryLabel } from '../../lib/categories';
 import { AVAILABILITY } from '../../lib/availability';
 import { Badge, Skeleton } from '../../ui';
 import { Motion, staggerItem } from '../../motion';
+import ImageLightbox from '../ImageLightbox';
 import type { Product } from '../../types';
 
 /**
@@ -61,15 +62,20 @@ export interface ProductCardProps {
 }
 
 export function ProductCard({ product, to, showMeta = false }: ProductCardProps) {
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const imageHref = safeHref(product.image_url);
+
   return (
     <Motion variants={staggerItem} className="h-full">
-      {/* Image link, text link, and personalize CTA are SIBLINGS (never nested <a>). */}
+      {/* Image (zoom), text link, and personalize CTA are SIBLINGS (never nested <a>). */}
       <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md">
-        {/* The image links to the product detail page (where a zoom preview lives). */}
-        <Link
-          to={to}
-          aria-label={product.name}
-          className="relative block aspect-square w-full overflow-hidden bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        {/* Clicking the image opens a zoom/pan preview in place - it does NOT
+            navigate to the detail page (the name/price row below does that). */}
+        <button
+          type="button"
+          onClick={() => imageHref && setZoomOpen(true)}
+          aria-label={imageHref ? `Zoom image of ${product.name}` : product.name}
+          className="relative aspect-square w-full cursor-zoom-in overflow-hidden bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
           <CardImage product={product} />
           {showMeta && product.category && (
@@ -88,7 +94,7 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
               </Badge>
             </div>
           )}
-        </Link>
+        </button>
 
         {/* The text area links to the product detail page. */}
         <Link
@@ -124,6 +130,8 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
           </Link>
         </div>
       </div>
+
+      <ImageLightbox src={imageHref ?? null} alt={product.name} open={zoomOpen} onClose={() => setZoomOpen(false)} />
     </Motion>
   );
 }
