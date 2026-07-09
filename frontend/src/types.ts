@@ -95,6 +95,8 @@ export interface Product {
   creator_credit: string | null;
   /** True when an interactive 3D model stream is available for this item. */
   has_model?: boolean;
+  /** Staff gate for the public 3D viewer: only verified models preview on the PDP. */
+  model_preview_verified?: boolean;
   /** Admin-authored decoration zone (model-space mm); null when unset. */
   print_zone?: PrintZone | null;
   /** Minimum order quantity (superadmin-set); default 1. */
@@ -265,6 +267,8 @@ export interface AdminProduct {
   stock_total: number;
   /** True when a canonical 3D mesh is stored for this item (MODEL_3D). */
   has_model?: boolean;
+  /** Staff gate for the public 3D viewer on the PDP. */
+  model_preview_verified?: boolean;
   /** True when an authored GLB is stored (preferred for preview). */
   has_glb?: boolean;
   /** Persisted admin print zone for MODEL_3D items; null when unset. */

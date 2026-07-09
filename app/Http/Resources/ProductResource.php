@@ -52,6 +52,10 @@ class ProductResource extends JsonResource
             'has_model' => $this->class === ProductClass::Model3d
                 && (string) $this->model_file_ref !== ''
                 && ! str_starts_with((string) $this->model_file_ref, 'http'),
+            // Staff gate for the PUBLIC interactive viewer: uncurated source
+            // models can be wrong/partial and undersell the thumbnail, so the
+            // storefront only shows the 3D preview once staff verify it.
+            'model_preview_verified' => (bool) $this->model_preview_verified,
             // Admin-authored decoration zone (model-space mm) - drives the
             // customer decal preview + the zone-constrained designer mapping.
             'print_zone' => $this->print_zone,

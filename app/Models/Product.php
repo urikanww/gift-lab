@@ -66,6 +66,7 @@ class Product extends Model
         'est_grams',
         'est_print_minutes',
         'estimates_verified',
+        'model_preview_verified',
         'created_by',
     ];
 
@@ -90,6 +91,7 @@ class Product extends Model
             'est_grams' => 'decimal:3',
             'est_print_minutes' => 'decimal:1',
             'estimates_verified' => 'boolean',
+            'model_preview_verified' => 'boolean',
         ];
     }
 

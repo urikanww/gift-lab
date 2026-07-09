@@ -393,6 +393,8 @@ class AdminProductController extends Controller
         // buyer cannot order fewer than this many units. Validated for everyone,
         // then stripped below for non-superadmins.
         $rules['min_order_qty'] = ['sometimes', 'integer', 'min:1', 'max:100000'];
+        // Staff toggle for the public 3D preview (see products migration).
+        $rules['model_preview_verified'] = ['sometimes', 'boolean'];
         $validated = $request->validate($rules);
 
         // Guard the override to superadmins: a staff_admin edit that carries the
@@ -569,6 +571,7 @@ class AdminProductController extends Controller
             'dimensions' => $product->dimensions,
             'print_zone' => $product->print_zone,
             'has_model' => $product->model_file_ref !== null && ! str_starts_with((string) $product->model_file_ref, 'http'),
+            'model_preview_verified' => (bool) $product->model_preview_verified,
             'has_glb' => $product->decor_glb_ref !== null,
             'weight' => $product->weight,
             'print_method' => $product->print_method?->value,

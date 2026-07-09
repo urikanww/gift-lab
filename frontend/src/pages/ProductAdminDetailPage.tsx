@@ -95,6 +95,19 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
     }
   };
 
+  const togglePreviewVerified = async () => {
+    try {
+      await ensureCsrf();
+      await api.patch(`/admin/products/${product.id}`, {
+        model_preview_verified: !product.model_preview_verified,
+      });
+      toast({ title: 'Saved', tone: 'success' });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Not saved', description: apiError(err), tone: 'danger' });
+    }
+  };
+
   const uploadModel = async (file: File) => {
     setModelBusy(true);
     setModelError(null);
@@ -200,6 +213,24 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
             {modelBusy && <span className="text-sm text-fg-subtle">Uploading&hellip;</span>}
           </div>
           {modelError && <p className="text-sm text-danger">{modelError}</p>}
+
+          {product.has_model && (
+            <label className="flex items-start gap-2 border-t border-border pt-3">
+              <input
+                type="checkbox"
+                checked={!!product.model_preview_verified}
+                onChange={() => void togglePreviewVerified()}
+                className="mt-0.5"
+              />
+              <span className="text-sm">
+                <span className="font-medium text-fg">Show 3D preview to customers</span>
+                <span className="block text-fg-muted">
+                  The interactive model shows on the public product page only when this is on.
+                  Enable it after confirming the mesh is correct and complete.
+                </span>
+              </span>
+            </label>
+          )}
         </Card>
       )}
 

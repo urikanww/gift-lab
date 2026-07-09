@@ -349,3 +349,25 @@ it('blocks non-staff from image upload and removal', function (): void {
     ])->assertForbidden();
     $this->deleteJson("/api/admin/products/{$product->id}/image")->assertForbidden();
 });
+
+it('lets staff toggle the public 3D preview flag and exposes it publicly', function (): void {
+    $product = Product::factory()->model3d()->create([
+        'publish_state' => 'PUBLISHED',
+        'model_file_ref' => 'models3d/x.stl',
+        'model_preview_verified' => false,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->patchJson("/api/admin/products/{$product->id}", [
+        'model_preview_verified' => true,
+    ])->assertOk();
+    expect($res->json('data.model_preview_verified'))->toBeTrue();
+
+    $product->refresh();
+    expect($product->model_preview_verified)->toBeTrue();
+
+    // Public catalogue resource surfaces the flag so the PDP can gate the viewer.
+    $this->getJson("/api/catalogue/{$product->slug}")
+        ->assertOk()
+        ->assertJsonPath('data.model_preview_verified', true);
+});

@@ -220,8 +220,10 @@ export default function ProductDetailPage() {
         {/* LEFT - gallery (sticky only at md+). */}
         <div className="self-start md:sticky md:top-20">
           <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-4">
-            {/* Interactive 3D model when we hold the file; static image otherwise */}
-            {product.has_model && (
+            {/* Interactive 3D model only when we hold the file AND staff have
+                verified it previews correctly - uncurated source geometry can be
+                wrong/partial and undersell the thumbnail. Thumbnail leads otherwise. */}
+            {product.has_model && product.model_preview_verified && (
               <Suspense fallback={<div className="h-[360px] w-full animate-pulse rounded-lg border border-border bg-surface-2" />}>
                 <ModelViewer productKey={product.slug ?? String(product.id)} />
               </Suspense>
