@@ -51,6 +51,23 @@ it('rejects an SVG upload (stored-XSS exclusion)', function (): void {
     ])->assertStatus(422);
 });
 
+it('re-issues a temporary preview url for a stored artwork ref', function (): void {
+    $ref = $this->postJson('/api/uploads/artwork', [
+        'artwork' => UploadedFile::fake()->image('logo.png', 200, 200),
+    ])->assertCreated()->json('ref');
+
+    $res = $this->getJson('/api/uploads/artwork/preview?ref='.urlencode($ref))->assertOk();
+    expect($res->json('url'))->toContain($ref);
+});
+
+it('refuses a preview for an unknown or out-of-namespace ref', function (): void {
+    Storage::disk($this->artworkDisk)->put('artwork/exists.png', 'x');
+
+    $this->getJson('/api/uploads/artwork/preview?ref=artwork/missing.png')->assertNotFound();
+    $this->getJson('/api/uploads/artwork/preview?ref='.urlencode('secret.png'))->assertNotFound();
+    $this->getJson('/api/uploads/artwork/preview?ref='.urlencode('artwork/../secret'))->assertNotFound();
+});
+
 it('throttles the public upload after the tightened per-minute limit', function (): void {
     // 10/min burst limit (AppServiceProvider 'artwork-uploads'): the 11th
     // request from the same IP inside the window must be rejected with 429.

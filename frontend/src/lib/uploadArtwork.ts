@@ -1,5 +1,18 @@
 import api, { ensureCsrf } from './api';
 
+/**
+ * Re-issue a short-lived preview URL for a stored artwork ref so a saved
+ * customization can be shown (e.g. in the cart). Returns null on failure.
+ */
+export async function fetchArtworkPreviewUrl(ref: string): Promise<string | null> {
+  try {
+    const { data } = await api.get<{ url: string }>('/uploads/artwork/preview', { params: { ref } });
+    return data.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, base64] = dataUrl.split(',');
   const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png';

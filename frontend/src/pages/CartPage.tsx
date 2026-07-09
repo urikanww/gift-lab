@@ -1,9 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCartStore } from '../stores/cartStore';
-import { Button, Card, EmptyState, LinkButton, Skeleton } from '../ui';
+import { Button, Card, EmptyState, LinkButton, Skeleton, cn } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { CartGlyph, SummaryRow, customizationLabel, optionsLabel } from '../components/cart/CartSummary';
+import ImageLightbox from '../components/ImageLightbox';
+import { safeHref } from '../lib/safeHref';
+import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
+import type { Customization, Product } from '../types';
 import {
   Motion,
   fadeInUp,
@@ -83,18 +87,25 @@ export default function CartPage() {
               >
                 <Card padding="none" className="overflow-hidden">
                   <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <h2 className="font-display text-lg text-fg">{l.product.name}</h2>
-                      <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
-                        <div className="flex gap-1">
-                          <dt className="text-fg-subtle">Options:</dt>
-                          <dd>{optionsLabel(l)}</dd>
-                        </div>
-                        <div className="flex gap-1">
-                          <dt className="text-fg-subtle">Finish:</dt>
-                          <dd>{customizationLabel(l)}</dd>
-                        </div>
-                      </dl>
+                    <div className="flex min-w-0 gap-3">
+                      <ProductThumb product={l.product} />
+                      <div className="min-w-0">
+                        <h2 className="font-display text-lg text-fg">{l.product.name}</h2>
+                        <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
+                          <div className="flex gap-1">
+                            <dt className="text-fg-subtle">Options:</dt>
+                            <dd>{optionsLabel(l)}</dd>
+                          </div>
+                          <div className="flex gap-1">
+                            <dt className="text-fg-subtle">Finish:</dt>
+                            <dd>{customizationLabel(l)}</dd>
+                          </div>
+                        </dl>
+                        <CustomizationPreview
+                          customization={l.customization}
+                          productName={l.product.name}
+                        />
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between gap-4 sm:justify-end">
@@ -171,6 +182,98 @@ export default function CartPage() {
         </Motion>
       </div>
     </section>
+  );
+}
+
+/** Square product photo with a letter fallback. */
+function ProductThumb({ product }: { product: Product }) {
+  const [failed, setFailed] = useState(false);
+  const href = safeHref(product.image_url);
+  if (!href || failed) {
+    return (
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-brand-100 to-accent-50 font-display text-xl text-brand-700">
+        {product.name.charAt(0)}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={href}
+      alt=""
+      className="h-16 w-16 shrink-0 rounded-md border border-border object-cover"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** The saved design/reference ref to preview, if any. */
+function customizationImageRef(c?: Customization | null): string | null {
+  if (!c) return null;
+  if (c.artwork_ref) return c.artwork_ref;
+  if (c.reference_refs && c.reference_refs.length > 0) return c.reference_refs[0];
+  return null;
+}
+
+/**
+ * Shows the buyer's saved customization (their captured design or reference
+ * image) as a thumbnail that opens a zoom viewer - visibility + assurance that
+ * what they laid out is on the order. Renders nothing for plain lines.
+ */
+function CustomizationPreview({
+  customization,
+  productName,
+}: {
+  customization?: Customization | null;
+  productName: string;
+}) {
+  const ref = customizationImageRef(customization);
+  const [url, setUrl] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!ref) {
+      setUrl(null);
+      return;
+    }
+    // A ready http(s) URL is used directly; a private storage ref is exchanged
+    // for a short-lived signed preview URL.
+    if (/^https?:\/\//i.test(ref)) {
+      setUrl(ref);
+      return;
+    }
+    let active = true;
+    fetchArtworkPreviewUrl(ref).then((u) => {
+      if (active) setUrl(u);
+    });
+    return () => {
+      active = false;
+    };
+  }, [ref]);
+
+  if (!ref || !url) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={cn(
+          'mt-2 inline-flex items-center gap-2 rounded-md border border-border bg-surface p-1 pr-2.5 text-left',
+          'transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        )}
+        aria-label={`Preview your design for ${productName}`}
+      >
+        <img
+          src={url}
+          alt=""
+          className="h-12 w-12 rounded bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:12px_12px] object-contain"
+        />
+        <span className="text-xs font-medium text-fg">Your design</span>
+      </button>
+      <ImageLightbox src={url} alt={`${productName} customization`} open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 

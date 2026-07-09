@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ArtworkUploadRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -45,5 +46,25 @@ class UploadController extends Controller
             'ref' => $path,
             'url' => $disk->temporaryUrl($path, now()->addMinutes(self::PREVIEW_URL_TTL_MINUTES)),
         ], 201);
+    }
+
+    /**
+     * Re-issue a short-lived signed preview URL for a previously stored artwork
+     * ref, so a buyer can see their saved customization in the cart. Honours the
+     * private-disk model: only re-mints a temporary link (never a permanent one),
+     * and only for keys inside the artwork namespace.
+     */
+    public function artworkPreview(Request $request): JsonResponse
+    {
+        $ref = (string) $request->query('ref', '');
+        $disk = Storage::disk((string) config('filesystems.artwork_disk'));
+
+        if ($ref === '' || ! str_starts_with($ref, 'artwork/') || str_contains($ref, '..') || ! $disk->exists($ref)) {
+            return response()->json(['message' => 'Artwork not found.'], 404);
+        }
+
+        return response()->json([
+            'url' => $disk->temporaryUrl($ref, now()->addMinutes(self::PREVIEW_URL_TTL_MINUTES)),
+        ]);
     }
 }
