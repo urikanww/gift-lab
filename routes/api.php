@@ -113,6 +113,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::get('/production-queue', [ProductionQueueController::class, 'index']);
     Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance']);
     Route::post('/production-jobs/advance-batch', [ProductionQueueController::class, 'advanceBatch']);
+    Route::post('/production-jobs/{job}/advance-next', [ProductionQueueController::class, 'advanceNext']);
     // Streams the job's print-ready file (3D UV decal or approved proof
     // artwork) off the private disk so the floor can print it. Staff-gated.
     Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile']);

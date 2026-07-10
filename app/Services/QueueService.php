@@ -165,6 +165,30 @@ final class QueueService
     }
 
     /**
+     * Advance a job to its single next lifecycle state (scan/one-tap). SHIPPED is
+     * refused here - it needs a consignment ref/carrier - so a scan can never
+     * silently fire the buyer's "on the way" signal without a real handover.
+     *
+     * @throws \App\Exceptions\DomainRuleException when the next state is SHIPPED
+     */
+    public function advanceNext(ProductionJob $job): ProductionJob
+    {
+        $next = $job->state->nextStates()[0] ?? null;
+
+        if ($next === null) {
+            throw new \App\Exceptions\DomainRuleException('This job has no further state to advance to.');
+        }
+
+        if ($next === JobState::Shipped) {
+            throw new \App\Exceptions\DomainRuleException(
+                'Marking a job shipped needs a consignment reference. Use the ship action.'
+            );
+        }
+
+        return $this->advance($job, $next);
+    }
+
+    /**
      * The shared production queue, FCFS by readiness. No customer-type priority.
      *
      * @return Collection<int, ProductionJob>

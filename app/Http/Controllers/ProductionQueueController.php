@@ -48,6 +48,13 @@ class ProductionQueueController extends Controller
         return new ProductionJobResource($job);
     }
 
+    public function advanceNext(Request $request, ProductionJob $job): ProductionJobResource
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        return new ProductionJobResource($this->queue->advanceNext($job));
+    }
+
     public function advanceBatch(\App\Http\Requests\AdvanceBatchRequest $request): \Illuminate\Http\JsonResponse
     {
         $target = JobState::from($request->string('state')->toString());
