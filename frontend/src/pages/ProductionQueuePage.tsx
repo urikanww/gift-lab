@@ -55,7 +55,7 @@ function filenameFromDisposition(header: unknown): string | null {
 }
 
 export default function ProductionQueuePage() {
-  const { jobs, loading, error, fetchQueue, advance, subscribe, unsubscribe } = useQueueStore();
+  const { jobs, loading, error, fetchQueue, advance, advanceBatch, subscribe, unsubscribe } = useQueueStore();
   const { toast } = useToast();
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -64,8 +64,18 @@ export default function ProductionQueuePage() {
   // card is mid-confirmation and its typed reference.
   const [shippingId, setShippingId] = useState<number | null>(null);
   const [consignment, setConsignment] = useState('');
+  const [carrier, setCarrier] = useState('');
   // Which job's customization/final-product panel is expanded (view-only).
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Multi-select for bulk floor actions (start / close many jobs at once).
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const toggleSelected = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const animate = useReducedMotionSafe();
 
   useEffect(() => {
@@ -98,13 +108,14 @@ export default function ProductionQueuePage() {
   };
 
   // Single-flight guard against a double-click firing a duplicate advance.
-  const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string) => {
+  const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string, carrierVal?: string) => {
     if (pendingId !== null) return;
     setPendingId(jobId);
     try {
-      await advance(jobId, to, consignmentRef);
+      await advance(jobId, to, consignmentRef, carrierVal);
       setShippingId(null);
       setConsignment('');
+      setCarrier('');
     } finally {
       setPendingId(null);
     }
@@ -138,6 +149,38 @@ export default function ProductionQueuePage() {
         />
       )}
 
+      {/* Bulk floor actions - only while a selection exists */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-2 p-3">
+          <span className="text-sm text-fg">{selected.size} selected</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={async () => {
+              const r = await advanceBatch([...selected], 'IN_PRODUCTION');
+              if (r.skipped.length) toast({ title: `${r.skipped.length} skipped (not ready)`, tone: 'warning' });
+              setSelected(new Set());
+            }}
+          >
+            Start selected
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={async () => {
+              const r = await advanceBatch([...selected], 'CLOSED');
+              if (r.skipped.length) toast({ title: `${r.skipped.length} skipped (not shipped)`, tone: 'warning' });
+              setSelected(new Set());
+            }}
+          >
+            Close selected
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
+
       {/* Board - layout-animated cards; realtime add/remove/reorder via AnimatePresence + layout */}
       {jobs.length > 0 && (
         <motion.ul
@@ -160,9 +203,18 @@ export default function ProductionQueuePage() {
                 >
                   <Card padding="md" className="flex h-full flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
-                        <p className="text-sm text-fg-muted">Quote #{j.quote_id}</p>
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 shrink-0"
+                          checked={selected.has(j.id)}
+                          onChange={() => toggleSelected(j.id)}
+                          aria-label={`Select job ${j.id}`}
+                        />
+                        <div>
+                          <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
+                          <p className="text-sm text-fg-muted">Quote #{j.quote_id}</p>
+                        </div>
                       </div>
                       <Badge tone={meta.tone}>{meta.label}</Badge>
                     </div>
@@ -216,6 +268,23 @@ export default function ProductionQueuePage() {
 
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
                       <div className="mt-auto flex flex-col gap-2">
+                        <label className="text-sm text-fg-muted">
+                          Carrier
+                          <select
+                            className="mt-1 w-full rounded-md border border-border bg-bg p-2 text-sm text-fg"
+                            value={carrier}
+                            onChange={(e) => setCarrier(e.target.value)}
+                          >
+                            <option value="">Select carrier…</option>
+                            <option value="SINGPOST">SingPost</option>
+                            <option value="NINJAVAN">Ninja Van</option>
+                            <option value="JNT">J&amp;T Express</option>
+                            <option value="QXPRESS">Qxpress</option>
+                            <option value="DHL">DHL</option>
+                            <option value="FEDEX">FedEx</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                        </label>
                         <Input
                           label="Consignment / tracking ref"
                           placeholder="e.g. SP123456789SG"
@@ -231,7 +300,7 @@ export default function ProductionQueuePage() {
                             fullWidth
                             loading={isPending}
                             disabled={!consignment.trim() || (pendingId !== null && !isPending)}
-                            onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim())}
+                            onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim(), carrier || undefined)}
                           >
                             Confirm shipped
                           </Button>
@@ -242,6 +311,7 @@ export default function ProductionQueuePage() {
                             onClick={() => {
                               setShippingId(null);
                               setConsignment('');
+                              setCarrier('');
                             }}
                           >
                             Cancel
