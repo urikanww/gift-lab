@@ -48,6 +48,15 @@ class ProductionQueueController extends Controller
         return new ProductionJobResource($job);
     }
 
+    public function advanceBatch(\App\Http\Requests\AdvanceBatchRequest $request): \Illuminate\Http\JsonResponse
+    {
+        $target = JobState::from($request->string('state')->toString());
+        /** @var array<int, int> $ids */
+        $ids = $request->input('job_ids');
+
+        return response()->json($this->queue->advanceBatch($ids, $target));
+    }
+
     /**
      * Stream a job's print-ready file (the 3D UV-flattened decal or the approved
      * proof artwork) off the PRIVATE artwork disk so the floor can print it.

@@ -140,6 +140,31 @@ final class QueueService
     }
 
     /**
+     * Advance many jobs to the same target in one call. Each job is guarded by
+     * canTransitionTo; jobs in the wrong current state are collected as skipped
+     * rather than failing the whole batch. Returns [advanced ids, skipped ids].
+     *
+     * @param  array<int, int>  $jobIds
+     * @return array{advanced: array<int, int>, skipped: array<int, int>}
+     */
+    public function advanceBatch(array $jobIds, JobState $target): array
+    {
+        $advanced = [];
+        $skipped = [];
+
+        foreach (ProductionJob::query()->whereIn('id', $jobIds)->get() as $job) {
+            if ($job->state->canTransitionTo($target)) {
+                $this->advance($job, $target);
+                $advanced[] = $job->id;
+            } else {
+                $skipped[] = $job->id;
+            }
+        }
+
+        return ['advanced' => $advanced, 'skipped' => $skipped];
+    }
+
+    /**
      * The shared production queue, FCFS by readiness. No customer-type priority.
      *
      * @return Collection<int, ProductionJob>
