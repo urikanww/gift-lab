@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueueStore } from '../stores/queueStore';
+import JobLabel from '../components/JobLabel';
 import api, { apiError } from '../lib/api';
 import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
@@ -55,7 +56,7 @@ function filenameFromDisposition(header: unknown): string | null {
 }
 
 export default function ProductionQueuePage() {
-  const { jobs, loading, error, fetchQueue, advance, subscribe, unsubscribe } = useQueueStore();
+  const { jobs, loading, error, fetchQueue, advance, advanceBatch, advanceNext, subscribe, unsubscribe } = useQueueStore();
   const { toast } = useToast();
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -64,8 +65,23 @@ export default function ProductionQueuePage() {
   // card is mid-confirmation and its typed reference.
   const [shippingId, setShippingId] = useState<number | null>(null);
   const [consignment, setConsignment] = useState('');
+  const [carrier, setCarrier] = useState('');
   // Which job's customization/final-product panel is expanded (view-only).
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Multi-select for bulk floor actions (start / close many jobs at once).
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Scan-to-advance: hardware keyboard-wedge (Enter on the input) or camera.
+  const [scanValue, setScanValue] = useState('');
+  const [cameraOn, setCameraOn] = useState(false);
+  const [labelJobId, setLabelJobId] = useState<number | null>(null);
+  const stopCameraRef = useRef<null | (() => Promise<void>)>(null);
+  const toggleSelected = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const animate = useReducedMotionSafe();
 
   useEffect(() => {
@@ -73,6 +89,24 @@ export default function ProductionQueuePage() {
     subscribe(); // live via Reverb; no polling
     return () => unsubscribe();
   }, [fetchQueue, subscribe, unsubscribe]);
+
+  // Release the camera if the page unmounts while a scan is running.
+  useEffect(() => () => void stopCameraRef.current?.(), []);
+
+  // Resolve a scanned/typed value to a queued job and advance it. Surfaces the
+  // store error (e.g. the backend's 422 SHIPPED-guard) as a toast.
+  const onScan = async (raw: string) => {
+    const id = Number(String(raw).trim());
+    if (!Number.isInteger(id) || id <= 0) return;
+    if (!jobs.some((j) => j.id === id)) {
+      toast({ title: `Job #${id} not on the queue`, tone: 'warning' });
+      return;
+    }
+    await advanceNext(id);
+    const err = useQueueStore.getState().error;
+    if (err) toast({ title: err, tone: 'warning' });
+    setScanValue('');
+  };
 
   // Download the job's print-ready file. The endpoint is Sanctum-gated, so the
   // fetch goes through the authed axios client (cookie + XSRF) as a blob rather
@@ -98,13 +132,14 @@ export default function ProductionQueuePage() {
   };
 
   // Single-flight guard against a double-click firing a duplicate advance.
-  const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string) => {
+  const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string, carrierVal?: string) => {
     if (pendingId !== null) return;
     setPendingId(jobId);
     try {
-      await advance(jobId, to, consignmentRef);
+      await advance(jobId, to, consignmentRef, carrierVal);
       setShippingId(null);
       setConsignment('');
+      setCarrier('');
     } finally {
       setPendingId(null);
     }
@@ -124,6 +159,37 @@ export default function ProductionQueuePage() {
         </p>
       </Motion>
 
+      {/* Scan-to-advance: hardware wedge scanner (Enter) or rear camera */}
+      <div className="flex flex-wrap items-end gap-2">
+        <Input
+          label="Scan to advance"
+          placeholder="Scan or type job #, then Enter"
+          value={scanValue}
+          onChange={(e) => setScanValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void onScan(scanValue);
+          }}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            if (cameraOn) {
+              await stopCameraRef.current?.();
+              stopCameraRef.current = null;
+              setCameraOn(false);
+            } else {
+              setCameraOn(true);
+              const { startCameraScan } = await import('../lib/scan');
+              stopCameraRef.current = await startCameraScan('qr-reader', (v) => void onScan(v));
+            }
+          }}
+        >
+          {cameraOn ? 'Stop camera' : 'Scan with camera'}
+        </Button>
+      </div>
+      {cameraOn && <div id="qr-reader" className="w-full max-w-xs" />}
+
       {/* Loading - animated skeletons on first load only */}
       {loading && jobs.length === 0 && <QueueSkeleton />}
 
@@ -136,6 +202,38 @@ export default function ProductionQueuePage() {
           title="The queue is clear."
           description="Jobs appear here the moment a quote is confirmed and ready to make."
         />
+      )}
+
+      {/* Bulk floor actions - only while a selection exists */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-2 p-3">
+          <span className="text-sm text-fg">{selected.size} selected</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={async () => {
+              const r = await advanceBatch([...selected], 'IN_PRODUCTION');
+              if (r.skipped.length) toast({ title: `${r.skipped.length} skipped (not ready)`, tone: 'warning' });
+              setSelected(new Set());
+            }}
+          >
+            Start selected
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={async () => {
+              const r = await advanceBatch([...selected], 'CLOSED');
+              if (r.skipped.length) toast({ title: `${r.skipped.length} skipped (not shipped)`, tone: 'warning' });
+              setSelected(new Set());
+            }}
+          >
+            Close selected
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
       )}
 
       {/* Board - layout-animated cards; realtime add/remove/reorder via AnimatePresence + layout */}
@@ -160,9 +258,18 @@ export default function ProductionQueuePage() {
                 >
                   <Card padding="md" className="flex h-full flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
-                        <p className="text-sm text-fg-muted">Quote #{j.quote_id}</p>
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 shrink-0"
+                          checked={selected.has(j.id)}
+                          onChange={() => toggleSelected(j.id)}
+                          aria-label={`Select job ${j.id}`}
+                        />
+                        <div>
+                          <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
+                          <p className="text-sm text-fg-muted">Quote #{j.quote_id}</p>
+                        </div>
                       </div>
                       <Badge tone={meta.tone}>{meta.label}</Badge>
                     </div>
@@ -214,8 +321,29 @@ export default function ProductionQueuePage() {
                       </Button>
                     )}
 
+                    <Button variant="ghost" size="sm" fullWidth onClick={() => setLabelJobId(j.id)}>
+                      Print label
+                    </Button>
+
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
                       <div className="mt-auto flex flex-col gap-2">
+                        <label className="text-sm text-fg-muted">
+                          Carrier
+                          <select
+                            className="mt-1 w-full rounded-md border border-border bg-bg p-2 text-sm text-fg"
+                            value={carrier}
+                            onChange={(e) => setCarrier(e.target.value)}
+                          >
+                            <option value="">Select carrier…</option>
+                            <option value="SINGPOST">SingPost</option>
+                            <option value="NINJAVAN">Ninja Van</option>
+                            <option value="JNT">J&amp;T Express</option>
+                            <option value="QXPRESS">Qxpress</option>
+                            <option value="DHL">DHL</option>
+                            <option value="FEDEX">FedEx</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                        </label>
                         <Input
                           label="Consignment / tracking ref"
                           placeholder="e.g. SP123456789SG"
@@ -231,7 +359,7 @@ export default function ProductionQueuePage() {
                             fullWidth
                             loading={isPending}
                             disabled={!consignment.trim() || (pendingId !== null && !isPending)}
-                            onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim())}
+                            onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim(), carrier || undefined)}
                           >
                             Confirm shipped
                           </Button>
@@ -242,6 +370,7 @@ export default function ProductionQueuePage() {
                             onClick={() => {
                               setShippingId(null);
                               setConsignment('');
+                              setCarrier('');
                             }}
                           >
                             Cancel
@@ -274,6 +403,8 @@ export default function ProductionQueuePage() {
           </AnimatePresence>
         </motion.ul>
       )}
+
+      {labelJobId !== null && <JobLabel jobId={labelJobId} onClose={() => setLabelJobId(null)} />}
     </section>
   );
 }

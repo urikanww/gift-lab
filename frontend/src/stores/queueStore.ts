@@ -24,7 +24,9 @@ interface QueueStoreState {
   error: string | null;
   subscribed: boolean;
   fetchQueue: (opts?: { silent?: boolean }) => Promise<void>;
-  advance: (jobId: number, state: JobState, consignmentRef?: string) => Promise<void>;
+  advance: (jobId: number, state: JobState, consignmentRef?: string, carrier?: string) => Promise<void>;
+  advanceBatch: (jobIds: number[], state: 'IN_PRODUCTION' | 'CLOSED') => Promise<{ advanced: number[]; skipped: number[] }>;
+  advanceNext: (jobId: number) => Promise<void>;
   subscribe: () => void;
   unsubscribe: () => void;
 }
@@ -50,18 +52,48 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
     }
   },
 
-  advance: async (jobId, state, consignmentRef) => {
+  advance: async (jobId, state, consignmentRef, carrier) => {
     set({ error: null });
     try {
       await ensureCsrf();
       await api.post(`/production-jobs/${jobId}/advance`, {
         state,
         ...(consignmentRef ? { consignment_ref: consignmentRef } : {}),
+        ...(carrier ? { carrier } : {}),
       });
       // Broadcast reconciles the happy path; a single post-mutation refetch (not
       // a poll) guards against a dropped socket / missed event leaving the queue
       // diverged from server truth, and surfaces rejections instead of a
       // silently frozen button.
+      await get().fetchQueue({ silent: true });
+    } catch (err) {
+      set({ error: apiError(err) });
+      await get().fetchQueue({ silent: true });
+    }
+  },
+
+  advanceBatch: async (jobIds, state) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ advanced: number[]; skipped: number[] }>(
+        '/production-jobs/advance-batch',
+        { job_ids: jobIds, state },
+      );
+      await get().fetchQueue({ silent: true });
+      return data;
+    } catch (err) {
+      set({ error: apiError(err) });
+      await get().fetchQueue({ silent: true });
+      return { advanced: [], skipped: jobIds };
+    }
+  },
+
+  advanceNext: async (jobId) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/production-jobs/${jobId}/advance-next`);
       await get().fetchQueue({ silent: true });
     } catch (err) {
       set({ error: apiError(err) });

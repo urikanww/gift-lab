@@ -140,6 +140,55 @@ final class QueueService
     }
 
     /**
+     * Advance many jobs to the same target in one call. Each job is guarded by
+     * canTransitionTo; jobs in the wrong current state are collected as skipped
+     * rather than failing the whole batch. Returns [advanced ids, skipped ids].
+     *
+     * @param  array<int, int>  $jobIds
+     * @return array{advanced: array<int, int>, skipped: array<int, int>}
+     */
+    public function advanceBatch(array $jobIds, JobState $target): array
+    {
+        $advanced = [];
+        $skipped = [];
+
+        foreach (ProductionJob::query()->whereIn('id', $jobIds)->get() as $job) {
+            if ($job->state->canTransitionTo($target)) {
+                $this->advance($job, $target);
+                $advanced[] = $job->id;
+            } else {
+                $skipped[] = $job->id;
+            }
+        }
+
+        return ['advanced' => $advanced, 'skipped' => $skipped];
+    }
+
+    /**
+     * Advance a job to its single next lifecycle state (scan/one-tap). SHIPPED is
+     * refused here - it needs a consignment ref/carrier - so a scan can never
+     * silently fire the buyer's "on the way" signal without a real handover.
+     *
+     * @throws \App\Exceptions\DomainRuleException when the next state is SHIPPED
+     */
+    public function advanceNext(ProductionJob $job): ProductionJob
+    {
+        $next = $job->state->nextStates()[0] ?? null;
+
+        if ($next === null) {
+            throw new \App\Exceptions\DomainRuleException('This job has no further state to advance to.');
+        }
+
+        if ($next === JobState::Shipped) {
+            throw new \App\Exceptions\DomainRuleException(
+                'Marking a job shipped needs a consignment reference. Use the ship action.'
+            );
+        }
+
+        return $this->advance($job, $next);
+    }
+
+    /**
      * The shared production queue, FCFS by readiness. No customer-type priority.
      *
      * @return Collection<int, ProductionJob>
@@ -161,13 +210,20 @@ final class QueueService
      * transition is audit-logged (who/when/old→new) because this state is the
      * single source of truth the public tracker reads.
      */
-    public function advance(ProductionJob $job, JobState $target, ?string $consignmentRef = null): ProductionJob
-    {
+    public function advance(
+        ProductionJob $job,
+        JobState $target,
+        ?string $consignmentRef = null,
+        ?\App\Enums\Carrier $carrier = null,
+    ): ProductionJob {
         $from = $job->state->value;
 
         // Persisted in the same save as the state change (transitionTo saves).
         if ($target === JobState::Shipped && $consignmentRef !== null) {
             $job->consignment_ref = $consignmentRef;
+            if ($carrier !== null) {
+                $job->carrier = $carrier;
+            }
         }
 
         $job->transitionTo($target);

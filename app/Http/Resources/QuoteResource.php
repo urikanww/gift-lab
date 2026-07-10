@@ -23,6 +23,8 @@ class QuoteResource extends JsonResource
             'company_id' => $this->company_id,
             // Opaque handle the buyer can share for login-free tracking.
             'tracking_code' => $this->tracking_code,
+            // Permanent signed deep link for the buyer's confirmation/QR.
+            'tracking_link' => app(\App\Services\OrderTracker::class)->signedFrontendLink($this->resource),
             // Present only when the relation is loaded (staff listings). Null-safe:
             // Company soft-deletes, so a loaded relation can still be null.
             'company_name' => $this->whenLoaded('company', fn () => $this->company?->name),

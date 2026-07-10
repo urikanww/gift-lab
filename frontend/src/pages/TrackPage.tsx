@@ -2,31 +2,18 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { AxiosError } from 'axios';
 import api, { apiError } from '../lib/api';
 import { getEcho } from '../lib/echo';
-import { Badge, Button, Card, Input, cn } from '../ui';
+import { Button, Card, Input } from '../ui';
 import { Motion, fadeInUp } from '../motion';
-
-interface TrackStage {
-  code: string;
-  label: string;
-}
-
-interface TrackResult {
-  reference: string;
-  stage: string;
-  stage_label: string;
-  cancelled: boolean;
-  stages: TrackStage[];
-  placed_at: string | null;
-  updated_at: string | null;
-}
+import { TrackResultView } from '../components/TrackResultView';
+import type { TrackResult } from '../types';
 
 /**
  * Login-free order tracking. Opaque code + first-5-of-email → read-only status.
  * No account, no pricing, no line detail - mirrors the public API contract.
  */
 export default function TrackPage() {
-  const [code, setCode] = useState('');
-  const [email, setEmail] = useState('');
+  const [code, setCode] = useState(() => localStorage.getItem('gl.track.code') ?? '');
+  const [email, setEmail] = useState(() => localStorage.getItem('gl.track.email') ?? '');
   const [result, setResult] = useState<TrackResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,6 +53,8 @@ export default function TrackPage() {
         email: email.trim(),
       });
       setResult(data);
+      localStorage.setItem('gl.track.code', code.trim());
+      localStorage.setItem('gl.track.email', email.trim());
     } catch (err) {
       // 404 (generic anti-enumeration miss) and 422 (validation jargon) both
       // just mean "not found" to a visitor - always show the friendly line.
@@ -124,69 +113,6 @@ export default function TrackPage() {
       </Card>
 
       {result && <TrackResultView result={result} />}
-    </Motion>
-  );
-}
-
-function TrackResultView({ result }: { result: TrackResult }) {
-  const currentIdx = result.stages.findIndex((s) => s.code === result.stage);
-
-  return (
-    <Motion variants={fadeInUp} initial="hidden" animate="visible">
-      <Card padding="lg" className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-2xs uppercase tracking-wide text-fg-subtle">Order</p>
-            <p className="font-display text-xl text-fg">{result.reference}</p>
-          </div>
-          <Badge tone={result.cancelled ? 'danger' : 'brand'} size="md" dot>
-            {result.stage_label}
-          </Badge>
-        </div>
-
-        {result.cancelled ? (
-          <p className="text-sm text-fg-muted">This order was cancelled. Contact us if you think this is wrong.</p>
-        ) : (
-          <ol className="flex flex-col gap-3" aria-label="Order progress">
-            {result.stages.map((step, i) => {
-              const done = i < currentIdx;
-              const active = i === currentIdx;
-              return (
-                <li key={step.code} className="flex items-center gap-3">
-                  <span
-                    className={cn(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-                      active
-                        ? 'bg-primary text-primary-fg'
-                        : done
-                          ? 'bg-success text-white'
-                          : 'bg-surface-2 text-fg-subtle',
-                    )}
-                    aria-hidden="true"
-                  >
-                    {done ? '✓' : i + 1}
-                  </span>
-                  <span
-                    className={cn(
-                      'text-sm',
-                      active ? 'font-semibold text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle',
-                    )}
-                  >
-                    {step.label}
-                    {active && <span className="sr-only"> (current status)</span>}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-
-        {result.updated_at && (
-          <p className="text-xs text-fg-subtle">
-            Last updated {new Date(result.updated_at).toLocaleString()}
-          </p>
-        )}
-      </Card>
     </Motion>
   );
 }

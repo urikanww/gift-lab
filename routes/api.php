@@ -73,6 +73,12 @@ Route::get('/uploads/artwork/preview', [UploadController::class, 'artworkPreview
 // hard (anti-enumeration; the controller also returns a single generic error).
 Route::post('/track', TrackingController::class)->middleware('throttle:10,1');
 
+// Signed one-click tracker (bookmark/QR from the confirmation). The signature is
+// the second factor, so no email is needed; throttled like /track.
+Route::get('/track/view', [TrackingController::class, 'view'])
+    ->middleware(['signed:relative', 'throttle:10,1'])
+    ->name('track.view');
+
 // Stripe webhook - unauthenticated, verified by signature (see controller).
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');
 
@@ -106,6 +112,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Shared production queue
     Route::get('/production-queue', [ProductionQueueController::class, 'index']);
     Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance']);
+    Route::post('/production-jobs/advance-batch', [ProductionQueueController::class, 'advanceBatch']);
+    Route::post('/production-jobs/{job}/advance-next', [ProductionQueueController::class, 'advanceNext']);
     // Streams the job's print-ready file (3D UV decal or approved proof
     // artwork) off the private disk so the floor can print it. Staff-gated.
     Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile']);

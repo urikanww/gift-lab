@@ -8,6 +8,8 @@ import { Button, Card, EmptyState, LinkButton, Modal, Skeleton, useOptionalToast
 import { ErrorState } from '../components/ui/States';
 import { CartGlyph, SummaryRow, customizationLabel, optionsLabel } from '../components/cart/CartSummary';
 import { Motion, fadeInUp, staggerItem, useReducedMotionSafe } from '../motion';
+import TrackingQr from '../components/TrackingQr';
+import type { Quote } from '../types';
 
 /**
  * Storefront-styled checkout: a thin, celebratory wrapper over the existing B2B
@@ -28,6 +30,9 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [celebrating, setCelebrating] = useState<number | null>(null);
+  // The full created quote is retained so the confirmation can surface its
+  // signed tracking_link (Track button + QR); celebrating only holds the id.
+  const [placedQuote, setPlacedQuote] = useState<Quote | null>(null);
 
   // One replay token per checkout attempt: a double-click or a retry after a
   // slow network re-sends the same key, so the server returns the original
@@ -63,6 +68,7 @@ export default function CheckoutPage() {
     const quote = await createQuote(user.company_id, lines, null, neededBy, idempotencyKey.current);
     setSubmitting(false);
     if (quote) {
+      setPlacedQuote(quote);
       setCelebrating(quote.id);
       // The cart was converted; a future checkout is a new attempt.
       idempotencyKey.current = crypto.randomUUID();
@@ -282,6 +288,17 @@ export default function CheckoutPage() {
             Quote{celebrating ? ` #${celebrating}` : ''} has been created. You can track its status any time
             from your quotes.
           </p>
+          {placedQuote?.tracking_link && (
+            <div className="mt-2 flex flex-col items-center gap-3 border-t border-border pt-4">
+              <a href={placedQuote.tracking_link} className="text-sm font-medium text-primary underline">
+                Track your order
+              </a>
+              <TrackingQr link={placedQuote.tracking_link} />
+              <p className="text-xs text-fg-subtle">
+                Scan or bookmark to follow this order — no login needed.
+              </p>
+            </div>
+          )}
         </div>
       </Modal>
     </section>

@@ -27,6 +27,7 @@ const ProductDesignerPage = lazy(() => import('./pages/ProductDesignerPage'));
 const CartPage = lazy(() => import('./pages/CartPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const TrackPage = lazy(() => import('./pages/TrackPage'));
+const TrackViewPage = lazy(() => import('./pages/TrackViewPage'));
 const BrandKitPage = lazy(() => import('./pages/BrandKitPage'));
 const KitBuilderPage = lazy(() => import('./pages/KitBuilderPage'));
 const QuoteListPage = lazy(() => import('./pages/QuoteListPage'));
@@ -143,6 +144,7 @@ export default function App() {
             <Route path="cart" element={<CartPage />} />
             <Route path="checkout" element={<CheckoutPage />} />
             <Route path="track" element={<TrackPage />} />
+            <Route path="track/view" element={<TrackViewPage />} />
             <Route path="kits" element={<KitBuilderPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />

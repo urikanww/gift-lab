@@ -36,9 +36,32 @@ class ProductionQueueController extends Controller
     {
         $target = JobState::from($request->string('state')->toString());
         $consignmentRef = $request->input('consignment_ref');
-        $job = $this->queue->advance($job, $target, $consignmentRef !== null ? (string) $consignmentRef : null);
+        $carrierInput = $request->input('carrier');
+        $carrier = $carrierInput !== null ? \App\Enums\Carrier::from((string) $carrierInput) : null;
+        $job = $this->queue->advance(
+            $job,
+            $target,
+            $consignmentRef !== null ? (string) $consignmentRef : null,
+            $carrier,
+        );
 
         return new ProductionJobResource($job);
+    }
+
+    public function advanceNext(Request $request, ProductionJob $job): ProductionJobResource
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        return new ProductionJobResource($this->queue->advanceNext($job));
+    }
+
+    public function advanceBatch(\App\Http\Requests\AdvanceBatchRequest $request): \Illuminate\Http\JsonResponse
+    {
+        $target = JobState::from($request->string('state')->toString());
+        /** @var array<int, int> $ids */
+        $ids = $request->input('job_ids');
+
+        return response()->json($this->queue->advanceBatch($ids, $target));
     }
 
     /**
@@ -65,6 +88,13 @@ class ProductionQueueController extends Controller
 
         if (! $disk->exists($ref)) {
             abort(404);
+        }
+
+        // Downloading the print-ready file IS the "started" signal - collapse the
+        // separate advance click into the download. Idempotent: only fires from
+        // READY, so a re-download at a later state is a no-op.
+        if ($job->state === JobState::Ready) {
+            $this->queue->advance($job, JobState::InProduction);
         }
 
         return $disk->download($ref, basename($ref));
