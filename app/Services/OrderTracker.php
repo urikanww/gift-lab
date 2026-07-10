@@ -34,6 +34,28 @@ final class OrderTracker
             ),
             'placed_at' => $quote->created_at?->toIso8601String(),
             'updated_at' => $quote->updated_at?->toIso8601String(),
+            'needed_by' => $quote->needed_by?->toDateString(),
+            'items_total' => $this->itemsTotal($quote),
+            'items_completed' => $this->itemsCompleted($quote),
         ];
+    }
+
+    private function itemsTotal(Quote $quote): int
+    {
+        return $quote->lineItems()->count();
+    }
+
+    /**
+     * A line item counts as completed once its production job is SHIPPED or
+     * CLOSED. Counts only - never line detail - so the tracker stays PII-free.
+     */
+    private function itemsCompleted(Quote $quote): int
+    {
+        return $quote->lineItems()
+            ->whereHas('job', fn ($q) => $q->whereIn('state', [
+                \App\Enums\JobState::Shipped->value,
+                \App\Enums\JobState::Closed->value,
+            ]))
+            ->count();
     }
 }
