@@ -36,7 +36,14 @@ class ProductionQueueController extends Controller
     {
         $target = JobState::from($request->string('state')->toString());
         $consignmentRef = $request->input('consignment_ref');
-        $job = $this->queue->advance($job, $target, $consignmentRef !== null ? (string) $consignmentRef : null);
+        $carrierInput = $request->input('carrier');
+        $carrier = $carrierInput !== null ? \App\Enums\Carrier::from((string) $carrierInput) : null;
+        $job = $this->queue->advance(
+            $job,
+            $target,
+            $consignmentRef !== null ? (string) $consignmentRef : null,
+            $carrier,
+        );
 
         return new ProductionJobResource($job);
     }

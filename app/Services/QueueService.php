@@ -161,13 +161,20 @@ final class QueueService
      * transition is audit-logged (who/when/old→new) because this state is the
      * single source of truth the public tracker reads.
      */
-    public function advance(ProductionJob $job, JobState $target, ?string $consignmentRef = null): ProductionJob
-    {
+    public function advance(
+        ProductionJob $job,
+        JobState $target,
+        ?string $consignmentRef = null,
+        ?\App\Enums\Carrier $carrier = null,
+    ): ProductionJob {
         $from = $job->state->value;
 
         // Persisted in the same save as the state change (transitionTo saves).
         if ($target === JobState::Shipped && $consignmentRef !== null) {
             $job->consignment_ref = $consignmentRef;
+            if ($carrier !== null) {
+                $job->carrier = $carrier;
+            }
         }
 
         $job->transitionTo($target);

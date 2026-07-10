@@ -37,6 +37,7 @@ final class OrderTracker
             'needed_by' => $quote->needed_by?->toDateString(),
             'items_total' => $this->itemsTotal($quote),
             'items_completed' => $this->itemsCompleted($quote),
+            'shipments' => $this->shipments($quote),
         ];
     }
 
@@ -57,5 +58,34 @@ final class OrderTracker
                 \App\Enums\JobState::Closed->value,
             ]))
             ->count();
+    }
+
+    /**
+     * Carrier + consignment ref for each shipped/closed job, with a tracking URL
+     * where the carrier offers one. PII-free (carrier + parcel ref only).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function shipments(Quote $quote): array
+    {
+        return $quote->jobs()
+            ->whereIn('state', [
+                \App\Enums\JobState::Shipped->value,
+                \App\Enums\JobState::Closed->value,
+            ])
+            ->whereNotNull('consignment_ref')
+            ->get()
+            ->map(function (\App\Models\ProductionJob $job): array {
+                $carrier = $job->carrier;
+                $ref = (string) $job->consignment_ref;
+
+                return [
+                    'carrier_label' => $carrier?->label(),
+                    'tracking_url' => $carrier?->trackingUrl($ref),
+                    'ref' => $ref,
+                ];
+            })
+            ->values()
+            ->all();
     }
 }
