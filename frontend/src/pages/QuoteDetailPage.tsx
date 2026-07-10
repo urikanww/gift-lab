@@ -8,6 +8,7 @@ import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
 import { isStaffRole } from '../lib/roles';
 import { humanizeState, lineStateTone, proofStateTone, quoteStateTone } from '../lib/quoteStatus';
+import TrackingQr from '../components/TrackingQr';
 import type { LineItem, Proof, Quote, QuoteState } from '../types';
 
 /** Ordered happy-path lifecycle used to render the status timeline. */
@@ -168,6 +169,29 @@ export default function QuoteDetailPage() {
         <Motion variants={staggerItem}>
           <StatusTimeline state={quote.state} />
         </Motion>
+
+        {/* Login-free tracking link + QR - share with the recipient. */}
+        {quote.tracking_link && (
+          <Motion variants={staggerItem}>
+            <Card padding="lg" aria-labelledby="track-heading">
+              <h2 id="track-heading" className="font-display text-xl text-fg">
+                Track this order
+              </h2>
+              <div className="mt-4 flex flex-col items-center gap-3">
+                <a
+                  href={quote.tracking_link}
+                  className="text-sm font-medium text-primary underline"
+                >
+                  Track your order
+                </a>
+                <TrackingQr link={quote.tracking_link} />
+                <p className="text-xs text-fg-subtle">
+                  Scan or bookmark to follow this order — no login needed.
+                </p>
+              </div>
+            </Card>
+          </Motion>
+        )}
 
         {/* Line items */}
         <Motion variants={staggerItem}>
