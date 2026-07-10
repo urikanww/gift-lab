@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\Quote;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 /**
  * Single source of truth for the public, login-free tracking payload. Both the
@@ -39,6 +41,21 @@ final class OrderTracker
             'items_completed' => $this->itemsCompleted($quote),
             'shipments' => $this->shipments($quote),
         ];
+    }
+
+    /**
+     * A permanent, tamper-proof deep link the buyer can bookmark. The signature
+     * (keyed by the app secret) IS the second factor, so no email rides in the
+     * URL - the payload stays PII-free. Returns a FRONTEND path carrying the same
+     * code+signature query the API route validates.
+     */
+    public function signedFrontendLink(Quote $quote): string
+    {
+        // absolute:false + signed:relative on the route keeps the signature valid
+        // regardless of host, and yields "/api/track/view?code=..&signature=..".
+        $apiPath = URL::signedRoute('track.view', ['code' => $quote->tracking_code], null, false);
+
+        return '/track/view?'.Str::after($apiPath, '?');
     }
 
     private function itemsTotal(Quote $quote): int

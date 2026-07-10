@@ -73,6 +73,12 @@ Route::get('/uploads/artwork/preview', [UploadController::class, 'artworkPreview
 // hard (anti-enumeration; the controller also returns a single generic error).
 Route::post('/track', TrackingController::class)->middleware('throttle:10,1');
 
+// Signed one-click tracker (bookmark/QR from the confirmation). The signature is
+// the second factor, so no email is needed; throttled like /track.
+Route::get('/track/view', [TrackingController::class, 'view'])
+    ->middleware(['signed:relative', 'throttle:10,1'])
+    ->name('track.view');
+
 // Stripe webhook - unauthenticated, verified by signature (see controller).
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');
 
