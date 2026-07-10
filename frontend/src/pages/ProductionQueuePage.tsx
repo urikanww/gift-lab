@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueueStore } from '../stores/queueStore';
+import JobLabel from '../components/JobLabel';
 import api, { apiError } from '../lib/api';
 import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
@@ -55,7 +56,7 @@ function filenameFromDisposition(header: unknown): string | null {
 }
 
 export default function ProductionQueuePage() {
-  const { jobs, loading, error, fetchQueue, advance, advanceBatch, subscribe, unsubscribe } = useQueueStore();
+  const { jobs, loading, error, fetchQueue, advance, advanceBatch, advanceNext, subscribe, unsubscribe } = useQueueStore();
   const { toast } = useToast();
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -69,6 +70,11 @@ export default function ProductionQueuePage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   // Multi-select for bulk floor actions (start / close many jobs at once).
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Scan-to-advance: hardware keyboard-wedge (Enter on the input) or camera.
+  const [scanValue, setScanValue] = useState('');
+  const [cameraOn, setCameraOn] = useState(false);
+  const [labelJobId, setLabelJobId] = useState<number | null>(null);
+  const stopCameraRef = useRef<null | (() => Promise<void>)>(null);
   const toggleSelected = (id: number) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -83,6 +89,24 @@ export default function ProductionQueuePage() {
     subscribe(); // live via Reverb; no polling
     return () => unsubscribe();
   }, [fetchQueue, subscribe, unsubscribe]);
+
+  // Release the camera if the page unmounts while a scan is running.
+  useEffect(() => () => void stopCameraRef.current?.(), []);
+
+  // Resolve a scanned/typed value to a queued job and advance it. Surfaces the
+  // store error (e.g. the backend's 422 SHIPPED-guard) as a toast.
+  const onScan = async (raw: string) => {
+    const id = Number(String(raw).trim());
+    if (!Number.isInteger(id) || id <= 0) return;
+    if (!jobs.some((j) => j.id === id)) {
+      toast({ title: `Job #${id} not on the queue`, tone: 'warning' });
+      return;
+    }
+    await advanceNext(id);
+    const err = useQueueStore.getState().error;
+    if (err) toast({ title: err, tone: 'warning' });
+    setScanValue('');
+  };
 
   // Download the job's print-ready file. The endpoint is Sanctum-gated, so the
   // fetch goes through the authed axios client (cookie + XSRF) as a blob rather
@@ -134,6 +158,37 @@ export default function ProductionQueuePage() {
           Shared first-come queue by readiness - UV + 3D, no customer priority. Updates in real time.
         </p>
       </Motion>
+
+      {/* Scan-to-advance: hardware wedge scanner (Enter) or rear camera */}
+      <div className="flex flex-wrap items-end gap-2">
+        <Input
+          label="Scan to advance"
+          placeholder="Scan or type job #, then Enter"
+          value={scanValue}
+          onChange={(e) => setScanValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void onScan(scanValue);
+          }}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            if (cameraOn) {
+              await stopCameraRef.current?.();
+              stopCameraRef.current = null;
+              setCameraOn(false);
+            } else {
+              setCameraOn(true);
+              const { startCameraScan } = await import('../lib/scan');
+              stopCameraRef.current = await startCameraScan('qr-reader', (v) => void onScan(v));
+            }
+          }}
+        >
+          {cameraOn ? 'Stop camera' : 'Scan with camera'}
+        </Button>
+      </div>
+      {cameraOn && <div id="qr-reader" className="w-full max-w-xs" />}
 
       {/* Loading - animated skeletons on first load only */}
       {loading && jobs.length === 0 && <QueueSkeleton />}
@@ -266,6 +321,10 @@ export default function ProductionQueuePage() {
                       </Button>
                     )}
 
+                    <Button variant="ghost" size="sm" fullWidth onClick={() => setLabelJobId(j.id)}>
+                      Print label
+                    </Button>
+
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
                       <div className="mt-auto flex flex-col gap-2">
                         <label className="text-sm text-fg-muted">
@@ -344,6 +403,8 @@ export default function ProductionQueuePage() {
           </AnimatePresence>
         </motion.ul>
       )}
+
+      {labelJobId !== null && <JobLabel jobId={labelJobId} onClose={() => setLabelJobId(null)} />}
     </section>
   );
 }
