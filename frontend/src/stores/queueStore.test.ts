@@ -74,4 +74,18 @@ describe('queueStore', () => {
     expect(post).toHaveBeenCalledWith('/production-jobs/1/advance', { state: 'IN_PRODUCTION' });
     expect(useQueueStore.getState().loading).toBe(false);
   });
+
+  it('advanceBatch posts job_ids + state and refetches', async () => {
+    post.mockResolvedValue({ data: { advanced: [1, 2], skipped: [] } });
+    get.mockResolvedValue({ data: { data: [] } });
+
+    const result = await useQueueStore.getState().advanceBatch([1, 2], 'IN_PRODUCTION');
+
+    expect(post).toHaveBeenCalledWith('/production-jobs/advance-batch', {
+      job_ids: [1, 2],
+      state: 'IN_PRODUCTION',
+    });
+    expect(result).toEqual({ advanced: [1, 2], skipped: [] });
+    expect(get).toHaveBeenCalledWith('/production-queue');
+  });
 });

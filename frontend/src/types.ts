@@ -47,6 +47,35 @@ export type JobTrack = 'UV' | '3D';
 export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED';
 export type ProofState = 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
 
+export type Carrier = 'SINGPOST' | 'NINJAVAN' | 'JNT' | 'QXPRESS' | 'DHL' | 'FEDEX' | 'OTHER';
+
+export interface Shipment {
+  carrier_label: string | null;
+  tracking_url: string | null;
+  ref: string;
+}
+
+/** One step in the order tracking timeline (code + human label). */
+export interface TrackStage {
+  code: string;
+  label: string;
+}
+
+/** Login-free order tracking payload, mirroring the backend OrderTracker::payload() shape. */
+export interface TrackResult {
+  reference: string;
+  stage: string;
+  stage_label: string;
+  cancelled: boolean;
+  stages: TrackStage[];
+  placed_at: string | null;
+  updated_at: string | null;
+  needed_by: string | null;
+  items_total: number;
+  items_completed: number;
+  shipments: Shipment[];
+}
+
 /** Minimal company summary embedded on the authed user (delivery destination). */
 export interface CompanySummary {
   id: number;
@@ -190,6 +219,7 @@ export interface ProductionJob {
   ready_at: string | null;
   artwork_ref: string | null;
   consignment_ref?: string | null;
+  carrier?: Carrier | null;
   print_method: PrintMethod | null;
   qty: number;
   /**
