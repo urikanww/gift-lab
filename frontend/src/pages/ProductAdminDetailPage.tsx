@@ -10,7 +10,7 @@ import StlModelViewer from '../components/StlModelViewer';
 import StlStudioViewer, { type StudioPart } from '../components/StlStudioViewer';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
-import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
+import { classLabel, IpRiskBadge, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
 
 export default function ProductAdminDetailPage() {
   const { id } = useParams();
@@ -170,6 +170,7 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
                   {classLabel(product.class)}
                 </Badge>
                 <PublishBadge state={product.publish_state} />
+                <IpRiskBadge product={product} />
                 {isSuperadmin && <LicenseTierBadge tier={product.license_tier} />}
                 <span className="text-sm text-fg-subtle">{product.sold_count} sold</span>
                 {archived && (

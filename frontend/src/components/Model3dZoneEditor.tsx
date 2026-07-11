@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import api, { apiError, ensureCsrf } from '../lib/api';
+import { loadModelWithProgress } from '../lib/loadModelWithProgress';
+import { parseStlInWorker } from '../lib/parseStl';
+import ModelLoadProgress, { type ModelLoadPhase } from './ModelLoadProgress';
 import { detectPrintZone } from '../lib/planarDetect';
 import { zoneBasis } from '../lib/printZone';
 import { Button, Input } from '../ui';
@@ -64,6 +66,11 @@ export default function Model3dZoneEditor({ productId, hasGlb, initialZone, onSa
   const zoneMeshRef = useRef<THREE.Mesh | null>(null);
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [progress, setProgress] = useState<{ phase: ModelLoadPhase; loaded: number; total: number | null }>({
+    phase: 'downloading',
+    loaded: 0,
+    total: null,
+  });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [zone, setZone] = useState<PrintZone | null>(null);
   const [saving, setSaving] = useState(false);
@@ -108,13 +115,17 @@ export default function Model3dZoneEditor({ productId, hasGlb, initialZone, onSa
       renderer.render(scene, camera);
     };
 
-    // Fetch bytes through axios (carries the Sanctum cookie), then .parse().
+    // Fetch bytes through axios (carries the Sanctum cookie) with determinate
+    // progress, then parse. STL parses in a worker (off the main thread); GLB
+    // stays on the main thread via GLTFLoader.
     const load = async () => {
-      const res = await api.get(`/admin/products/${productId}/model`, {
-        params: { kind: hasGlb ? 'glb' : 'mesh' },
-        responseType: 'arraybuffer',
-      });
-      const buf = res.data as ArrayBuffer;
+      const buf = await loadModelWithProgress(
+        `/admin/products/${productId}/model?kind=${hasGlb ? 'glb' : 'mesh'}`,
+        (loaded, total) => {
+          if (!disposed) setProgress({ phase: 'downloading', loaded, total });
+        },
+      );
+      if (!disposed) setProgress((p) => ({ ...p, phase: 'processing' }));
 
       let geometry: THREE.BufferGeometry;
       if (hasGlb) {
@@ -141,8 +152,9 @@ export default function Model3dZoneEditor({ productId, hasGlb, initialZone, onSa
           );
         });
       } else {
-        // STLLoader.parse throws on non-STL bytes (.obj/.3mf) - surfaced below.
-        geometry = new STLLoader().parse(buf);
+        // Worker STL parse throws/rejects on non-STL bytes (.obj/.3mf) - the
+        // load().catch below surfaces the STL/GLB hint.
+        geometry = await parseStlInWorker(buf);
       }
 
       if (disposed) {
@@ -294,13 +306,19 @@ export default function Model3dZoneEditor({ productId, hasGlb, initialZone, onSa
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
       <div className="min-w-0 flex-1">
-        <div
-          ref={mountRef}
-          className="h-[420px] w-full rounded-lg border border-border bg-surface"
-          aria-label="Print zone editor"
-          role="img"
-        />
-        {status === 'loading' && <p className="mt-2 text-sm text-fg-muted">Loading model…</p>}
+        <div className="relative h-[420px] w-full">
+          <div
+            ref={mountRef}
+            className="h-full w-full rounded-lg border border-border bg-surface"
+            aria-label="Print zone editor"
+            role="img"
+          />
+          {status === 'loading' && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <ModelLoadProgress phase={progress.phase} loaded={progress.loaded} total={progress.total} />
+            </div>
+          )}
+        </div>
         {status === 'error' && errorMsg && <p className="mt-2 text-sm text-danger">{errorMsg}</p>}
         {status === 'ready' && !zone && (
           <p className="mt-2 text-sm text-fg-muted">

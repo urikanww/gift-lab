@@ -448,6 +448,43 @@ function JobLineDetail({ line }: { line: JobLineItem }) {
   const { toast } = useToast();
   const parts = product?.model_parts ?? [];
   const [dlPart, setDlPart] = useState<number | null>(null);
+  const [dlProduction, setDlProduction] = useState(false);
+
+  // The file the floor actually prints: the H2S production file, falling back to
+  // the canonical STL. Both refs are backend-serialized (added separately), so
+  // until they arrive this is null and the button below simply doesn't render.
+  const productionRef = product?.production_file_ref ?? product?.model_file_ref ?? null;
+
+  // Download the print-floor production file (H2S `.3mf`, fallback STL). Staff-
+  // gated, so fetch through the authed axios client as a blob then save via a
+  // transient object URL - same pattern as the part/print-file downloads.
+  const downloadProductionFile = async () => {
+    if (!product || dlProduction) return;
+    setDlProduction(true);
+    try {
+      // TODO(phase7): backend endpoint for production file. No route exists yet;
+      // when the backend serves production_file_ref (fallback model_file_ref),
+      // point this at it. Guarded by `productionRef` above so it no-ops (button
+      // hidden) until the field is wired to the API.
+      const res = await api.get(`/admin/products/${product.id}/production-file`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download =
+        filenameFromDisposition(res.headers['content-disposition']) ??
+        `${product.slug ?? product.id}-production`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({ title: 'Download failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setDlProduction(false);
+    }
+  };
 
   // Download one part's STL for the floor. The admin part stream is staff-gated,
   // so fetch through the authed axios client (cookie + XSRF) as a blob, then a
@@ -541,6 +578,18 @@ function JobLineDetail({ line }: { line: JobLineItem }) {
         </dl>
       ) : (
         <p className="text-xs text-fg-subtle">No customization on this line.</p>
+      )}
+
+      {productionRef && (
+        <Button
+          variant="secondary"
+          size="sm"
+          fullWidth
+          loading={dlProduction}
+          onClick={() => void downloadProductionFile()}
+        >
+          {product?.production_file_ref ? 'Download production file (.3mf)' : 'Download print file (STL)'}
+        </Button>
       )}
 
       {parts.length > 0 && (

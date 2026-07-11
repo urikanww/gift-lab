@@ -13,6 +13,7 @@ use App\Models\Model3D;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -30,14 +31,15 @@ final class Model3dCatalogueService
     public function __construct(
         private readonly Model3dFileStore $files,
         private readonly StlDimensions $dimensions,
-    ) {
-    }
+        private readonly IpScreenService $ipScreen,
+        private readonly AssetStore $assets,
+    ) {}
 
     /**
      * @param  bool  $forceFileRefresh  bypass the stored-file cache and
-     *                                   re-download/re-record every part (heals
-     *                                   pre-multi-part models whose stored file
-     *                                   is a lone part).
+     *                                  re-download/re-record every part (heals
+     *                                  pre-multi-part models whose stored file
+     *                                  is a lone part).
      * @return array{model: Model3D, product: Product}
      */
     public function ingest(Model3dData $data, bool $forceFileRefresh = false): array
@@ -74,7 +76,7 @@ final class Model3dCatalogueService
             && $data->downloadUrl === null
             && $data->downloadFiles === [];
 
-        return DB::transaction(function () use ($data, $license, $localFile, $stored, $force, $skipUntilModel): array {
+        $result = DB::transaction(function () use ($data, $license, $localFile, $stored, $force, $skipUntilModel): array {
             $model = Model3D::where('source', $data->source->value)
                 ->where('source_id', $data->sourceId)
                 ->first()
@@ -143,9 +145,23 @@ final class Model3dCatalogueService
                 $product->dimensions = null;
             }
 
+            // MakerWorld: the stored file is a print-ready .3mf. Derive an STL for
+            // the viewer/dimensions/estimate-slice (three.js renders STL, not 3MF)
+            // and keep the original .3mf as the print-floor production file.
+            $this->deriveStlFromThreeMf($product, strtolower($data->source->value), $data->sourceId);
+
             // Physical footprint from the stored geometry (audit B10): source
             // APIs don't supply dimensions, but the STL we print from does.
             $this->fillDimensionsFromModel($product);
+
+            // IP/trademark screen runs HERE (not in the caller) so every ingest
+            // path - Thingiverse pull AND the CSV/MakerWorld import - carries the
+            // flag identically. Policy change: a flagged-but-otherwise-valid item
+            // is NON-BLOCKING - it's surfaced as a tag (badge + human approval),
+            // NOT forced to CANNOT_PUBLISH. The publish gate above ignores it.
+            $verdict = $this->ipScreen->screen($data->name, $data->description);
+            $product->ip_flagged = $verdict['flagged'];
+            $product->ip_flag_reason = $verdict['flagged'] ? $verdict['reason'] : null;
 
             $product->save();
 
@@ -162,6 +178,12 @@ final class Model3dCatalogueService
 
             return ['model' => $model, 'product' => $product];
         });
+
+        // Thumbnail mirror runs AFTER the transaction (it makes an HTTP fetch; a
+        // write lock must never span network I/O). Both ingest paths share it.
+        $this->mirrorThumbnail($result['product']);
+
+        return $result;
     }
 
     /**
@@ -175,14 +197,156 @@ final class Model3dCatalogueService
         }
 
         $ref = $this->existingLocalFile($product);
-        if ($ref === null || ! Storage::disk('local')->exists($ref)) {
+        $disk = (string) config('model3d.disk', 'local');
+        if ($ref === null || ! Storage::disk($disk)->exists($ref)) {
             return;
         }
 
-        $dims = $this->dimensions->fromFile(Storage::disk('local')->path($ref));
+        // Bounding-box read needs a real local path; on S3 that's a temp copy.
+        [$path, $cleanup] = ModelFileAccess::localPath($disk, $ref);
+        try {
+            $dims = $this->dimensions->fromFile($path);
+        } finally {
+            $cleanup();
+        }
         if ($dims !== null) {
             $product->dimensions = $dims;
         }
+    }
+
+    /**
+     * When the stored model file is a .3mf (MakerWorld), derive a viewer/slice
+     * STL from it and keep the .3mf as the production file. three.js renders STL
+     * only, and dimensions/estimate-slice read STL - so a raw .3mf as
+     * model_file_ref would show nothing and measure nothing. The original .3mf is
+     * exactly what the H2S floor prints, so it becomes production_file_ref.
+     *
+     * Best-effort: a conversion failure (typed exception) leaves the .3mf in
+     * place as model_file_ref (still downloadable/printable) with no derived STL,
+     * and does NOT fail the ingest. Inert until the ThreeMfToStl service exists.
+     */
+    private function deriveStlFromThreeMf(Product $product, string $source, string $sourceId): void
+    {
+        $ref = (string) ($product->model_file_ref ?? '');
+        if ($ref === '' || str_starts_with($ref, 'http') || ! str_ends_with(strtolower($ref), '.3mf')) {
+            return;
+        }
+        if (! class_exists(ThreeMfToStl::class)) {
+            return;
+        }
+
+        $disk = (string) config('model3d.disk', 'local');
+        if (! Storage::disk($disk)->exists($ref)) {
+            return;
+        }
+
+        try {
+            $stl = app(ThreeMfToStl::class)->convert((string) Storage::disk($disk)->get($ref));
+        } catch (\Throwable $e) {
+            Log::warning('3mf->STL derivation failed; keeping .3mf as model file.', [
+                'ref' => $ref,
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        $stlRef = $this->assets->storeModelFile($source, $sourceId, $stl, 'stl');
+
+        // The .3mf is the print-floor file; the derived STL drives the app.
+        $product->production_file_ref = $ref;
+        $product->model_file_ref = $stlRef;
+    }
+
+    /**
+     * Mirror the source thumbnail onto our own storage (via the shared AssetStore,
+     * so the Thingiverse pull and the CSV/MakerWorld import mirror identically)
+     * and point the product at the stable URL. Silent-skip on failure keeps the
+     * source URL as a fallback. Runs outside the ingest transaction - a thumbnail
+     * fetch must never hold a write lock.
+     */
+    public function mirrorThumbnail(Product $product): void
+    {
+        $remote = (string) ($product->image_url ?? '');
+        $source = $product->model3d !== null ? strtolower($product->model3d->source->value) : 'model3d';
+        $sourceId = $product->model3d?->source_id ?? (string) $product->id;
+
+        $url = $this->assets->storeThumbnail($source, (string) $sourceId, $remote);
+        if ($url !== null && $url !== $remote) {
+            $product->image_url = $url;
+            $product->save();
+        }
+    }
+
+    /**
+     * Converge the CSV/MakerWorld import onto the same enrichment the API pull
+     * gets, WITHOUT overwriting the CSV's own pricing/dimensions (full ingest is
+     * tuned for dynamically-priced API scrapes and would zero base_cost etc).
+     * This closes the "CSV bypass" gap: an imported MODEL_3D product now gets a
+     * linked Model3D provenance row, the non-blocking IP flag, a derived STL +
+     * production .3mf, a mirrored thumbnail, and geometry-derived dimensions -
+     * exactly the pieces the direct-write importer skipped.
+     *
+     * Idempotent on (source, source_id): re-importing updates the same Model3D.
+     * Publish state is the CALLER's concern (the importer forces PENDING); this
+     * never publishes.
+     */
+    public function enrichImportedProduct(Product $product, Model3dSource $source): void
+    {
+        $sourceId = (string) ($product->source_product_id ?? '');
+        if ($sourceId === '') {
+            // No stable source id -> can't dedup a provenance row; still run the
+            // IP screen so the flag is present, then stop.
+            $this->applyIpFlag($product);
+            $product->save();
+
+            return;
+        }
+
+        // Link (or reuse) the Model3D provenance row, keyed on (source, id).
+        $model = Model3D::where('source', $source->value)
+            ->where('source_id', $sourceId)
+            ->first()
+            ?? new Model3D(['source' => $source->value, 'source_id' => $sourceId]);
+        $model->license = $product->license ?? License::Blocked;
+        $model->creator_credit = $product->creator_credit;
+        $model->file_ref = $product->model_file_ref;
+        $model->publish_state = $product->publish_state;
+        $model->save();
+
+        $product->model3d_id = $model->id;
+
+        // Non-blocking IP tag + MakerWorld .3mf -> STL derivation (+ production file).
+        $this->applyIpFlag($product);
+        $this->deriveStlFromThreeMf($product, strtolower($source->value), $sourceId);
+
+        // Only auto-fill dimensions the CSV left blank/zero.
+        if ($this->dimensionsAreBlank($product)) {
+            $product->dimensions = null;
+            $this->fillDimensionsFromModel($product);
+        }
+
+        $product->save();
+
+        // Thumbnail mirror last (HTTP fetch; own save on success).
+        $this->mirrorThumbnail($product);
+    }
+
+    private function applyIpFlag(Product $product): void
+    {
+        $verdict = $this->ipScreen->screen((string) $product->name, $product->description);
+        $product->ip_flagged = $verdict['flagged'];
+        $product->ip_flag_reason = $verdict['flagged'] ? $verdict['reason'] : null;
+    }
+
+    /** True when the CSV supplied only placeholder (zero/absent) dimensions. */
+    private function dimensionsAreBlank(Product $product): bool
+    {
+        $d = (array) ($product->dimensions ?? []);
+
+        return ((float) ($d['l'] ?? 0)) <= 0
+            && ((float) ($d['w'] ?? 0)) <= 0
+            && ((float) ($d['h'] ?? 0)) <= 0;
     }
 
     /**

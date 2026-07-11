@@ -14,7 +14,11 @@ beforeEach(function (): void {
     config()->set('services.thingiverse.base_url', 'https://api.thingiverse.com');
 });
 
-it('ingests an IP-flagged model but holds it in the gate instead of skipping', function (): void {
+it('flags an IP-risk model NON-BLOCKINGLY (tag, not CANNOT_PUBLISH)', function (): void {
+    // Policy (catalogue-s3-bambu plan, Phase 4): an IP-flagged but otherwise
+    // valid item is surfaced with a non-blocking ip_flagged tag + held for human
+    // approval - it is NOT forced to CANNOT_PUBLISH. A CC0 model with a local
+    // file therefore reaches READY_TO_APPROVE while carrying the flag.
     Http::fake([
         'api.thingiverse.com/search/*' => Http::response(['hits' => [['id' => 987]]], 200),
     ]);
@@ -37,8 +41,9 @@ it('ingests an IP-flagged model but holds it in the gate instead of skipping', f
     $product = Product::query()->where('name', 'Pikachu phone stand')->first();
 
     expect($product)->not->toBeNull()
-        ->and($product->publish_state->value)->toBe('CANNOT_PUBLISH')
-        ->and($product->cannot_publish_reasons)->toContain('ip_flag:blocklist:pikachu');
+        ->and($product->ip_flagged)->toBeTrue()
+        ->and($product->ip_flag_reason)->toBe('blocklist:pikachu')
+        ->and($product->publish_state->value)->not->toBe('CANNOT_PUBLISH');
 });
 
 it('brings a licence-blocked model in for review instead of deleting it', function (): void {

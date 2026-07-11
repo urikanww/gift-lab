@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import api from '../lib/api';
+import { loadModelWithProgress } from '../lib/loadModelWithProgress';
+import { parseStlInWorker } from '../lib/parseStl';
+import ModelLoadProgress, { type ModelLoadPhase } from './ModelLoadProgress';
 
 /**
  * Interactive 3D preview for MODEL_3D products. Streams the model from
@@ -19,6 +20,11 @@ interface Props {
 export default function ModelViewer({ productKey, className }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [progress, setProgress] = useState<{ phase: ModelLoadPhase; loaded: number; total: number | null }>({
+    phase: 'downloading',
+    loaded: 0,
+    total: null,
+  });
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -55,13 +61,20 @@ export default function ModelViewer({ productKey, className }: Props) {
       renderer.render(scene, camera);
     };
 
-    // Absolute API origin - the SPA dev server doesn't proxy /api.
-    new STLLoader().load(
-      `${api.defaults.baseURL}/catalogue/${productKey}/model`,
-      (geometry) => {
-        if (disposed) return;
+    // Determinate download (axios progress) → worker parse (no main-thread
+    // freeze on big meshes). Fetched via the authed axios instance, so the
+    // relative catalogue path carries the session cookie.
+    loadModelWithProgress(`/catalogue/${productKey}/model`, (loaded, total) => {
+      if (!disposed) setProgress({ phase: 'downloading', loaded, total });
+    })
+      .then((buffer) => {
+        if (disposed) return null;
+        setProgress((p) => ({ ...p, phase: 'processing' }));
+        return parseStlInWorker(buffer);
+      })
+      .then((geometry) => {
+        if (disposed || !geometry) return;
         geometry.center();
-        geometry.computeVertexNormals();
 
         const material = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.55, metalness: 0.1 });
         const mesh = new THREE.Mesh(geometry, material);
@@ -78,12 +91,10 @@ export default function ModelViewer({ productKey, className }: Props) {
         scene.add(mesh);
         setState('ready');
         animate();
-      },
-      undefined,
-      () => {
+      })
+      .catch(() => {
         if (!disposed) setState('error');
-      },
-    );
+      });
 
     const onResize = () => {
       const w = mount.clientWidth;
@@ -114,8 +125,14 @@ export default function ModelViewer({ productKey, className }: Props) {
 
   return (
     <div className={className}>
-      <div ref={mountRef} className="h-[360px] w-full rounded-lg border border-border bg-surface" aria-label="Interactive 3D preview" role="img" />
-      {state === 'loading' && <p className="mt-2 text-sm text-fg-muted">Loading 3D preview…</p>}
+      <div className="relative h-[360px] w-full">
+        <div ref={mountRef} className="h-full w-full rounded-lg border border-border bg-surface" aria-label="Interactive 3D preview" role="img" />
+        {state === 'loading' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <ModelLoadProgress phase={progress.phase} loaded={progress.loaded} total={progress.total} />
+          </div>
+        )}
+      </div>
       {state === 'ready' && <p className="mt-2 text-sm text-fg-subtle">Drag to rotate · scroll to zoom</p>}
     </div>
   );

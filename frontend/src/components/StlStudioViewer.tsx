@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import api from '../lib/api';
-import { Spinner, cn } from '../ui';
+import { cn } from '../ui';
+import { loadModelWithProgress } from '../lib/loadModelWithProgress';
+import { parseStlInWorker } from '../lib/parseStl';
+import ModelLoadProgress, { type ModelLoadPhase } from './ModelLoadProgress';
 
 /**
  * Full-screen "print studio" for staff/superadmin: lays a multi-part MODEL_3D's
@@ -63,6 +65,11 @@ export default function StlStudioViewer({ parts, productId, open, onClose, title
   const refs = useRef<SceneRefs | null>(null);
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [progress, setProgress] = useState<{ phase: ModelLoadPhase; loaded: number; total: number | null }>({
+    phase: 'downloading',
+    loaded: 0,
+    total: null,
+  });
   const [showBed, setShowBed] = useState(true);
   // focusId = the plate the camera frames / highlights (also the solo target).
   const [focusId, setFocusId] = useState<number | null>(null);
@@ -163,8 +170,33 @@ export default function StlStudioViewer({ parts, productId, open, onClose, title
     };
     window.addEventListener('resize', onResize);
 
-    // Load every plate (axios carries the Sanctum cookie), lay flat, shelf-pack.
-    Promise.allSettled(parts.map((p) => api.get(p.src, { responseType: 'arraybuffer' })))
+    // Load every plate (axios carries the Sanctum cookie) with aggregate
+    // download progress, then parse each in a worker; lay flat, shelf-pack.
+    const loadedBytes = new Array<number>(parts.length).fill(0);
+    const totalBytes = new Array<number | null>(parts.length).fill(null);
+    let remaining = parts.length;
+    const report = () => {
+      if (disposed) return;
+      const known = totalBytes.every((t) => t != null);
+      setProgress({
+        phase: 'downloading',
+        loaded: loadedBytes.reduce((a, b) => a + b, 0),
+        total: known ? (totalBytes as number[]).reduce((a, b) => a + b, 0) : null,
+      });
+    };
+
+    Promise.allSettled(
+      parts.map(async (p, i) => {
+        const buffer = await loadModelWithProgress(p.src, (loaded, total) => {
+          loadedBytes[i] = loaded;
+          totalBytes[i] = total;
+          report();
+        });
+        remaining -= 1;
+        if (remaining === 0 && !disposed) setProgress((prev) => ({ ...prev, phase: 'processing' }));
+        return parseStlInWorker(buffer);
+      }),
+    )
       .then((results) => {
         if (disposed) return;
 
@@ -181,14 +213,9 @@ export default function StlStudioViewer({ parts, productId, open, onClose, title
         thumbRenderer?.setSize(THUMB_SIZE, THUMB_SIZE);
 
         results.forEach((res, i) => {
-          if (res.status !== 'fulfilled') return;
-          let geometry: THREE.BufferGeometry;
-          try {
-            geometry = new STLLoader().parse(res.value.data as ArrayBuffer);
-          } catch {
-            return; // non-STL (3mf/obj) or corrupt - skip.
-          }
-          geometry.computeVertexNormals();
+          if (res.status !== 'fulfilled') return; // non-STL (3mf/obj)/corrupt - worker rejected; skip.
+          const geometry = res.value;
+          // Worker already computed vertex normals + a bounding box.
           geometry.computeBoundingBox();
 
           // Centre on origin.
@@ -589,7 +616,12 @@ export default function StlStudioViewer({ parts, productId, open, onClose, title
           {status !== 'ready' && (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
               {status === 'loading' ? (
-                <Spinner size="md" label="Loading plates…" />
+                <ModelLoadProgress
+                  phase={progress.phase}
+                  loaded={progress.loaded}
+                  total={progress.total}
+                  variant="onDark"
+                />
               ) : (
                 'No printable plates to show.'
               )}

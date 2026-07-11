@@ -100,6 +100,30 @@ return [
             'report' => false,
         ],
 
+        // Private DO Spaces disk for MODEL_3D files (source .3mf, derived STL,
+        // sliced production files). Same bucket + root (GIFT_LAB) as the public
+        // "s3" disk but forced PRIVATE visibility - model files are served only
+        // via the admin/catalogue endpoints (or short-lived signed URLs), never
+        // world-readable. Model refs already carry the "models3d/" prefix, so
+        // files land under GIFT_LAB/models3d/ WITHOUT rooting the disk there
+        // (rooting at GIFT_LAB/models3d would double the prefix -> unresolvable).
+        // Distinct from spaces_private, which is rooted at the anon-artwork
+        // subfolder. Point MODEL3D_DISK / MODEL3D_PRODUCTION_DISK here in prod.
+        'spaces_models' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_BUCKET'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'root' => env('DO_STORAGE_FOLDER', 'GIFT_LAB'),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

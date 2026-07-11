@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import api from '../lib/api';
-import { Spinner, cn } from '../ui';
+import { cn } from '../ui';
+import { loadModelWithProgress } from '../lib/loadModelWithProgress';
+import { parseStlInWorker } from '../lib/parseStl';
+import ModelLoadProgress, { type ModelLoadPhase } from './ModelLoadProgress';
 
 /**
  * Plain STL viewer for staff/superadmin inspection - renders any mesh served by
@@ -33,6 +34,11 @@ function colorFor(i: number, n: number): number {
 export default function StlModelViewer({ src, className }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [progress, setProgress] = useState<{ phase: ModelLoadPhase; loaded: number; total: number | null }>({
+    phase: 'downloading',
+    loaded: 0,
+    total: null,
+  });
   // Stable dep: an inline array prop would re-run the effect every render.
   const srcKey = Array.isArray(src) ? src.join('|') : src;
 
@@ -81,26 +87,48 @@ export default function StlModelViewer({ src, className }: Props) {
     };
     window.addEventListener('resize', onResize);
 
-    // Fetch each part through axios (carries the Sanctum cookie), then .parse().
-    // allSettled + per-part try/catch so one bad/non-STL part never kills the view.
+    // Fetch each part through axios (carries the Sanctum cookie) with progress,
+    // then parse in a worker. allSettled so one bad/non-STL part (worker parse
+    // rejects) never kills the view. Download progress is aggregated across all
+    // parts; the phase flips to 'processing' once every part has downloaded.
     const srcs = Array.isArray(src) ? src : [src];
-    Promise.allSettled(srcs.map((s) => api.get(s, { responseType: 'arraybuffer' })))
+    const loadeds = new Array<number>(srcs.length).fill(0);
+    const totals = new Array<number | null>(srcs.length).fill(null);
+    let remaining = srcs.length;
+    const report = () => {
+      if (disposed) return;
+      const known = totals.every((t) => t != null);
+      setProgress({
+        phase: 'downloading',
+        loaded: loadeds.reduce((a, b) => a + b, 0),
+        total: known ? (totals as number[]).reduce((a, b) => a + b, 0) : null,
+      });
+    };
+
+    Promise.allSettled(
+      srcs.map(async (s, i) => {
+        const buffer = await loadModelWithProgress(s, (loaded, total) => {
+          loadeds[i] = loaded;
+          totals[i] = total;
+          report();
+        });
+        remaining -= 1;
+        if (remaining === 0 && !disposed) setProgress((p) => ({ ...p, phase: 'processing' }));
+        return parseStlInWorker(buffer);
+      }),
+    )
       .then((results) => {
         if (disposed) return;
 
-        // Parse every part that loaded (skip non-STL/corrupt), keeping its index
-        // for a stable colour.
+        // Keep every part that loaded + parsed (skip non-STL/corrupt), with its
+        // index for a stable colour. The worker already computed vertex normals
+        // + a bounding box.
         const geos: { geometry: THREE.BufferGeometry; i: number }[] = [];
         results.forEach((r, i) => {
           if (r.status !== 'fulfilled') return;
-          try {
-            const geometry = new STLLoader().parse(r.value.data as ArrayBuffer);
-            geometry.computeVertexNormals();
-            geometry.computeBoundingBox();
-            geos.push({ geometry, i });
-          } catch {
-            // non-STL (3mf/obj) or corrupt - skip this part.
-          }
+          const geometry = r.value;
+          geometry.computeBoundingBox();
+          geos.push({ geometry, i });
         });
 
         if (geos.length === 0) {
@@ -181,7 +209,11 @@ export default function StlModelViewer({ src, className }: Props) {
       <div ref={mountRef} className="h-full w-full" />
       {state !== 'ready' && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-fg-muted">
-          {state === 'loading' ? <Spinner size="md" label="Loading model…" /> : 'Model unavailable'}
+          {state === 'loading' ? (
+            <ModelLoadProgress phase={progress.phase} loaded={progress.loaded} total={progress.total} />
+          ) : (
+            'Model unavailable'
+          )}
         </div>
       )}
     </div>

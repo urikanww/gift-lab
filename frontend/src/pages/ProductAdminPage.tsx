@@ -7,9 +7,10 @@ import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES, categoryLabel } from '../lib/categories';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct } from '../types';
-import { classLabel, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
+import { classLabel, IpRiskBadge, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
 import Pagination from '../components/Pagination';
 import ProductQuickView from '../components/ProductQuickView';
+import ProductCsvImport from '../components/ProductCsvImport';
 import { EyeIcon, FilterIcon } from '../components/icons';
 
 // Human labels for filter chips.
@@ -210,6 +211,7 @@ export default function ProductAdminPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LinkButton to="/product-admin/new">New product</LinkButton>
+          {isSuperadmin && <ProductCsvImport onImported={load} />}
           <LinkButton to="/catalogue-admin" variant="outline">
             Catalogue gate
             {!!gateCount && <CountPill>{gateCount}</CountPill>}
@@ -380,6 +382,7 @@ export default function ProductAdminPage() {
                           {classLabel(p.class)}
                         </Badge>
                         <PublishBadge state={p.publish_state} />
+                        <IpRiskBadge product={p} />
                         {isSuperadmin && <LicenseTierBadge tier={p.license_tier} />}
                       </div>
                     </div>

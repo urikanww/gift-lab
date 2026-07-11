@@ -126,6 +126,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone']);
     Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel']);
+    // Print-floor production file (H2S .3mf); falls back to the model file.
+    Route::get('/admin/products/{product}/production-file', [AdminCatalogueController::class, 'productionFile']);
     // Multi-part 3D models: stream, attach and remove individual parts (staff).
     Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel']);
     Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart']);
@@ -144,6 +146,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Must be registered before the /{product} wildcard routes below, or
     // "bulk-publish" would be captured as a {product} id.
     Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish']);
+    Route::post('/admin/products/import', [AdminProductController::class, 'import']);
     // Detail/edit fetch - withTrashed so the editor can open an archived row.
     Route::get('/admin/products/{product}', [AdminProductController::class, 'show'])->withTrashed();
     Route::get('/admin/products/{product}/history', [AdminProductController::class, 'history'])->withTrashed();

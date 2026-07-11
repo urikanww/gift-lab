@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\License;
+use App\Enums\Model3dSource;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
 use App\Enums\StockMovementReason;
+use App\Jobs\EnrichImportedModel3dProduct;
 use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\Variant;
@@ -18,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Throwable;
 
@@ -367,6 +370,317 @@ class AdminProductController extends Controller
         return response()->json(['data' => $this->serialize($product)], 201);
     }
 
+    /**
+     * Maximum data rows accepted per CSV import — a guard against oversized
+     * uploads locking the request. The scraper bundles are ~50 rows.
+     */
+    private const IMPORT_MAX_ROWS = 1000;
+
+    /** Columns the importer recognises (extra columns are ignored). */
+    private const IMPORT_COLUMNS = [
+        'name', 'class', 'category', 'description', 'base_cost', 'currency', 'min_order_qty',
+        'dim_l', 'dim_w', 'dim_h', 'weight', 'print_method', 'stock_mode', 'allow_backorder',
+        'license', 'creator_credit', 'is_printable', 'publish_state', 'image_url', 'source_url',
+        'source_product_id', 'model_file_ref', 'filament_material', 'filament_color',
+        'est_grams', 'est_print_minutes',
+    ];
+
+    /**
+     * Bulk import products from a superadmin-uploaded CSV (the scraper bundle).
+     * Every row is validated BEFORE any write; invalid rows are reported and
+     * skipped, valid rows are upserted (idempotent on source_product_id) inside
+     * one transaction. Imports land PENDING — publishing stays a separate gated
+     * act, so a CSV can never push a product live.
+     */
+    public function import(Request $request): JsonResponse
+    {
+        // Superadmin-only: bulk catalogue writes are a privileged operation.
+        abort_unless($request->user()->isSuperadmin(), 403);
+
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt', 'max:8192'],
+        ]);
+
+        $rows = $this->parseCsv($request->file('file')->getRealPath());
+        if ($rows === []) {
+            return response()->json(['message' => 'The CSV has no data rows.'], 422);
+        }
+        if (count($rows) > self::IMPORT_MAX_ROWS) {
+            return response()->json([
+                'message' => 'Too many rows ('.count($rows).'). Limit is '.self::IMPORT_MAX_ROWS.'.',
+            ], 422);
+        }
+
+        // Pass 1 — validate + build attributes for EVERY row. Nothing is written
+        // until all rows have been checked, so a bad row can't leave a partial DB.
+        $prepared = [];
+        $errors = [];
+        $warnings = [];
+        foreach ($rows as $i => $row) {
+            $line = $i + 2; // +1 header, +1 to 1-index for a human-facing line no.
+            [$attributes, $rowErrors, $rowWarnings] = $this->prepareImportRow($row);
+
+            if ($rowErrors !== []) {
+                $errors[] = ['line' => $line, 'name' => $row['name'] ?? '', 'errors' => $rowErrors];
+
+                continue;
+            }
+            if ($rowWarnings !== []) {
+                $warnings[] = ['line' => $line, 'name' => $attributes['name'], 'warnings' => $rowWarnings];
+            }
+            $prepared[] = $attributes;
+        }
+
+        // Pass 2 — write only the fully-valid rows.
+        $created = 0;
+        $updated = 0;
+        // MODEL_3D rows are enriched (Model3D row, IP flag, .3mf->STL, thumbnail,
+        // dimensions) by a queued job AFTER commit - collected here as
+        // [productId, sourceValue] so the heavy/HTTP work stays out of this request.
+        $toEnrich = [];
+        DB::transaction(function () use ($prepared, $request, &$created, &$updated, &$toEnrich): void {
+            foreach ($prepared as $attributes) {
+                $existing = $attributes['source_product_id']
+                    ? Product::query()
+                        ->where('class', $attributes['class'])
+                        ->where('source_product_id', $attributes['source_product_id'])
+                        ->first()
+                    : null;
+
+                if ($existing) {
+                    $existing->fill($attributes)->save();
+                    $product = $existing;
+                    $updated++;
+                } else {
+                    $product = Product::create($attributes + ['created_by' => $request->user()->id]);
+                    $created++;
+                }
+
+                if ($product->class === ProductClass::Model3d) {
+                    $toEnrich[] = [$product->id, $this->inferModel3dSource((string) ($attributes['source_url'] ?? ''))->value];
+                }
+            }
+        });
+
+        // Dispatch enrichment AFTER the transaction commits (the job reads the
+        // committed row). On a real queue this offloads the CPU-heavy 3mf->STL
+        // conversion + thumbnail fetch to the worker; under the sync driver it
+        // runs inline, which is still cheap when the model file isn't on disk yet.
+        foreach ($toEnrich as [$productId, $source]) {
+            EnrichImportedModel3dProduct::dispatch($productId, $source);
+        }
+
+        $this->audit->log(
+            $request->user(),
+            'products.imported',
+            null,
+            ['created' => $created, 'updated' => $updated, 'skipped' => count($errors)],
+        );
+
+        return response()->json([
+            'data' => [
+                'total_rows' => count($rows),
+                'created' => $created,
+                'updated' => $updated,
+                'skipped' => count($errors),
+                'errors' => $errors,
+                'warnings' => $warnings,
+            ],
+        ], $errors === [] ? 200 : 207);
+    }
+
+    /**
+     * Validate one CSV row and map it to Product attributes.
+     *
+     * @param  array<string, string>  $row
+     * @return array{0: array<string, mixed>, 1: array<int, string>, 2: array<int, string>}
+     *                                                                                      [attributes, errors, warnings]
+     */
+    private function prepareImportRow(array $row): array
+    {
+        $licenses = array_map(fn (License $l): string => $l->value, License::cases());
+
+        // Blank -> sensible defaults for a scraped MODEL_3D row.
+        $data = [
+            'name' => trim($row['name'] ?? ''),
+            'class' => strtoupper(trim($row['class'] ?? '')) ?: ProductClass::Model3d->value,
+            'category' => $this->nullIfBlank($row['category'] ?? ''),
+            'description' => $this->nullIfBlank($row['description'] ?? ''),
+            'base_cost' => $this->numOrNull($row['base_cost'] ?? ''),
+            'currency' => strtoupper(trim($row['currency'] ?? '')) ?: 'SGD',
+            'min_order_qty' => $this->numOrNull($row['min_order_qty'] ?? '') ?? 1,
+            'dim_l' => $this->numOrNull($row['dim_l'] ?? ''),
+            'dim_w' => $this->numOrNull($row['dim_w'] ?? ''),
+            'dim_h' => $this->numOrNull($row['dim_h'] ?? ''),
+            'weight' => $this->numOrNull($row['weight'] ?? ''),
+            'print_method' => strtoupper(trim($row['print_method'] ?? '')) ?: PrintMethod::Fdm->value,
+            'stock_mode' => strtoupper(trim($row['stock_mode'] ?? '')) ?: StockMode::MakeToOrder->value,
+            'allow_backorder' => $this->boolish($row['allow_backorder'] ?? 'false'),
+            'license' => strtoupper(trim($row['license'] ?? '')) ?: null,
+            'creator_credit' => $this->nullIfBlank($row['creator_credit'] ?? ''),
+            'is_printable' => $this->boolish($row['is_printable'] ?? 'true'),
+            'image_url' => $this->nullIfBlank($row['image_url'] ?? ''),
+            'source_url' => $this->nullIfBlank($row['source_url'] ?? ''),
+            'source_product_id' => $this->nullIfBlank($row['source_product_id'] ?? ''),
+            'model_file_ref' => $this->nullIfBlank($row['model_file_ref'] ?? ''),
+            'filament_material' => $this->nullIfBlank($row['filament_material'] ?? ''),
+            'filament_color' => $this->nullIfBlank($row['filament_color'] ?? ''),
+            'est_grams' => $this->numOrNull($row['est_grams'] ?? ''),
+            'est_print_minutes' => $this->numOrNull($row['est_print_minutes'] ?? ''),
+        ];
+
+        $validator = Validator::make($data, [
+            'name' => ['required', 'string', 'max:255'],
+            'class' => ['required', Rule::in(array_map(fn (ProductClass $c) => $c->value, ProductClass::cases()))],
+            'category' => ['nullable', 'string', 'max:100'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'base_cost' => ['required', 'numeric', 'min:0'],
+            'currency' => ['required', 'string', 'size:3'],
+            'min_order_qty' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'dim_l' => ['nullable', 'numeric', 'min:0'],
+            'dim_w' => ['nullable', 'numeric', 'min:0'],
+            'dim_h' => ['nullable', 'numeric', 'min:0'],
+            'weight' => ['nullable', 'numeric', 'min:0'],
+            'print_method' => ['required', Rule::in(['UV', 'FDM', 'RESIN'])],
+            'stock_mode' => ['required', Rule::in(['STOCKED', 'MAKE_TO_ORDER'])],
+            'license' => ['nullable', Rule::in($licenses)],
+            'creator_credit' => ['nullable', 'string', 'max:255'],
+            'image_url' => ['nullable', 'url', 'max:2048'],
+            'source_url' => ['nullable', 'url', 'max:2048'],
+            'source_product_id' => ['nullable', 'string', 'max:100'],
+            // Security: only a safe relative path under models3d/ — never an
+            // absolute path or a traversal that could point outside the disk.
+            'model_file_ref' => ['nullable', 'string', 'max:255', 'regex:/^models3d\/[\w.\- ]+\.(3mf|stl|obj)$/'],
+            'filament_material' => ['nullable', 'string', 'max:100'],
+            'filament_color' => ['nullable', 'string', 'max:100'],
+            'est_grams' => ['nullable', 'numeric', 'min:0'],
+            'est_print_minutes' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        if ($validator->fails()) {
+            return [[], array_values($validator->errors()->all()), []];
+        }
+
+        $warnings = [];
+        // A model_file_ref that doesn't resolve on disk yet is allowed (the file
+        // may be uploaded separately) but flagged — the product can't publish
+        // until the file is present.
+        if ($data['model_file_ref'] !== null
+            && ! Storage::disk((string) config('model3d.disk', 'local'))->exists($data['model_file_ref'])) {
+            $warnings[] = "model file not found on disk yet: {$data['model_file_ref']}";
+        }
+
+        $attributes = [
+            'class' => $data['class'],
+            'name' => $data['name'],
+            'description' => $data['description'],
+            'category' => $data['category'],
+            'base_cost' => $data['base_cost'],
+            'currency' => $data['currency'],
+            'min_order_qty' => (int) $data['min_order_qty'],
+            'dimensions' => [
+                'l' => $data['dim_l'] ?? 0,
+                'w' => $data['dim_w'] ?? 0,
+                'h' => $data['dim_h'] ?? 0,
+                'unit' => 'mm',
+            ],
+            'weight' => $data['weight'],
+            'print_method' => $data['print_method'],
+            'stock_mode' => $data['stock_mode'],
+            'allow_backorder' => $data['allow_backorder'],
+            'license' => $data['license'],
+            'creator_credit' => $data['creator_credit'],
+            'is_printable' => $data['is_printable'],
+            'image_url' => $data['image_url'],
+            'source_url' => $data['source_url'],
+            'source_product_id' => $data['source_product_id'],
+            'model_file_ref' => $data['model_file_ref'],
+            'filament_material' => $data['filament_material'],
+            'filament_color' => $data['filament_color'],
+            'est_grams' => $data['est_grams'],
+            'est_print_minutes' => $data['est_print_minutes'],
+            // Force PENDING + unverified: a CSV can never publish or self-verify.
+            'publish_state' => PublishState::Pending->value,
+            'estimates_verified' => false,
+            'model_preview_verified' => false,
+        ];
+
+        return [$attributes, [], $warnings];
+    }
+
+    /**
+     * Infer the model source from the row's source_url domain so the enrichment
+     * job can key a Model3D provenance row. Unknown/blank -> OWNED (a manually
+     * placed file), which still links a row and runs the IP screen.
+     */
+    private function inferModel3dSource(string $sourceUrl): Model3dSource
+    {
+        $host = strtolower((string) parse_url($sourceUrl, PHP_URL_HOST));
+
+        return match (true) {
+            str_contains($host, 'makerworld') => Model3dSource::Makerworld,
+            str_contains($host, 'thingiverse') => Model3dSource::Thingiverse,
+            str_contains($host, 'cults3d') => Model3dSource::Cults3d,
+            default => Model3dSource::Owned,
+        };
+    }
+
+    /**
+     * Parse a CSV file into header-keyed rows.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private function parseCsv(string $path): array
+    {
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+        $header = fgetcsv($handle);
+        if ($header === false) {
+            fclose($handle);
+
+            return [];
+        }
+        // Strip a UTF-8 BOM off the first header cell (Excel exports add one).
+        $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
+        $header = array_map(static fn ($h): string => trim((string) $h), $header);
+
+        $rows = [];
+        while (($cols = fgetcsv($handle)) !== false) {
+            if ($cols === [null] || $cols === []) {
+                continue; // skip blank lines
+            }
+            $row = [];
+            foreach ($header as $idx => $key) {
+                $row[$key] = isset($cols[$idx]) ? (string) $cols[$idx] : '';
+            }
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        return $rows;
+    }
+
+    private function nullIfBlank(string $v): ?string
+    {
+        $v = trim($v);
+
+        return $v === '' ? null : $v;
+    }
+
+    private function numOrNull(string $v): ?float
+    {
+        $v = trim($v);
+
+        return is_numeric($v) ? (float) $v : null;
+    }
+
+    private function boolish(string $v): bool
+    {
+        return in_array(strtolower(trim($v)), ['1', 'true', 'yes', 'y'], true);
+    }
+
     public function update(Request $request, Product $product): JsonResponse
     {
         abort_unless($request->user()->isStaff(), 403);
@@ -573,6 +887,11 @@ class AdminProductController extends Controller
             'has_model' => $product->model_file_ref !== null && ! str_starts_with((string) $product->model_file_ref, 'http'),
             'model_preview_verified' => (bool) $product->model_preview_verified,
             'has_glb' => $product->decor_glb_ref !== null,
+            // Print-floor file (H2S .3mf); falls back to model_file_ref when null.
+            'production_file_ref' => $product->production_file_ref,
+            // Non-blocking IP/trademark tag - drives the IpRiskBadge + tooltip.
+            'ip_flagged' => (bool) $product->ip_flagged,
+            'ip_flag_reason' => $product->ip_flag_reason,
             'weight' => $product->weight,
             'print_method' => $product->print_method?->value,
             'stock_mode' => $product->stock_mode?->value,
