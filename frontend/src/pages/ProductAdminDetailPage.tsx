@@ -425,6 +425,13 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
   const [w, setW] = useState(product.dimensions?.w != null ? String(product.dimensions.w) : '');
   const [h, setH] = useState(product.dimensions?.h != null ? String(product.dimensions.h) : '');
   const [weight, setWeight] = useState(product.weight != null ? String(product.weight) : '');
+  // MODEL_3D production estimates - the inputs to the dynamic 3D base cost
+  // (filament grams × rate + print minutes × rate).
+  const isModel3d = product.class === 'MODEL_3D';
+  const [estGrams, setEstGrams] = useState(product.est_grams != null ? String(product.est_grams) : '');
+  const [estMinutes, setEstMinutes] = useState(
+    product.est_print_minutes != null ? String(product.est_print_minutes) : '',
+  );
   const [saving, setSaving] = useState(false);
 
   const save = async (e: React.FormEvent) => {
@@ -457,6 +464,12 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
     if (weight !== '' && Number(weight) > 0) payload.weight = Number(weight);
     if (l !== '' && w !== '' && h !== '') {
       payload.dimensions = { l: Number(l), w: Number(w), h: Number(h) };
+    }
+    // 3D cost inputs: send both (blank clears to null → the cost falls back to
+    // the grams×minutes_per_gram estimate). Only for MODEL_3D items.
+    if (isModel3d) {
+      payload.est_grams = estGrams === '' ? null : Number(estGrams);
+      payload.est_print_minutes = estMinutes === '' ? null : Number(estMinutes);
     }
     // Superadmin-only: send the override (or null to clear it). Skipped entirely
     // for other staff so a stray value can't be sent.
@@ -572,6 +585,36 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
             <Input label="H (mm)" type="number" step="any" min="0" value={h} onChange={(e) => setH(e.target.value)} disabled={saving} />
           </div>
         </div>
+
+        {isModel3d && (
+          <div className="rounded-md border border-border p-3">
+            <p className="mb-2 text-sm font-medium text-fg">3D production estimate</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Filament (g / unit)"
+                type="number"
+                step="any"
+                min="0"
+                value={estGrams}
+                onChange={(e) => setEstGrams(e.target.value)}
+                disabled={saving}
+              />
+              <Input
+                label="Print time (min / unit)"
+                type="number"
+                step="any"
+                min="0"
+                value={estMinutes}
+                onChange={(e) => setEstMinutes(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <p className="mt-1 text-xs text-fg-subtle">
+              These drive the dynamic base cost (filament grams × rate + print minutes × rate).
+              Leave print time blank to estimate it from grams. The quote reprices on save.
+            </p>
+          </div>
+        )}
 
         <div>
           <Button type="submit" loading={saving}>

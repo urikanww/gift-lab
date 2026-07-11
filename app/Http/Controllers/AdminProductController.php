@@ -709,6 +709,11 @@ class AdminProductController extends Controller
         $rules['min_order_qty'] = ['sometimes', 'integer', 'min:1', 'max:100000'];
         // Staff toggle for the public 3D preview (see products migration).
         $rules['model_preview_verified'] = ['sometimes', 'boolean'];
+        // MODEL_3D production estimates - the inputs to the dynamic 3D base cost
+        // (filament grams × rate + print minutes × rate). Editable so staff can
+        // correct a bad/placeholder estimate; the quote reprices automatically.
+        $rules['est_grams'] = ['sometimes', 'nullable', 'numeric', 'min:0'];
+        $rules['est_print_minutes'] = ['sometimes', 'nullable', 'numeric', 'min:0'];
         $validated = $request->validate($rules);
 
         // Guard the override to superadmins: a staff_admin edit that carries the
@@ -893,6 +898,10 @@ class AdminProductController extends Controller
             'ip_flagged' => (bool) $product->ip_flagged,
             'ip_flag_reason' => $product->ip_flag_reason,
             'weight' => $product->weight,
+            // MODEL_3D production estimates - the inputs to the dynamic 3D base
+            // cost (filament grams + print minutes). Editable in the product admin.
+            'est_grams' => $product->est_grams,
+            'est_print_minutes' => $product->est_print_minutes,
             'print_method' => $product->print_method?->value,
             'stock_mode' => $product->stock_mode?->value,
             'allow_backorder' => (bool) $product->allow_backorder,

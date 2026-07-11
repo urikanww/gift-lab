@@ -335,6 +335,10 @@ export interface AdminProduct {
   print_zone?: PrintZone | null;
   /** Minimum order quantity (superadmin-set); default 1. */
   min_order_qty?: number;
+  /** MODEL_3D filament grams/unit - an input to the dynamic 3D base cost. */
+  est_grams?: string | number | null;
+  /** MODEL_3D print minutes/unit - an input to the dynamic 3D base cost. */
+  est_print_minutes?: string | number | null;
   /** Storage path of the canonical mesh file for MODEL_3D items; null when unset. */
   model_file_ref?: string | null;
   /**
