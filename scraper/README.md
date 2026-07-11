@@ -151,8 +151,15 @@ node bulk.mjs 50 --delay 1500 --out out/records50.json
 #    Use browser-download for volume (persistent login, solve captcha in-window):
 node browser-download.mjs --in out/records50.json --models out/models3d
 #    then (re)build the CSV from whatever .3mf are on disk:
-node export.mjs --no-download --out out/products.csv --models out/models3d
+node export.mjs --from-models --out out/products.csv --models out/models3d
 ```
+
+> **Row count = records in `--in`, not files in `--models`.** `export.mjs` writes
+> one row per record in the `--in` file (default `out/records50.json`, 50 rows).
+> If you downloaded several batches into one `out/models3d/` folder, use
+> **`--from-models`** — it scans the folder, takes the id from each
+> `<slug>-<id>.3mf` name, enriches, and writes one row per file (implies
+> `--no-download`). That's the reliable way to get a CSV that matches the folder.
 
 What you get:
 - `out/products.csv` — one MODEL_3D row per model, `publish_state=PENDING`.

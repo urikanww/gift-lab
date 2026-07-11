@@ -94,6 +94,25 @@ step 3." It writes `out/products.csv` (one `MODEL_3D` row per model,
 each `.3mf` to production S3 at the canonical ref. Without creds it just writes
 local files.
 
+> **Row count = records in `--in`, NOT files in the folder.** `export.mjs`
+> writes one row per record in the `--in` file. If you downloaded several batches
+> into the same `out/models3d/` (say 200 files) but pass a 50-record file, the
+> CSV has only 50 rows. Two fixes:
+>
+> **A. Build the CSV from the folder** (recommended — always matches what's on disk):
+> ```bash
+> node export.mjs --from-models --out out/products.csv --models out/models3d
+> ```
+> `--from-models` scans `out/models3d/`, takes the id from each `<slug>-<id>.3mf`
+> filename, enriches it, and writes one row per file. No records file needed, any
+> number of batches. (It implies `--no-download` — you already have the files.)
+>
+> **B. Merge your records files** and export against the merged one:
+> ```bash
+> node -e 'const fs=require("fs");const all=[];for(const f of fs.readdirSync("out").filter(f=>/^records.*\.json$/.test(f)))all.push(...JSON.parse(fs.readFileSync("out/"+f)));const seen=new Set();const uniq=all.filter(r=>!seen.has(String(r.id))&&seen.add(String(r.id)));fs.writeFileSync("out/records-all.json",JSON.stringify(uniq,null,2));console.error(uniq.length+" unique -> out/records-all.json")'
+> node export.mjs --no-download --in out/records-all.json --out out/products.csv --models out/models3d
+> ```
+
 > Spaces creds in `scraper/.env` (gitignored — never commit):
 > ```
 > AWS_ACCESS_KEY_ID=...       AWS_SECRET_ACCESS_KEY=...
@@ -132,7 +151,7 @@ cd scraper
 node pick.mjs --file out/picks.txt --out out/records.json
 # 2. (Chrome running with --remote-debugging-port=9222, logged in)
 node cdp-download.mjs --in out/records.json --models out/models3d
-# 3. build CSV + S3 upload
+# 3. build CSV + S3 upload  (or --from-models to build from whatever .3mf are on disk)
 node export.mjs --no-download --in out/records.json --out out/products.csv --models out/models3d
 # 4. import (or use the admin CSV page on prod)
 php artisan products:import scraper/out/products.csv --models scraper/out/models3d

@@ -14,9 +14,11 @@
  *   node export.mjs                       # uses out/records50.json
  *   node export.mjs --in out/records50.json --delay 1500
  *   node export.mjs --no-download         # CSV only, skip file pulls
+ *   node export.mjs --from-models --models out/models3d   # CSV from the .3mf ON DISK
+ *                                         # (one row per file, any batch count)
  */
 
-import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, access, readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { enrichModel } from './enrich.mjs';
 import { fetchModelFile } from './download.mjs';
@@ -138,15 +140,57 @@ function jitter() {
 }
 const sleep = (base) => new Promise((r) => setTimeout(r, base + Math.floor(jitter() * base)));
 
+/**
+ * Build the record list by scanning a folder of downloaded .3mf files instead of
+ * reading a records.json. The id is taken from each `<slug>-<id>.3mf` filename
+ * and enriched via the detail API — so the CSV always matches what's ON DISK,
+ * however many batches produced it. Deduped by id.
+ */
+async function recordsFromModelsDir(modelsDir, log) {
+  let files;
+  try {
+    files = await readdir(modelsDir);
+  } catch {
+    throw new Error(`--from-models: cannot read ${modelsDir}`);
+  }
+  const ids = [];
+  const seen = new Set();
+  for (const f of files) {
+    const m = /-(\d+)\.3mf$/i.exec(f); // trailing numeric id before .3mf
+    if (!m) continue;
+    const id = m[1];
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  if (!ids.length) throw new Error(`--from-models: no <slug>-<id>.3mf files in ${modelsDir}`);
+  log(`Scanning ${modelsDir}: ${ids.length} model file(s) found; enriching ...`);
+
+  const records = [];
+  for (let i = 0; i < ids.length; i++) {
+    const rec = await enrichModel(ids[i]).catch(() => null);
+    // Even if enrichment fails, keep a minimal record so the file still exports.
+    records.push(rec || { id: ids[i], title: ids[i] });
+    log(`  [${i + 1}/${ids.length}] ${ids[i]}${rec ? ` — ${rec.title}` : ' (enrich failed; minimal row)'}`);
+  }
+  return records;
+}
+
 export async function exportBundle({
   inFile = 'out/records50.json',
   outCsv = 'out/products.csv',
   modelsDir = 'out/models3d',
   download = true,
+  fromModels = false,
   delayMs = 1500,
   log = (m) => console.error(m),
 } = {}) {
-  const records = JSON.parse(await readFile(inFile, 'utf8'));
+  // --from-models derives the record list from the .3mf files on disk (implies
+  // no download — you already have the files). Otherwise read the records file.
+  const records = fromModels
+    ? await recordsFromModelsDir(modelsDir, log)
+    : JSON.parse(await readFile(inFile, 'utf8'));
+  if (fromModels) download = false;
   await mkdir(modelsDir, { recursive: true });
 
   const auth = download ? await loadAuth() : null;
@@ -221,6 +265,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     outCsv: str('--out', 'out/products.csv'),
     modelsDir: str('--models', 'out/models3d'),
     download: !args.includes('--no-download'),
+    fromModels: args.includes('--from-models'),
     delayMs: num('--delay', 1500),
   }).catch((e) => {
     console.error('Export failed:', e.message);
