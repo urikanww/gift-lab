@@ -907,6 +907,10 @@ class AdminProductController extends Controller
             'allow_backorder' => (bool) $product->allow_backorder,
             'category' => $product->category,
             'image_url' => $product->image_url,
+            // Original listing (MakerWorld/Thingiverse) + its source id - lets the
+            // admin jump to the source to fix wrong data / a missing model.
+            'source_url' => $product->source_url,
+            'source_product_id' => $product->source_product_id,
             'is_printable' => (bool) $product->is_printable,
             'publish_state' => $product->publish_state->value,
             // Superadmin-only compliance tier: standard | extended | high_risk.

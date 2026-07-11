@@ -350,6 +350,10 @@ export interface AdminProduct {
   ip_flagged?: boolean;
   /** Why the IP screen flagged it (matched franchise/keyword); null when unset. */
   ip_flag_reason?: string | null;
+  /** Original source listing URL (MakerWorld/Thingiverse); null for CORE/manual. */
+  source_url?: string | null;
+  /** Source's own id for the listing; null for CORE/manual products. */
+  source_product_id?: string | null;
   /**
    * Individual printable parts of a multi-part figure (e.g. Groot: head, body,
    * arms, legs). Empty for single-mesh products - the primary model covers them.

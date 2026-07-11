@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
-import { Badge, Button, Card, Input, Select, useToast } from '../ui';
+import { Badge, Button, buttonClasses, Card, Input, Select, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { CATEGORIES } from '../lib/categories';
+import { safeHref } from '../lib/safeHref';
 import Model3dZoneEditor from '../components/Model3dZoneEditor';
 import StlModelViewer from '../components/StlModelViewer';
 import StlStudioViewer, { type StudioPart } from '../components/StlStudioViewer';
@@ -182,6 +183,18 @@ function DetailBody({ product, onChanged }: { product: AdminProduct; onChanged: 
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {/* Jump to the original listing (MakerWorld/Thingiverse) to fix wrong
+                data or grab a missing model. Opens in a new tab; href is guarded. */}
+            {product.source_url && safeHref(product.source_url) && (
+              <a
+                href={safeHref(product.source_url)!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClasses({ variant: 'outline', size: 'sm' })}
+              >
+                View source ↗
+              </a>
+            )}
             {!archived && (
               <>
                 <Button variant="outline" size="sm" onClick={() => void togglePublish()}>
