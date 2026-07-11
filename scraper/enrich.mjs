@@ -56,6 +56,11 @@ export async function enrichModel(id) {
     id: String(d.id ?? id),
     title: d.title || d.titleTranslated || '',
     url: `https://makerworld.com/en/models/${d.id ?? id}`,
+    creator:
+      d.designCreator?.name ||
+      d.designCreator?.handle ||
+      d.creator?.name ||
+      '',
     thumbnails,
     files, // [{ name, type, profileId }]
     license: d.license?.name || d.license || '',

@@ -64,6 +64,47 @@ Each record:
 are still free. Only `isPointRedeemable` (costs points) / paid actually gate the
 file. `free` reflects that.
 
+### Resume a listing — `--offset`
+
+`list.mjs` / `bulk.mjs` take `--offset N` to skip the first N models in listing
+order, so a run can continue where a prior one stopped (page-aligned):
+
+```bash
+node bulk.mjs 50 --offset 0   --out out/records0.json    # models 1–50
+node bulk.mjs 50 --offset 50  --out out/records50.json   # models 51–100
+node bulk.mjs 50 --offset 100 --out out/records100.json  # 101–150
+```
+
+Offset is in **listing order** (`--order hotScore` by default) — new uploads
+shift the window, so resume soon or use a stable order (`mostDownload`).
+`cdp-download.mjs` also takes `--offset`/`--limit`, but those slice the ids
+*inside a records file* (resume a partial download batch), not the listing.
+
+## 1b. Hand-pick specific models — `pick.mjs`
+
+Browsing MakerWorld yourself and want just the models you liked? Collect their
+URLs and turn them into the same `records.json` the batch scraper makes — the
+rest of the pipeline is identical.
+
+```bash
+# paste chosen URLs into a text file, one per line (# comments + blanks ok):
+#   https://makerworld.com/en/models/3012887-fidget-toy
+#   https://makerworld.com/en/models/3015782
+node pick.mjs --file out/picks.txt --out out/records.json
+
+# or pass URLs / ids straight as args:
+node pick.mjs https://makerworld.com/en/models/3012887 3015782
+```
+
+It parses the id out of each URL (or takes a bare id), enriches each via the
+detail API, dedupes, and writes `out/records.json`. Then continue with the
+normal download + CSV steps below (section 3) pointed at that file:
+
+```bash
+node cdp-download.mjs --in out/records.json --models out/models3d
+node export.mjs --no-download --in out/records.json --out out/products.csv --models out/models3d
+```
+
 ## 2. Download the .3mf — with your `token`
 
 The f3mf endpoint validates a JWT. Grab yours once:
@@ -186,11 +227,13 @@ unnecessary.
 
 ## Files
 
-- `list.mjs`    — tokenless catalog listing (primary).
+- `list.mjs`    — tokenless catalog listing (primary); `--offset` to resume.
+- `pick.mjs`    — hand-picked URLs/ids → records.json (reuses enrich).
 - `enrich.mjs`  — per-model detail (instance id, printers, files, cost inputs).
 - `download.mjs`— token-based f3mf downloader (fast, but captcha-capped ~2).
 - `browser-download.mjs` — persistent-login browser downloader (GeeTest-friendly).
-- `bulk.mjs`    — list + enrich (+ optional download) with human-like pacing.
+- `cdp-download.mjs` — attaches to your real logged-in Chrome (captcha-safe); `--offset`/`--limit` slice the id list.
+- `bulk.mjs`    — list + enrich (+ optional download) with human-like pacing; `--offset` to resume.
 - `export.mjs`  — builds products.csv + downloads/wires .3mf files (+ S3 upload).
 - `auth.mjs`    — loads token.txt / cookie.txt for downloads.
 - `pick-dev-model.mjs` — chooses the printer profile, preferring `O1S` (H2S).
