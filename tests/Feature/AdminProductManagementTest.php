@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
+use App\Models\Model3D;
 use App\Models\Product;
 use App\Models\Quote;
 use App\Models\User;
@@ -52,6 +53,23 @@ it('exposes source_url on the product detail so the admin can jump to the listin
         ->assertOk()
         ->assertJsonPath('data.source_url', 'https://makerworld.com/en/models/3015782')
         ->assertJsonPath('data.source_product_id', '3015782');
+});
+
+it('derives source_url from the linked Model3D when the product has none (Thingiverse pull)', function (): void {
+    // API-pulled Thingiverse items keep the id on the Model3D row, not the product.
+    $model = Model3D::create([
+        'source' => 'THINGIVERSE', 'source_id' => '2194278', 'license' => 'CC0', 'publish_state' => 'READY_TO_APPROVE',
+    ]);
+    $product = Product::factory()->model3d()->create([
+        'source_url' => null,
+        'source_product_id' => null,
+        'model3d_id' => $model->id,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $this->getJson("/api/admin/products/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('data.source_url', 'https://www.thingiverse.com/thing:2194278');
 });
 
 it('lets staff edit a MODEL_3D est_grams/est_print_minutes and reprices the base cost', function (): void {
