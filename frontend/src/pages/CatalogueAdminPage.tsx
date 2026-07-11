@@ -215,6 +215,9 @@ export default function CatalogueAdminPage() {
   const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
   const [stateFilter, setStateFilter] = useState<'' | PublishState>('');
   const [search, setSearch] = useState('');
+  // Sort key + direction, mirroring the product admin (Newest = creation date).
+  const [sort, setSort] = useState<'newest' | 'name' | 'base_cost'>('newest');
+  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -231,23 +234,28 @@ export default function CatalogueAdminPage() {
       class: classFilter || undefined,
       state: stateFilter || undefined,
       search: debouncedSearch || undefined,
+      sort,
+      dir,
       page,
     });
 
-  // Changing any filter resets to page 1 (a filtered set has fewer pages).
+  // Changing any filter or the sort resets to page 1 (a re-ordered/filtered set
+  // has different pages).
   useEffect(() => {
     setPage(1);
-  }, [classFilter, stateFilter, debouncedSearch]);
+  }, [classFilter, stateFilter, debouncedSearch, sort, dir]);
 
   useEffect(() => {
     void fetch({
       class: classFilter || undefined,
       state: stateFilter || undefined,
       search: debouncedSearch || undefined,
+      sort,
+      dir,
       page,
     });
-    // Re-fetch when server-side filters or the page change.
-  }, [fetch, classFilter, stateFilter, debouncedSearch, page]);
+    // Re-fetch when server-side filters, sort, or the page change.
+  }, [fetch, classFilter, stateFilter, debouncedSearch, sort, dir, page]);
 
   const toggleAutoPublish = async () => {
     const next = !autoPublish;
@@ -407,6 +415,27 @@ export default function CatalogueAdminPage() {
               <option value="PUBLISHED">Published</option>
               <option value="CANNOT_PUBLISH">Cannot publish</option>
             </Select>
+          </div>
+          <div className="sm:w-44">
+            <Select
+              label="Sort by"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as 'newest' | 'name' | 'base_cost')}
+            >
+              <option value="newest">Creation date</option>
+              <option value="name">Name</option>
+              <option value="base_cost">Base cost</option>
+            </Select>
+          </div>
+          <div className="flex items-end sm:w-40">
+            <Button
+              variant="outline"
+              className="w-full"
+              aria-label={dir === 'asc' ? 'Ascending - click for descending' : 'Descending - click for ascending'}
+              onClick={() => setDir(dir === 'asc' ? 'desc' : 'asc')}
+            >
+              {dir === 'asc' ? '↑ Ascending' : '↓ Descending'}
+            </Button>
           </div>
         </div>
       </Motion>
