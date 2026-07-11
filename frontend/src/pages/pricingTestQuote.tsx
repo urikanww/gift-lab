@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api, { apiError } from '../lib/api';
 import { Button, Card, Input, Select, Tooltip } from '../ui';
-
-interface ProductOption {
-  id: number;
-  name: string;
-  class?: string;
-}
+import ProductCombobox, { type ProductOption } from '../components/ProductCombobox';
 
 interface BreakdownLine {
   name: string;
@@ -105,8 +100,8 @@ function Row({
  * need to understand the maths.
  */
 export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: string) => void }) {
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [productId, setProductId] = useState<number | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
+  const productId = selectedProduct?.id ?? null;
   const [qty, setQty] = useState('10');
   const [customized, setCustomized] = useState(false);
   const [logoSize, setLogoSize] = useState('M');
@@ -116,19 +111,19 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the published products a quote can actually be built from.
+  // Seed with the first published product so the panel shows a sample on open;
+  // the staffer searches for any other via the combobox (thousands of products).
   useEffect(() => {
     let alive = true;
     void (async () => {
       try {
         const { data } = await api.get<{ data: ProductOption[] }>(
-          '/admin/products?publish_state=PUBLISHED&per_page=200',
+          '/admin/products?publish_state=PUBLISHED&per_page=1',
         );
         if (!alive) return;
-        setProducts(data.data);
-        setProductId((prev) => prev ?? data.data[0]?.id ?? null);
+        setSelectedProduct((prev) => prev ?? data.data[0] ?? null);
       } catch {
-        /* the panel just stays empty; the editor itself still works */
+        /* the panel just waits for a manual pick; the editor itself still works */
       }
     })();
     return () => {
@@ -184,22 +179,9 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
         Price a sample order with the current settings. Change a number above, then re-estimate to see the effect.
       </p>
 
-      {products.length === 0 ? (
-        <p className="mt-4 text-sm text-fg-subtle">Publish a product first to test pricing.</p>
-      ) : (
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-3">
-            <Select
-              label="Product"
-              value={productId ?? ''}
-              onChange={(e) => setProductId(Number(e.target.value))}
-            >
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
+            <ProductCombobox value={selectedProduct} onChange={setSelectedProduct} />
             <Input
               label="Quantity"
               type="number"
@@ -247,7 +229,7 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
                 const l = estimate.lines[0];
                 // For 3D items the "base" is really filament + machine time (there
                 // is no flat blank cost); for CORE/UV blanks it's the purchase cost.
-                const isModel3d = products.find((p) => p.id === productId)?.class === 'MODEL_3D';
+                const isModel3d = selectedProduct?.class === 'MODEL_3D';
                 const baseLabel = isModel3d ? 'Material + machine' : 'Base cost';
                 const baseInfo = isModel3d
                   ? 'Filament (grams × rate) + machine time (minutes × rate), from the model estimates. Not a flat cost - edited on the product.'
@@ -415,7 +397,6 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
             )}
           </div>
         </div>
-      )}
     </Card>
   );
 }
