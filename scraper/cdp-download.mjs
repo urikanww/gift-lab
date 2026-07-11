@@ -26,6 +26,10 @@
  *
  * Resume-aware: files already in the models dir are skipped. Saved as
  * <modelsDir>/<slug>-<id>.3mf so `node export.mjs --no-download` wires them in.
+ *
+ * Slice the id list from the file without re-listing:
+ *   node cdp-download.mjs --in out/records.json --offset 50          # skip first 50
+ *   node cdp-download.mjs --in out/records.json --offset 50 --limit 25
  */
 
 import { chromium } from 'playwright';
@@ -56,11 +60,18 @@ export async function cdpDownload({
   inFile = 'out/records50.json',
   modelsDir = 'out/models3d',
   cdpUrl = CDP_URL,
+  offset = 0, // skip first N ids in the file (resume within a batch)
+  limit = 0, // cap how many to download after offset (0 = all)
   log = (m) => console.error(m),
 } = {}) {
   if (!ids || ids.length === 0) {
     const recs = JSON.parse(await readFile(inFile, 'utf8'));
     ids = recs.map((r) => String(r.id));
+  }
+  if (offset > 0 || limit > 0) {
+    const start = Math.max(0, offset);
+    ids = ids.slice(start, limit > 0 ? start + limit : undefined);
+    log(`Sliced id list: offset=${offset}${limit ? ` limit=${limit}` : ''} -> ${ids.length} to download`);
   }
   await mkdir(modelsDir, { recursive: true });
 
@@ -190,12 +201,22 @@ async function exists(p) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
   const str = (f, d) => (args.indexOf(f) !== -1 ? args[args.indexOf(f) + 1] : d);
-  const ids = args.filter((a) => /^\d+$/.test(a));
+  const num = (f, d) => (args.indexOf(f) !== -1 ? Number(args[args.indexOf(f) + 1]) || d : d);
+  // Bare numeric args are explicit model ids; --offset/--limit take their values,
+  // so exclude those consumed values from the id sweep.
+  const consumed = new Set();
+  for (const f of ['--offset', '--limit']) {
+    const i = args.indexOf(f);
+    if (i !== -1) consumed.add(i + 1);
+  }
+  const ids = args.filter((a, i) => /^\d+$/.test(a) && !consumed.has(i));
   cdpDownload({
     ids: ids.length ? ids : null,
     inFile: str('--in', 'out/records50.json'),
     modelsDir: str('--models', 'out/models3d'),
     cdpUrl: str('--cdp', CDP_URL),
+    offset: num('--offset', 0),
+    limit: num('--limit', 0),
   }).catch((e) => {
     console.error(e.message);
     process.exit(1);

@@ -26,6 +26,8 @@ const UA =
  *
  * @param {object} [opts]
  * @param {number} [opts.limit=60]          How many models to return.
+ * @param {number} [opts.offset=0]          Skip this many models first (resume a
+ *                                          prior run: 0-50 then --offset 50).
  * @param {string} [opts.orderBy='hotScore'] hotScore | newest | mostDownload | ...
  * @param {string} [opts.category='']         Category filter (empty = all).
  * @param {number} [opts.designType=0]        0 = models.
@@ -35,6 +37,7 @@ const UA =
 export async function listModels(opts = {}) {
   const {
     limit = 60,
+    offset: startOffset = 0,
     orderBy = 'hotScore',
     category = '',
     designType = 0,
@@ -42,8 +45,13 @@ export async function listModels(opts = {}) {
     log = (m) => console.error(m),
   } = opts;
 
+  // Snap the start offset down to a page boundary so the API's limit/offset
+  // paging stays aligned; trim any overshoot from the first page afterward.
+  const base = Math.max(0, Math.floor(startOffset / PAGE) * PAGE);
+  const drop = Math.max(0, startOffset - base); // rows to discard off page 1
+
   const out = [];
-  for (let offset = 0; out.length < limit; offset += PAGE) {
+  for (let offset = base; out.length < limit + drop; offset += PAGE) {
     if (offset > 0 && delayMs > 0) {
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -63,7 +71,7 @@ export async function listModels(opts = {}) {
     out.push(...hits.map(normalize));
     log(`fetched ${out.length}${json.total ? '/' + json.total : ''} models`);
   }
-  return out.slice(0, limit);
+  return out.slice(drop, drop + limit);
 }
 
 /** Map a raw search hit to our normalized shape. */
@@ -122,18 +130,20 @@ function unique(a) {
 }
 
 // --- CLI -----------------------------------------------------------------
-// Usage: node list.mjs [limit] [--order hotScore|newest|...] [--free] [--out f.json]
+// Usage: node list.mjs [limit] [--offset N] [--order hotScore|newest|...] [--free] [--out f.json]
 if (process.argv[1] && (await import('node:url')).pathToFileURL(process.argv[1]).href === import.meta.url) {
   const { writeFile } = await import('node:fs/promises');
   const args = process.argv.slice(2);
   const limit = Number(args.find((a) => /^\d+$/.test(a))) || 60;
   const oi = args.indexOf('--order');
   const orderBy = oi !== -1 ? args[oi + 1] : 'hotScore';
+  const offIdx = args.indexOf('--offset');
+  const offset = offIdx !== -1 ? Number(args[offIdx + 1]) || 0 : 0;
   const freeOnly = args.includes('--free');
   const outIdx = args.indexOf('--out');
   const outFile = outIdx !== -1 ? args[outIdx + 1] : null;
 
-  let models = await listModels({ limit: freeOnly ? limit * 3 : limit, orderBy });
+  let models = await listModels({ limit: freeOnly ? limit * 3 : limit, offset, orderBy });
   if (freeOnly) models = models.filter((m) => m.free).slice(0, limit);
 
   const json = JSON.stringify(models, null, 2);

@@ -12,6 +12,7 @@
  *   node bulk.mjs 50                       list+enrich 50 records -> out/records.json
  *   node bulk.mjs 50 --download            also download each .3mf (needs token.txt)
  *   node bulk.mjs 50 --free --download     only directly-downloadable models
+ *   node bulk.mjs 50 --offset 50           resume: skip first 50, take next 50
  *   node bulk.mjs 50 --delay 3000 --out out/records.json
  */
 
@@ -39,6 +40,7 @@ function deterministicJitter() {
 
 export async function bulk({
   limit = 50,
+  offset = 0,
   orderBy = 'hotScore',
   freeOnly = false,
   enrich = true,
@@ -48,9 +50,10 @@ export async function bulk({
   log = (m) => console.error(m),
 } = {}) {
   // 1. List (tokenless). Over-fetch when filtering to free so we still hit `limit`.
-  log(`Listing ${freeOnly ? '(free only) ' : ''}${limit} models, order=${orderBy} ...`);
+  log(`Listing ${freeOnly ? '(free only) ' : ''}${limit} models, order=${orderBy}${offset ? `, offset=${offset}` : ''} ...`);
   let records = await listModels({
     limit: freeOnly ? limit * 3 : limit,
+    offset,
     orderBy,
     delayMs, // paced page fetches
   });
@@ -123,6 +126,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   bulk({
     limit,
+    offset: num('--offset', 0),
     orderBy: str('--order', 'hotScore'),
     freeOnly: args.includes('--free'),
     enrich: !args.includes('--no-enrich'),
