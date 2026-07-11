@@ -138,7 +138,7 @@ class AdminProductController extends Controller
                     $w->orWhereNull('license');
                 }
             }))
-            ->with('variants')
+            ->with('variants', 'model3d')
             ->withSum('variants', 'stock_on_hand')
             ->selectSub($soldCountSql, 'sold_count')
             ->when($sort === 'most_sold', fn ($qr) => $qr->orderBy('sold_count', $dir))
@@ -168,7 +168,7 @@ class AdminProductController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        $product->load('variants', 'modelParts')->loadSum('variants', 'stock_on_hand');
+        $product->load('variants', 'modelParts', 'model3d')->loadSum('variants', 'stock_on_hand');
         $product->sold_count = (int) DB::table('line_items')
             ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
             ->where('line_items.product_id', $product->id)
@@ -866,6 +866,33 @@ class AdminProductController extends Controller
     }
 
     /**
+     * The original-listing URL for the "View source" button. Prefers the
+     * product's own source_url; when blank (API-pulled Thingiverse items store
+     * the id on the Model3D row, not the product), derive it from the linked
+     * Model3D's source + source_id.
+     */
+    private function resolveSourceUrl(Product $product): ?string
+    {
+        $url = trim((string) ($product->source_url ?? ''));
+        if ($url !== '') {
+            return $url;
+        }
+
+        $model = $product->model3d;
+        $id = $model?->source_id;
+        if ($model === null || $id === null || $id === '') {
+            return null;
+        }
+
+        return match ($model->source) {
+            Model3dSource::Thingiverse => "https://www.thingiverse.com/thing:{$id}",
+            Model3dSource::Makerworld => "https://makerworld.com/en/models/{$id}",
+            Model3dSource::Cults3d => "https://cults3d.com/en/3d-model/various/{$id}",
+            default => null,
+        };
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function serialize(Product $product): array
@@ -908,8 +935,10 @@ class AdminProductController extends Controller
             'category' => $product->category,
             'image_url' => $product->image_url,
             // Original listing (MakerWorld/Thingiverse) + its source id - lets the
-            // admin jump to the source to fix wrong data / a missing model.
-            'source_url' => $product->source_url,
+            // admin jump to the source to fix wrong data / a missing model. Derived
+            // from the linked Model3D when the product's own source_url is blank
+            // (API-pulled Thingiverse items keep the id on the Model3D row).
+            'source_url' => $this->resolveSourceUrl($product),
             'source_product_id' => $product->source_product_id,
             'is_printable' => (bool) $product->is_printable,
             'publish_state' => $product->publish_state->value,
