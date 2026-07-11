@@ -5,6 +5,7 @@ import { Button, Card, Input, Select, Tooltip } from '../ui';
 interface ProductOption {
   id: number;
   name: string;
+  class?: string;
 }
 
 interface BreakdownLine {
@@ -244,17 +245,24 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
               (() => {
                 const c = estimate.currency;
                 const l = estimate.lines[0];
+                // For 3D items the "base" is really filament + machine time (there
+                // is no flat blank cost); for CORE/UV blanks it's the purchase cost.
+                const isModel3d = products.find((p) => p.id === productId)?.class === 'MODEL_3D';
+                const baseLabel = isModel3d ? 'Material + machine' : 'Base cost';
+                const baseInfo = isModel3d
+                  ? 'Filament (grams × rate) + machine time (minutes × rate), from the model estimates. Not a flat cost - edited on the product.'
+                  : 'Blank/material cost before margin. Edited on the product, not here.';
                 return (
                   <dl className="flex flex-col gap-4 text-sm">
                     {/* Per-item build-up */}
                     <div className="flex flex-col gap-1.5">
                       <p className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Per item</p>
                       <Row
-                        label="Base cost"
+                        label={baseLabel}
                         value={l.landed_cost}
                         currency={c}
                         muted
-                        info="Blank/material cost before margin. For 3D it's filament + machine time; edited on the product, not here."
+                        info={baseInfo}
                       />
                       <Row
                         label="Margin"
