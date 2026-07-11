@@ -21,45 +21,68 @@ Wire it when you want the app to do that automatically:
 So it mainly benefits **Thingiverse / raw-STL** items and removes the manual
 estimate step.
 
-## Where does it run?
+## Where does it run? (Windows)
 
-OrcaSlicer must be installed **on the machine that runs the slicing** — i.e.
-wherever the queue worker / artisan commands run. On a single DigitalOcean
-droplet running both the web app and `queue:work`, that's the droplet. The web
-browser / print-floor workstation is **not** where the app calls the slicer.
+Gift Lab calls OrcaSlicer as a **local process** — so it must run on the **same
+Windows machine that runs the slicing command**, and that machine needs three
+things:
 
-> OrcaSlicer is a desktop (GUI) app with a command-line mode. On a **headless
-> Linux server it needs a virtual display** (`xvfb`) — see the Ubuntu section.
+1. **OrcaSlicer** installed,
+2. the **Gift Lab app code** (to run `php artisan catalogue:slice-pending`),
+3. access to the **database** and, if you want prod to serve the results, the
+   **production S3 (Spaces) creds**.
+
+You cannot have the Ubuntu prod server call OrcaSlicer sitting on a separate
+Windows box — there's no remote invocation; it's a local `Process::run`.
+
+### The "slicing workstation" pattern (recommended for a Ubuntu prod)
+
+Run a Windows machine as a slicing workstation pointed at production:
+
+- `.env` on that Windows box → **prod database** + `MODEL3D_PRODUCTION_DISK=spaces_models`
+  + prod `AWS_*` creds.
+- Run `php artisan catalogue:slice-pending` there.
+- `measure()` slices each STL, **writes `production_file_ref` to the prod DB**, and
+  **uploads the `.gcode.3mf` straight to prod Spaces** — so the Ubuntu web server
+  serves it with no extra step.
+
+Windows is the easy case: **no `xvfb`, no display juggling** — just the `.exe`.
+
+> Alternative: install OrcaSlicer on the Ubuntu droplet itself (headless → needs
+> `xvfb`). Only do this if you'd rather not run a Windows workstation; see the
+> collapsed Ubuntu note in step 1.
 
 ---
 
-## 1. Install OrcaSlicer
+## 1. Install OrcaSlicer (Windows)
 
-### Ubuntu server (headless) — the usual prod case
+1. Download the Windows installer from the releases page:
+   https://github.com/SoftFever/OrcaSlicer/releases
+2. Install it. The binary is typically at:
+   `C:\Program Files\OrcaSlicer\orca-slicer.exe`
+   (older/portable builds may be `orca-slicer-console.exe` — use whichever exists).
+3. Smoke test in PowerShell — confirm the CLI runs and note its flag names:
+   ```powershell
+   & 'C:\Program Files\OrcaSlicer\orca-slicer.exe' --help
+   ```
+
+If `--help` prints usage, you're good. Note the exact flags it lists (step 3 —
+they can differ by version).
+
+<details>
+<summary>Alternative: Ubuntu server (headless)</summary>
 
 ```bash
-# Download the latest Linux AppImage from the OrcaSlicer releases page:
-#   https://github.com/SoftFever/OrcaSlicer/releases
 cd /opt
 sudo wget -O OrcaSlicer.AppImage \
   https://github.com/SoftFever/OrcaSlicer/releases/download/<version>/OrcaSlicer_Linux_<version>.AppImage
 sudo chmod +x OrcaSlicer.AppImage
-
-# AppImage runtime deps + a virtual framebuffer (GUI app on a headless box):
 sudo apt-get update
 sudo apt-get install -y libfuse2 xvfb libgtk-3-0 libwebkit2gtk-4.1-0 libgl1-mesa-glx
-
-# Smoke test (xvfb-run gives it a fake display):
-xvfb-run -a /opt/OrcaSlicer.AppImage --help
+xvfb-run -a /opt/OrcaSlicer.AppImage --help   # needs a virtual display
 ```
-
-If `--help` prints the CLI usage, the binary works. Note the exact flag names it
-lists (see step 3 — they can differ by version).
-
-### Windows print-floor workstation (only if the worker runs there)
-
-Install OrcaSlicer normally; the console binary is typically:
-`C:\Program Files\OrcaSlicer\orca-slicer.exe`.
+Then wrap the binary in `xvfb-run` (see the env note). Everything else is the same.
+</details>
 
 ---
 
@@ -87,10 +110,10 @@ Gift Lab calls OrcaSlicer like this (`app/Services/Model3d/SlicerService.php`,
 orca-slicer --load-settings <H2S_PROFILE> --slice 0 --export-3mf <out.gcode.3mf> <input.stl>
 ```
 
-OrcaSlicer's CLI flag names **drift between versions**. Confirm yours:
+OrcaSlicer's CLI flag names **drift between versions**. Confirm yours (PowerShell):
 
-```bash
-xvfb-run -a /opt/OrcaSlicer.AppImage --help | grep -iE "load-settings|slice|export-3mf|export-gcode|outputdir"
+```powershell
+& 'C:\Program Files\OrcaSlicer\orca-slicer.exe' --help | Select-String -Pattern 'load-settings|slice|export-3mf|export-gcode|outputdir'
 ```
 
 If the names differ (e.g. `--load` instead of `--load-settings`, or
@@ -106,19 +129,43 @@ otherwise slicing still saves the production file, estimates just stay manual.
 
 ## 4. Configure Gift Lab
 
-In the server's `.env`:
+In the `.env` on the Windows slicing machine:
 
 ```
-# Full path to the OrcaSlicer binary. On Linux headless, point at a wrapper
-# that adds xvfb (see below) so the app doesn't need to know about the display.
-ORCA_SLICER_BINARY=/opt/giftlab/orca-slice
-ORCA_H2S_PROFILE=/opt/giftlab/h2s-profile.json
+# Single quotes so backslashes aren't treated as escapes (dotenv rule).
+ORCA_SLICER_BINARY='C:\Program Files\OrcaSlicer\orca-slicer.exe'
+ORCA_H2S_PROFILE='C:\giftlab\h2s-profile.json'
 # Optional: max seconds per slice (default 300).
 # SLICER_TIMEOUT=600
 ```
 
-Because the app runs the binary directly (no shell), the xvfb wrapper is the
-clean way to attach a display. Create `/opt/giftlab/orca-slice`:
+> ⚠️ On Windows dotenv, a **double-quoted** path treats `\` as an escape and the
+> file fails to parse. Use **single quotes** (as above), matching how
+> `SLICER_BINARY` is documented in `.env.example`.
+
+If this machine is a slicing workstation for a Ubuntu prod, also point it at the
+prod database + Spaces in the same `.env`:
+
+```
+MODEL3D_DISK=spaces_models
+MODEL3D_PRODUCTION_DISK=spaces_models
+DO_STORAGE_FOLDER=GIFT_LAB
+AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_BUCKET=giftlab
+AWS_ENDPOINT=https://sgp1.digitaloceanspaces.com  AWS_DEFAULT_REGION=sgp1
+# ...and the prod DB connection (DB_HOST/DB_DATABASE/DB_USERNAME/DB_PASSWORD).
+```
+
+Then clear the config cache so the new env is read:
+
+```powershell
+php artisan config:clear
+```
+
+<details>
+<summary>Ubuntu (headless) env instead</summary>
+
+Point `ORCA_SLICER_BINARY` at an `xvfb` wrapper (the app runs the binary
+directly, so the wrapper is the clean way to attach a display):
 
 ```bash
 sudo tee /opt/giftlab/orca-slice >/dev/null <<'SH'
@@ -126,16 +173,9 @@ sudo tee /opt/giftlab/orca-slice >/dev/null <<'SH'
 exec xvfb-run -a /opt/OrcaSlicer.AppImage "$@"
 SH
 sudo chmod +x /opt/giftlab/orca-slice
+# ORCA_SLICER_BINARY=/opt/giftlab/orca-slice
 ```
-
-Then clear config cache so the new env is read:
-
-```bash
-php artisan config:clear
-```
-
-(On Windows, set `ORCA_SLICER_BINARY='C:\Program Files\OrcaSlicer\orca-slicer.exe'`
-— single quotes, no xvfb needed.)
+</details>
 
 ---
 
