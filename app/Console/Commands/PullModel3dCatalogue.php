@@ -6,14 +6,11 @@ namespace App\Console\Commands;
 
 use App\Enums\Model3dSource;
 use App\Enums\PublishState;
-use App\Models\Product;
 use App\Services\Model3d\Contracts\Model3dApiClient;
-use App\Services\Model3d\IpScreenService;
 use App\Services\Model3d\Model3dCatalogueService;
 use App\Services\Model3d\SlicerService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Pull real 3D models from the configured sources (spec 6.5) into the
@@ -208,22 +205,15 @@ class PullModel3dCatalogue extends Command
                 continue;
             }
 
-            // IP/trademark screen - a CC licence doesn't clear trademarks.
-            // Flagged items still flow IN (owner decision: full visibility),
-            // but are held in the admin gate as CANNOT_PUBLISH with the flag
-            // reason shown; staff decide, nothing flagged auto-publishes.
-            $verdict = app(IpScreenService::class)->screen($data->name, $data->description);
-
+            // IP/trademark screen runs inside ingest now and sets a NON-BLOCKING
+            // ip_flagged tag (a CC licence doesn't clear trademarks, but a flagged
+            // item is surfaced with a badge + held for human approval, NOT forced
+            // to CANNOT_PUBLISH). Nothing flagged auto-publishes because publish is
+            // still a staff act; --publish below is that explicit approval.
             ['product' => $product] = $service->ingest($data);
 
-            if ($verdict['flagged']) {
-                $product->publish_state = PublishState::CannotPublish;
-                $product->cannot_publish_reasons = array_values(array_unique(array_merge(
-                    (array) ($product->cannot_publish_reasons ?? []),
-                    ['ip_flag:'.$verdict['reason']],
-                )));
-                $product->save();
-                $this->line("  hold  [{$source->value}] {$id} {$data->name} [IP: {$verdict['reason']}] → gate");
+            if ($product->ip_flagged) {
+                $this->line("  ip    [{$source->value}] {$id} {$data->name} [IP: {$product->ip_flag_reason}] (flagged, non-blocking)");
             }
 
             // Anything the gate holds (no producible file yet, IP flag, licence
@@ -239,7 +229,8 @@ class PullModel3dCatalogue extends Command
                 continue;
             }
 
-            $this->mirrorImage($product);
+            // Thumbnail mirror now runs inside Model3dCatalogueService::ingest
+            // (shared AssetStore), so the pull loop no longer mirrors separately.
 
             // Measured grams/print-minutes when a slicer is configured -
             // auto-verifies estimates so the item can publish untouched.
@@ -468,43 +459,5 @@ class PullModel3dCatalogue extends Command
             ->map(fn ($slug): string => (string) $slug)
             ->values()
             ->all();
-    }
-
-    /**
-     * Mirror the source thumbnail into our own public storage and point the
-     * product at it. Source image URLs are proxy/CDN links that can be
-     * hotlink-blocked or die with the source; serving from our own disk keeps
-     * the catalogue image stable. Skipped silently on download failure - the
-     * remote URL stays as a best-effort fallback. (assets:migrate-to-spaces
-     * later moves these into the GIFT_LAB folder on Spaces.)
-     */
-    private function mirrorImage(Product $product): void
-    {
-        $remote = (string) $product->image_url;
-        if ($remote === '' || ! str_starts_with($remote, 'http')) {
-            return;
-        }
-
-        // Already self-hosted (local storage or our Spaces folder).
-        if (str_contains($remote, (string) config('app.url')) || str_contains($remote, '/GIFT_LAB/')) {
-            return;
-        }
-
-        $path = "products/model3d-{$product->model3d_id}.jpg";
-
-        if (! Storage::disk('public')->exists($path)) {
-            try {
-                $response = Http::connectTimeout(5)->timeout(20)->get($remote);
-                if (! $response->successful()) {
-                    return;
-                }
-                Storage::disk('public')->put($path, $response->body());
-            } catch (\Throwable) {
-                return;
-            }
-        }
-
-        $product->image_url = url("storage/{$path}");
-        $product->save();
     }
 }

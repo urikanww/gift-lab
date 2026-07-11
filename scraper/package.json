@@ -1,0 +1,23 @@
+{
+  "name": "makerworld-scraper",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Headless-browser scraper for MakerWorld 3D model listings",
+  "bin": {
+    "makerworld-list": "./list.mjs",
+    "makerworld-download": "./download.mjs"
+  },
+  "scripts": {
+    "list": "node list.mjs",
+    "download": "node download.mjs",
+    "test": "node --test",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  },
+  "optionalDependencies": {
+    "@aws-sdk/client-s3": "^3.600.0"
+  }
+}

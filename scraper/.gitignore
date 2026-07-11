@@ -1,0 +1,11 @@
+node_modules/
+out/
+*.json
+!package.json
+
+# secrets — your MakerWorld auth. NEVER commit.
+token.txt
+cookie.txt
+session.json
+.env
+.mw-profile/

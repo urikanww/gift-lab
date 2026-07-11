@@ -246,6 +246,10 @@ export interface JobLineItem {
     print_zone: PrintZone | null;
     /** Every printable part (head/body/limbs) the floor can download; empty for single-mesh. */
     model_parts: ModelPart[];
+    /** Print-floor production file (H2S `.3mf`); null → floor prints the STL. */
+    production_file_ref?: string | null;
+    /** Canonical STL path - the production-file fallback when the above is null. */
+    model_file_ref?: string | null;
   } | null;
   customization: Customization | null;
 }
@@ -333,6 +337,15 @@ export interface AdminProduct {
   min_order_qty?: number;
   /** Storage path of the canonical mesh file for MODEL_3D items; null when unset. */
   model_file_ref?: string | null;
+  /**
+   * Storage path of the print-floor production file (e.g. an H2S-ready `.3mf`);
+   * null → the floor falls back to `model_file_ref` (the STL).
+   */
+  production_file_ref?: string | null;
+  /** IP-screen hit - a surfaced, non-blocking risk tag (item can still publish). */
+  ip_flagged?: boolean;
+  /** Why the IP screen flagged it (matched franchise/keyword); null when unset. */
+  ip_flag_reason?: string | null;
   /**
    * Individual printable parts of a multi-part figure (e.g. Groot: head, body,
    * arms, legs). Empty for single-mesh products - the primary model covers them.

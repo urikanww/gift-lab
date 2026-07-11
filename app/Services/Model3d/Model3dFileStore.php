@@ -25,6 +25,12 @@ final class Model3dFileStore
 
     public function __construct(private readonly StlMerger $merger = new StlMerger) {}
 
+    /** The configured model-file disk (local in dev, spaces_models in prod). */
+    private function disk(): string
+    {
+        return (string) config('model3d.disk', 'local');
+    }
+
     /**
      * Ensure a local copy of the model's primary printable file exists; returns
      * its storage path (on the `local` disk) or null when none could be obtained.
@@ -71,7 +77,7 @@ final class Model3dFileStore
         if (! $force) {
             foreach (self::ALLOWED_EXTENSIONS as $ext) {
                 $existing = sprintf('models3d/%s-%s.%s', strtolower($data->source->value), $data->sourceId, $ext);
-                if (Storage::disk('local')->exists($existing)) {
+                if (Storage::disk($this->disk())->exists($existing)) {
                     return ['primary' => $existing, 'parts' => []];
                 }
             }
@@ -181,7 +187,7 @@ final class Model3dFileStore
             $data->sourceId,
             $index + 1,
         );
-        Storage::disk('local')->put($path, $content);
+        Storage::disk($this->disk())->put($path, $content);
 
         return $path;
     }
@@ -241,7 +247,7 @@ final class Model3dFileStore
     private function store(Model3dData $data, string $ext, string $content): string
     {
         $path = sprintf('models3d/%s-%s.%s', strtolower($data->source->value), $data->sourceId, $ext);
-        Storage::disk('local')->put($path, $content);
+        Storage::disk($this->disk())->put($path, $content);
 
         return $path;
     }

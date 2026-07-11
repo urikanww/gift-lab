@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import api from '../lib/api';
 import { Button } from '../ui';
+import { loadModelWithProgress } from '../lib/loadModelWithProgress';
+import { parseStlInWorker } from '../lib/parseStl';
+import ModelLoadProgress, { type ModelLoadPhase } from './ModelLoadProgress';
 import { buildDecalGeometry, renderPrintFile } from '../lib/modelDecal';
 import { worldToZoneFraction } from '../lib/zoneMapping';
 import type { PrintZone } from '../lib/printZone';
@@ -71,6 +72,11 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
 ) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [progress, setProgress] = useState<{ phase: ModelLoadPhase; loaded: number; total: number | null }>({
+    phase: 'downloading',
+    loaded: 0,
+    total: null,
+  });
 
   // three.js objects kept in refs so the artwork/zone effect and the imperative
   // handle can reach the live mesh + scene without re-running the loader effect.
@@ -148,16 +154,23 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
       renderer.render(scene, camera);
     };
 
-    // Fetch bytes through axios (carries the Sanctum cookie), then .parse() -
-    // the same auth-safe path the admin zone editor uses, so a staff modelSrc
-    // (an unpublished/gated item) loads just like the public catalogue stream.
-    api
-      .get(modelSrc ?? `/catalogue/${productKey}/model`, { responseType: 'arraybuffer' })
-      .then((res) => {
-        if (disposed) return;
-        const geometry = new STLLoader().parse(res.data as ArrayBuffer);
+    // Fetch bytes through axios (carries the Sanctum cookie) with determinate
+    // progress, then parse in a worker - the same auth-safe path the admin zone
+    // editor uses, so a staff modelSrc (an unpublished/gated item) loads just
+    // like the public catalogue stream.
+    setProgress({ phase: 'downloading', loaded: 0, total: null });
+    loadModelWithProgress(modelSrc ?? `/catalogue/${productKey}/model`, (loaded, total) => {
+      if (!disposed) setProgress({ phase: 'downloading', loaded, total });
+    })
+      .then((buffer) => {
+        if (disposed) return null;
+        setProgress((p) => ({ ...p, phase: 'processing' }));
+        return parseStlInWorker(buffer);
+      })
+      .then((geometry) => {
+        if (disposed || !geometry) return;
         // Do NOT recenter: keep model space aligned with the zone coordinates.
-        geometry.computeVertexNormals();
+        // (Worker already computed smooth vertex normals.)
 
         const color = FILAMENT_HEX[filamentColor] ?? FILAMENT_HEX.Grey;
         const material = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1 });
@@ -394,6 +407,11 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
           aria-label="Live 3D decal preview"
           role="img"
         />
+        {state === 'loading' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <ModelLoadProgress phase={progress.phase} loaded={progress.loaded} total={progress.total} />
+          </div>
+        )}
         {showRotate && (
           <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-border bg-surface/90 px-1.5 py-1 shadow-md backdrop-blur">
             <Button
@@ -425,7 +443,6 @@ const Model3dDecalPreview = forwardRef<DecalPreviewHandle, Props>(function Model
           </div>
         )}
       </div>
-      {state === 'loading' && <p className="mt-2 text-sm text-fg-muted">Loading 3D preview…</p>}
       {state === 'ready' && (
         <p className="mt-2 text-sm text-fg-subtle">Live preview · your artwork on the real model</p>
       )}

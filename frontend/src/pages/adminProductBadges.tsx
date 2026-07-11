@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Badge, cn } from '../ui';
+import { Badge, Tooltip, cn } from '../ui';
 import { safeHref } from '../lib/safeHref';
 import ImageLightbox from '../components/ImageLightbox';
-import type { LicenseTier, ProductClass } from '../types';
+import type { AdminProduct, LicenseTier, ProductClass } from '../types';
 
 /** Shared labels/badges for the admin product list + detail pages. */
 
@@ -40,21 +40,48 @@ export function PublishBadge({ state }: { state: string }) {
 
 /**
  * Licence-tier badge - superadmin-only surface. 'standard' renders nothing;
- * 'extended' is neutral; 'high_risk' is a red flag for legal attention.
+ * 'extended' is neutral; 'high_risk' is a red flag for legal attention (with a
+ * hover/focus tooltip explaining the licence risk).
  */
 export function LicenseTierBadge({ tier }: { tier: LicenseTier }) {
   if (tier === 'standard') return null;
   if (tier === 'high_risk') {
     return (
-      <Badge tone="danger" size="sm">
-        High legal risk
-      </Badge>
+      <Tooltip content="High legal risk: the source licence restricts commercial resale/derivatives. Superadmin sign-off required before publishing.">
+        <Badge tone="danger" size="sm" tabIndex={0} className="cursor-help">
+          High legal risk
+        </Badge>
+      </Tooltip>
     );
   }
   return (
     <Badge tone="neutral" size="sm">
       Extended licence
     </Badge>
+  );
+}
+
+/**
+ * IP-risk badge - distinct from the licence-tier badge above. Renders ONLY when
+ * the IP screen flagged the item (`ip_flagged`). It is a NON-blocking, surfaced
+ * risk tag (the item can still publish), so it's a danger-tone flag with a
+ * hover/focus tooltip naming the matched franchise/keyword when known.
+ */
+export function IpRiskBadge({ product }: { product: AdminProduct }) {
+  if (!product.ip_flagged) return null;
+  const reason = product.ip_flag_reason?.trim();
+  return (
+    <Tooltip
+      content={
+        reason
+          ? `Possible IP match: ${reason}. Publishable, but review the likeness before approving.`
+          : 'Flagged by the IP screen - may resemble a protected franchise or character. Publishable, but review before approving.'
+      }
+    >
+      <Badge tone="danger" size="sm" dot tabIndex={0} className="cursor-help">
+        IP risk
+      </Badge>
+    </Tooltip>
   );
 }
 

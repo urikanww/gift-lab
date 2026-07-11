@@ -12,6 +12,7 @@ use App\Models\ProductModelPart;
 use App\Services\Catalogue\ScrapedCatalogueService;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\Model3dCatalogueService;
+use App\Services\Model3d\ModelFileAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,8 +35,7 @@ class AdminCatalogueController extends Controller
         private readonly ScrapedCatalogueService $scraped,
         private readonly Model3dCatalogueService $model3d,
         private readonly Model3dApiClient $apiClient,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -208,6 +208,8 @@ class AdminCatalogueController extends Controller
             'file' => ['required', 'file', 'max:102400'], // 100 MB
         ]);
 
+        $disk = (string) config('model3d.disk', 'local');
+
         $upload = $request->file('file');
         $extension = strtolower((string) $upload->getClientOriginalExtension());
 
@@ -222,9 +224,9 @@ class AdminCatalogueController extends Controller
             // GLB is display-only: replace the decoration model, leave the
             // canonical mesh + slicer estimates + zone untouched.
             $old = (string) ($product->decor_glb_ref ?? '');
-            $path = $upload->storeAs('models3d', "decor-{$product->id}.glb", 'local');
-            if ($old !== '' && $old !== $path && Storage::disk('local')->exists($old)) {
-                Storage::disk('local')->delete($old);
+            $path = $upload->storeAs('models3d', "decor-{$product->id}.glb", $disk);
+            if ($old !== '' && $old !== $path && Storage::disk($disk)->exists($old)) {
+                Storage::disk($disk)->delete($old);
             }
             $product->decor_glb_ref = $path;
             $product->save();
@@ -239,9 +241,9 @@ class AdminCatalogueController extends Controller
         // Mesh replace: new geometry invalidates the slicer measurement AND any
         // marked print zone (the surface it referenced may no longer exist).
         $old = (string) ($product->model_file_ref ?? '');
-        $path = $upload->storeAs('models3d', "manual-{$product->id}.{$extension}", 'local');
-        if ($old !== '' && $old !== $path && ! str_starts_with($old, 'http') && Storage::disk('local')->exists($old)) {
-            Storage::disk('local')->delete($old);
+        $path = $upload->storeAs('models3d', "manual-{$product->id}.{$extension}", $disk);
+        if ($old !== '' && $old !== $path && ! str_starts_with($old, 'http') && Storage::disk($disk)->exists($old)) {
+            Storage::disk($disk)->delete($old);
         }
 
         // A manual single-file mesh supersedes any scraped multi-part set, so drop
@@ -305,17 +307,53 @@ class AdminCatalogueController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
+        $disk = (string) config('model3d.disk', 'local');
+
         $kind = $request->string('kind')->toString();
         $ref = $kind === 'glb'
             ? (string) ($product->decor_glb_ref ?? '')
             : (string) ($product->model_file_ref ?? '');
 
-        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk($disk)->exists($ref)) {
             return response()->json(['message' => 'Model not available.'], 404);
         }
 
-        return Storage::disk('local')->response($ref, basename($ref), [
+        return Storage::disk($disk)->response($ref, basename($ref), [
             'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
+     * Stream the print-floor production file for a MODEL_3D product: the
+     * H2S-targeted .3mf when present (production_file_ref), otherwise the model
+     * file itself (Thingiverse prints the STL directly). Staff-only. This is the
+     * "hand it to the printer" download the production queue offers.
+     */
+    public function productionFile(Request $request, Product $product): StreamedResponse|JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        // Prefer a dedicated production file on the production disk; fall back to
+        // the model file when none exists (production_file_ref falls back to
+        // model_file_ref by design).
+        $ref = (string) ($product->production_file_ref ?? '');
+        if ($ref !== '' && ! str_starts_with($ref, 'http')) {
+            $disk = (string) config('model3d.production_disk', 'local');
+        } else {
+            $ref = (string) ($product->model_file_ref ?? '');
+            $disk = (string) config('model3d.disk', 'local');
+        }
+
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk($disk)->exists($ref)) {
+            return response()->json(['message' => 'No production file available.'], 404);
+        }
+
+        $store = Storage::disk($disk);
+
+        return $store->response($ref, basename($ref), [
+            'Content-Type' => 'application/octet-stream',
+            'Content-Length' => (int) $store->size($ref),
             'Cache-Control' => 'no-store',
         ]);
     }
@@ -330,12 +368,14 @@ class AdminCatalogueController extends Controller
         abort_unless($request->user()->isStaff(), 403);
         abort_unless($part->product_id === $product->id, 404);
 
+        $disk = (string) config('model3d.disk', 'local');
+
         $ref = (string) $part->file_ref;
-        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk($disk)->exists($ref)) {
             return response()->json(['message' => 'Part not available.'], 404);
         }
 
-        return Storage::disk('local')->response($ref, basename($ref), [
+        return Storage::disk($disk)->response($ref, basename($ref), [
             'Content-Type' => 'application/octet-stream',
             'Cache-Control' => 'no-store',
         ]);
@@ -353,6 +393,8 @@ class AdminCatalogueController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
+        $disk = (string) config('model3d.disk', 'local');
+
         $ids = collect($request->input('part_ids', []))
             ->map(fn ($i): int => (int) $i)
             ->filter()
@@ -361,14 +403,16 @@ class AdminCatalogueController extends Controller
 
         /** @var array<string, string> $files name => absolute local path */
         $files = [];
+        /** @var list<callable(): void> $cleanups materialised-copy removers (no-op on local) */
+        $cleanups = [];
 
         if ($ids !== []) {
             $parts = $product->modelParts()->whereIn('id', $ids)->orderBy('sort')->get();
             foreach ($parts as $part) {
-                $this->collectExportFile($files, (string) $part->file_ref, $part->label ?? 'part');
+                $this->collectExportFile($files, $cleanups, $disk, (string) $part->file_ref, $part->label ?? 'part');
             }
         } else {
-            $this->collectExportFile($files, (string) $product->model_file_ref, $product->name);
+            $this->collectExportFile($files, $cleanups, $disk, (string) $product->model_file_ref, $product->name);
         }
 
         if ($files === []) {
@@ -376,14 +420,24 @@ class AdminCatalogueController extends Controller
         }
 
         $zipPath = tempnam(sys_get_temp_dir(), 'plates').'.zip';
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            foreach ($cleanups as $cleanup) {
+                $cleanup();
+            }
+
             return response()->json(['message' => 'Could not build the export.'], 500);
         }
         foreach ($files as $name => $path) {
             $zip->addFile($path, $name);
         }
+        // ZipArchive reads the source bytes at close() time, so once the archive
+        // is written the materialised input copies (S3 temp files) are no longer
+        // needed and can be cleaned before the zip itself is streamed below.
         $zip->close();
+        foreach ($cleanups as $cleanup) {
+            $cleanup();
+        }
 
         $download = Str::slug($product->name ?: 'model').'-plates.zip';
 
@@ -397,14 +451,18 @@ class AdminCatalogueController extends Controller
     }
 
     /**
-     * Add a stored (local, existing) model file to the export map under a unique,
-     * slugged filename that keeps its extension. Remote-ref / missing files skip.
+     * Add a stored (existing) model file to the export map under a unique, slugged
+     * filename that keeps its extension. Remote-ref / missing files skip. The file
+     * is materialised to a real local path via ModelFileAccess (a no-op copy on a
+     * local disk, a temp copy on S3); its cleanup is appended to $cleanups for the
+     * caller to run once the zip has been written.
      *
      * @param  array<string, string>  $files
+     * @param  list<callable(): void>  $cleanups
      */
-    private function collectExportFile(array &$files, string $ref, string $label): void
+    private function collectExportFile(array &$files, array &$cleanups, string $disk, string $ref, string $label): void
     {
-        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk($disk)->exists($ref)) {
             return;
         }
 
@@ -417,7 +475,9 @@ class AdminCatalogueController extends Controller
             $n++;
         }
 
-        $files[$name] = Storage::disk('local')->path($ref);
+        [$path, $cleanup] = ModelFileAccess::localPath($disk, $ref);
+        $files[$name] = $path;
+        $cleanups[] = $cleanup;
     }
 
     /** Printable mesh formats a staff member may attach as a part. */
@@ -449,8 +509,9 @@ class AdminCatalogueController extends Controller
             return response()->json(['message' => 'A model part must be an .stl, .3mf or .obj file.'], 422);
         }
 
+        $disk = (string) config('model3d.disk', 'local');
         $nextSort = (int) ($product->modelParts()->max('sort') ?? -1) + 1;
-        $path = $upload->storeAs('models3d', "manual-{$product->id}-part{$nextSort}.{$ext}", 'local');
+        $path = $upload->storeAs('models3d', "manual-{$product->id}-part{$nextSort}.{$ext}", $disk);
 
         $label = trim((string) $request->input('label', ''));
         $part = $product->modelParts()->create([
@@ -475,8 +536,10 @@ class AdminCatalogueController extends Controller
         abort_unless($request->user()->isStaff(), 403);
         abort_unless($part->product_id === $product->id, 404);
 
+        $disk = (string) config('model3d.disk', 'local');
+
         $ref = (string) $part->file_ref;
-        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk('local')->exists($ref)) {
+        if ($ref === '' || str_starts_with($ref, 'http') || ! Storage::disk($disk)->exists($ref)) {
             return response()->json(['message' => 'That part has no stored file to make primary.'], 422);
         }
 
@@ -540,9 +603,10 @@ class AdminCatalogueController extends Controller
             return response()->json(['message' => 'The primary mesh cannot be removed here; replace it via the model file.'], 422);
         }
 
+        $disk = (string) config('model3d.disk', 'local');
         $ref = (string) $part->file_ref;
-        if ($ref !== '' && ! str_starts_with($ref, 'http') && Storage::disk('local')->exists($ref)) {
-            Storage::disk('local')->delete($ref);
+        if ($ref !== '' && ! str_starts_with($ref, 'http') && Storage::disk($disk)->exists($ref)) {
+            Storage::disk($disk)->delete($ref);
         }
         $part->delete();
 
@@ -572,10 +636,11 @@ class AdminCatalogueController extends Controller
      */
     private function clearModelParts(Product $product): void
     {
+        $disk = (string) config('model3d.disk', 'local');
         foreach ($product->modelParts()->get() as $part) {
             $ref = (string) $part->file_ref;
-            if ($ref !== '' && ! $part->is_primary && ! str_starts_with($ref, 'http') && Storage::disk('local')->exists($ref)) {
-                Storage::disk('local')->delete($ref);
+            if ($ref !== '' && ! $part->is_primary && ! str_starts_with($ref, 'http') && Storage::disk($disk)->exists($ref)) {
+                Storage::disk($disk)->delete($ref);
             }
         }
         $product->modelParts()->delete();

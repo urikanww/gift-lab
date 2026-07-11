@@ -60,6 +60,12 @@ return [
         // Used when the slicer profile carries no filament density (the
         // console default) - grams = volume [cm3] × density. PLA ≈ 1.24.
         'density_g_cm3' => env('SLICER_FILAMENT_DENSITY', 1.24),
+        // OrcaSlicer CLI + Bambu H2S (O1S) profile. When ORCA_SLICER_BINARY is
+        // set it supersedes the PrusaSlicer path: an STL is sliced against the
+        // H2S profile bundle, the .gcode.3mf is persisted as production_file_ref,
+        // and grams/minutes are read from the same pass. Empty => PrusaSlicer.
+        'orca_binary' => env('ORCA_SLICER_BINARY', ''),
+        'h2s_profile' => env('ORCA_H2S_PROFILE', ''),
     ],
 
     // LLM IP/trademark screen at catalogue ingest (layer 2; the keyword

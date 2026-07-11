@@ -11,8 +11,8 @@ use App\Models\Product;
 use App\Services\Catalogue\CategoryClassifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -192,6 +192,7 @@ class CatalogueController extends Controller
             ?? (ctype_digit($key) ? Product::find((int) $key) : null);
 
         $ref = (string) ($product?->model_file_ref ?? '');
+        $disk = (string) config('model3d.disk', 'local');
 
         if (
             $product === null
@@ -199,27 +200,34 @@ class CatalogueController extends Controller
             || $product->class !== ProductClass::Model3d
             || $ref === ''
             || str_starts_with($ref, 'http')
-            || ! Storage::disk('local')->exists($ref)
+            || ! Storage::disk($disk)->exists($ref)
         ) {
             return response()->json(['message' => 'Model not available.'], 404);
         }
 
-        // Validate on a content signature (mtime + size), NOT a long fixed
+        // Validate on a content signature (lastModified + size), NOT a long fixed
         // max-age: the model URL is stable (models3d/{source}-{id}.stl) but the
         // file behind it is replaced when a model is re-pulled (resync --force).
         // A fixed 24h cache would keep serving the OLD geometry - the classic
         // "preview shows the wrong model after a re-pull". must-revalidate makes
         // the browser send a cheap conditional GET and only refetch on change.
-        $abs = Storage::disk('local')->path($ref);
-        $etag = sprintf('"%d-%d"', (int) filemtime($abs), (int) filesize($abs));
+        // Read the signature from the disk (not filemtime/filesize) so this works
+        // identically on local and S3 (spaces_models has no local path).
+        $store = Storage::disk($disk);
+        $size = (int) $store->size($ref);
+        $etag = sprintf('"%d-%d"', (int) $store->lastModified($ref), $size);
         $cacheControl = 'public, max-age=0, must-revalidate';
 
         if (trim((string) $request->header('If-None-Match')) === $etag) {
             return response('', 304, ['ETag' => $etag, 'Cache-Control' => $cacheControl]);
         }
 
-        return Storage::disk('local')->response($ref, basename($ref), [
+        // Content-Length lets the frontend show a determinate download bar. The
+        // local driver sets it via response(); S3 streaming may not, so pass the
+        // known object size explicitly.
+        return $store->response($ref, basename($ref), [
             'Content-Type' => 'application/octet-stream',
+            'Content-Length' => $size,
             'Cache-Control' => $cacheControl,
             'ETag' => $etag,
         ]);

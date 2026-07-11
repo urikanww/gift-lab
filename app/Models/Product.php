@@ -60,6 +60,9 @@ class Product extends Model
         'license',
         'creator_credit',
         'model_file_ref',
+        'production_file_ref',
+        'ip_flagged',
+        'ip_flag_reason',
         'decor_glb_ref',
         'print_zone',
         'filament_material',
@@ -93,6 +96,7 @@ class Product extends Model
             'est_print_minutes' => 'decimal:1',
             'estimates_verified' => 'boolean',
             'model_preview_verified' => 'boolean',
+            'ip_flagged' => 'boolean',
         ];
     }
 

@@ -3,7 +3,7 @@ import api, { apiError } from '../lib/api';
 import { Badge, LinkButton, Modal, Spinner } from '../ui';
 import { categoryLabel } from '../lib/categories';
 import StlModelViewer from './StlModelViewer';
-import { classLabel, LicenseTierBadge, PublishBadge } from '../pages/adminProductBadges';
+import { classLabel, IpRiskBadge, LicenseTierBadge, PublishBadge } from '../pages/adminProductBadges';
 import type { AdminProduct } from '../types';
 
 /**
@@ -117,6 +117,7 @@ export default function ProductQuickView({ productId, isSuperadmin, onClose, bac
                 {classLabel(product.class)}
               </Badge>
               <PublishBadge state={product.publish_state} />
+              <IpRiskBadge product={product} />
               {isSuperadmin && <LicenseTierBadge tier={product.license_tier} />}
             </div>
 
