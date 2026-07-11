@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function (): void {
@@ -22,6 +24,31 @@ it('lists scraped and 3D items for staff', function (): void {
     $response = $this->getJson('/api/admin/catalogue')->assertOk();
 
     expect($response->json('data'))->toHaveCount(2);
+});
+
+it('sorts the gate list by creation date ascending or descending', function (): void {
+    $old = Product::factory()->model3d()->create(['name' => 'Older', 'created_at' => now()->subDays(3)]);
+    $new = Product::factory()->model3d()->create(['name' => 'Newer', 'created_at' => now()->subDay()]);
+
+    Sanctum::actingAs($this->staff);
+
+    // Default (newest first) + explicit desc.
+    $desc = $this->getJson('/api/admin/catalogue?sort=newest&dir=desc')->assertOk();
+    expect(collect($desc->json('data'))->pluck('id')->all())->toBe([$new->id, $old->id]);
+
+    // Ascending flips it (oldest first).
+    $asc = $this->getJson('/api/admin/catalogue?sort=newest&dir=asc')->assertOk();
+    expect(collect($asc->json('data'))->pluck('id')->all())->toBe([$old->id, $new->id]);
+});
+
+it('sorts the gate list by name when asked', function (): void {
+    Product::factory()->model3d()->create(['name' => 'Zeta']);
+    Product::factory()->model3d()->create(['name' => 'Alpha']);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/catalogue?sort=name&dir=asc')->assertOk();
+
+    expect(collect($res->json('data'))->pluck('name')->all())->toBe(['Alpha', 'Zeta']);
 });
 
 it('returns full-set state counts independent of pagination and the state filter', function (): void {
@@ -110,7 +137,7 @@ it('verifies MODEL_3D estimates and clears the unverified hold', function (): vo
 });
 
 it('attaches a model file and clears the missing_model_file hold', function (): void {
-    Illuminate\Support\Facades\Storage::fake('local');
+    Storage::fake('local');
 
     $product = Product::factory()->model3d()->create([
         'publish_state' => 'CANNOT_PUBLISH',
@@ -121,13 +148,13 @@ it('attaches a model file and clears the missing_model_file hold', function (): 
 
     Sanctum::actingAs($this->staff);
     $this->postJson("/api/admin/products/{$product->id}/model-file", [
-        'file' => Illuminate\Http\UploadedFile::fake()->create('widget.stl', 12),
+        'file' => UploadedFile::fake()->create('widget.stl', 12),
     ])->assertOk();
 
     $product->refresh();
     expect($product->model_file_ref)->toBe("models3d/manual-{$product->id}.stl")
         ->and($product->cannot_publish_reasons ?? [])->not->toContain('missing_model_file')
-        ->and(Illuminate\Support\Facades\Storage::disk('local')->exists($product->model_file_ref))->toBeTrue();
+        ->and(Storage::disk('local')->exists($product->model_file_ref))->toBeTrue();
 });
 
 it('rejects a non-model file upload', function (): void {
@@ -135,13 +162,13 @@ it('rejects a non-model file upload', function (): void {
 
     Sanctum::actingAs($this->staff);
     $this->postJson("/api/admin/products/{$product->id}/model-file", [
-        'file' => Illuminate\Http\UploadedFile::fake()->create('evil.php', 1),
+        'file' => UploadedFile::fake()->create('evil.php', 1),
     ])->assertStatus(422);
 });
 
 it('streams the model file for a published 3D product and hides unpublished ones', function (): void {
-    Illuminate\Support\Facades\Storage::fake('local');
-    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid x');
+    Storage::fake('local');
+    Storage::disk('local')->put('models3d/pub.stl', 'solid x');
 
     $published = Product::factory()->model3d()->create([
         'publish_state' => 'PUBLISHED',
@@ -157,8 +184,8 @@ it('streams the model file for a published 3D product and hides unpublished ones
 });
 
 it('serves the model with a revalidating validator (304 when unchanged)', function (): void {
-    Illuminate\Support\Facades\Storage::fake('local');
-    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid x');
+    Storage::fake('local');
+    Storage::disk('local')->put('models3d/pub.stl', 'solid x');
     $product = Product::factory()->model3d()->create([
         'publish_state' => 'PUBLISHED',
         'model_file_ref' => 'models3d/pub.stl',
@@ -176,8 +203,8 @@ it('serves the model with a revalidating validator (304 when unchanged)', functi
 });
 
 it('changes the model validator when the stored file is replaced', function (): void {
-    Illuminate\Support\Facades\Storage::fake('local');
-    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid x');
+    Storage::fake('local');
+    Storage::disk('local')->put('models3d/pub.stl', 'solid x');
     $product = Product::factory()->model3d()->create([
         'publish_state' => 'PUBLISHED',
         'model_file_ref' => 'models3d/pub.stl',
@@ -187,7 +214,7 @@ it('changes the model validator when the stored file is replaced', function (): 
 
     // resync --force swaps the file at the same path - the validator must change
     // so the browser refetches instead of showing the stale (wrong) geometry.
-    Illuminate\Support\Facades\Storage::disk('local')->put('models3d/pub.stl', 'solid xxxxxxxxxxxxxxxxxxxx');
+    Storage::disk('local')->put('models3d/pub.stl', 'solid xxxxxxxxxxxxxxxxxxxx');
     $second = $this->get("/api/catalogue/{$product->slug}/model")->headers->get('ETag');
 
     expect($second)->not->toBeNull()->and($second)->not->toBe($first);

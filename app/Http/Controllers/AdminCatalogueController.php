@@ -76,12 +76,22 @@ class AdminCatalogueController extends Controller
             'blocked' => (int) ($byState[PublishState::CannotPublish->value] ?? 0),
         ];
 
+        // Sort + direction, mirroring the product admin (sort key + asc/desc dir).
+        // Default 'newest' = creation date descending. Unknown keys fall back to
+        // created_at; id is the stable tiebreaker so pages don't shuffle on ties.
+        $sort = (string) $request->query('sort', 'newest');
+        $dir = strtolower((string) $request->query('dir', ''));
+        $dir = in_array($dir, ['asc', 'desc'], true) ? $dir : 'desc';
+
         $paginator = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->when($request->filled('state'), fn ($q) => $q->where('publish_state', $request->string('state')->toString()))
             ->where($searchScope)
-            ->orderByDesc('updated_at')
+            ->when($sort === 'name', fn ($q) => $q->orderBy('name', $dir))
+            ->when($sort === 'base_cost', fn ($q) => $q->orderBy('base_cost', $dir))
+            ->when(! in_array($sort, ['name', 'base_cost'], true), fn ($q) => $q->orderBy('created_at', $dir))
+            ->orderByDesc('id')
             ->paginate($perPage)
             ->withQueryString();
 
