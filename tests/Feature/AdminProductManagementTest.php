@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Quote;
 use App\Models\User;
 use App\Models\Variant;
+use App\Services\PricingService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
@@ -39,6 +40,31 @@ function makeQuoteWithLineItem(Company $company, Product $product, int $qty, str
         'qty' => $qty,
     ]);
 }
+
+it('lets staff edit a MODEL_3D est_grams/est_print_minutes and reprices the base cost', function (): void {
+    // The 3D base cost = est_grams × filament_per_gram + est_print_minutes ×
+    // machine_rate_per_min (seedPricing sets 0.05 and 0.08). Editing the inputs
+    // via the product-update endpoint must persist + move the computed cost.
+    $product = Product::factory()->model3d()->create([
+        'est_grams' => 100,
+        'est_print_minutes' => 200,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->patchJson("/api/admin/products/{$product->id}", [
+        'est_grams' => 150,
+        'est_print_minutes' => 400,
+    ])->assertOk();
+
+    $product->refresh();
+    expect((float) $product->est_grams)->toBe(150.0)
+        ->and((float) $product->est_print_minutes)->toBe(400.0);
+
+    // Serializer exposes them, and the recomputed landed cost = 150×0.05 + 400×0.08 = 39.5.
+    $res->assertJsonPath('data.est_grams', '150.000')
+        ->assertJsonPath('data.est_print_minutes', '400.0');
+    expect((float) app(PricingService::class)->landedCost($product, null))->toBe(39.5);
+});
 
 it('sorts by most_sold using summed qty from won quotes only', function (): void {
     $hot = Product::factory()->create(['name' => 'Hot Seller']);
