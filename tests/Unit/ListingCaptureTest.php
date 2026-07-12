@@ -40,6 +40,22 @@ it('falls back to Open Graph tags when no JSON-LD', function (): void {
         ->and($data->imageUrl)->toBe('https://cdn.sg/tumbler.png');
 });
 
+it('extracts Open Graph tags emitted in reversed attribute order', function (): void {
+    Http::fake(['*' => Http::response(<<<'HTML'
+        <html><head>
+        <meta content="Reversed Mug" property="og:title">
+        <meta content="https://cdn.sg/reversed.png" property="og:image">
+        <meta content="9.90" property="product:price:amount">
+        </head><body></body></html>
+        HTML, 200)]);
+
+    $data = app(ListingCapture::class)->capture('https://blankco.sg/reversed');
+
+    expect($data->name)->toBe('Reversed Mug')
+        ->and($data->imageUrl)->toBe('https://cdn.sg/reversed.png')
+        ->and($data->price)->toBe(9.90);
+});
+
 it('derives shopId_itemId as sourceProductId for a shopee url', function (): void {
     Http::fake(['*' => Http::response('<html><head><title>x</title></head></html>', 200)]);
 

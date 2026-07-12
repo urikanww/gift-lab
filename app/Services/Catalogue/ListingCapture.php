@@ -64,6 +64,9 @@ final class ListingCapture
                 continue;
             }
             foreach ($this->flattenLd($json) as $node) {
+                if (! is_array($node)) {
+                    continue;
+                }
                 $type = $node['@type'] ?? null;
                 $isProduct = $type === 'Product' || (is_array($type) && in_array('Product', $type, true));
                 if (! $isProduct) {
@@ -107,8 +110,21 @@ final class ListingCapture
 
     private function ogContent(string $html, string $property): ?string
     {
-        if (preg_match('#<meta[^>]+property=["\']'.preg_quote($property, '#').'["\'][^>]+content=["\'](.*?)["\']#i', $html, $m)) {
-            return html_entity_decode($m[1]);
+        // Match any <meta ...> tag carrying this property, in either attribute
+        // order, then pull its content= value regardless of position. Supplier
+        // and marketplace HTML emits both `property before content` and the
+        // reversed `content before property`.
+        if (! preg_match_all('#<meta\b[^>]*>#i', $html, $tags)) {
+            return null;
+        }
+        $quoted = preg_quote($property, '#');
+        foreach ($tags[0] as $tag) {
+            if (! preg_match('#\bproperty=["\']'.$quoted.'["\']#i', $tag)) {
+                continue;
+            }
+            if (preg_match('#\bcontent=["\'](.*?)["\']#i', $tag, $m)) {
+                return html_entity_decode($m[1]);
+            }
         }
 
         return null;
