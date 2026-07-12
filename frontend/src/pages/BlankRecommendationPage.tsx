@@ -112,7 +112,7 @@ export default function BlankRecommendationPage() {
         <Button loading={loading} onClick={() => void run()}>Search</Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         {candidates.map((c) => (
           <Card key={c.source_product_id} padding="md" className="flex flex-col gap-2">
             {c.image_url && <img src={c.image_url} alt="" className="aspect-square w-full rounded object-cover" referrerPolicy="no-referrer" />}
