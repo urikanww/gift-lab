@@ -98,10 +98,23 @@ export default function ReorderBuyListPage() {
                       <dt className="text-fg-subtle">State</dt>
                       <dd className="font-medium text-fg">{r.state}</dd>
                     </div>
-                    <div>
+                    <div className="col-span-2 sm:col-span-1">
                       <dt className="text-fg-subtle">Source</dt>
-                      <dd className="font-medium">
-                        {r.source_url ? (
+                      <dd className="flex flex-wrap gap-2">
+                        {(r.source_links ?? []).length > 0 ? (
+                          (r.source_links ?? []).map((l, i) => (
+                            <a
+                              key={l.url}
+                              href={l.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={i === 0 ? 'font-medium text-primary underline' : 'text-fg-muted underline'}
+                            >
+                              {l.label}
+                              {l.price != null ? ` · ${l.currency} ${l.price}` : ''}
+                            </a>
+                          ))
+                        ) : r.source_url ? (
                           <a href={r.source_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
                             Buy
                           </a>
@@ -109,6 +122,9 @@ export default function ReorderBuyListPage() {
                           <span className="text-fg-muted">-</span>
                         )}
                       </dd>
+                      {(r.source_links ?? []).length > 0 && (
+                        <p className="mt-1 text-xs text-fg-subtle">Prices indicative — re-check stock &amp; price on the listing before buying.</p>
+                      )}
                     </div>
                   </dl>
 

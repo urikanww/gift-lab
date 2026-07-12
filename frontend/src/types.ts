@@ -384,6 +384,7 @@ export interface AdminReorder {
   product_id: number | null;
   stock_on_hand: number | null;
   source_url: string | null;
+  source_links: import('./lib/sourceLinks').SourceLink[];
   created_at: string | null;
 }
 

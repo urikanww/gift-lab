@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
+import api, { apiError, ensureCsrf } from '../lib/api';
 import { safeHref } from '../lib/safeHref';
 import { Badge, Button, Card, EmptyState, Input, Select, Skeleton, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
@@ -221,6 +222,8 @@ export default function CatalogueAdminPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [captureUrl, setCaptureUrl] = useState('');
+  const [capturing, setCapturing] = useState(false);
 
   // Debounce the search box so keystrokes don't fire a request each character.
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -238,6 +241,22 @@ export default function CatalogueAdminPage() {
       dir,
       page,
     });
+
+  const captureBlank = async () => {
+    if (!captureUrl.trim() || capturing) return;
+    setCapturing(true);
+    try {
+      await ensureCsrf();
+      await api.post('/admin/blank-candidates/capture', { url: captureUrl.trim() });
+      setCaptureUrl('');
+      runFetch();
+      toast({ title: 'Blank captured', description: 'Complete its specs in the gate.', tone: 'success' });
+    } catch (err) {
+      toast({ title: 'Capture failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setCapturing(false);
+    }
+  };
 
   // Changing any filter or the sort resets to page 1 (a re-ordered/filtered set
   // has different pages).
@@ -354,6 +373,18 @@ export default function CatalogueAdminPage() {
               Auto-publish complete items
             </label>
           )}
+        </div>
+
+        <div className="flex gap-2">
+          <Input
+            type="url"
+            placeholder="Paste a product URL to add a blank"
+            value={captureUrl}
+            onChange={(e) => setCaptureUrl(e.target.value)}
+          />
+          <Button variant="outline" loading={capturing} onClick={() => void captureBlank()}>
+            Add blank by URL
+          </Button>
         </div>
 
         {/* Summary stats + bulk action. Counts are the full-set breakdown from
