@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
@@ -12,6 +12,7 @@ import Pagination from '../components/Pagination';
 import ProductQuickView from '../components/ProductQuickView';
 import ProductCsvImport from '../components/ProductCsvImport';
 import { EyeIcon, FilterIcon } from '../components/icons';
+import { CountPill, FilterChips } from '../components/admin/Filters';
 
 // Human labels for filter chips.
 const PUBLISH_LABELS: Record<string, string> = {
@@ -39,19 +40,6 @@ const PER_PAGE_OPTIONS = [15, 30, 50, 100] as const;
 type SortKey = 'newest' | 'most_sold' | 'name' | 'base_cost' | 'stock';
 
 const SORT_KEYS = new Set<SortKey>(['newest', 'most_sold', 'name', 'base_cost', 'stock']);
-
-/**
- * Inline count pill that reads as PART of its parent button (the "new chat
- * badge" look) rather than a separate floating Badge: a compact filled circle
- * hugging the label, using the button's own primary tint.
- */
-function CountPill({ children }: { children: ReactNode }) {
-  return (
-    <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-2xs font-semibold leading-none text-primary-fg">
-      {children}
-    </span>
-  );
-}
 
 /**
  * Server-driven product browser (route /product-admin). All filtering, sorting
@@ -238,25 +226,11 @@ export default function ProductAdminPage() {
         </div>
 
         {/* Active filter chips (removable) */}
-        {filterChips.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            {filterChips.map((chip) => (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={() => setParam(chip.key, '')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-fg transition-colors hover:border-danger hover:text-danger"
-                aria-label={`Remove filter: ${chip.label}`}
-              >
-                {chip.label}
-                <span aria-hidden="true">✕</span>
-              </button>
-            ))}
-            <Button variant="ghost" size="sm" onClick={clearAll}>
-              Clear all
-            </Button>
-          </div>
-        )}
+        <FilterChips
+          chips={filterChips}
+          onRemove={(key) => setParam(key, '')}
+          onClear={clearAll}
+        />
       </div>
 
       {/* Filters modal - live-applies to the URL as the admin picks */}
