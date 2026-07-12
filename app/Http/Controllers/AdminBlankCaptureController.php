@@ -24,6 +24,8 @@ final class AdminBlankCaptureController extends Controller
         ListingCapture $capture,
         ScrapedCatalogueService $service,
     ): JsonResponse {
+        abort_unless($request->user()->isStaff(), 403);
+
         $validated = $request->validate([
             'url' => ['required', 'url', 'max:2048'],
         ]);

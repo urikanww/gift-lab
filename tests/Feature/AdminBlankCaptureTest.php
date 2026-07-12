@@ -50,6 +50,13 @@ it('returns 502 when the page cannot be captured', function (): void {
         ->assertStatus(502);
 });
 
+it('forbids non-staff users', function (): void {
+    $buyer = User::factory()->create(['role' => 'buyer']);
+    Sanctum::actingAs($buyer);
+    $this->postJson('/api/admin/blank-candidates/capture', ['url' => 'https://blankco.sg/x'])
+        ->assertStatus(403);
+});
+
 it('requires auth', function (): void {
     $this->postJson('/api/admin/blank-candidates/capture', ['url' => 'https://blankco.sg/x'])
         ->assertStatus(401);
