@@ -39,6 +39,30 @@ it('returns ranked candidates with IP/material flags (staff only)', function ():
         ->and(collect($data)->firstWhere('source_product_id', '1_2')['ip_flag'])->toBe('disney');
 });
 
+it('reports has_more true on a full page and forwards the page number', function (): void {
+    // A full page (count === limit) signals Shopee likely has more.
+    Http::fake(['aff.test/*' => Http::response(['data' => ['productOfferV2' => ['nodes' => [
+        ['itemId' => 2, 'shopId' => 1, 'productName' => 'Mug A', 'priceMin' => '5.00', 'imageUrl' => 'https://i/a', 'productLink' => 'https://shopee.sg/product/1/2', 'offerLink' => 'https://s.shopee.sg/a', 'sales' => 5, 'ratingStar' => '4.0', 'shopName' => 'S'],
+        ['itemId' => 4, 'shopId' => 3, 'productName' => 'Mug B', 'priceMin' => '6.00', 'imageUrl' => 'https://i/b', 'productLink' => 'https://shopee.sg/product/3/4', 'offerLink' => 'https://s.shopee.sg/b', 'sales' => 9, 'ratingStar' => '4.1', 'shopName' => 'S'],
+    ]]]], 200)]);
+    Sanctum::actingAs($this->staff);
+
+    $res = $this->getJson('/api/admin/blank-recommendations?keyword=mug&limit=2&page=3')->assertOk();
+
+    expect($res->json('has_more'))->toBeTrue()
+        ->and($res->json('page'))->toBe(3);
+});
+
+it('reports has_more false on a short (final) page', function (): void {
+    fakeCandidates(); // 2 nodes
+    Sanctum::actingAs($this->staff);
+
+    $res = $this->getJson('/api/admin/blank-recommendations?keyword=mug&limit=10')->assertOk();
+
+    expect($res->json('has_more'))->toBeFalse()
+        ->and($res->json('page'))->toBe(1);
+});
+
 it('forbids non-staff on search', function (): void {
     $buyer = User::factory()->create(['role' => 'buyer']);
     Sanctum::actingAs($buyer);

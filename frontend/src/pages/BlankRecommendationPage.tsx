@@ -1,26 +1,76 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Input, useOptionalToast } from '../ui';
 import { apiError } from '../lib/api';
 import { addBlank, featureCandidate, searchCandidates, type Candidate } from '../lib/recommendations';
 
+const PAGE_SIZE = 20;
+
 export default function BlankRecommendationPage() {
   const { toast } = useOptionalToast();
   const [keyword, setKeyword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [active, setActive] = useState(''); // the keyword the current results belong to
+  const [loading, setLoading] = useState(false); // initial search
+  const [loadingMore, setLoadingMore] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const sentinel = useRef<HTMLDivElement | null>(null);
 
   const run = async () => {
-    if (!keyword.trim() || loading) return;
+    const kw = keyword.trim();
+    if (!kw || loading) return;
     setLoading(true);
+    setSearched(true);
     try {
-      setCandidates(await searchCandidates(keyword.trim()));
+      const res = await searchCandidates(kw, PAGE_SIZE, 1);
+      setCandidates(res.data);
+      setPage(res.page);
+      setHasMore(res.has_more);
+      setActive(kw);
     } catch (err) {
+      setCandidates([]);
+      setHasMore(false);
       toast({ title: 'Search failed', description: apiError(err), tone: 'danger' });
     } finally {
       setLoading(false);
     }
   };
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || loading || !hasMore || !active) return;
+    setLoadingMore(true);
+    try {
+      const res = await searchCandidates(active, PAGE_SIZE, page + 1);
+      setCandidates((prev) => {
+        const seen = new Set(prev.map((c) => c.source_product_id));
+        return [...prev, ...res.data.filter((c) => !seen.has(c.source_product_id))];
+      });
+      setPage(res.page);
+      setHasMore(res.has_more);
+    } catch (err) {
+      setHasMore(false);
+      toast({ title: 'Could not load more', description: apiError(err), tone: 'danger' });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [active, hasMore, loading, loadingMore, page, toast]);
+
+  // Auto-load the next page when the sentinel scrolls into view.
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return; // jsdom / SSR guard
+    const el = sentinel.current;
+    if (!el || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore();
+      },
+      { rootMargin: '400px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loadMore]);
 
   const act = async (c: Candidate, kind: 'add' | 'feature') => {
     setBusy(`${kind}:${c.source_product_id}`);
@@ -46,7 +96,18 @@ export default function BlankRecommendationPage() {
 
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <Input label="Keyword" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="ceramic mug, acrylic keychain…" />
+          <Input
+            label="Keyword"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void run();
+              }
+            }}
+            placeholder="ceramic mug, acrylic keychain…"
+          />
         </div>
         <Button loading={loading} onClick={() => void run()}>Search</Button>
       </div>
@@ -71,6 +132,16 @@ export default function BlankRecommendationPage() {
             </div>
           </Card>
         ))}
+      </div>
+
+      {/* Infinite-scroll sentinel + status line. */}
+      <div ref={sentinel} className="py-2 text-center text-xs text-fg-subtle">
+        {loadingMore && 'Loading more…'}
+        {!loadingMore && searched && !loading && candidates.length === 0 && 'No matches — try another keyword.'}
+        {!loadingMore && !hasMore && candidates.length > 0 && '— End of results —'}
+        {!loadingMore && hasMore && (
+          <Button size="sm" variant="outline" onClick={() => void loadMore()}>Load more</Button>
+        )}
       </div>
     </section>
   );

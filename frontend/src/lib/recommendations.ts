@@ -15,11 +15,17 @@ export interface Candidate {
   material_flag: string | null;
 }
 
-export async function searchCandidates(keyword: string, limit = 20): Promise<Candidate[]> {
-  const { data } = await api.get<{ data: Candidate[] }>('/admin/blank-recommendations', {
-    params: { keyword, limit },
+export interface CandidatePage {
+  data: Candidate[];
+  page: number;
+  has_more: boolean;
+}
+
+export async function searchCandidates(keyword: string, limit = 20, page = 1): Promise<CandidatePage> {
+  const { data } = await api.get<CandidatePage>('/admin/blank-recommendations', {
+    params: { keyword, limit, page },
   });
-  return data.data;
+  return data;
 }
 
 export async function addBlank(c: Candidate): Promise<void> {

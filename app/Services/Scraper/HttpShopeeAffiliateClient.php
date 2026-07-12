@@ -124,13 +124,16 @@ final class HttpShopeeAffiliateClient implements ScraperClient
      * Richer keyword search for the staff recommender: includes sales, rating,
      * shop and the affiliate offerLink for ranking + public featuring.
      *
+     * Paged for the recommender's infinite scroll: page is 1-based. Callers
+     * decide "has more" from whether a full page (== $limit) came back.
+     *
      * @return array<int, ShopeeCandidate>
      */
-    public function searchCandidates(string $keyword, int $limit = 20): array
+    public function searchCandidates(string $keyword, int $limit = 20, int $page = 1): array
     {
         $query = <<<'GQL'
-        query ($keyword: String!, $limit: Int!) {
-          productOfferV2(keyword: $keyword, limit: $limit) {
+        query ($keyword: String!, $limit: Int!, $page: Int!) {
+          productOfferV2(keyword: $keyword, limit: $limit, page: $page) {
             nodes {
               itemId
               shopId
@@ -147,7 +150,7 @@ final class HttpShopeeAffiliateClient implements ScraperClient
         }
         GQL;
 
-        $result = $this->request($query, ['keyword' => $keyword, 'limit' => $limit]);
+        $result = $this->request($query, ['keyword' => $keyword, 'limit' => $limit, 'page' => max(1, $page)]);
         $nodes = $result['productOfferV2']['nodes'] ?? [];
 
         return collect($nodes)

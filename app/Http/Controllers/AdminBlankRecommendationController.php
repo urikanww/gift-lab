@@ -27,11 +27,16 @@ final class AdminBlankRecommendationController extends Controller
         abort_unless($request->user()->isStaff(), 403);
         $keyword = trim((string) $request->string('keyword'));
         if ($keyword === '') {
-            return response()->json(['data' => []]);
+            return response()->json(['data' => [], 'page' => 1, 'has_more' => false]);
         }
         $limit = max(1, min((int) $request->integer('limit', 20), 50));
+        $page = max(1, (int) $request->integer('page', 1));
 
-        $candidates = collect($client->searchCandidates($keyword, $limit))
+        $raw = $client->searchCandidates($keyword, $limit, $page);
+        // A full page implies Shopee likely has more; a short/empty page is the end.
+        $hasMore = count($raw) === $limit;
+
+        $candidates = collect($raw)
             ->sortByDesc('sales')
             ->map(fn ($c): array => [
                 'source_product_id' => $c->sourceProductId,
@@ -49,7 +54,7 @@ final class AdminBlankRecommendationController extends Controller
             ])
             ->values();
 
-        return response()->json(['data' => $candidates]);
+        return response()->json(['data' => $candidates, 'page' => $page, 'has_more' => $hasMore]);
     }
 
     public function add(Request $request, ScrapedCatalogueService $service): JsonResponse
