@@ -93,6 +93,13 @@ Extract from `ProductAdminPage` into `frontend/src/components/admin/Filters.tsx`
 `ProductAdminPage` is refactored to consume these (behaviour unchanged);
 `CatalogueAdminPage` consumes the same. Pure presentational — testable with Vitest.
 
+### Filter UX (live-apply)
+
+Match `ProductAdminPage`: the modal **live-applies** — each field change writes
+straight to the URL params and refetches, the chips update instantly, and the
+modal's "Done" button only closes (no separate Apply step). "Clear all" resets
+every filter param at once. Consistent behaviour across both admin pages.
+
 ## Data / API changes
 
 - `AdminCatalogueController::index` — accept + apply `blocker, source,
