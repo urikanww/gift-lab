@@ -11,7 +11,7 @@ beforeEach(() => vi.restoreAllMocks());
 function candidate(id: string, name: string): recs.Candidate {
   return {
     source_product_id: id, name, price: 9.9, currency: 'SGD',
-    image_url: null, product_link: `https://shopee.sg/product/${id}`, offer_link: `https://s.shopee.sg/${id}`,
+    image_url: `https://cf.shopee.sg/${id}.jpg`, product_link: `https://shopee.sg/product/${id}`, offer_link: `https://s.shopee.sg/${id}`,
     sales: 300, rating_star: 4.9, shop_name: 'S2', ip_flag: null, material_flag: null,
   };
 }
@@ -44,6 +44,37 @@ it('searches on Enter key', async () => {
 
   await waitFor(() => expect(screen.getByText('Enter Mug')).toBeInTheDocument());
   expect(spy).toHaveBeenCalledWith('mug', expect.any(Number), 1);
+});
+
+it('opens a zoom modal when the card image is clicked', async () => {
+  vi.spyOn(recs, 'searchCandidates').mockResolvedValue({
+    data: [candidate('3_4', 'Zoom Mug')], page: 1, has_more: false,
+  });
+  renderPage();
+
+  await userEvent.type(screen.getByLabelText(/keyword/i), 'mug');
+  await userEvent.click(screen.getByRole('button', { name: /^search$/i }));
+  await waitFor(() => expect(screen.getByText('Zoom Mug')).toBeInTheDocument());
+
+  await userEvent.click(screen.getByRole('button', { name: /zoom image of zoom mug/i }));
+
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Zoom Mug' })).toBeInTheDocument();
+});
+
+it('shows an explanatory tooltip on the action buttons', async () => {
+  vi.spyOn(recs, 'searchCandidates').mockResolvedValue({
+    data: [candidate('3_4', 'Tip Mug')], page: 1, has_more: false,
+  });
+  renderPage();
+
+  await userEvent.type(screen.getByLabelText(/keyword/i), 'mug');
+  await userEvent.click(screen.getByRole('button', { name: /^search$/i }));
+  await waitFor(() => expect(screen.getByText('Tip Mug')).toBeInTheDocument());
+
+  await userEvent.hover(screen.getByRole('button', { name: /add as blank/i }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/import into your catalogue/i);
 });
 
 it('loads the next page and appends results', async () => {

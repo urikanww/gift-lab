@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Badge, Button, Card, Input, useOptionalToast } from '../ui';
+import { Badge, Button, Card, Input, Modal, Tooltip, useOptionalToast } from '../ui';
 import { apiError } from '../lib/api';
 import { addBlank, featureCandidate, searchCandidates, type Candidate } from '../lib/recommendations';
 
@@ -16,6 +16,7 @@ export default function BlankRecommendationPage() {
   const [hasMore, setHasMore] = useState(false);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<Candidate | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
 
   const run = async () => {
@@ -115,7 +116,19 @@ export default function BlankRecommendationPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         {candidates.map((c) => (
           <Card key={c.source_product_id} padding="md" className="flex flex-col gap-2">
-            {c.image_url && <img src={c.image_url} alt="" className="aspect-square w-full rounded object-cover" referrerPolicy="no-referrer" />}
+            {c.image_url && (
+              <button
+                type="button"
+                onClick={() => setZoom(c)}
+                aria-label={`Zoom image of ${c.name}`}
+                className="group relative block cursor-zoom-in overflow-hidden rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <img src={c.image_url} alt="" className="aspect-square w-full object-cover transition-transform duration-200 group-hover:scale-105" referrerPolicy="no-referrer" />
+                <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-ink-900/60 px-1.5 py-0.5 text-[10px] font-medium text-ink-0 opacity-0 transition-opacity group-hover:opacity-100">
+                  Click to zoom
+                </span>
+              </button>
+            )}
             <p className="line-clamp-2 text-sm font-medium text-fg">{c.name}</p>
             <div className="flex flex-wrap gap-1.5 text-xs text-fg-subtle">
               <span className="font-semibold text-fg">{c.currency} {c.price ?? '—'}</span>
@@ -126,9 +139,13 @@ export default function BlankRecommendationPage() {
               {c.ip_flag && <Badge tone="danger" size="sm">IP: {c.ip_flag}</Badge>}
               {c.material_flag && <Badge tone="warning" size="sm">{c.material_flag}</Badge>}
             </div>
-            <div className="mt-auto flex gap-2 pt-2">
-              <Button size="sm" loading={busy === `add:${c.source_product_id}`} onClick={() => void act(c, 'add')}>Add as blank</Button>
-              <Button size="sm" variant="outline" loading={busy === `feature:${c.source_product_id}`} onClick={() => void act(c, 'feature')}>Feature</Button>
+            <div className="mt-auto flex flex-wrap gap-2 pt-2">
+              <Tooltip content="Import into your catalogue to make & sell. Lands in the gate as a draft — complete size/weight, then publish.">
+                <Button size="sm" loading={busy === `add:${c.source_product_id}`} onClick={() => void act(c, 'add')}>Add as blank</Button>
+              </Tooltip>
+              <Tooltip content="Show on the public gift-ideas page as an affiliate link. Customers buy on Shopee; you earn a commission.">
+                <Button size="sm" variant="outline" loading={busy === `feature:${c.source_product_id}`} onClick={() => void act(c, 'feature')}>Feature</Button>
+              </Tooltip>
             </div>
           </Card>
         ))}
@@ -143,6 +160,12 @@ export default function BlankRecommendationPage() {
           <Button size="sm" variant="outline" onClick={() => void loadMore()}>Load more</Button>
         )}
       </div>
+
+      <Modal open={zoom !== null} onClose={() => setZoom(null)} title={zoom?.name ?? ''} size="lg">
+        {zoom?.image_url && (
+          <img src={zoom.image_url} alt={zoom.name} className="mx-auto max-h-[70vh] w-auto rounded object-contain" referrerPolicy="no-referrer" />
+        )}
+      </Modal>
     </section>
   );
 }
