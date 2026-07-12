@@ -26,9 +26,35 @@ interface CatalogueAdminState {
   autoPublish: boolean;
   autoPublishSaving: boolean;
   /** Last filter used, so silent refetches after a mutation keep the view. */
-  lastFilter?: { class?: string; state?: string; search?: string; page?: number; sort?: string; dir?: string };
+  lastFilter?: {
+    class?: string;
+    state?: string;
+    search?: string;
+    page?: number;
+    sort?: string;
+    dir?: string;
+    blocker?: string;
+    source?: string;
+    print_method?: string;
+    category?: string;
+    ip_flagged?: string;
+    missing_link?: string;
+  };
   fetch: (
-    filter?: { class?: string; state?: string; search?: string; page?: number; sort?: string; dir?: string },
+    filter?: {
+      class?: string;
+      state?: string;
+      search?: string;
+      page?: number;
+      sort?: string;
+      dir?: string;
+      blocker?: string;
+      source?: string;
+      print_method?: string;
+      category?: string;
+      ip_flagged?: string;
+      missing_link?: string;
+    },
     opts?: { silent?: boolean },
   ) => Promise<void>;
   publish: (id: number) => Promise<void>;

@@ -21,6 +21,7 @@ const item: AdminCatalogueItem = {
   creator_credit: null,
   image_url: null,
   source_url: 'https://shopee.example/p/1',
+  source_kind: null,
   filament_material: null,
   filament_color: null,
   est_grams: null,

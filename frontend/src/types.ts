@@ -399,6 +399,7 @@ export interface AdminCatalogueItem {
   creator_credit: string | null;
   image_url: string | null;
   source_url: string | null;
+  source_kind: import('./lib/sourceKind').SourceKind | null;
   filament_material: string | null;
   filament_color: string | null;
   est_grams: string | null;

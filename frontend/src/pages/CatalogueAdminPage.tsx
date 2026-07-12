@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { safeHref } from '../lib/safeHref';
-import { Badge, Button, Card, EmptyState, Input, Select, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, Select, Skeleton, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import ProductQuickView from '../components/ProductQuickView';
 import ImageLightbox from '../components/ImageLightbox';
-import { EyeIcon } from '../components/icons';
+import { EyeIcon, FilterIcon } from '../components/icons';
+import { CountPill, FilterChips } from '../components/admin/Filters';
+import { CATEGORIES, categoryLabel } from '../lib/categories';
+import { SOURCE_KIND_LABELS, type SourceKind } from '../lib/sourceKind';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import type { AdminCatalogueItem, ProductClass, PublishState } from '../types';
 
@@ -213,34 +216,69 @@ export default function CatalogueAdminPage() {
 
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
-  const [classFilter, setClassFilter] = useState<'' | ProductClass>('');
-  const [stateFilter, setStateFilter] = useState<'' | PublishState>('');
-  const [search, setSearch] = useState('');
-  // Sort key + direction, mirroring the product admin (Newest = creation date).
-  const [sort, setSort] = useState<'newest' | 'name' | 'base_cost'>('newest');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [captureUrl, setCaptureUrl] = useState('');
   const [capturing, setCapturing] = useState(false);
 
-  // Debounce the search box so keystrokes don't fire a request each character.
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const classFilter = searchParams.get('class') ?? '';
+  const stateFilter = searchParams.get('state') ?? '';
+  const blocker = searchParams.get('blocker') ?? '';
+  const source = searchParams.get('source') ?? '';
+  const printMethod = searchParams.get('print_method') ?? '';
+  const category = searchParams.get('category') ?? '';
+  const ipFlagged = searchParams.get('ip_flagged') === '1';
+  const missingLink = searchParams.get('missing_link') === '1';
+  const sort = (searchParams.get('sort') as 'newest' | 'name' | 'base_cost') || 'newest';
+  const dir: 'asc' | 'desc' = searchParams.get('dir') === 'asc' ? 'asc' : 'desc';
+  const rawPage = Number(searchParams.get('page'));
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const q = searchParams.get('search') ?? '';
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const runFetch = () =>
-    void fetch({
-      class: classFilter || undefined,
-      state: stateFilter || undefined,
-      search: debouncedSearch || undefined,
-      sort,
-      dir,
-      page,
-    });
+  const setParam = (key: string, value: string) => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (value) p.set(key, value);
+        else p.delete(key);
+        if (key !== 'page') p.delete('page');
+        return p;
+      },
+      { replace: true },
+    );
+  };
+  const clearAll = () => setSearchParams({}, { replace: true });
+
+  const [qInput, setQInput] = useState(q);
+  useEffect(() => setQInput(q), [q]);
+  useEffect(() => {
+    if (qInput === q) return;
+    const t = setTimeout(() => setParam('search', qInput.trim()), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qInput]);
+
+  const fetchParams = {
+    class: classFilter || undefined,
+    state: stateFilter || undefined,
+    search: q || undefined,
+    blocker: blocker || undefined,
+    source: source || undefined,
+    print_method: printMethod || undefined,
+    category: category || undefined,
+    ip_flagged: ipFlagged ? '1' : undefined,
+    missing_link: missingLink ? '1' : undefined,
+    sort,
+    dir,
+    page,
+  };
+  const runFetch = () => void fetch(fetchParams);
+  useEffect(() => {
+    void fetch(fetchParams);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetch, classFilter, stateFilter, q, blocker, source, printMethod, category, ipFlagged, missingLink, sort, dir, page]);
 
   const captureBlank = async () => {
     if (!captureUrl.trim() || capturing) return;
@@ -257,24 +295,6 @@ export default function CatalogueAdminPage() {
       setCapturing(false);
     }
   };
-
-  // Changing any filter or the sort resets to page 1 (a re-ordered/filtered set
-  // has different pages).
-  useEffect(() => {
-    setPage(1);
-  }, [classFilter, stateFilter, debouncedSearch, sort, dir]);
-
-  useEffect(() => {
-    void fetch({
-      class: classFilter || undefined,
-      state: stateFilter || undefined,
-      search: debouncedSearch || undefined,
-      sort,
-      dir,
-      page,
-    });
-    // Re-fetch when server-side filters, sort, or the page change.
-  }, [fetch, classFilter, stateFilter, debouncedSearch, sort, dir, page]);
 
   const toggleAutoPublish = async () => {
     const next = !autoPublish;
@@ -311,6 +331,20 @@ export default function CatalogueAdminPage() {
     () => items.filter((it) => it.publish_state === 'READY_TO_APPROVE').map((it) => it.id),
     [items],
   );
+
+  const filterChips = useMemo(() => {
+    const chips: { key: string; label: string }[] = [];
+    if (q) chips.push({ key: 'search', label: `Search: “${q}”` });
+    if (classFilter) chips.push({ key: 'class', label: `Class: ${CLASS_LABELS[classFilter as ProductClass]}` });
+    if (stateFilter) chips.push({ key: 'state', label: `State: ${STATE_LABELS[stateFilter as PublishState]}` });
+    if (blocker) chips.push({ key: 'blocker', label: `Blocker: ${blockerLabel(blocker)}` });
+    if (source) chips.push({ key: 'source', label: `Source: ${SOURCE_KIND_LABELS[source as SourceKind] ?? source}` });
+    if (printMethod) chips.push({ key: 'print_method', label: `Print: ${printMethod}` });
+    if (category) chips.push({ key: 'category', label: `Category: ${categoryLabel(category)}` });
+    if (ipFlagged) chips.push({ key: 'ip_flagged', label: 'IP-flagged' });
+    if (missingLink) chips.push({ key: 'missing_link', label: 'Missing buy link' });
+    return chips;
+  }, [q, classFilter, stateFilter, blocker, source, printMethod, category, ipFlagged, missingLink]);
 
   useEffect(() => {
     setSelected((prev) => {
@@ -412,63 +446,95 @@ export default function CatalogueAdminPage() {
           </div>
         )}
 
-        {/* Filters */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="sm:flex-1">
-            <Input
-              label="Search"
-              type="search"
-              placeholder="Search by product name or creator…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        {/* Filters entry point + chips */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Input
+                label="Search"
+                type="search"
+                placeholder="Search by product name or creator…"
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
+              />
+            </div>
+            <Button variant="outline" onClick={() => setFiltersOpen(true)} className="sm:mb-0.5">
+              <FilterIcon />
+              Filters
+              {filterChips.length > 0 && <CountPill>{filterChips.length}</CountPill>}
+            </Button>
           </div>
-          <div className="sm:w-52">
-            <Select
-              label="Class"
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value as '' | ProductClass)}
-            >
+          <FilterChips chips={filterChips} onRemove={(key) => setParam(key, '')} onClear={clearAll} />
+        </div>
+
+        <Modal
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          title="Filters"
+          size="lg"
+          footer={
+            <>
+              <Button variant="ghost" onClick={clearAll}>Clear all</Button>
+              <Button variant="primary" onClick={() => setFiltersOpen(false)}>Done</Button>
+            </>
+          }
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Select label="Class" value={classFilter} onChange={(e) => setParam('class', e.target.value)}>
               <option value="">All classes</option>
               <option value="SCRAPED_UV">UV Print</option>
               <option value="MODEL_3D">3D Printed</option>
             </Select>
-          </div>
-          <div className="sm:w-52">
-            <Select
-              label="State"
-              value={stateFilter}
-              onChange={(e) => setStateFilter(e.target.value as '' | PublishState)}
-            >
+            <Select label="State" value={stateFilter} onChange={(e) => setParam('state', e.target.value)}>
               <option value="">All states</option>
               <option value="PENDING">Pending</option>
               <option value="READY_TO_APPROVE">Ready to approve</option>
               <option value="PUBLISHED">Published</option>
               <option value="CANNOT_PUBLISH">Cannot publish</option>
             </Select>
-          </div>
-          <div className="sm:w-44">
-            <Select
-              label="Sort by"
-              value={sort}
-              onChange={(e) => setSort(e.target.value as 'newest' | 'name' | 'base_cost')}
-            >
+            <Select label="Blocker" value={blocker} onChange={(e) => setParam('blocker', e.target.value)}>
+              <option value="">Any blocker</option>
+              {Object.entries(BLOCKER_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+            <Select label="Source" value={source} onChange={(e) => setParam('source', e.target.value)}>
+              <option value="">All sources</option>
+              {(Object.keys(SOURCE_KIND_LABELS) as SourceKind[]).map((k) => (
+                <option key={k} value={k}>{SOURCE_KIND_LABELS[k]}</option>
+              ))}
+            </Select>
+            <Select label="Print method" value={printMethod} onChange={(e) => setParam('print_method', e.target.value)}>
+              <option value="">All methods</option>
+              <option value="UV">UV</option>
+              <option value="FDM">FDM</option>
+              <option value="RESIN">Resin</option>
+            </Select>
+            <Select label="Category" value={category} onChange={(e) => setParam('category', e.target.value)}>
+              <option value="">All categories</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.key} value={c.key}>{c.label}</option>
+              ))}
+            </Select>
+            <Select label="Sort by" value={sort} onChange={(e) => setParam('sort', e.target.value)}>
               <option value="newest">Creation date</option>
               <option value="name">Name</option>
               <option value="base_cost">Base cost</option>
             </Select>
+            <Select label="Direction" value={dir} onChange={(e) => setParam('dir', e.target.value)}>
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </Select>
+            <label className="inline-flex items-center gap-2 text-sm text-fg">
+              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={ipFlagged} onChange={(e) => setParam('ip_flagged', e.target.checked ? '1' : '')} />
+              IP-flagged only
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-fg">
+              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={missingLink} onChange={(e) => setParam('missing_link', e.target.checked ? '1' : '')} />
+              Missing buy link
+            </label>
           </div>
-          <div className="flex items-end sm:w-40">
-            <Button
-              variant="outline"
-              className="w-full"
-              aria-label={dir === 'asc' ? 'Ascending - click for descending' : 'Descending - click for ascending'}
-              onClick={() => setDir(dir === 'asc' ? 'desc' : 'asc')}
-            >
-              {dir === 'asc' ? '↑ Ascending' : '↓ Descending'}
-            </Button>
-          </div>
-        </div>
+        </Modal>
       </Motion>
 
       {loading ? (
@@ -652,7 +718,7 @@ export default function CatalogueAdminPage() {
               variant="outline"
               size="sm"
               disabled={loading || meta.current_page <= 1}
-              onClick={() => setPage((n) => Math.max(1, n - 1))}
+              onClick={() => setParam('page', String(Math.max(1, page - 1)))}
             >
               Prev
             </Button>
@@ -660,7 +726,7 @@ export default function CatalogueAdminPage() {
               variant="outline"
               size="sm"
               disabled={loading || meta.current_page >= meta.last_page}
-              onClick={() => setPage((n) => n + 1)}
+              onClick={() => setParam('page', String(page + 1))}
             >
               Next
             </Button>
