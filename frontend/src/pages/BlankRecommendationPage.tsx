@@ -38,8 +38,8 @@ export default function BlankRecommendationPage() {
   const sentinel = useRef<HTMLDivElement | null>(null);
 
   const run = async (sortOverride?: CandidateSort) => {
-    const kw = keyword.trim();
-    if (!kw || loading) return;
+    if (loading) return;
+    const kw = keyword.trim(); // empty = browse Shopee's top-sales feed
     const s = sortOverride ?? sort;
     setLoading(true);
     setSearched(true);
@@ -60,7 +60,7 @@ export default function BlankRecommendationPage() {
   };
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || loading || !hasMore || !active) return;
+    if (loadingMore || loading || !hasMore || !searched) return;
     setLoadingMore(true);
     try {
       const res = await searchCandidates(active, PAGE_SIZE, page + 1, activeSort);
@@ -76,7 +76,13 @@ export default function BlankRecommendationPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [active, activeSort, hasMore, loading, loadingMore, page, toast]);
+  }, [active, activeSort, hasMore, loading, loadingMore, page, searched, toast]);
+
+  // First open: browse Shopee's top sellers so the page isn't empty (no keyword).
+  useEffect(() => {
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-load the next page when the sentinel scrolls into view.
   useEffect(() => {

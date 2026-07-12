@@ -6,7 +6,12 @@ import { ThemeProvider } from '../ui';
 import BlankRecommendationPage from './BlankRecommendationPage';
 import * as recs from '../lib/recommendations';
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  // The page browses Shopee's top sellers on mount; default that to empty so
+  // tests that don't care about the initial load stay quiet.
+  vi.spyOn(recs, 'searchCandidates').mockResolvedValue({ data: [], page: 1, has_more: false });
+});
 
 function candidate(id: string, name: string): recs.Candidate {
   return {
@@ -104,9 +109,12 @@ it('renders a Shopee link to the plain product listing on each card', async () =
 });
 
 it('loads the next page and appends results', async () => {
-  const spy = vi.spyOn(recs, 'searchCandidates')
-    .mockResolvedValueOnce({ data: [candidate('1_1', 'Mug One')], page: 1, has_more: true })
-    .mockResolvedValueOnce({ data: [candidate('2_2', 'Mug Two')], page: 2, has_more: false });
+  // Keyed by page so the mount browse + the search both get page 1 consistently.
+  const spy = vi.spyOn(recs, 'searchCandidates').mockImplementation(async (_kw, _limit, page) =>
+    page === 1
+      ? { data: [candidate('1_1', 'Mug One')], page: 1, has_more: true }
+      : { data: [candidate('2_2', 'Mug Two')], page: 2, has_more: false },
+  );
   renderPage();
 
   await userEvent.type(screen.getByLabelText(/keyword/i), 'mug');

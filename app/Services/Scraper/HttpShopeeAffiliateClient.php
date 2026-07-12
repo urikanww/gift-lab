@@ -131,12 +131,15 @@ final class HttpShopeeAffiliateClient implements ScraperClient
      * 4=Price low→high, 5=Commission high→low. Sorting is done server-side by
      * Shopee so results mirror the affiliate dashboard (no local re-sort).
      *
+     * An empty keyword browses the general offer feed (keyword is omitted), so
+     * the recommender can open on Shopee's top sellers before any search.
+     *
      * @return array<int, ShopeeCandidate>
      */
     public function searchCandidates(string $keyword, int $limit = 20, int $page = 1, int $sortType = 2): array
     {
         $query = <<<'GQL'
-        query ($keyword: String!, $limit: Int!, $page: Int!, $sortType: Int!) {
+        query ($keyword: String, $limit: Int!, $page: Int!, $sortType: Int!) {
           productOfferV2(keyword: $keyword, limit: $limit, page: $page, sortType: $sortType) {
             nodes {
               itemId
@@ -156,7 +159,7 @@ final class HttpShopeeAffiliateClient implements ScraperClient
         GQL;
 
         $result = $this->request($query, [
-            'keyword' => $keyword,
+            'keyword' => $keyword !== '' ? $keyword : null,
             'limit' => $limit,
             'page' => max(1, $page),
             'sortType' => $sortType,

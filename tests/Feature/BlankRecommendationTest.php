@@ -43,6 +43,22 @@ it('preserves Shopee order and exposes flags + commission (staff only)', functio
         ->and(collect($data)->firstWhere('source_product_id', '1_2')['ip_flag'])->toBe('disney');
 });
 
+it('browses the top-sales feed with an empty keyword (first load)', function (): void {
+    fakeCandidates();
+    Sanctum::actingAs($this->staff);
+
+    $res = $this->getJson('/api/admin/blank-recommendations?keyword=')->assertOk();
+    expect($res->json('data'))->toHaveCount(2);
+
+    Http::assertSent(function ($request): bool {
+        $vars = json_decode($request->body(), true)['variables'] ?? [];
+
+        // Keyword sent as null (browse), default sort = sales (2).
+        return array_key_exists('keyword', $vars) && $vars['keyword'] === null
+            && ($vars['sortType'] ?? null) === 2;
+    });
+});
+
 it('maps the sort key to Shopee sortType and forwards it', function (): void {
     fakeCandidates();
     Sanctum::actingAs($this->staff);

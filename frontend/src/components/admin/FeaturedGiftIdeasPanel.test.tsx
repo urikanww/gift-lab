@@ -18,12 +18,16 @@ function renderPanel() {
   render(<ThemeProvider><FeaturedGiftIdeasPanel /></ThemeProvider>);
 }
 
-it('lists featured items with a count', async () => {
+it('lists featured items with a count and links to the plain Shopee listing', async () => {
   vi.spyOn(recs, 'listFeatured').mockResolvedValue([featuredItem(7, 'Featured Mug')]);
   renderPanel();
 
   await waitFor(() => expect(screen.getByText('Featured Mug')).toBeInTheDocument());
   expect(screen.getByText(/featured on gift-ideas \(1\)/i)).toBeInTheDocument();
+
+  const link = screen.getByRole('link', { name: /featured mug/i });
+  expect(link).toHaveAttribute('href', 'https://shopee.sg/p/7'); // plain product_link
+  expect(link).toHaveAttribute('target', '_blank');
 });
 
 it('shows an empty state when nothing is featured', async () => {

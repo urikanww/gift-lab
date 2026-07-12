@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, useOptionalToast } from '../../ui';
 import { apiError } from '../../lib/api';
+import { ShopeeBagIcon } from '../ShopeeLink';
 import { listFeatured, unfeature, type FeaturedItem } from '../../lib/recommendations';
 
 /**
@@ -44,7 +45,7 @@ export default function FeaturedGiftIdeasPanel() {
   if (!loaded) return null; // avoid flashing an empty section before the first load
 
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-6">
+    <section className="flex flex-col gap-3">
       <div>
         <h2 className="font-display text-xl text-fg">Featured on gift-ideas ({items.length})</h2>
         <p className="mt-1 text-sm text-fg-muted">
@@ -58,15 +59,28 @@ export default function FeaturedGiftIdeasPanel() {
         <div className="flex flex-col gap-2">
           {items.map((f) => (
             <div key={f.id} className="flex items-center gap-3 rounded-md border border-border p-2">
-              {f.image_url && <img src={f.image_url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" referrerPolicy="no-referrer" />}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-fg">{f.name}</p>
-                <p className="text-xs text-fg-subtle">
-                  {f.currency} {f.price ?? '—'}
-                  {f.shop_name ? ` · ${f.shop_name}` : ''}
-                  {f.ip_flagged ? ' · hidden (IP-flagged)' : ''}
-                </p>
-              </div>
+              {/* Click the product to open the real Shopee listing (plain link,
+                  self-referral-safe — never the affiliate offer link). */}
+              <a
+                href={f.product_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex min-w-0 flex-1 items-center gap-3"
+                title="Open on Shopee"
+              >
+                {f.image_url && <img src={f.image_url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" referrerPolicy="no-referrer" />}
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1 truncate text-sm font-medium text-fg group-hover:underline">
+                    {f.name}
+                    <ShopeeBagIcon className="h-3.5 w-3.5 shrink-0 text-[#EE4D2D]" />
+                  </p>
+                  <p className="text-xs text-fg-subtle">
+                    {f.currency} {f.price ?? '—'}
+                    {f.shop_name ? ` · ${f.shop_name}` : ''}
+                    {f.ip_flagged ? ' · hidden (IP-flagged)' : ''}
+                  </p>
+                </div>
+              </a>
               {f.ip_flagged && <Badge tone="warning" size="sm">IP</Badge>}
               <Button size="sm" variant="danger" loading={busy === f.id} onClick={() => void remove(f)}>Remove</Button>
             </div>

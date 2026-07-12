@@ -50,6 +50,7 @@ const SORT_KEYS = new Set<SortKey>(['newest', 'most_sold', 'name', 'base_cost', 
 export default function ProductAdminPage() {
   const navigate = useNavigate();
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
+  const [tab, setTab] = useState<'all' | 'featured'>('all');
 
   // URL is the single source of truth for pagination + every filter, so returning
   // from a product detail (back-nav) restores the exact list state.
@@ -211,6 +212,34 @@ export default function ProductAdminPage() {
         </div>
       </header>
 
+      {/* Tabs: catalogue products vs the curated public gift-ideas feed. */}
+      <div className="flex gap-1 border-b border-border" role="tablist" aria-label="Product views">
+        {([
+          { key: 'all', label: 'All products' },
+          { key: 'featured', label: 'Featured on gift-ideas' },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setTab(t.key)}
+            className={
+              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ' +
+              (tab === t.key
+                ? 'border-primary text-fg'
+                : 'border-transparent text-fg-muted hover:text-fg')
+            }
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'featured' ? (
+        <FeaturedGiftIdeasPanel />
+      ) : (
+        <>
       {/* Toolbar: search + a single Filters entry point */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -402,10 +431,8 @@ export default function ProductAdminPage() {
         isSuperadmin={isSuperadmin}
         onClose={() => setQuickViewId(null)}
       />
-
-      {/* Staff management of the public gift-ideas feed (separate entity from
-          products — affiliate links, curated via the blank recommender). */}
-      <FeaturedGiftIdeasPanel />
+        </>
+      )}
     </Motion>
   );
 }

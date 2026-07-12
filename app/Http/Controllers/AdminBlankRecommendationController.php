@@ -34,10 +34,9 @@ final class AdminBlankRecommendationController extends Controller
     public function index(Request $request, HttpShopeeAffiliateClient $client, CandidateScreen $screen): JsonResponse
     {
         abort_unless($request->user()->isStaff(), 403);
+        // Empty keyword is allowed: it browses Shopee's general feed (top sales by
+        // default) so the recommender can open with results before any search.
         $keyword = trim((string) $request->string('keyword'));
-        if ($keyword === '') {
-            return response()->json(['data' => [], 'page' => 1, 'has_more' => false]);
-        }
         $limit = max(1, min((int) $request->integer('limit', 20), 50));
         $page = max(1, (int) $request->integer('page', 1));
         $sortType = self::SORT_TYPES[(string) $request->string('sort')] ?? self::SORT_TYPES['sales'];
