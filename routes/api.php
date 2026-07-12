@@ -52,6 +52,8 @@ Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/catalogue/{key}/model', [CatalogueController::class, 'model']);
     // Relevance-ranked "you might also like" (same category + complements).
     Route::get('/catalogue/{key}/related', [CatalogueController::class, 'related']);
+    // Staff-curated affiliate gift ideas feed (cached; IP-flagged rows excluded).
+    Route::get('/gift-ideas', [\App\Http\Controllers\GiftIdeasController::class, 'index']);
     Route::post('/price-estimate', PriceEstimateController::class);
     // Deadline-aware delivery window (queue-depth aware, ranged/conservative).
     Route::post('/lead-time-estimate', LeadTimeEstimateController::class);
