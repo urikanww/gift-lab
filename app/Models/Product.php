@@ -53,6 +53,7 @@ class Product extends Model
         'allow_backorder',
         'image_url',
         'source_url',
+        'source_kind',
         'source_links',
         'source_product_id',
         'stock_estimate',
@@ -144,6 +145,12 @@ class Product extends Model
             if (is_array($links) && $links !== []) {
                 $product->source_url = \App\Support\SourceLinks::primaryUrl($links);
             }
+        });
+
+        // Keep source_kind in sync with the (possibly just-derived) source_url so
+        // the catalogue gate can filter/display by provenance without URL parsing.
+        static::saving(function (Product $product): void {
+            $product->source_kind = \App\Support\SourceKind::fromUrl($product->source_url);
         });
 
         // Cascade soft-deletes to variants (FK cascadeOnDelete only fires on a
