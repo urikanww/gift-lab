@@ -45,6 +45,14 @@ class ProductFactory extends Factory
             'source_url' => $this->faker->url(),
             'source_product_id' => (string) $this->faker->randomNumber(8),
             'stock_estimate' => $this->faker->numberBetween(0, 500),
+            'source_links' => [[
+                'label' => 'Source',
+                'url' => $this->faker->url(),
+                'kind' => 'marketplace',
+                'price' => $this->faker->randomFloat(2, 2, 40),
+                'currency' => 'SGD',
+                'last_checked' => null,
+            ]],
         ]);
     }
 

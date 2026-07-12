@@ -53,6 +53,7 @@ class Product extends Model
         'allow_backorder',
         'image_url',
         'source_url',
+        'source_links',
         'source_product_id',
         'stock_estimate',
         'is_printable',
@@ -82,6 +83,7 @@ class Product extends Model
             'price_override' => 'decimal:2',
             'min_order_qty' => 'integer',
             'dimensions' => 'array',
+            'source_links' => 'array',
             'print_zone' => 'array',
             'weight' => 'decimal:3',
             'print_method' => PrintMethod::class,
@@ -131,6 +133,16 @@ class Product extends Model
             if ($product->category === null || $product->category === '') {
                 $product->category = app(CategoryClassifier::class)
                     ->classify((string) $product->name, $product->class);
+            }
+        });
+
+        // Keep source_url as the derived primary buy link: first local link,
+        // else the first link. Only when source_links is populated, so legacy
+        // rows (MODEL_3D / manual) that set source_url directly are untouched.
+        static::saving(function (Product $product): void {
+            $links = $product->source_links;
+            if (is_array($links) && $links !== []) {
+                $product->source_url = \App\Support\SourceLinks::primaryUrl($links);
             }
         });
 
