@@ -22,6 +22,15 @@ use Illuminate\Support\Facades\Cache;
  */
 final class AdminBlankRecommendationController extends Controller
 {
+    /** Public sort keys -> Shopee productOfferV2 sortType enum. */
+    private const SORT_TYPES = [
+        'relevance' => 1,
+        'sales' => 2,
+        'price_desc' => 3,
+        'price_asc' => 4,
+        'commission' => 5,
+    ];
+
     public function index(Request $request, HttpShopeeAffiliateClient $client, CandidateScreen $screen): JsonResponse
     {
         abort_unless($request->user()->isStaff(), 403);
@@ -31,13 +40,15 @@ final class AdminBlankRecommendationController extends Controller
         }
         $limit = max(1, min((int) $request->integer('limit', 20), 50));
         $page = max(1, (int) $request->integer('page', 1));
+        $sortType = self::SORT_TYPES[(string) $request->string('sort')] ?? self::SORT_TYPES['sales'];
 
-        $raw = $client->searchCandidates($keyword, $limit, $page);
+        $raw = $client->searchCandidates($keyword, $limit, $page, $sortType);
         // A full page implies Shopee likely has more; a short/empty page is the end.
         $hasMore = count($raw) === $limit;
 
+        // Preserve Shopee's server-side order (matches the affiliate dashboard);
+        // no local re-sort — that only reordered the current page.
         $candidates = collect($raw)
-            ->sortByDesc('sales')
             ->map(fn ($c): array => [
                 'source_product_id' => $c->sourceProductId,
                 'name' => $c->name,
@@ -49,6 +60,7 @@ final class AdminBlankRecommendationController extends Controller
                 'sales' => $c->sales,
                 'rating_star' => $c->ratingStar,
                 'shop_name' => $c->shopName,
+                'commission_rate' => $c->commissionRate,
                 'ip_flag' => $screen->ipFlag($c->name),
                 'material_flag' => $screen->materialFlag($c->name),
             ])

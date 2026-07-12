@@ -22,21 +22,37 @@ beforeEach(function (): void {
 
 function fakeCandidates(): void
 {
+    // Nodes are returned in the order Shopee sorted them (server-side); the
+    // controller preserves this order verbatim.
     Http::fake(['aff.test/*' => Http::response(['data' => ['productOfferV2' => ['nodes' => [
-        ['itemId' => 2, 'shopId' => 1, 'productName' => 'Disney Ceramic Mug', 'priceMin' => '20.00', 'imageUrl' => 'https://i/1', 'productLink' => 'https://shopee.sg/product/1/2', 'offerLink' => 'https://s.shopee.sg/aa', 'sales' => 10, 'ratingStar' => '4.5', 'shopName' => 'S1'],
-        ['itemId' => 4, 'shopId' => 3, 'productName' => 'Plain Ceramic Mug 440ml', 'priceMin' => '9.90', 'imageUrl' => 'https://i/2', 'productLink' => 'https://shopee.sg/product/3/4', 'offerLink' => 'https://s.shopee.sg/bb', 'sales' => 300, 'ratingStar' => '4.9', 'shopName' => 'S2'],
+        ['itemId' => 4, 'shopId' => 3, 'productName' => 'Plain Ceramic Mug 440ml', 'priceMin' => '9.90', 'imageUrl' => 'https://i/2', 'productLink' => 'https://shopee.sg/product/3/4', 'offerLink' => 'https://s.shopee.sg/bb', 'sales' => 300, 'ratingStar' => '4.9', 'shopName' => 'S2', 'commissionRate' => '0.18'],
+        ['itemId' => 2, 'shopId' => 1, 'productName' => 'Disney Ceramic Mug', 'priceMin' => '20.00', 'imageUrl' => 'https://i/1', 'productLink' => 'https://shopee.sg/product/1/2', 'offerLink' => 'https://s.shopee.sg/aa', 'sales' => 10, 'ratingStar' => '4.5', 'shopName' => 'S1', 'commissionRate' => '0.12'],
     ]]]], 200)]);
 }
 
-it('returns ranked candidates with IP/material flags (staff only)', function (): void {
+it('preserves Shopee order and exposes flags + commission (staff only)', function (): void {
     fakeCandidates();
     Sanctum::actingAs($this->staff);
     $res = $this->getJson('/api/admin/blank-recommendations?keyword=mug&limit=10')->assertOk();
 
     $data = $res->json('data');
+    // Order matches Shopee's node order (no local re-sort).
     expect($data[0]['source_product_id'])->toBe('3_4')
         ->and($data[0]['ip_flag'])->toBeNull()
+        ->and($data[0]['commission_rate'])->toBe(0.18)
         ->and(collect($data)->firstWhere('source_product_id', '1_2')['ip_flag'])->toBe('disney');
+});
+
+it('maps the sort key to Shopee sortType and forwards it', function (): void {
+    fakeCandidates();
+    Sanctum::actingAs($this->staff);
+    $this->getJson('/api/admin/blank-recommendations?keyword=mug&sort=commission')->assertOk();
+
+    Http::assertSent(function ($request): bool {
+        $body = json_decode($request->body(), true);
+
+        return ($body['variables']['sortType'] ?? null) === 5; // commission = 5
+    });
 });
 
 it('reports has_more true on a full page and forwards the page number', function (): void {

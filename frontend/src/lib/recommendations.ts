@@ -11,9 +11,12 @@ export interface Candidate {
   sales: number;
   rating_star: number | null;
   shop_name: string | null;
+  commission_rate: number | null;
   ip_flag: string | null;
   material_flag: string | null;
 }
+
+export type CandidateSort = 'relevance' | 'sales' | 'commission' | 'price_asc' | 'price_desc';
 
 export interface CandidatePage {
   data: Candidate[];
@@ -21,9 +24,14 @@ export interface CandidatePage {
   has_more: boolean;
 }
 
-export async function searchCandidates(keyword: string, limit = 20, page = 1): Promise<CandidatePage> {
+export async function searchCandidates(
+  keyword: string,
+  limit = 20,
+  page = 1,
+  sort: CandidateSort = 'sales',
+): Promise<CandidatePage> {
   const { data } = await api.get<CandidatePage>('/admin/blank-recommendations', {
-    params: { keyword, limit, page },
+    params: { keyword, limit, page, sort },
   });
   return data;
 }

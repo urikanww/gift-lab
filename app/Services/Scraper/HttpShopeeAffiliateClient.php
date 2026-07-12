@@ -127,13 +127,17 @@ final class HttpShopeeAffiliateClient implements ScraperClient
      * Paged for the recommender's infinite scroll: page is 1-based. Callers
      * decide "has more" from whether a full page (== $limit) came back.
      *
+     * sortType maps to Shopee's enum: 1=Relevance, 2=Sales, 3=Price high→low,
+     * 4=Price low→high, 5=Commission high→low. Sorting is done server-side by
+     * Shopee so results mirror the affiliate dashboard (no local re-sort).
+     *
      * @return array<int, ShopeeCandidate>
      */
-    public function searchCandidates(string $keyword, int $limit = 20, int $page = 1): array
+    public function searchCandidates(string $keyword, int $limit = 20, int $page = 1, int $sortType = 2): array
     {
         $query = <<<'GQL'
-        query ($keyword: String!, $limit: Int!, $page: Int!) {
-          productOfferV2(keyword: $keyword, limit: $limit, page: $page) {
+        query ($keyword: String!, $limit: Int!, $page: Int!, $sortType: Int!) {
+          productOfferV2(keyword: $keyword, limit: $limit, page: $page, sortType: $sortType) {
             nodes {
               itemId
               shopId
@@ -145,12 +149,18 @@ final class HttpShopeeAffiliateClient implements ScraperClient
               sales
               ratingStar
               shopName
+              commissionRate
             }
           }
         }
         GQL;
 
-        $result = $this->request($query, ['keyword' => $keyword, 'limit' => $limit, 'page' => max(1, $page)]);
+        $result = $this->request($query, [
+            'keyword' => $keyword,
+            'limit' => $limit,
+            'page' => max(1, $page),
+            'sortType' => $sortType,
+        ]);
         $nodes = $result['productOfferV2']['nodes'] ?? [];
 
         return collect($nodes)
@@ -166,6 +176,7 @@ final class HttpShopeeAffiliateClient implements ScraperClient
                 sales: (int) ($n['sales'] ?? 0),
                 ratingStar: isset($n['ratingStar']) && is_numeric($n['ratingStar']) ? (float) $n['ratingStar'] : null,
                 shopName: isset($n['shopName']) ? (string) $n['shopName'] : null,
+                commissionRate: isset($n['commissionRate']) && is_numeric($n['commissionRate']) ? (float) $n['commissionRate'] : null,
             ))
             ->values()
             ->all();

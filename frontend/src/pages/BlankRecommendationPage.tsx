@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Badge, Button, Card, Input, Modal, Tooltip, useOptionalToast } from '../ui';
+import { Badge, Button, Card, Input, Modal, Select, Tooltip, useOptionalToast } from '../ui';
 import { apiError } from '../lib/api';
-import { addBlank, featureCandidate, searchCandidates, type Candidate } from '../lib/recommendations';
+import { addBlank, featureCandidate, searchCandidates, type Candidate, type CandidateSort } from '../lib/recommendations';
 
 const PAGE_SIZE = 20;
+
+const SORT_OPTIONS: { value: CandidateSort; label: string }[] = [
+  { value: 'relevance', label: 'Relevance' },
+  { value: 'sales', label: 'Top sales' },
+  { value: 'commission', label: 'Commission %' },
+  { value: 'price_asc', label: 'Price: low → high' },
+  { value: 'price_desc', label: 'Price: high → low' },
+];
 
 export default function BlankRecommendationPage() {
   const { toast } = useOptionalToast();
   const [keyword, setKeyword] = useState('');
+  const [sort, setSort] = useState<CandidateSort>('sales');
   const [active, setActive] = useState(''); // the keyword the current results belong to
+  const [activeSort, setActiveSort] = useState<CandidateSort>('sales'); // sort the current results use
   const [loading, setLoading] = useState(false); // initial search
   const [loadingMore, setLoadingMore] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -19,17 +29,19 @@ export default function BlankRecommendationPage() {
   const [zoom, setZoom] = useState<Candidate | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
 
-  const run = async () => {
+  const run = async (sortOverride?: CandidateSort) => {
     const kw = keyword.trim();
     if (!kw || loading) return;
+    const s = sortOverride ?? sort;
     setLoading(true);
     setSearched(true);
     try {
-      const res = await searchCandidates(kw, PAGE_SIZE, 1);
+      const res = await searchCandidates(kw, PAGE_SIZE, 1, s);
       setCandidates(res.data);
       setPage(res.page);
       setHasMore(res.has_more);
       setActive(kw);
+      setActiveSort(s);
     } catch (err) {
       setCandidates([]);
       setHasMore(false);
@@ -43,7 +55,7 @@ export default function BlankRecommendationPage() {
     if (loadingMore || loading || !hasMore || !active) return;
     setLoadingMore(true);
     try {
-      const res = await searchCandidates(active, PAGE_SIZE, page + 1);
+      const res = await searchCandidates(active, PAGE_SIZE, page + 1, activeSort);
       setCandidates((prev) => {
         const seen = new Set(prev.map((c) => c.source_product_id));
         return [...prev, ...res.data.filter((c) => !seen.has(c.source_product_id))];
@@ -56,7 +68,7 @@ export default function BlankRecommendationPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [active, hasMore, loading, loadingMore, page, toast]);
+  }, [active, activeSort, hasMore, loading, loadingMore, page, toast]);
 
   // Auto-load the next page when the sentinel scrolls into view.
   useEffect(() => {
@@ -95,8 +107,8 @@ export default function BlankRecommendationPage() {
         </p>
       </div>
 
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[12rem] flex-1">
           <Input
             label="Keyword"
             value={keyword}
@@ -108,6 +120,18 @@ export default function BlankRecommendationPage() {
               }
             }}
             placeholder="ceramic mug, acrylic keychain…"
+          />
+        </div>
+        <div className="w-44">
+          <Select
+            label="Sort by"
+            options={SORT_OPTIONS}
+            value={sort}
+            onChange={(e) => {
+              const s = e.target.value as CandidateSort;
+              setSort(s);
+              if (active) void run(s);
+            }}
           />
         </div>
         <Button loading={loading} onClick={() => void run()}>Search</Button>
@@ -134,6 +158,9 @@ export default function BlankRecommendationPage() {
               <span className="font-semibold text-fg">{c.currency} {c.price ?? '—'}</span>
               <span>{`· ${c.sales} sold`}</span>
               {c.rating_star != null && <span>· ★ {c.rating_star}</span>}
+              {c.commission_rate != null && (
+                <span className="font-medium text-primary">{`· ${Math.round(c.commission_rate * 100)}% comm`}</span>
+              )}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {c.ip_flag && <Badge tone="danger" size="sm">IP: {c.ip_flag}</Badge>}

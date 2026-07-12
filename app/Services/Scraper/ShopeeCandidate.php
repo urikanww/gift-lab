@@ -23,5 +23,7 @@ final readonly class ShopeeCandidate
         public int $sales,
         public ?float $ratingStar,
         public ?string $shopName,
+        /** Max commission rate as a fraction, e.g. 0.18 = 18%. */
+        public ?float $commissionRate = null,
     ) {}
 }
