@@ -162,6 +162,23 @@ class Product extends Model
     }
 
     /**
+     * Worst-case blank cost = the highest price across source_links, used to
+     * quote B2C off the priciest source so per-order retail drift can't turn a
+     * job unprofitable. Null when no link carries a price.
+     */
+    public function worstCaseBlankCost(): ?float
+    {
+        $prices = [];
+        foreach ((array) $this->source_links as $link) {
+            if (isset($link['price']) && is_numeric($link['price'])) {
+                $prices[] = (float) $link['price'];
+            }
+        }
+
+        return $prices === [] ? null : max($prices);
+    }
+
+    /**
      * @return HasMany<Variant>
      */
     public function variants(): HasMany

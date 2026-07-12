@@ -37,3 +37,20 @@ it('casts source_links to an array', function (): void {
 
     expect($product->fresh()->source_links)->toBeArray()->toHaveCount(1);
 });
+
+it('returns the highest link price as worst-case blank cost', function (): void {
+    $product = new Product([
+        'class' => 'SCRAPED_UV',
+        'source_links' => [
+            ['label' => 'A', 'url' => 'https://a.sg/1', 'kind' => 'local', 'price' => 12.0, 'currency' => 'SGD', 'last_checked' => null],
+            ['label' => 'B', 'url' => 'https://b.sg/1', 'kind' => 'marketplace', 'price' => 15.5, 'currency' => 'SGD', 'last_checked' => null],
+        ],
+    ]);
+
+    expect($product->worstCaseBlankCost())->toBe(15.5);
+});
+
+it('returns null worst-case cost when no links have prices', function (): void {
+    $product = new Product(['class' => 'SCRAPED_UV', 'source_links' => []]);
+    expect($product->worstCaseBlankCost())->toBeNull();
+});
