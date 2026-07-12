@@ -165,6 +165,9 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::get('/admin/supplier-reorders', [AdminReorderController::class, 'index']);
     Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive']);
 
+    // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
+    Route::post('/admin/blank-candidates/capture', [\App\Http\Controllers\AdminBlankCaptureController::class, 'store']);
+
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
