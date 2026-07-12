@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\GiftIdeasController;
 use App\Models\GiftIdeaFeature;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 
@@ -69,4 +71,44 @@ it('features + unfeatures a candidate for the public page', function (): void {
 
     $this->deleteJson("/api/admin/blank-recommendations/feature/{$f->id}")->assertOk();
     expect(GiftIdeaFeature::where('source_product_id', '3_4')->exists())->toBeFalse();
+});
+
+it('busts the public gift-ideas cache when featuring', function (): void {
+    Sanctum::actingAs($this->staff);
+
+    Cache::put(GiftIdeasController::CACHE_KEY, ['stale'], now()->addHour());
+    $this->postJson('/api/admin/blank-recommendations/feature', [
+        'source_product_id' => '3_4', 'name' => 'Plain Ceramic Mug 440ml', 'price' => 9.90,
+        'image_url' => 'https://i/2', 'offer_link' => 'https://s.shopee.sg/bb',
+        'product_link' => 'https://shopee.sg/product/3/4', 'shop_name' => 'S2', 'ip_flagged' => false,
+    ])->assertOk();
+
+    expect(Cache::has(GiftIdeasController::CACHE_KEY))->toBeFalse();
+
+    $f = GiftIdeaFeature::where('source_product_id', '3_4')->firstOrFail();
+
+    Cache::put(GiftIdeasController::CACHE_KEY, ['stale'], now()->addHour());
+    $this->deleteJson("/api/admin/blank-recommendations/feature/{$f->id}")->assertOk();
+
+    expect(Cache::has(GiftIdeasController::CACHE_KEY))->toBeFalse();
+});
+
+it('preserves created_by when a feature is updated', function (): void {
+    $originalCreator = User::factory()->staffAdmin()->create();
+    $feature = GiftIdeaFeature::factory()->create([
+        'source_product_id' => 'KEEP_1',
+        'name' => 'Original Name',
+        'created_by' => $originalCreator->id,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson('/api/admin/blank-recommendations/feature', [
+        'source_product_id' => 'KEEP_1', 'name' => 'Updated Name', 'price' => 12.50,
+        'image_url' => 'https://i/3', 'offer_link' => 'https://s.shopee.sg/cc',
+        'product_link' => 'https://shopee.sg/product/keep/1', 'shop_name' => 'S3', 'ip_flagged' => false,
+    ])->assertOk();
+
+    $feature->refresh();
+    expect($feature->created_by)->toBe($originalCreator->id)
+        ->and($feature->name)->toBe('Updated Name');
 });

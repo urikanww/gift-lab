@@ -13,6 +13,7 @@ use App\Support\SourceLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Staff blank recommender: keyword -> ranked Shopee affiliate candidates ->
@@ -98,16 +99,18 @@ final class AdminBlankRecommendationController extends Controller
             'ip_flagged' => ['nullable', 'boolean'],
         ]);
 
-        $feature = GiftIdeaFeature::updateOrCreate(
-            ['source_product_id' => $v['source_product_id']],
-            [
-                'name' => $v['name'], 'price' => $v['price'] ?? null,
-                'image_url' => $v['image_url'] ?? null, 'offer_link' => $v['offer_link'],
-                'product_link' => $v['product_link'], 'shop_name' => $v['shop_name'] ?? null,
-                'ip_flagged' => (bool) ($v['ip_flagged'] ?? false),
-                'created_by' => $request->user()->id,
-            ],
-        );
+        $feature = GiftIdeaFeature::firstOrNew(['source_product_id' => $v['source_product_id']]);
+        if (! $feature->exists) {
+            $feature->created_by = $request->user()->id;
+        }
+        $feature->fill([
+            'name' => $v['name'], 'price' => $v['price'] ?? null,
+            'image_url' => $v['image_url'] ?? null, 'offer_link' => $v['offer_link'],
+            'product_link' => $v['product_link'], 'shop_name' => $v['shop_name'] ?? null,
+            'ip_flagged' => (bool) ($v['ip_flagged'] ?? false),
+        ])->save();
+
+        Cache::forget(GiftIdeasController::CACHE_KEY);
 
         return response()->json(['data' => ['id' => $feature->id]]);
     }
@@ -116,6 +119,8 @@ final class AdminBlankRecommendationController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
         $feature->delete();
+
+        Cache::forget(GiftIdeasController::CACHE_KEY);
 
         return response()->json(['data' => ['ok' => true]]);
     }
