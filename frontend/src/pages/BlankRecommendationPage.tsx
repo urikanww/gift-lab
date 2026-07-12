@@ -5,12 +5,9 @@ import { ShopeeLink } from '../components/ShopeeLink';
 import {
   addBlank,
   featureCandidate,
-  listFeatured,
   searchCandidates,
-  unfeature,
   type Candidate,
   type CandidateSort,
-  type FeaturedItem,
 } from '../lib/recommendations';
 
 const PAGE_SIZE = 20;
@@ -38,20 +35,7 @@ export default function BlankRecommendationPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Candidate | null>(null);
   const [help, setHelp] = useState(false);
-  const [featured, setFeatured] = useState<FeaturedItem[]>([]);
   const sentinel = useRef<HTMLDivElement | null>(null);
-
-  const refreshFeatured = useCallback(async () => {
-    try {
-      setFeatured(await listFeatured());
-    } catch {
-      /* non-critical: the management panel just stays empty */
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshFeatured();
-  }, [refreshFeatured]);
 
   const run = async (sortOverride?: CandidateSort) => {
     const kw = keyword.trim();
@@ -113,26 +97,10 @@ export default function BlankRecommendationPage() {
     setBusy(`${kind}:${c.source_product_id}`);
     try {
       if (kind === 'add') await addBlank(c);
-      else {
-        await featureCandidate(c);
-        void refreshFeatured();
-      }
+      else await featureCandidate(c);
       toast({ title: kind === 'add' ? 'Added to gate' : 'Featured', description: c.name, tone: 'success' });
     } catch (err) {
       toast({ title: 'Action failed', description: apiError(err), tone: 'danger' });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const remove = async (item: FeaturedItem) => {
-    setBusy(`remove:${item.id}`);
-    try {
-      await unfeature(item.id);
-      setFeatured((prev) => prev.filter((f) => f.id !== item.id));
-      toast({ title: 'Removed from gift-ideas', description: item.name, tone: 'success' });
-    } catch (err) {
-      toast({ title: 'Remove failed', description: apiError(err), tone: 'danger' });
     } finally {
       setBusy(null);
     }
@@ -237,30 +205,6 @@ export default function BlankRecommendationPage() {
           <Button size="sm" variant="outline" onClick={() => void loadMore()}>Load more</Button>
         )}
       </div>
-
-      {/* Featured-on-gift-ideas management panel. */}
-      {featured.length > 0 && (
-        <div className="flex flex-col gap-3 border-t border-border pt-4">
-          <h2 className="font-display text-xl text-fg">Featured on gift-ideas ({featured.length})</h2>
-          <div className="flex flex-col gap-2">
-            {featured.map((f) => (
-              <div key={f.id} className="flex items-center gap-3 rounded-md border border-border p-2">
-                {f.image_url && <img src={f.image_url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" referrerPolicy="no-referrer" />}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-fg">{f.name}</p>
-                  <p className="text-xs text-fg-subtle">
-                    {f.currency} {f.price ?? '—'}
-                    {f.shop_name ? ` · ${f.shop_name}` : ''}
-                    {f.ip_flagged ? ' · hidden (IP-flagged)' : ''}
-                  </p>
-                </div>
-                {f.ip_flagged && <Badge tone="warning" size="sm">IP</Badge>}
-                <Button size="sm" variant="danger" loading={busy === `remove:${f.id}`} onClick={() => void remove(f)}>Remove</Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <Modal open={zoom !== null} onClose={() => setZoom(null)} title={zoom?.name ?? ''} size="lg">
         {zoom?.image_url && (

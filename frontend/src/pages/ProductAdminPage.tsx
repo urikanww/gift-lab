@@ -11,6 +11,7 @@ import { classLabel, IpRiskBadge, ItemThumb, LicenseTierBadge, PublishBadge } fr
 import Pagination from '../components/Pagination';
 import ProductQuickView from '../components/ProductQuickView';
 import ProductCsvImport from '../components/ProductCsvImport';
+import FeaturedGiftIdeasPanel from '../components/admin/FeaturedGiftIdeasPanel';
 import { EyeIcon, FilterIcon, SearchIcon } from '../components/icons';
 import { CountPill, FilterChips } from '../components/admin/Filters';
 
@@ -401,6 +402,10 @@ export default function ProductAdminPage() {
         isSuperadmin={isSuperadmin}
         onClose={() => setQuickViewId(null)}
       />
+
+      {/* Staff management of the public gift-ideas feed (separate entity from
+          products — affiliate links, curated via the blank recommender). */}
+      <FeaturedGiftIdeasPanel />
     </Motion>
   );
 }
