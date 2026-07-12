@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
 import api, { apiError, ensureCsrf } from '../lib/api';
@@ -394,6 +394,9 @@ export default function CatalogueAdminPage() {
             <p className="mt-1 max-w-xl text-sm text-fg-muted">
               Review scraped-UV and 3D items. Publish complete, licence-cleared pieces; pull drifted ones.
             </p>
+            <Link to="/blank-recommendations" className="mt-2 inline-block text-sm text-primary underline">
+              Find blanks ↗
+            </Link>
           </div>
           {isSuperadmin && (
             <label className="inline-flex cursor-pointer select-none items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg shadow-xs">

@@ -121,6 +121,54 @@ final class HttpShopeeAffiliateClient implements ScraperClient
     }
 
     /**
+     * Richer keyword search for the staff recommender: includes sales, rating,
+     * shop and the affiliate offerLink for ranking + public featuring.
+     *
+     * @return array<int, ShopeeCandidate>
+     */
+    public function searchCandidates(string $keyword, int $limit = 20): array
+    {
+        $query = <<<'GQL'
+        query ($keyword: String!, $limit: Int!) {
+          productOfferV2(keyword: $keyword, limit: $limit) {
+            nodes {
+              itemId
+              shopId
+              productName
+              priceMin
+              imageUrl
+              productLink
+              offerLink
+              sales
+              ratingStar
+              shopName
+            }
+          }
+        }
+        GQL;
+
+        $result = $this->request($query, ['keyword' => $keyword, 'limit' => $limit]);
+        $nodes = $result['productOfferV2']['nodes'] ?? [];
+
+        return collect($nodes)
+            ->filter(fn ($n): bool => is_array($n) && ! empty($n['itemId']) && ! empty($n['shopId']))
+            ->map(fn (array $n): ShopeeCandidate => new ShopeeCandidate(
+                sourceProductId: "{$n['shopId']}_{$n['itemId']}",
+                name: (string) ($n['productName'] ?? ''),
+                price: isset($n['priceMin']) && is_numeric($n['priceMin']) ? (float) $n['priceMin'] : null,
+                currency: 'SGD',
+                imageUrl: isset($n['imageUrl']) ? (string) $n['imageUrl'] : null,
+                productLink: (string) ($n['productLink'] ?? ''),
+                offerLink: (string) ($n['offerLink'] ?? ''),
+                sales: (int) ($n['sales'] ?? 0),
+                ratingStar: isset($n['ratingStar']) && is_numeric($n['ratingStar']) ? (float) $n['ratingStar'] : null,
+                shopName: isset($n['shopName']) ? (string) $n['shopName'] : null,
+            ))
+            ->values()
+            ->all();
+    }
+
+    /**
      * @param  array<string, mixed>  $node
      */
     private function toData(array $node, string $sourceProductId): ScrapedProductData

@@ -52,6 +52,8 @@ Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/catalogue/{key}/model', [CatalogueController::class, 'model']);
     // Relevance-ranked "you might also like" (same category + complements).
     Route::get('/catalogue/{key}/related', [CatalogueController::class, 'related']);
+    // Staff-curated affiliate gift ideas feed (cached; IP-flagged rows excluded).
+    Route::get('/gift-ideas', [\App\Http\Controllers\GiftIdeasController::class, 'index']);
     Route::post('/price-estimate', PriceEstimateController::class);
     // Deadline-aware delivery window (queue-depth aware, ranged/conservative).
     Route::post('/lead-time-estimate', LeadTimeEstimateController::class);
@@ -167,6 +169,12 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
 
     // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
     Route::post('/admin/blank-candidates/capture', [\App\Http\Controllers\AdminBlankCaptureController::class, 'store']);
+
+    // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
+    Route::get('/admin/blank-recommendations', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'index']);
+    Route::post('/admin/blank-recommendations/add', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'add']);
+    Route::post('/admin/blank-recommendations/feature', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'feature']);
+    Route::delete('/admin/blank-recommendations/feature/{feature}', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'unfeature']);
 
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.

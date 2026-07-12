@@ -29,6 +29,7 @@ const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const TrackPage = lazy(() => import('./pages/TrackPage'));
 const TrackViewPage = lazy(() => import('./pages/TrackViewPage'));
 const BrandKitPage = lazy(() => import('./pages/BrandKitPage'));
+const GiftIdeasPage = lazy(() => import('./pages/GiftIdeasPage'));
 const KitBuilderPage = lazy(() => import('./pages/KitBuilderPage'));
 const QuoteListPage = lazy(() => import('./pages/QuoteListPage'));
 const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
@@ -36,6 +37,7 @@ const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
 const ReorderBuyListPage = lazy(() => import('./pages/ReorderBuyListPage'));
 const CatalogueAdminPage = lazy(() => import('./pages/CatalogueAdminPage'));
+const BlankRecommendationPage = lazy(() => import('./pages/BlankRecommendationPage'));
 const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
 const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage'));
 const ProductAdminDetailPage = lazy(() => import('./pages/ProductAdminDetailPage'));
@@ -146,6 +148,7 @@ export default function App() {
             <Route path="track" element={<TrackPage />} />
             <Route path="track/view" element={<TrackViewPage />} />
             <Route path="kits" element={<KitBuilderPage />} />
+            <Route path="gift-ideas" element={<GiftIdeasPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
             <Route path="catalogue" element={<Navigate to="/products" replace />} />
@@ -176,6 +179,7 @@ export default function App() {
               <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
               <Route path="reorders" element={<ProtectedRoute staffOnly><ReorderBuyListPage /></ProtectedRoute>} />
               <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
+              <Route path="blank-recommendations" element={<ProtectedRoute staffOnly><BlankRecommendationPage /></ProtectedRoute>} />
               <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
