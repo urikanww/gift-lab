@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { Button, Modal, useToast } from '../ui';
+import { UploadIcon } from './icons';
 
 /** CSV columns the importer recognises — also the downloadable template header. */
 const TEMPLATE_COLUMNS = [
@@ -85,8 +86,8 @@ export default function ProductCsvImport({ onImported }: { onImported: () => voi
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        Import CSV
+      <Button variant="outline" onClick={() => setOpen(true)} aria-label="Import CSV" title="Import products from CSV">
+        <UploadIcon />
       </Button>
 
       <Modal

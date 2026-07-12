@@ -11,7 +11,7 @@ import { classLabel, IpRiskBadge, ItemThumb, LicenseTierBadge, PublishBadge } fr
 import Pagination from '../components/Pagination';
 import ProductQuickView from '../components/ProductQuickView';
 import ProductCsvImport from '../components/ProductCsvImport';
-import { EyeIcon, FilterIcon } from '../components/icons';
+import { EyeIcon, FilterIcon, SearchIcon } from '../components/icons';
 import { CountPill, FilterChips } from '../components/admin/Filters';
 
 // Human labels for filter chips.
@@ -203,6 +203,9 @@ export default function ProductAdminPage() {
           <LinkButton to="/catalogue-admin" variant="outline">
             Catalogue gate
             {!!gateCount && <CountPill>{gateCount}</CountPill>}
+          </LinkButton>
+          <LinkButton to="/blank-recommendations" variant="outline" aria-label="Find blanks" title="Find blanks on Shopee">
+            <SearchIcon />
           </LinkButton>
         </div>
       </header>
