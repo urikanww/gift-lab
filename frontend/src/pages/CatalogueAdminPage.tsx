@@ -251,6 +251,47 @@ export default function CatalogueAdminPage() {
   };
   const clearAll = () => setSearchParams({}, { replace: true });
 
+  // Filters modal stages selections locally and commits them on Apply, so picking
+  // a dropdown no longer fires the API on every change (one fetch per Apply).
+  const currentFilters = (): Record<string, string> => ({
+    class: classFilter,
+    state: stateFilter,
+    blocker,
+    source,
+    print_method: printMethod,
+    category,
+    sort,
+    dir,
+    ip_flagged: ipFlagged ? '1' : '',
+    missing_link: missingLink ? '1' : '',
+  });
+  const [draft, setDraft] = useState<Record<string, string>>(currentFilters);
+  const setDraftKey = (key: string, value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const openFilters = () => {
+    setDraft(currentFilters());
+    setFiltersOpen(true);
+  };
+  const applyDraft = (next: Record<string, string>) => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        for (const k of Object.keys(next)) {
+          if (next[k]) p.set(k, next[k]);
+          else p.delete(k);
+        }
+        p.delete('page');
+        return p;
+      },
+      { replace: true },
+    );
+    setFiltersOpen(false);
+  };
+  const clearDraft = () => {
+    const cleared = { ...currentFilters(), class: '', state: '', blocker: '', source: '', print_method: '', category: '', sort: 'newest', dir: 'desc', ip_flagged: '', missing_link: '' };
+    setDraft(cleared);
+    applyDraft(cleared);
+  };
+
   const [qInput, setQInput] = useState(q);
   useEffect(() => setQInput(q), [q]);
   useEffect(() => {
@@ -458,7 +499,7 @@ export default function CatalogueAdminPage() {
                 onChange={(e) => setQInput(e.target.value)}
               />
             </div>
-            <Button variant="outline" onClick={() => setFiltersOpen(true)} className="sm:mb-0.5">
+            <Button variant="outline" onClick={openFilters} className="sm:mb-0.5">
               <FilterIcon />
               Filters
               {filterChips.length > 0 && <CountPill>{filterChips.length}</CountPill>}
@@ -474,63 +515,63 @@ export default function CatalogueAdminPage() {
           size="lg"
           footer={
             <>
-              <Button variant="ghost" onClick={clearAll}>Clear all</Button>
-              <Button variant="primary" onClick={() => setFiltersOpen(false)}>Done</Button>
+              <Button variant="ghost" onClick={clearDraft}>Clear all</Button>
+              <Button variant="primary" onClick={() => applyDraft(draft)}>Apply</Button>
             </>
           }
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Select label="Class" value={classFilter} onChange={(e) => setParam('class', e.target.value)}>
+            <Select label="Class" value={draft.class} onChange={(e) => setDraftKey('class', e.target.value)}>
               <option value="">All classes</option>
               <option value="SCRAPED_UV">UV Print</option>
               <option value="MODEL_3D">3D Printed</option>
             </Select>
-            <Select label="State" value={stateFilter} onChange={(e) => setParam('state', e.target.value)}>
+            <Select label="State" value={draft.state} onChange={(e) => setDraftKey('state', e.target.value)}>
               <option value="">All states</option>
               <option value="PENDING">Pending</option>
               <option value="READY_TO_APPROVE">Ready to approve</option>
               <option value="PUBLISHED">Published</option>
               <option value="CANNOT_PUBLISH">Cannot publish</option>
             </Select>
-            <Select label="Blocker" value={blocker} onChange={(e) => setParam('blocker', e.target.value)}>
+            <Select label="Blocker" value={draft.blocker} onChange={(e) => setDraftKey('blocker', e.target.value)}>
               <option value="">Any blocker</option>
               {Object.entries(BLOCKER_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </Select>
-            <Select label="Source" value={source} onChange={(e) => setParam('source', e.target.value)}>
+            <Select label="Source" value={draft.source} onChange={(e) => setDraftKey('source', e.target.value)}>
               <option value="">All sources</option>
               {(Object.keys(SOURCE_KIND_LABELS) as SourceKind[]).map((k) => (
                 <option key={k} value={k}>{SOURCE_KIND_LABELS[k]}</option>
               ))}
             </Select>
-            <Select label="Print method" value={printMethod} onChange={(e) => setParam('print_method', e.target.value)}>
+            <Select label="Print method" value={draft.print_method} onChange={(e) => setDraftKey('print_method', e.target.value)}>
               <option value="">All methods</option>
               <option value="UV">UV</option>
               <option value="FDM">FDM</option>
               <option value="RESIN">Resin</option>
             </Select>
-            <Select label="Category" value={category} onChange={(e) => setParam('category', e.target.value)}>
+            <Select label="Category" value={draft.category} onChange={(e) => setDraftKey('category', e.target.value)}>
               <option value="">All categories</option>
               {CATEGORIES.map((c) => (
                 <option key={c.key} value={c.key}>{c.label}</option>
               ))}
             </Select>
-            <Select label="Sort by" value={sort} onChange={(e) => setParam('sort', e.target.value)}>
+            <Select label="Sort by" value={draft.sort} onChange={(e) => setDraftKey('sort', e.target.value)}>
               <option value="newest">Creation date</option>
               <option value="name">Name</option>
               <option value="base_cost">Base cost</option>
             </Select>
-            <Select label="Direction" value={dir} onChange={(e) => setParam('dir', e.target.value)}>
+            <Select label="Direction" value={draft.dir} onChange={(e) => setDraftKey('dir', e.target.value)}>
               <option value="desc">Descending</option>
               <option value="asc">Ascending</option>
             </Select>
             <label className="inline-flex items-center gap-2 text-sm text-fg">
-              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={ipFlagged} onChange={(e) => setParam('ip_flagged', e.target.checked ? '1' : '')} />
+              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={draft.ip_flagged === '1'} onChange={(e) => setDraftKey('ip_flagged', e.target.checked ? '1' : '')} />
               IP-flagged only
             </label>
             <label className="inline-flex items-center gap-2 text-sm text-fg">
-              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={missingLink} onChange={(e) => setParam('missing_link', e.target.checked ? '1' : '')} />
+              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={draft.missing_link === '1'} onChange={(e) => setDraftKey('missing_link', e.target.checked ? '1' : '')} />
               Missing buy link
             </label>
           </div>
