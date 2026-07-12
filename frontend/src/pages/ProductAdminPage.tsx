@@ -189,6 +189,51 @@ export default function ProductAdminPage() {
     setQInput('');
   };
 
+  // Filters modal stages selections locally and commits them on Apply, so picking
+  // a dropdown no longer fires the API on every change (one fetch per Apply).
+  const currentFilters = (): Record<string, string> => ({
+    class: classFilter,
+    publish_state: publishState,
+    license_tier: licenseTier,
+    category,
+    status,
+    per_page: String(perPage),
+    sort,
+    dir,
+  });
+  const [draft, setDraft] = useState<Record<string, string>>(currentFilters);
+  const setDraftKey = (key: string, value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const openFilters = () => {
+    setDraft(currentFilters());
+    setFiltersOpen(true);
+  };
+  const applyDraft = (next: Record<string, string>) => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        const setOrDel = (key: string, val: string) => (val ? p.set(key, val) : p.delete(key));
+        // Defaults are written empty (deleted) to keep the URL clean.
+        setOrDel('class', next.class);
+        setOrDel('publish_state', next.publish_state === 'PUBLISHED' ? '' : next.publish_state);
+        setOrDel('license_tier', next.license_tier);
+        setOrDel('category', next.category);
+        setOrDel('status', next.status === 'active' ? '' : next.status);
+        setOrDel('per_page', Number(next.per_page) === 15 ? '' : next.per_page);
+        setOrDel('sort', next.sort === 'newest' ? '' : next.sort);
+        setOrDel('dir', next.dir === 'asc' ? 'asc' : '');
+        p.delete('page');
+        return p;
+      },
+      { replace: true },
+    );
+    setFiltersOpen(false);
+  };
+  const clearDraft = () => {
+    const cleared = { class: '', publish_state: 'PUBLISHED', license_tier: '', category: '', status: 'active', per_page: '15', sort: 'newest', dir: 'desc' };
+    setDraft(cleared);
+    applyDraft(cleared);
+  };
+
   return (
     <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -251,7 +296,7 @@ export default function ProductAdminPage() {
               onChange={(e) => setQInput(e.target.value)}
             />
           </div>
-          <Button variant="outline" onClick={() => setFiltersOpen(true)} className="sm:mb-0.5">
+          <Button variant="outline" onClick={openFilters} className="sm:mb-0.5">
             <FilterIcon />
             Filters
             {filterChips.length > 0 && <CountPill>{filterChips.length}</CountPill>}
@@ -266,7 +311,7 @@ export default function ProductAdminPage() {
         />
       </div>
 
-      {/* Filters modal - live-applies to the URL as the admin picks */}
+      {/* Filters modal - stages selections and commits them on Apply */}
       <Modal
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
@@ -274,17 +319,17 @@ export default function ProductAdminPage() {
         size="lg"
         footer={
           <>
-            <Button variant="ghost" onClick={clearAll}>
+            <Button variant="ghost" onClick={clearDraft}>
               Clear all
             </Button>
-            <Button variant="primary" onClick={() => setFiltersOpen(false)}>
-              Done
+            <Button variant="primary" onClick={() => applyDraft(draft)}>
+              Apply
             </Button>
           </>
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Select label="Class" value={classFilter} onChange={(e) => setParam('class', e.target.value)}>
+          <Select label="Class" value={draft.class} onChange={(e) => setDraftKey('class', e.target.value)}>
             <option value="">All classes</option>
             <option value="CORE">Core</option>
             <option value="SCRAPED_UV">UV Print</option>
@@ -292,8 +337,8 @@ export default function ProductAdminPage() {
           </Select>
           <Select
             label="Publish state"
-            value={publishState}
-            onChange={(e) => setParam('publish_state', e.target.value === 'PUBLISHED' ? '' : e.target.value)}
+            value={draft.publish_state}
+            onChange={(e) => setDraftKey('publish_state', e.target.value)}
           >
             <option value="PUBLISHED">Published</option>
             <option value="all">All states</option>
@@ -302,14 +347,14 @@ export default function ProductAdminPage() {
             <option value="CANNOT_PUBLISH">Cannot publish</option>
           </Select>
           {isSuperadmin && (
-            <Select label="Licence tier" value={licenseTier} onChange={(e) => setParam('license_tier', e.target.value)}>
+            <Select label="Licence tier" value={draft.license_tier} onChange={(e) => setDraftKey('license_tier', e.target.value)}>
               <option value="">All tiers</option>
               <option value="standard">Standard</option>
               <option value="extended">Extended</option>
               <option value="high_risk">High risk</option>
             </Select>
           )}
-          <Select label="Category" value={category} onChange={(e) => setParam('category', e.target.value)}>
+          <Select label="Category" value={draft.category} onChange={(e) => setDraftKey('category', e.target.value)}>
             <option value="">All categories</option>
             {CATEGORIES.map((c) => (
               <option key={c.key} value={c.key}>
@@ -319,16 +364,16 @@ export default function ProductAdminPage() {
           </Select>
           <Select
             label="Status"
-            value={status}
-            onChange={(e) => setParam('status', e.target.value === 'active' ? '' : e.target.value)}
+            value={draft.status}
+            onChange={(e) => setDraftKey('status', e.target.value)}
           >
             <option value="active">Active</option>
             <option value="archived">Archived</option>
           </Select>
           <Select
             label="Per page"
-            value={String(perPage)}
-            onChange={(e) => setParam('per_page', Number(e.target.value) === 15 ? '' : e.target.value)}
+            value={draft.per_page}
+            onChange={(e) => setDraftKey('per_page', e.target.value)}
           >
             {PER_PAGE_OPTIONS.map((n) => (
               <option key={n} value={n}>
@@ -338,8 +383,8 @@ export default function ProductAdminPage() {
           </Select>
           <Select
             label="Sort by"
-            value={sort}
-            onChange={(e) => setParam('sort', e.target.value === 'newest' ? '' : e.target.value)}
+            value={draft.sort}
+            onChange={(e) => setDraftKey('sort', e.target.value)}
           >
             <option value="newest">Newest</option>
             <option value="most_sold">Most sold</option>
@@ -351,10 +396,10 @@ export default function ProductAdminPage() {
             <Button
               variant="outline"
               className="w-full"
-              aria-label={dir === 'asc' ? 'Ascending - click for descending' : 'Descending - click for ascending'}
-              onClick={() => setParam('dir', dir === 'asc' ? '' : 'asc')}
+              aria-label={draft.dir === 'asc' ? 'Ascending - click for descending' : 'Descending - click for ascending'}
+              onClick={() => setDraftKey('dir', draft.dir === 'asc' ? 'desc' : 'asc')}
             >
-              {dir === 'asc' ? '↑ Ascending' : '↓ Descending'}
+              {draft.dir === 'asc' ? '↑ Ascending' : '↓ Descending'}
             </Button>
           </div>
         </div>
