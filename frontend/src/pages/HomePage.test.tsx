@@ -15,6 +15,7 @@ vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue({
       from_price: 7.58,
       currency: 'SGD',
       is_printable: true,
+      availability: 'in_stock',
     } as any,
   ],
   meta: { current_page: 1, last_page: 1, total: 1 },
