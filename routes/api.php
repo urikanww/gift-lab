@@ -168,6 +168,12 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
     Route::post('/admin/blank-candidates/capture', [\App\Http\Controllers\AdminBlankCaptureController::class, 'store']);
 
+    // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
+    Route::get('/admin/blank-recommendations', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'index']);
+    Route::post('/admin/blank-recommendations/add', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'add']);
+    Route::post('/admin/blank-recommendations/feature', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'feature']);
+    Route::delete('/admin/blank-recommendations/feature/{feature}', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'unfeature']);
+
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
