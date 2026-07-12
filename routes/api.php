@@ -173,6 +173,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
     Route::get('/admin/blank-recommendations', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'index']);
     Route::post('/admin/blank-recommendations/add', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'add']);
+    Route::get('/admin/blank-recommendations/featured', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'featured']);
     Route::post('/admin/blank-recommendations/feature', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'feature']);
     Route::delete('/admin/blank-recommendations/feature/{feature}', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'unfeature']);
 

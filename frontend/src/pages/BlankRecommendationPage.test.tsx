@@ -6,13 +6,24 @@ import { ThemeProvider } from '../ui';
 import BlankRecommendationPage from './BlankRecommendationPage';
 import * as recs from '../lib/recommendations';
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  // The page loads the featured-management list on mount; default to empty.
+  vi.spyOn(recs, 'listFeatured').mockResolvedValue([]);
+});
 
 function candidate(id: string, name: string): recs.Candidate {
   return {
     source_product_id: id, name, price: 9.9, currency: 'SGD',
     image_url: `https://cf.shopee.sg/${id}.jpg`, product_link: `https://shopee.sg/product/${id}`, offer_link: `https://s.shopee.sg/${id}`,
     sales: 300, rating_star: 4.9, shop_name: 'S2', commission_rate: 0.18, ip_flag: null, material_flag: null,
+  };
+}
+
+function featuredItem(id: number, name: string): recs.FeaturedItem {
+  return {
+    id, source_product_id: `${id}_x`, name, image_url: null, price: 5, currency: 'SGD',
+    shop_name: 'S', offer_link: `https://s.shopee.sg/${id}`, product_link: `https://shopee.sg/p/${id}`, ip_flagged: false,
   };
 }
 
@@ -79,18 +90,42 @@ it('opens a zoom modal when the card image is clicked', async () => {
   expect(screen.getByRole('img', { name: 'Zoom Mug' })).toBeInTheDocument();
 });
 
-it('shows an explanatory tooltip on the action buttons', async () => {
+it('opens a help modal from the title icon explaining the actions', async () => {
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /what do these actions do/i }));
+
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent(/import into your catalogue/i);
+  expect(dialog).toHaveTextContent(/affiliate link/i);
+});
+
+it('renders a Shopee link to the plain product listing on each card', async () => {
   vi.spyOn(recs, 'searchCandidates').mockResolvedValue({
-    data: [candidate('3_4', 'Tip Mug')], page: 1, has_more: false,
+    data: [candidate('3_4', 'Shopee Mug')], page: 1, has_more: false,
   });
   renderPage();
 
   await userEvent.type(screen.getByLabelText(/keyword/i), 'mug');
   await userEvent.click(screen.getByRole('button', { name: /^search$/i }));
-  await waitFor(() => expect(screen.getByText('Tip Mug')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('Shopee Mug')).toBeInTheDocument());
 
-  await userEvent.hover(screen.getByRole('button', { name: /add as blank/i }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent(/import into your catalogue/i);
+  const link = screen.getByRole('link', { name: /view on shopee/i });
+  expect(link).toHaveAttribute('href', 'https://shopee.sg/product/3_4'); // plain product_link, not offer_link
+});
+
+it('lists featured items and removes one', async () => {
+  vi.spyOn(recs, 'listFeatured').mockResolvedValue([featuredItem(7, 'Featured Mug')]);
+  const del = vi.spyOn(recs, 'unfeature').mockResolvedValue();
+  renderPage();
+
+  await waitFor(() => expect(screen.getByText('Featured Mug')).toBeInTheDocument());
+  expect(screen.getByText(/featured on gift-ideas \(1\)/i)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /remove/i }));
+
+  expect(del).toHaveBeenCalledWith(7);
+  await waitFor(() => expect(screen.queryByText('Featured Mug')).not.toBeInTheDocument());
 });
 
 it('loads the next page and appends results', async () => {

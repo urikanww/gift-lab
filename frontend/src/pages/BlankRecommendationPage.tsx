@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Badge, Button, Card, Input, Modal, Select, Tooltip, useOptionalToast } from '../ui';
+import { Badge, Button, Card, Input, Modal, Select, useOptionalToast } from '../ui';
 import { apiError } from '../lib/api';
-import { addBlank, featureCandidate, searchCandidates, type Candidate, type CandidateSort } from '../lib/recommendations';
+import { ShopeeLink } from '../components/ShopeeLink';
+import {
+  addBlank,
+  featureCandidate,
+  listFeatured,
+  searchCandidates,
+  unfeature,
+  type Candidate,
+  type CandidateSort,
+  type FeaturedItem,
+} from '../lib/recommendations';
 
 const PAGE_SIZE = 20;
 
@@ -27,7 +37,21 @@ export default function BlankRecommendationPage() {
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Candidate | null>(null);
+  const [help, setHelp] = useState(false);
+  const [featured, setFeatured] = useState<FeaturedItem[]>([]);
   const sentinel = useRef<HTMLDivElement | null>(null);
+
+  const refreshFeatured = useCallback(async () => {
+    try {
+      setFeatured(await listFeatured());
+    } catch {
+      /* non-critical: the management panel just stays empty */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFeatured();
+  }, [refreshFeatured]);
 
   const run = async (sortOverride?: CandidateSort) => {
     const kw = keyword.trim();
@@ -89,7 +113,10 @@ export default function BlankRecommendationPage() {
     setBusy(`${kind}:${c.source_product_id}`);
     try {
       if (kind === 'add') await addBlank(c);
-      else await featureCandidate(c);
+      else {
+        await featureCandidate(c);
+        void refreshFeatured();
+      }
       toast({ title: kind === 'add' ? 'Added to gate' : 'Featured', description: c.name, tone: 'success' });
     } catch (err) {
       toast({ title: 'Action failed', description: apiError(err), tone: 'danger' });
@@ -98,10 +125,33 @@ export default function BlankRecommendationPage() {
     }
   };
 
+  const remove = async (item: FeaturedItem) => {
+    setBusy(`remove:${item.id}`);
+    try {
+      await unfeature(item.id);
+      setFeatured((prev) => prev.filter((f) => f.id !== item.id));
+      toast({ title: 'Removed from gift-ideas', description: item.name, tone: 'success' });
+    } catch (err) {
+      toast({ title: 'Remove failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <section className="flex flex-col gap-6">
       <div>
-        <h1 className="font-display text-3xl text-fg">Blank recommendations</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-display text-3xl text-fg">Blank recommendations</h1>
+          <button
+            type="button"
+            onClick={() => setHelp(true)}
+            aria-label="What do these actions do?"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-strong text-sm font-semibold text-fg-muted transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            ?
+          </button>
+        </div>
         <p className="mt-1 text-sm text-fg-muted">
           Search Shopee for UV-printable blanks. Add promising ones to the gate, or feature them on the public gift-ideas page.
         </p>
@@ -166,13 +216,13 @@ export default function BlankRecommendationPage() {
               {c.ip_flag && <Badge tone="danger" size="sm">IP: {c.ip_flag}</Badge>}
               {c.material_flag && <Badge tone="warning" size="sm">{c.material_flag}</Badge>}
             </div>
-            <div className="mt-auto flex flex-wrap gap-2 pt-2">
-              <Tooltip content="Import into your catalogue to make & sell. Lands in the gate as a draft — complete size/weight, then publish.">
+            <div className="mt-auto flex flex-col gap-2 pt-2">
+              {/* Plain product link (reference / procurement) — never the affiliate link. */}
+              <ShopeeLink href={c.product_link} rel="noopener noreferrer" className="w-full">View on Shopee</ShopeeLink>
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" loading={busy === `add:${c.source_product_id}`} onClick={() => void act(c, 'add')}>Add as blank</Button>
-              </Tooltip>
-              <Tooltip content="Show on the public gift-ideas page as an affiliate link. Customers buy on Shopee; you earn a commission.">
                 <Button size="sm" variant="outline" loading={busy === `feature:${c.source_product_id}`} onClick={() => void act(c, 'feature')}>Feature</Button>
-              </Tooltip>
+              </div>
             </div>
           </Card>
         ))}
@@ -188,10 +238,51 @@ export default function BlankRecommendationPage() {
         )}
       </div>
 
+      {/* Featured-on-gift-ideas management panel. */}
+      {featured.length > 0 && (
+        <div className="flex flex-col gap-3 border-t border-border pt-4">
+          <h2 className="font-display text-xl text-fg">Featured on gift-ideas ({featured.length})</h2>
+          <div className="flex flex-col gap-2">
+            {featured.map((f) => (
+              <div key={f.id} className="flex items-center gap-3 rounded-md border border-border p-2">
+                {f.image_url && <img src={f.image_url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" referrerPolicy="no-referrer" />}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-fg">{f.name}</p>
+                  <p className="text-xs text-fg-subtle">
+                    {f.currency} {f.price ?? '—'}
+                    {f.shop_name ? ` · ${f.shop_name}` : ''}
+                    {f.ip_flagged ? ' · hidden (IP-flagged)' : ''}
+                  </p>
+                </div>
+                {f.ip_flagged && <Badge tone="warning" size="sm">IP</Badge>}
+                <Button size="sm" variant="danger" loading={busy === `remove:${f.id}`} onClick={() => void remove(f)}>Remove</Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Modal open={zoom !== null} onClose={() => setZoom(null)} title={zoom?.name ?? ''} size="lg">
         {zoom?.image_url && (
           <img src={zoom.image_url} alt={zoom.name} className="mx-auto max-h-[70vh] w-auto rounded object-contain" referrerPolicy="no-referrer" />
         )}
+      </Modal>
+
+      <Modal open={help} onClose={() => setHelp(false)} title="What do these actions do?" size="md">
+        <dl className="flex flex-col gap-3 text-sm">
+          <div>
+            <dt className="font-semibold text-fg">Add as blank</dt>
+            <dd className="text-fg-muted">Import into your catalogue to make &amp; sell. Lands in the gate as a draft — complete size/weight, then publish.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-fg">Feature</dt>
+            <dd className="text-fg-muted">Show on the public gift-ideas page as an affiliate link. Customers buy on Shopee; you earn a commission.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-fg">View on Shopee</dt>
+            <dd className="text-fg-muted">Open the original listing (plain link) to inspect the product or procure it per order.</dd>
+          </div>
+        </dl>
       </Modal>
     </section>
   );

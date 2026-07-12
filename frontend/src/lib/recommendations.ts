@@ -60,3 +60,26 @@ export async function featureCandidate(c: Candidate): Promise<void> {
     ip_flagged: c.ip_flag != null,
   });
 }
+
+export interface FeaturedItem {
+  id: number;
+  source_product_id: string;
+  name: string;
+  image_url: string | null;
+  price: number | null;
+  currency: string;
+  shop_name: string | null;
+  offer_link: string;
+  product_link: string;
+  ip_flagged: boolean;
+}
+
+export async function listFeatured(): Promise<FeaturedItem[]> {
+  const { data } = await api.get<{ data: FeaturedItem[] }>('/admin/blank-recommendations/featured');
+  return data.data;
+}
+
+export async function unfeature(id: number): Promise<void> {
+  await ensureCsrf();
+  await api.delete(`/admin/blank-recommendations/feature/${id}`);
+}

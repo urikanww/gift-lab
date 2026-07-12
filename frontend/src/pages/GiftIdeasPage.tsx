@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { Card } from '../ui';
 import { AsyncBoundary } from '../components/ui/States';
+import { ShopeeLink } from '../components/ShopeeLink';
 
 interface GiftIdea {
   name: string;
@@ -50,9 +51,9 @@ export default function GiftIdeasPage() {
               <p className="line-clamp-2 text-sm font-medium text-fg">{g.name}</p>
               <p className="text-sm"><span className="font-semibold text-fg">{g.currency} {g.price ?? '—'}</span>{g.shop_name ? <span className="text-xs text-fg-subtle"> · {g.shop_name}</span> : null}</p>
               <div className="mt-auto flex flex-col gap-1.5 pt-2">
-                <a href={g.offer_link} target="_blank" rel="sponsored nofollow noopener noreferrer" className="rounded-md bg-surface-2 px-3 py-1.5 text-center text-xs font-medium text-fg hover:bg-surface-3">
-                  Buy on Shopee ↗
-                </a>
+                <ShopeeLink href={g.offer_link} rel="sponsored nofollow noopener noreferrer" className="w-full">
+                  Buy on Shopee
+                </ShopeeLink>
                 <Link to="/products" className="rounded-md bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-fg">
                   Personalize with us →
                 </Link>

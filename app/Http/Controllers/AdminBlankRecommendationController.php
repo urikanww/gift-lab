@@ -132,6 +132,31 @@ final class AdminBlankRecommendationController extends Controller
         return response()->json(['data' => ['id' => $feature->id]]);
     }
 
+    /** Staff management list of everything currently featured on /gift-ideas. */
+    public function featured(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $rows = GiftIdeaFeature::query()
+            ->orderBy('sort')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (GiftIdeaFeature $f): array => [
+                'id' => $f->id,
+                'source_product_id' => $f->source_product_id,
+                'name' => $f->name,
+                'image_url' => $f->image_url,
+                'price' => $f->price,
+                'currency' => $f->currency,
+                'shop_name' => $f->shop_name,
+                'offer_link' => $f->offer_link,
+                'product_link' => $f->product_link,
+                'ip_flagged' => $f->ip_flagged,
+            ]);
+
+        return response()->json(['data' => $rows]);
+    }
+
     public function unfeature(Request $request, GiftIdeaFeature $feature): JsonResponse
     {
         abort_unless($request->user()->isStaff(), 403);

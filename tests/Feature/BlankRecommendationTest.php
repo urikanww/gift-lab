@@ -98,6 +98,23 @@ it('adds a candidate as a SCRAPED_UV blank in the gate with the plain product li
         ->and($product->source_links[0]['url'])->toBe('https://shopee.sg/product/3/4');
 });
 
+it('lists featured items for staff management (incl. IP-flagged)', function (): void {
+    Sanctum::actingAs($this->staff);
+    GiftIdeaFeature::factory()->create(['source_product_id' => 'A_1', 'name' => 'Public Mug', 'ip_flagged' => false]);
+    GiftIdeaFeature::factory()->create(['source_product_id' => 'B_2', 'name' => 'Hidden IP Mug', 'ip_flagged' => true]);
+
+    $data = $this->getJson('/api/admin/blank-recommendations/featured')->assertOk()->json('data');
+
+    $names = collect($data)->pluck('name');
+    expect($names)->toContain('Public Mug')->toContain('Hidden IP Mug')
+        ->and(collect($data)->firstWhere('source_product_id', 'A_1'))->toHaveKeys(['id', 'offer_link', 'ip_flagged']);
+});
+
+it('forbids non-staff on the featured list', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'buyer']));
+    $this->getJson('/api/admin/blank-recommendations/featured')->assertStatus(403);
+});
+
 it('features + unfeatures a candidate for the public page', function (): void {
     Sanctum::actingAs($this->staff);
     $this->postJson('/api/admin/blank-recommendations/feature', [
