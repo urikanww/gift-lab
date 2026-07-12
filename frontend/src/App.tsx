@@ -36,6 +36,7 @@ const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
 const ReorderBuyListPage = lazy(() => import('./pages/ReorderBuyListPage'));
 const CatalogueAdminPage = lazy(() => import('./pages/CatalogueAdminPage'));
+const BlankRecommendationPage = lazy(() => import('./pages/BlankRecommendationPage'));
 const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
 const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage'));
 const ProductAdminDetailPage = lazy(() => import('./pages/ProductAdminDetailPage'));
@@ -176,6 +177,7 @@ export default function App() {
               <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
               <Route path="reorders" element={<ProtectedRoute staffOnly><ReorderBuyListPage /></ProtectedRoute>} />
               <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
+              <Route path="blank-recommendations" element={<ProtectedRoute staffOnly><BlankRecommendationPage /></ProtectedRoute>} />
               <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
