@@ -50,3 +50,10 @@ Schedule::command('artwork:prune-orphans')
     ->dailyAt('05:00')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Daily refresh of public gift-ideas features: update prices + prune dead
+// affiliate links so the public page never shows stale data / broken links.
+Schedule::command('giftideas:refresh')
+    ->dailyAt('05:30')
+    ->onOneServer()
+    ->withoutOverlapping();
