@@ -94,7 +94,7 @@ it('opens a help modal from the title icon explaining the actions', async () => 
   expect(dialog).toHaveTextContent(/affiliate link/i);
 });
 
-it('renders a Shopee link to the plain product listing on each card', async () => {
+it('renders an affiliate Shopee preview link on each card', async () => {
   vi.spyOn(recs, 'searchCandidates').mockResolvedValue({
     data: [candidate('3_4', 'Shopee Mug')], page: 1, has_more: false,
   });
@@ -105,7 +105,8 @@ it('renders a Shopee link to the plain product listing on each card', async () =
   await waitFor(() => expect(screen.getByText('Shopee Mug')).toBeInTheDocument());
 
   const link = screen.getByRole('link', { name: /view on shopee/i });
-  expect(link).toHaveAttribute('href', 'https://shopee.sg/product/3_4'); // plain product_link, not offer_link
+  expect(link).toHaveAttribute('href', 'https://s.shopee.sg/3_4'); // affiliate offer_link (preview)
+  expect(link).toHaveAttribute('rel', expect.stringContaining('sponsored'));
 });
 
 it('loads the next page and appends results', async () => {

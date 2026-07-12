@@ -51,6 +51,10 @@ export default function FeaturedGiftIdeasPanel() {
         <p className="mt-1 text-sm text-fg-muted">
           Affiliate products shown on the public gift-ideas page. Add them from Find blanks → Feature.
         </p>
+        <p className="mt-2 text-xs text-fg-subtle">
+          Clicking a product opens your affiliate link (preview). Don’t purchase through it — buy in a
+          separate/incognito browser so it isn’t self-referral.
+        </p>
       </div>
 
       {items.length === 0 ? (
@@ -59,14 +63,14 @@ export default function FeaturedGiftIdeasPanel() {
         <div className="flex flex-col gap-2">
           {items.map((f) => (
             <div key={f.id} className="flex items-center gap-3 rounded-md border border-border p-2">
-              {/* Click the product to open the real Shopee listing (plain link,
-                  self-referral-safe — never the affiliate offer link). */}
+              {/* Preview via the affiliate link (view only). Don't purchase
+                  through it — self-referral; see the note above. */}
               <a
-                href={f.product_link}
+                href={f.offer_link}
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="sponsored nofollow noopener noreferrer"
                 className="group flex min-w-0 flex-1 items-center gap-3"
-                title="Open on Shopee"
+                title="Preview on Shopee (affiliate link — don't buy through it)"
               >
                 {f.image_url && <img src={f.image_url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" referrerPolicy="no-referrer" />}
                 <div className="min-w-0">

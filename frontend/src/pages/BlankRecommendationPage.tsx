@@ -129,6 +129,11 @@ export default function BlankRecommendationPage() {
         <p className="mt-1 text-sm text-fg-muted">
           Search Shopee for UV-printable blanks. Add promising ones to the gate, or feature them on the public gift-ideas page.
         </p>
+        <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-fg-muted">
+          <strong className="text-fg">Preview only.</strong> “View on Shopee” opens your affiliate link. To
+          <strong className="text-fg"> buy a blank, purchase in a separate/incognito browser</strong> so your own
+          order isn’t attributed to your affiliate account (self-referral). Procurement links on the catalogue gate stay plain.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -191,8 +196,9 @@ export default function BlankRecommendationPage() {
               {c.material_flag && <Badge tone="warning" size="sm">{c.material_flag}</Badge>}
             </div>
             <div className="mt-auto flex flex-col gap-2 pt-2">
-              {/* Plain product link (reference / procurement) — never the affiliate link. */}
-              <ShopeeLink href={c.product_link} rel="noopener noreferrer" className="w-full">View on Shopee</ShopeeLink>
+              {/* Preview via the affiliate link (view only — see the self-referral
+                  note above; procurement uses the plain link on the gate). */}
+              <ShopeeLink href={c.offer_link} rel="sponsored nofollow noopener noreferrer" className="w-full">View on Shopee</ShopeeLink>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" loading={busy === `add:${c.source_product_id}`} onClick={() => void act(c, 'add')}>Add as blank</Button>
                 <Button size="sm" variant="outline" loading={busy === `feature:${c.source_product_id}`} onClick={() => void act(c, 'feature')}>Feature</Button>
@@ -230,7 +236,7 @@ export default function BlankRecommendationPage() {
           </div>
           <div>
             <dt className="font-semibold text-fg">View on Shopee</dt>
-            <dd className="text-fg-muted">Open the original listing (plain link) to inspect the product or procure it per order.</dd>
+            <dd className="text-fg-muted">Preview the listing via your affiliate link. Don’t buy through it — purchase in a separate/incognito browser (self-referral). Procurement links on the gate stay plain.</dd>
           </div>
         </dl>
       </Modal>

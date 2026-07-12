@@ -26,7 +26,8 @@ it('lists featured items with a count and links to the plain Shopee listing', as
   expect(screen.getByText(/featured on gift-ideas \(1\)/i)).toBeInTheDocument();
 
   const link = screen.getByRole('link', { name: /featured mug/i });
-  expect(link).toHaveAttribute('href', 'https://shopee.sg/p/7'); // plain product_link
+  expect(link).toHaveAttribute('href', 'https://s.shopee.sg/7'); // affiliate offer_link (preview)
+  expect(link).toHaveAttribute('rel', expect.stringContaining('sponsored'));
   expect(link).toHaveAttribute('target', '_blank');
 });
 
