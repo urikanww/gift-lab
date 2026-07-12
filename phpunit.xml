@@ -34,6 +34,10 @@
         <env name="STRIPE_WEBHOOK_SECRET" value=""/>
         <env name="THINGIVERSE_TOKEN" value=""/>
         <env name="CULTS3D_TOKEN" value=""/>
+        <env name="SHOPEE_AFFILIATE_APP_ID" value=""/>
+        <env name="SHOPEE_AFFILIATE_SECRET" value=""/>
+        <env name="LAZADA_AFFILIATE_APP_KEY" value=""/>
+        <env name="LAZADA_AFFILIATE_SECRET" value=""/>
         <env name="FILESYSTEM_DISK" value="local"/>
         <env name="AWS_ACCESS_KEY_ID" value=""/>
         <env name="AWS_SECRET_ACCESS_KEY" value=""/>
