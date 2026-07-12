@@ -105,6 +105,10 @@ class AdminReorderController extends Controller
             'stock_on_hand' => $variant?->stock_on_hand,
             // Affiliate source to actually buy the blank from (UV/scraped).
             'source_url' => $variant?->product?->source_url,
+            // All ranked buy links for this blank (local primary + marketplace
+            // backups). source_url above stays the derived primary for callers
+            // that only want one. Prices are indicative - re-check before buying.
+            'source_links' => $variant?->product?->source_links ?? [],
             'created_at' => $reorder->created_at?->toIso8601String(),
         ];
     }
