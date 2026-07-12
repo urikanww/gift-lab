@@ -57,6 +57,36 @@ class AdminCatalogueController extends Controller
             $q->where(fn ($w) => $w->where('name', 'like', $term)->orWhere('creator_credit', 'like', $term));
         };
 
+        // Production filters, applied to BOTH the counts breakdown and the
+        // paginator so the summary badges never contradict the visible rows.
+        $filterScope = function ($q) use ($request): void {
+            if ($request->filled('blocker')) {
+                $q->whereJsonContains('cannot_publish_reasons', $request->string('blocker')->toString());
+            }
+            if ($request->filled('source')) {
+                $q->where('source_kind', $request->string('source')->toString());
+            }
+            if ($request->filled('print_method')) {
+                $q->where('print_method', $request->string('print_method')->toString());
+            }
+            if ($request->filled('category')) {
+                $q->where('category', $request->string('category')->toString());
+            }
+            if ($request->boolean('ip_flagged')) {
+                $q->where('ip_flagged', true);
+            }
+            if ($request->boolean('missing_link')) {
+                // Blanks with no buy link to procure from (SCRAPED_UV only).
+                // Empty-array detection is driver-portable: an empty json array
+                // casts/stores as the literal '[]' on SQLite (test DB) and MySQL,
+                // so we avoid JSON_LENGTH (needs the JSON1 extension on SQLite).
+                $q->where('class', 'SCRAPED_UV')
+                    ->where(fn ($w) => $w->whereNull('source_links')
+                        ->orWhere('source_links', '[]')
+                        ->orWhere('source_links', ''));
+            }
+        };
+
         // State breakdown across the WHOLE gate set (respecting the class + search
         // filters but NOT the state filter), so the summary badges reflect the
         // filtered catalogue total - not just the current page or the state subset.
@@ -64,6 +94,7 @@ class AdminCatalogueController extends Controller
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->where($searchScope)
+            ->where($filterScope)
             ->selectRaw('publish_state, COUNT(*) as c')
             ->groupBy('publish_state')
             ->pluck('c', 'publish_state');
@@ -88,6 +119,7 @@ class AdminCatalogueController extends Controller
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->when($request->filled('state'), fn ($q) => $q->where('publish_state', $request->string('state')->toString()))
             ->where($searchScope)
+            ->where($filterScope)
             ->when($sort === 'name', fn ($q) => $q->orderBy('name', $dir))
             ->when($sort === 'base_cost', fn ($q) => $q->orderBy('base_cost', $dir))
             ->when(! in_array($sort, ['name', 'base_cost'], true), fn ($q) => $q->orderBy('created_at', $dir))
@@ -106,6 +138,7 @@ class AdminCatalogueController extends Controller
             'creator_credit' => $p->creator_credit,
             'image_url' => $p->image_url,
             'source_url' => $p->source_url,
+            'source_kind' => $p->source_kind,
             'filament_material' => $p->filament_material,
             'filament_color' => $p->filament_color,
             'est_grams' => $p->est_grams,
