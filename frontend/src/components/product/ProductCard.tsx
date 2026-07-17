@@ -81,8 +81,11 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
             </div>
           )}
           {/* Availability corner - only when it's not plain in-stock, so the
-              grid stays quiet but made-to-order / unavailable items are honest. */}
-          {product.availability !== 'in_stock' && (
+              grid stays quiet but made-to-order / unavailable items are honest.
+              Guard the lookup: a value the frontend doesn't know about (e.g. a
+              new backend enum member) must drop this one badge, not crash the
+              whole card. */}
+          {product.availability !== 'in_stock' && AVAILABILITY[product.availability] && (
             <div className="absolute right-2 top-2">
               <Badge tone={AVAILABILITY[product.availability].tone} size="sm">
                 {AVAILABILITY[product.availability].label}

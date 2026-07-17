@@ -24,7 +24,11 @@ beforeEach(() => get.mockReset());
 describe('CataloguePage', () => {
   it('renders published products from the API', async () => {
     get.mockResolvedValue({
-      data: { data: [{ id: 1, name: 'Ceramic Mug', from_price: 3.2, currency: 'SGD', image_url: null }] },
+      data: {
+        data: [
+          { id: 1, name: 'Ceramic Mug', from_price: 3.2, currency: 'SGD', image_url: null, availability: 'in_stock' },
+        ],
+      },
     });
 
     renderPage();
@@ -69,7 +73,9 @@ describe('CataloguePage', () => {
       // Initial load: two pages available so pagination renders.
       .mockResolvedValueOnce({
         data: {
-          data: [{ id: 1, name: 'First Mug', from_price: 3, currency: 'SGD', image_url: null }],
+          data: [
+            { id: 1, name: 'First Mug', from_price: 3, currency: 'SGD', image_url: null, availability: 'in_stock' },
+          ],
           meta: { current_page: 1, last_page: 2, total: 30 },
         },
       })
@@ -78,7 +84,9 @@ describe('CataloguePage', () => {
       // Category-filtered reload fired while page 2 is still in flight.
       .mockResolvedValueOnce({
         data: {
-          data: [{ id: 2, name: 'Fresh Tote', from_price: 4, currency: 'SGD', image_url: null }],
+          data: [
+            { id: 2, name: 'Fresh Tote', from_price: 4, currency: 'SGD', image_url: null, availability: 'in_stock' },
+          ],
           meta: { current_page: 1, last_page: 1, total: 1 },
         },
       });
@@ -87,6 +95,11 @@ describe('CataloguePage', () => {
     await waitFor(() => expect(screen.getByText('First Mug')).toBeInTheDocument());
 
     screen.getByRole('button', { name: /next/i }).click();
+    // Let the page-2 request actually fire (and hang, per the mock above)
+    // before switching category - back-to-back synchronous clicks with no
+    // tick between them get batched into a single effect run, which would
+    // skip the page-2 request entirely rather than racing it.
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
     // While the page-2 request is in flight, switch category.
     screen.getByRole('button', { name: /bags/i }).click();
     await waitFor(() => expect(screen.getByText('Fresh Tote')).toBeInTheDocument());
@@ -94,7 +107,9 @@ describe('CataloguePage', () => {
     // The superseded pagination response must NOT clobber the fresh result.
     resolveNext({
       data: {
-        data: [{ id: 3, name: 'Stale Mug', from_price: 5, currency: 'SGD', image_url: null }],
+        data: [
+          { id: 3, name: 'Stale Mug', from_price: 5, currency: 'SGD', image_url: null, availability: 'in_stock' },
+        ],
         meta: { current_page: 2, last_page: 2, total: 30 },
       },
     });
