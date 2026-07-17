@@ -63,28 +63,35 @@ export interface ProductCardProps {
 export function ProductCard({ product, to, showMeta = false }: ProductCardProps) {
   const bulkOnly = (product.min_order_qty ?? 0) > 1;
 
+  /**
+   * The badges are painted inside the image link, whose aria-label replaces its
+   * subtree for assistive tech - so they'd be silently dropped. Restate them as
+   * one sr-only summary on the text link, which carries the card's real content.
+   * Each entry must mirror its badge's render condition exactly: announce what's
+   * on screen, no more, no less.
+   */
+  const meta = [
+    showMeta && product.category ? categoryLabel(product.category) : null,
+    product.availability !== 'in_stock' ? AVAILABILITY[product.availability]?.label : null,
+    showMeta && bulkOnly ? `Minimum ${product.min_order_qty} units` : null,
+  ].filter(Boolean);
+
   return (
     <Motion variants={staggerItem} className="h-full">
       {/* Image link, text link, and personalize CTA are SIBLINGS (never nested <a>). */}
       <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md">
         {/* Public storefront: the image links to the product detail page (the
             zoom preview lives there). Zoom-in-place is a staff/admin affordance. */}
-        {/* The aria-label overrides the badges' text for assistive tech, so the MOQ -
-            decision-critical for a bulk buyer, and shown nowhere else on the card -
-            is folded into the accessible name whenever its badge renders. Gated on
-            showMeta for parity: the name must describe what's actually on screen. */}
+        {/* CardImage renders alt="", so this link needs a name of its own. The
+            badges it contains are restated on the text link (see `meta`). */}
         <Link
           to={to}
-          aria-label={
-            showMeta && bulkOnly
-              ? `${product.name}, minimum ${product.min_order_qty} units`
-              : product.name
-          }
+          aria-label={product.name}
           className="relative block aspect-square w-full overflow-hidden bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
           <CardImage product={product} />
           {showMeta && (product.category || bulkOnly) && (
-            <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+            <div className="absolute left-2 top-2 flex flex-col items-start gap-1" aria-hidden="true">
               {product.category && (
                 <Badge tone="brand" size="sm">
                   {categoryLabel(product.category)}
@@ -103,7 +110,7 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
               new backend enum member) must drop this one badge, not crash the
               whole card. */}
           {product.availability !== 'in_stock' && AVAILABILITY[product.availability] && (
-            <div className="absolute right-2 top-2">
+            <div className="absolute right-2 top-2" aria-hidden="true">
               <Badge tone={AVAILABILITY[product.availability].tone} size="sm">
                 {AVAILABILITY[product.availability].label}
               </Badge>
@@ -119,6 +126,7 @@ export function ProductCard({ product, to, showMeta = false }: ProductCardProps)
           <h3 className="line-clamp-2 text-sm font-medium leading-snug text-fg transition-colors duration-fast group-hover:text-primary">
             {product.name}
           </h3>
+          {meta.length > 0 && <span className="sr-only">{meta.join('. ')}.</span>}
           {showMeta && product.creator_credit && (
             <p className="text-xs text-fg-subtle">by {product.creator_credit}</p>
           )}
