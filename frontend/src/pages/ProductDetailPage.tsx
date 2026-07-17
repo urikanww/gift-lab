@@ -437,44 +437,49 @@ export default function ProductDetailPage() {
           )}
 
           {/* Volume pricing - price breaks that also set the quantity when tapped.
-              The quantity control below is the single source of truth. */}
-          <Motion variants={staggerItem} className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-fg">Volume pricing</span>
-            {tiersLoading ? (
-              <div className="flex items-center gap-2 text-sm text-fg-muted">
-                <Spinner size="sm" />
-                <span>Calculating price breaks…</span>
-              </div>
-            ) : tiers.length === 0 ? (
-              <p className="text-sm text-fg-muted">Volume pricing is unavailable right now.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {tiers.map((t) => {
-                  const active = qty === t.qty;
-                  return (
-                    <button
-                      key={t.qty}
-                      type="button"
-                      onClick={() => setQty(Math.max(minQty, t.qty))}
-                      aria-pressed={active}
-                      title={`Set quantity to ${t.qty}`}
-                      className={cn(
-                        'flex min-w-[6rem] flex-1 flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-                        active
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border bg-surface hover:border-primary/50',
-                      )}
-                    >
-                      <span className="text-sm font-semibold text-fg">{t.qty} pcs</span>
-                      <span className="text-xs text-fg-muted">
-                        {t.currency} {t.unitPrice.toFixed(2)} <span className="text-fg-subtle">/ unit</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Motion>
+              The quantity control below is the single source of truth. Rendered
+              only when a real break exists (two tiers): a lone tile reads as a
+              broken ladder and just duplicates the live price line below it, so
+              the single-price case is carried by that line, not a "strip". */}
+          {tierQuantities.length > 1 && (
+            <Motion variants={staggerItem} className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-fg">Volume pricing</span>
+              {tiersLoading ? (
+                <div className="flex items-center gap-2 text-sm text-fg-muted">
+                  <Spinner size="sm" />
+                  <span>Calculating price breaks…</span>
+                </div>
+              ) : tiers.length === 0 ? (
+                <p className="text-sm text-fg-muted">Volume pricing is unavailable right now.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {tiers.map((t) => {
+                    const active = qty === t.qty;
+                    return (
+                      <button
+                        key={t.qty}
+                        type="button"
+                        onClick={() => setQty(Math.max(minQty, t.qty))}
+                        aria-pressed={active}
+                        title={`Set quantity to ${t.qty}`}
+                        className={cn(
+                          'flex min-w-[6rem] flex-1 flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+                          active
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-surface hover:border-primary/50',
+                        )}
+                      >
+                        <span className="text-sm font-semibold text-fg">{t.qty} pcs</span>
+                        <span className="text-xs text-fg-muted">
+                          {t.currency} {t.unitPrice.toFixed(2)} <span className="text-fg-subtle">/ unit</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Motion>
+          )}
 
           {/* Filament colour (3D) + Quantity + CTAs. Customization is optional, so
               "Add to cart" is primary and the studio is a secondary opt-in. */}

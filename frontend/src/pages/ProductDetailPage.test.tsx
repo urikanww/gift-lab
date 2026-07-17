@@ -46,6 +46,9 @@ function renderPdp() {
 /** The volume-pricing tiles - each is a "<n> pcs" preset button. */
 const tileButtons = () => screen.queryAllByRole('button', { name: /pcs/i });
 
+/** The "Volume pricing" strip heading - absent when there's no real break. */
+const strip = () => screen.queryByText(/volume pricing/i);
+
 beforeEach(() => vi.restoreAllMocks());
 
 it('renders product name, price, and a Customize CTA linking to the designer', async () => {
@@ -67,11 +70,12 @@ it('uses the marketplace category for breadcrumb, not the print class', async ()
   expect(catLink).toHaveAttribute('href', '/products?category=stationery');
 });
 
-it('shows two tiers - the MOQ and the bulk threshold - when the MOQ is below the threshold', async () => {
+it('shows the strip with two tiers - the MOQ and the bulk threshold - when the MOQ is below the threshold', async () => {
   stubPdp({ minOrderQty: 25, bulk: { bulkQty: 50, discountPct: 10 } });
   await renderPdp();
 
   await waitFor(() => expect(tileButtons()).toHaveLength(2));
+  expect(strip()).toBeInTheDocument();
   expect(tileButtons()[0]).toHaveTextContent('25 pcs');
   expect(tileButtons()[0]).toHaveTextContent('7.58');
   expect(tileButtons()[1]).toHaveTextContent('50 pcs');
@@ -89,24 +93,28 @@ it('never advertises a quantity below the MOQ', async () => {
   expect(screen.queryByText(/25 pcs/)).not.toBeInTheDocument();
 });
 
-it('shows one tier and no break when the MOQ already clears the threshold', async () => {
+it('renders no strip but keeps the offer footnote when the MOQ already clears the threshold', async () => {
   stubPdp({ minOrderQty: 100, bulk: { bulkQty: 50, discountPct: 10 } });
   await renderPdp();
 
-  await waitFor(() => expect(tileButtons()).toHaveLength(1));
-  expect(tileButtons()[0]).toHaveTextContent('100 pcs');
-  // Every order this buyer can place is already discounted - say so, and don't
-  // dangle a "50+" break they are already past.
-  expect(screen.getByText(/bulk pricing is already applied/i)).toBeInTheDocument();
+  // A lone tile is a broken ladder - the live price line carries the single
+  // price. But the offer is real and always applies to this buyer, so the
+  // footnote must say so, standing alone with no strip above it.
+  await waitFor(() => expect(screen.getByText(/bulk pricing is already applied/i)).toBeInTheDocument());
+  expect(strip()).not.toBeInTheDocument();
+  expect(tileButtons()).toHaveLength(0);
   expect(screen.queryByText(/10% off at/i)).not.toBeInTheDocument();
 });
 
-it('shows one tier and claims no discount when there is no bulk offer', async () => {
+it('renders no strip and claims no discount when there is no bulk offer', async () => {
   stubPdp({ minOrderQty: 10, bulk: { bulkQty: null, discountPct: 0 } });
   await renderPdp();
 
-  await waitFor(() => expect(tileButtons()).toHaveLength(1));
-  expect(tileButtons()[0]).toHaveTextContent('10 pcs');
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { name: /A5 Hardcover Notebook/i })).toBeInTheDocument(),
+  );
+  expect(strip()).not.toBeInTheDocument();
+  expect(tileButtons()).toHaveLength(0);
   expect(screen.queryByText(/% off/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/volume discounts apply/i)).not.toBeInTheDocument();
 });
@@ -119,11 +127,16 @@ it('states the real discount and threshold in the footnote', async () => {
   await waitFor(() => expect(screen.getByText(/7\.5% off at 250\+ units\./i)).toBeInTheDocument());
 });
 
-it('claims no discount when the bulk config cannot be fetched', async () => {
+it('renders no strip and claims no discount when the bulk config cannot be fetched', async () => {
   stubPdp({ minOrderQty: 25, bulk: null });
   await renderPdp();
 
-  await waitFor(() => expect(tileButtons()).toHaveLength(1));
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { name: /A5 Hardcover Notebook/i })).toBeInTheDocument(),
+  );
+  // Unknown offer: no strip, and nothing claimed about discounts.
+  expect(strip()).not.toBeInTheDocument();
+  expect(tileButtons()).toHaveLength(0);
   expect(screen.queryByText(/% off/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/discount/i)).not.toBeInTheDocument();
 });
