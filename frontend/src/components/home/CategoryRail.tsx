@@ -14,7 +14,7 @@ export default function CategoryRail() {
           <li key={c.key}>
             <Link
               to={`/products?category=${c.key}`}
-              className="flex min-h-[44px] flex-col items-center gap-1 rounded-lg border border-border bg-surface px-2 py-3 text-center transition-colors duration-fast hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-full min-h-[44px] flex-col items-center gap-1 rounded-lg border border-border bg-surface px-2 py-3 text-center transition-colors duration-fast hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="text-2xl" aria-hidden="true">
                 {c.icon}
