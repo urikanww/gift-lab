@@ -123,6 +123,9 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
     Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index']);
     Route::post('/admin/products/{product}/publish', [AdminCatalogueController::class, 'publish']);
+    // Staff fix the self-fixable SCRAPED_UV blockers inline (dims/weight, print
+    // method, price), then re-gate + publish in one call.
+    Route::post('/admin/products/{product}/resolve-blockers', [AdminCatalogueController::class, 'resolveBlockers']);
     Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish']);
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
