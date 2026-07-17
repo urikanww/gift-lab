@@ -9,6 +9,7 @@ use App\Http\Controllers\AdminReorderController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BrandKitController;
+use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LeadTimeEstimateController;
@@ -55,6 +56,9 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Staff-curated affiliate gift ideas feed (cached; IP-flagged rows excluded).
     Route::get('/gift-ideas', [\App\Http\Controllers\GiftIdeasController::class, 'index']);
     Route::post('/price-estimate', PriceEstimateController::class);
+    // The one bulk-discount offer the engine applies, so the storefront can
+    // state it instead of implying tiers that don't exist. Two keys only.
+    Route::get('/bulk-pricing', BulkPricingController::class);
     // Deadline-aware delivery window (queue-depth aware, ranged/conservative).
     Route::post('/lead-time-estimate', LeadTimeEstimateController::class);
 });
