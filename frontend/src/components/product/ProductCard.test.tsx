@@ -62,3 +62,54 @@ describe('ProductCard availability badge', () => {
     expect(screen.queryByText(/out of stock/i)).not.toBeInTheDocument();
   });
 });
+
+function renderCardWithMeta(product: Product, showMeta: boolean) {
+  return render(
+    <MemoryRouter>
+      <ProductCard product={product} to={`/products/${product.id}`} showMeta={showMeta} />
+    </MemoryRouter>,
+  );
+}
+
+describe('ProductCard MOQ badge', () => {
+  it('shows the MOQ badge for a bulk-only product when showMeta is true', () => {
+    renderCardWithMeta({ ...base, min_order_qty: 50 }, true);
+    expect(screen.getByText(/min\. 50 units/i)).toBeInTheDocument();
+  });
+
+  it('hides the MOQ badge when min_order_qty is 1', () => {
+    renderCardWithMeta({ ...base, min_order_qty: 1 }, true);
+    expect(screen.queryByText(/min\./i)).not.toBeInTheDocument();
+  });
+
+  it('hides the MOQ badge when min_order_qty is absent', () => {
+    renderCardWithMeta({ ...base, min_order_qty: undefined }, true);
+    expect(screen.queryByText(/min\./i)).not.toBeInTheDocument();
+  });
+
+  it('hides the MOQ badge when showMeta is false, even for a bulk-only product', () => {
+    renderCardWithMeta({ ...base, min_order_qty: 50 }, false);
+    expect(screen.queryByText(/min\./i)).not.toBeInTheDocument();
+  });
+
+  // The image link's aria-label overrides the badge text for assistive tech, so
+  // the MOQ has to reach AT users through the accessible name or not at all.
+  it('exposes the MOQ through the image link accessible name', () => {
+    renderCardWithMeta({ ...base, min_order_qty: 50 }, true);
+    expect(screen.getByRole('link', { name: /minimum 50 units/i })).toBeInTheDocument();
+  });
+
+  it('leaves the image link accessible name as the plain product name when not bulk-only', () => {
+    renderCardWithMeta({ ...base, min_order_qty: 1 }, true);
+    expect(screen.getByRole('link', { name: 'Ceramic Mug' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /minimum/i })).not.toBeInTheDocument();
+  });
+
+  // Parity: no badge renders without showMeta, so the accessible name must not
+  // announce an MOQ that sighted users can't see.
+  it('keeps the MOQ out of the accessible name when showMeta is false', () => {
+    renderCardWithMeta({ ...base, min_order_qty: 50 }, false);
+    expect(screen.getByRole('link', { name: 'Ceramic Mug' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /minimum/i })).not.toBeInTheDocument();
+  });
+});

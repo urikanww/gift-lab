@@ -61,23 +61,40 @@ export interface ProductCardProps {
 }
 
 export function ProductCard({ product, to, showMeta = false }: ProductCardProps) {
+  const bulkOnly = (product.min_order_qty ?? 0) > 1;
+
   return (
     <Motion variants={staggerItem} className="h-full">
       {/* Image link, text link, and personalize CTA are SIBLINGS (never nested <a>). */}
       <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-shadow duration-base ease-standard hover:shadow-md">
         {/* Public storefront: the image links to the product detail page (the
             zoom preview lives there). Zoom-in-place is a staff/admin affordance. */}
+        {/* The aria-label overrides the badges' text for assistive tech, so the MOQ -
+            decision-critical for a bulk buyer, and shown nowhere else on the card -
+            is folded into the accessible name whenever its badge renders. Gated on
+            showMeta for parity: the name must describe what's actually on screen. */}
         <Link
           to={to}
-          aria-label={product.name}
+          aria-label={
+            showMeta && bulkOnly
+              ? `${product.name}, minimum ${product.min_order_qty} units`
+              : product.name
+          }
           className="relative block aspect-square w-full overflow-hidden bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
           <CardImage product={product} />
-          {showMeta && product.category && (
-            <div className="absolute left-2 top-2">
-              <Badge tone="brand" size="sm">
-                {categoryLabel(product.category)}
-              </Badge>
+          {showMeta && (product.category || bulkOnly) && (
+            <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+              {product.category && (
+                <Badge tone="brand" size="sm">
+                  {categoryLabel(product.category)}
+                </Badge>
+              )}
+              {bulkOnly && (
+                <Badge tone="neutral" size="sm">
+                  Min. {product.min_order_qty} units
+                </Badge>
+              )}
             </div>
           )}
           {/* Availability corner - only when it's not plain in-stock, so the
