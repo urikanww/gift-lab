@@ -9,6 +9,7 @@ use App\Enums\PublishState;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\ProductModelPart;
+use App\Services\AuditLogger;
 use App\Services\Catalogue\ScrapedCatalogueService;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\Model3dCatalogueService;
@@ -35,6 +36,7 @@ class AdminCatalogueController extends Controller
         private readonly ScrapedCatalogueService $scraped,
         private readonly Model3dCatalogueService $model3d,
         private readonly Model3dApiClient $apiClient,
+        private readonly AuditLogger $audit,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -133,6 +135,12 @@ class AdminCatalogueController extends Controller
             'class' => $p->class->value,
             'publish_state' => $p->publish_state->value,
             'cannot_publish_reasons' => $p->cannot_publish_reasons,
+            // Prefill for the inline blocker-resolution popup (the fields the
+            // scraped gate's reasons actually name).
+            'weight' => $p->weight,
+            'dimensions' => $p->dimensions,
+            'print_method' => $p->print_method?->value,
+            'is_printable' => (bool) $p->is_printable,
             'base_cost' => $p->base_cost,
             'currency' => $p->currency,
             'creator_credit' => $p->creator_credit,
@@ -186,6 +194,89 @@ class AdminCatalogueController extends Controller
         }
 
         return response()->json(['publish_state' => $product->publish_state->value]);
+    }
+
+    /**
+     * Staff fill in the facts the scraper couldn't read (dimensions + weight,
+     * print method, price) from the gate itself, then re-gate and publish if the
+     * row came fully clear. Deliberately narrow: it accepts ONLY the fields the
+     * three self-fixable CompletenessGate reasons name, so it needs no
+     * superadmin-field stripping the way the general product PATCH does.
+     *
+     * A 422 always means the INPUT was bad - never that the product merely
+     * stayed blocked. Staying blocked is a 200 with published=false, so typed
+     * work is never thrown away.
+     */
+    public function resolveBlockers(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        if ($product->class !== ProductClass::ScrapedUv) {
+            return response()->json([
+                'message' => 'Only SCRAPED_UV products resolve blockers here; 3D items have their own tools.',
+            ], 422);
+        }
+
+        if (! in_array($product->publish_state, [PublishState::CannotPublish, PublishState::Pending], true)) {
+            return response()->json(['message' => 'Product has no blockers to resolve.'], 422);
+        }
+
+        // Sanity ceilings (2 m, 100 kg, SGD 1M) catch a slipped decimal; they are
+        // absurdity bounds, not business limits.
+        $validated = $request->validate([
+            'base_cost' => ['sometimes', 'numeric', 'gt:0', 'max:1000000'],
+            'weight' => ['sometimes', 'numeric', 'gt:0', 'max:100000'],
+            'dimensions' => ['sometimes', 'array'],
+            'dimensions.l' => ['required_with:dimensions', 'numeric', 'gt:0', 'max:2000'],
+            'dimensions.w' => ['required_with:dimensions', 'numeric', 'gt:0', 'max:2000'],
+            'dimensions.h' => ['required_with:dimensions', 'numeric', 'gt:0', 'max:2000'],
+            'print_method' => ['sometimes', 'string', 'in:UV,FDM,RESIN'],
+            'is_printable' => ['sometimes', 'boolean'],
+        ]);
+
+        if (isset($validated['dimensions'])) {
+            $validated['dimensions'] = $validated['dimensions'] + ['unit' => 'mm'];
+        }
+
+        $before = [
+            'base_cost' => $product->base_cost,
+            'weight' => $product->weight,
+            'dimensions' => $product->dimensions,
+            'print_method' => $product->print_method?->value,
+            'is_printable' => $product->is_printable,
+            'publish_state' => $product->publish_state->value,
+        ];
+
+        $product = DB::transaction(function () use ($product, $validated): Product {
+            $product->fill($validated);
+            $product->save();
+
+            $product = $this->scraped->regate($product);
+
+            // regate() never publishes on its own - a clean re-gate lands on
+            // ReadyToApprove and we make the publish an explicit call, so the
+            // gate is re-run (publish() re-checks completeness itself).
+            if ($product->publish_state === PublishState::ReadyToApprove) {
+                $product = $this->scraped->publish($product);
+            }
+
+            return $product;
+        });
+
+        $this->audit->log($product, 'product.blockers_resolved', $before, [
+            'base_cost' => $product->base_cost,
+            'weight' => $product->weight,
+            'dimensions' => $product->dimensions,
+            'print_method' => $product->print_method?->value,
+            'is_printable' => $product->is_printable,
+            'publish_state' => $product->publish_state->value,
+        ]);
+
+        return response()->json([
+            'published' => $product->publish_state === PublishState::Published,
+            'publish_state' => $product->publish_state->value,
+            'cannot_publish_reasons' => $product->cannot_publish_reasons,
+        ]);
     }
 
     public function unpublish(Request $request, Product $product): JsonResponse

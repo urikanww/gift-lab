@@ -62,4 +62,22 @@ export function apiError(err: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
+/**
+ * Laravel's per-field validation bag, flattened to one message per field and
+ * keyed exactly as sent (`dimensions.l`), so a form can map it onto its inputs.
+ * Separate from apiError(), which joins the whole bag into a single string -
+ * many call sites depend on that and must not change.
+ */
+export function apiFieldErrors(err: unknown): Record<string, string> {
+  if (!(err instanceof AxiosError)) return {};
+  const data = err.response?.data as { errors?: Record<string, string[]> } | undefined;
+  if (!data?.errors) return {};
+
+  return Object.fromEntries(
+    Object.entries(data.errors)
+      .map(([field, messages]) => [field, messages[0]])
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
+}
+
 export default api;

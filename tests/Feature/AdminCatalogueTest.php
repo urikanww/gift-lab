@@ -237,3 +237,174 @@ it('lets only a superadmin toggle auto-publish', function (): void {
 
     expect((bool) PricingConfig::value('catalogue', 'auto_publish', false))->toBeTrue();
 });
+
+/** A CANNOT_PUBLISH scraped row missing everything the popup can fix. */
+function blockedScrapedProduct(array $overrides = []): Product
+{
+    return Product::factory()->scrapedUv()->create(array_merge([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'cannot_publish_reasons' => ['missing_price', 'missing_dimensions', 'not_printable'],
+        'base_cost' => 0,
+        'dimensions' => null,
+        'weight' => null,
+        'is_printable' => false,
+        'print_method' => null,
+    ], $overrides));
+}
+
+it('resolves every blocker and publishes in one call', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'base_cost' => 12.5,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
+        'weight' => 250,
+        'is_printable' => true,
+        'print_method' => 'UV',
+    ])
+        ->assertOk()
+        ->assertJsonPath('published', true)
+        ->assertJsonPath('cannot_publish_reasons', null);
+
+    $product->refresh();
+    expect($product->publish_state->value)->toBe('PUBLISHED')
+        // decimal casts return strings
+        ->and($product->weight)->toBe('250.000')
+        ->and($product->dimensions)->toBe(['l' => 100, 'w' => 80, 'h' => 60, 'unit' => 'mm']);
+});
+
+it('saves the fix but does not publish when an unfixable blocker remains', function (): void {
+    // stock_estimate is source-truth and NOT settable here, so the row stays
+    // blocked - but the typed weight must still persist.
+    $product = blockedScrapedProduct(['stock_estimate' => null]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'base_cost' => 12.5,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
+        'weight' => 250,
+        'is_printable' => true,
+        'print_method' => 'UV',
+    ])
+        ->assertOk()
+        ->assertJsonPath('published', false)
+        ->assertJsonPath('cannot_publish_reasons', ['stock_unreadable']);
+
+    $product->refresh();
+    expect($product->publish_state->value)->toBe('CANNOT_PUBLISH')
+        ->and($product->weight)->toBe('250.000'); // work was NOT thrown away
+});
+
+it('rejects a non-positive weight and writes nothing', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['weight' => 0])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['weight']);
+
+    expect($product->refresh()->weight)->toBeNull();
+});
+
+it('rejects an absurd weight above the sanity ceiling', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['weight' => 500000])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['weight']);
+});
+
+it('rejects an absurd dimension above the sanity ceiling', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'dimensions' => ['l' => 5000, 'w' => 80, 'h' => 60],
+    ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['dimensions.l']);
+});
+
+it('rejects an unknown print method', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['print_method' => 'LASER'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['print_method']);
+});
+
+it('requires every dimension when dimensions are sent at all', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'dimensions' => ['l' => 100],
+    ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['dimensions.w', 'dimensions.h']);
+});
+
+it('refuses to resolve blockers on a MODEL_3D product', function (): void {
+    $product = Product::factory()->model3d()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['weight' => 250])
+        ->assertStatus(422);
+});
+
+it('refuses to resolve blockers on an already-published product', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['weight' => 250])
+        ->assertStatus(422);
+});
+
+it('forbids a non-staff user from resolving blockers', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs(User::factory()->create()); // buyer
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['weight' => 250])
+        ->assertStatus(403);
+});
+
+it('audit-logs a blocker resolution', function (): void {
+    $product = blockedScrapedProduct();
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'base_cost' => 12.5,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
+        'weight' => 250,
+        'is_printable' => true,
+        'print_method' => 'UV',
+    ])->assertOk();
+
+    $this->assertDatabaseHas('audit_logs', [
+        'auditable_type' => Product::class,
+        'auditable_id' => $product->id,
+        'event' => 'product.blockers_resolved',
+        'user_id' => $this->staff->id,
+    ]);
+});
+
+it('returns the blocker-prefill fields on each gate row', function (): void {
+    Product::factory()->scrapedUv()->create([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'weight' => 250,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60, 'unit' => 'mm'],
+        'print_method' => 'UV',
+        'is_printable' => true,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/catalogue')->assertOk();
+
+    $res->assertJsonPath('data.0.weight', '250.000')
+        ->assertJsonPath('data.0.dimensions.l', 100)
+        ->assertJsonPath('data.0.print_method', 'UV')
+        ->assertJsonPath('data.0.is_printable', true);
+});

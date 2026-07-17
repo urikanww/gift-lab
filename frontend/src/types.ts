@@ -394,6 +394,11 @@ export interface AdminCatalogueItem {
   class: ProductClass;
   publish_state: PublishState;
   cannot_publish_reasons: string[] | null;
+  /** Prefill for the blocker-resolution popup. decimal casts arrive as strings. */
+  weight: string | null;
+  dimensions: { l?: number; w?: number; h?: number; unit?: string } | null;
+  print_method: 'UV' | 'FDM' | 'RESIN' | null;
+  is_printable: boolean;
   base_cost: string;
   currency: string;
   creator_credit: string | null;

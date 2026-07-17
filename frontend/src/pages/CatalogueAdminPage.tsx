@@ -4,13 +4,15 @@ import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { safeHref } from '../lib/safeHref';
-import { Badge, Button, Card, EmptyState, Input, Modal, Select, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, Select, Skeleton, Tooltip, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import ProductQuickView from '../components/ProductQuickView';
+import ResolveBlockersModal from '../components/admin/ResolveBlockersModal';
 import ImageLightbox from '../components/ImageLightbox';
 import { EyeIcon, FilterIcon } from '../components/icons';
 import { CountPill, FilterChips } from '../components/admin/Filters';
 import { CATEGORIES, categoryLabel } from '../lib/categories';
+import { BLOCKER_LABELS, blockerHelp, blockerLabel, isFixableBlocker } from '../lib/blockerCopy';
 import { SOURCE_KIND_LABELS, type SourceKind } from '../lib/sourceKind';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import type { AdminCatalogueItem, ProductClass, PublishState } from '../types';
@@ -35,41 +37,18 @@ const STATE_LABELS: Record<PublishState, string> = {
   CANNOT_PUBLISH: 'Cannot publish',
 };
 
-/**
- * Human labels for the machine reason tokens emitted by the backend gates
- * (CompletenessGate + Model3dCatalogueService + resync commands). Unknown or
- * future tokens fall back to a prettified form so a raw enum never renders.
- */
-const BLOCKER_LABELS: Record<string, string> = {
-  missing_model_file: 'No printable model file',
-  awaiting_model_file: 'Awaiting 3D model (skipped until pulled)',
-  license_review: 'Licence needs review',
-  multi_file_review: 'Multi-file set needs review',
-  estimates_unverified: 'Filament estimates unverified',
-  missing_price: 'No price from source',
-  missing_dimensions: 'Missing dimensions or weight',
-  not_printable: 'No print method set',
-  stock_unreadable: 'Stock level unreadable',
-  source_dead: 'Source listing gone',
-  'needs_re-review': 'Needs re-review',
-  license_blocked: 'Licence blocks commercial use',
-  missing_credit: 'Creator credit missing',
-};
-
-function blockerLabel(token: string): string {
-  const known = BLOCKER_LABELS[token];
-  if (known) return known;
-  if (token.startsWith('ip_flag:')) return `IP flag: ${token.slice('ip_flag:'.length)}`;
-  // Fallback prettifier: snake/kebab token → sentence case.
-  const pretty = token.replace(/[_-]+/g, ' ').trim();
-  return pretty.charAt(0).toUpperCase() + pretty.slice(1);
-}
-
 /** Mirrors the render condition of Model3dRowTools (inline fix available). */
 function hasInlineTools(item: AdminCatalogueItem): boolean {
   return (
     item.class === 'MODEL_3D' &&
     ((item.cannot_publish_reasons?.includes('missing_model_file') ?? false) || !item.estimates_verified)
+  );
+}
+
+/** A SCRAPED_UV row with at least one blocker staff can clear in the popup. */
+function hasFixableBlockers(item: AdminCatalogueItem): boolean {
+  return (
+    item.class === 'SCRAPED_UV' && (item.cannot_publish_reasons?.some(isFixableBlocker) ?? false)
   );
 }
 
@@ -216,6 +195,9 @@ export default function CatalogueAdminPage() {
 
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
+  // Holds a snapshot of the row being fixed. Non-null also mounts the popup -
+  // its state seeds from props once, so it must unmount between products.
+  const [blockersFor, setBlockersFor] = useState<AdminCatalogueItem | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [captureUrl, setCaptureUrl] = useState('');
@@ -691,13 +673,48 @@ export default function CatalogueAdminPage() {
                   </Badge>
                 </div>
 
+                {/* Per-token: a row can mix fixable and source-truth blockers.
+                    Fixable ones open the popup; the rest stay inert, with a
+                    tooltip saying why when we can explain it. */}
                 <div className="flex min-w-0 flex-wrap gap-1.5">
                   {it.cannot_publish_reasons?.length ? (
-                    it.cannot_publish_reasons.map((r) => (
-                      <Badge key={r} tone="warning" size="sm">
-                        {blockerLabel(r)}
-                      </Badge>
-                    ))
+                    it.cannot_publish_reasons.map((r) => {
+                      if (it.class === 'SCRAPED_UV' && isFixableBlocker(r)) {
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setBlockersFor(it)}
+                            aria-label={`Fix: ${blockerLabel(r)} on ${it.name}`}
+                            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Badge tone="warning" size="sm" className="cursor-pointer hover:opacity-80">
+                              {blockerLabel(r)}
+                            </Badge>
+                          </button>
+                        );
+                      }
+                      const help = blockerHelp(r);
+                      if (!help) {
+                        return (
+                          <Badge key={r} tone="warning" size="sm">
+                            {blockerLabel(r)}
+                          </Badge>
+                        );
+                      }
+                      return (
+                        <Tooltip key={r} content={help}>
+                          <span
+                            tabIndex={0}
+                            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Badge tone="warning" size="sm">
+                              {blockerLabel(r)}
+                            </Badge>
+                          </span>
+                        </Tooltip>
+                      );
+                    })
                   ) : (
                     <span className="text-sm text-fg-subtle">-</span>
                   )}
@@ -734,9 +751,11 @@ export default function CatalogueAdminPage() {
                   )}
                   {it.publish_state === 'CANNOT_PUBLISH' && (
                     <span className="text-xs text-fg-subtle lg:text-right">
-                      {hasInlineTools(it)
-                        ? 'Use the tools below to clear the blockers.'
-                        : 'Fix the blockers at the source - re-checked on next sync.'}
+                      {hasFixableBlockers(it)
+                        ? 'Click a blocker to fix it here.'
+                        : hasInlineTools(it)
+                          ? 'Use the tools below to clear the blockers.'
+                          : 'Fix the blockers at the source - re-checked on next sync.'}
                     </span>
                   )}
                 </div>
@@ -781,6 +800,22 @@ export default function CatalogueAdminPage() {
         backTo="/catalogue-admin"
         onClose={() => setQuickViewId(null)}
       />
+
+      {blockersFor && (
+        <ResolveBlockersModal
+          key={blockersFor.id}
+          product={blockersFor}
+          open
+          onClose={() => setBlockersFor(null)}
+          onResolved={(published) =>
+            toast(
+              published
+                ? { title: 'Published', description: blockersFor.name, tone: 'success' }
+                : { title: 'Saved - still blocked', description: blockersFor.name, tone: 'warning' },
+            )
+          }
+        />
+      )}
     </div>
   );
 }

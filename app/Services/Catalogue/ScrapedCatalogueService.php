@@ -152,6 +152,29 @@ final class ScrapedCatalogueService
         $product->save();
     }
 
+    /**
+     * Re-evaluate the completeness gate against the product's current facts
+     * (after staff fill in a missing weight, print method, price) without
+     * publishing. Mirrors Model3dCatalogueService::regate().
+     */
+    public function regate(Product $product): Product
+    {
+        $reasons = $this->gate->reasons($product);
+
+        if ($reasons !== []) {
+            return $this->markCannotPublish($product, $reasons);
+        }
+
+        // Never jump straight to Published from a re-gate; auto-publish is a
+        // policy about scraper INGEST, not about staff edits. Publication stays
+        // an explicit decision (mirrors Model3dCatalogueService::regate()).
+        $product->publish_state = PublishState::ReadyToApprove;
+        $product->cannot_publish_reasons = null;
+        $product->save();
+
+        return $product;
+    }
+
     private function evaluateAndSetState(Product $product): void
     {
         $reasons = $this->gate->reasons($product);
