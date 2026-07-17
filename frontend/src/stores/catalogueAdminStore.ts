@@ -17,6 +17,21 @@ export interface CatalogueCounts {
   blocked: number;
 }
 
+/** Only the fields the three self-fixable SCRAPED_UV blockers name. */
+export interface ResolveBlockersPayload {
+  base_cost?: number;
+  weight?: number;
+  dimensions?: { l: number; w: number; h: number };
+  print_method?: 'UV' | 'FDM' | 'RESIN';
+  is_printable?: boolean;
+}
+
+export interface ResolveBlockersResult {
+  published: boolean;
+  publish_state: string;
+  cannot_publish_reasons: string[] | null;
+}
+
 interface CatalogueAdminState {
   items: AdminCatalogueItem[];
   meta: CatalogueMeta | null;
@@ -66,6 +81,7 @@ interface CatalogueAdminState {
     estimates: { filament_material: string; filament_color: string; est_grams: number },
   ) => Promise<boolean>;
   uploadModelFile: (id: number, file: File) => Promise<boolean>;
+  resolveBlockers: (id: number, payload: ResolveBlockersPayload) => Promise<ResolveBlockersResult>;
 }
 
 export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => ({
@@ -175,6 +191,24 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     } catch (err) {
       set({ error: apiError(err) });
       return false;
+    }
+  },
+
+  // Throws on failure (unlike the boolean-returning siblings) so the modal can
+  // read the per-field 422 bag off the error - a bare `false` would lose it.
+  resolveBlockers: async (id, payload) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<ResolveBlockersResult>(
+        `/admin/products/${id}/resolve-blockers`,
+        payload,
+      );
+      await get().fetch(undefined, { silent: true });
+      return data;
+    } catch (err) {
+      set({ error: apiError(err) });
+      throw err;
     }
   },
 
