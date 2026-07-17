@@ -1,27 +1,40 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
 import HomePage from './HomePage';
 import * as catalogue from '../lib/catalogue';
+import * as quotes from '../lib/quotes';
+import { useAuthStore } from '../stores/authStore';
+import type { Product, Quote, User } from '../types';
 
-vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue({
-  data: [
-    {
-      id: 5,
-      name: 'A5 Notebook',
-      class: 'CORE',
-      category: 'stationery',
-      from_price: 7.58,
-      currency: 'SGD',
-      is_printable: true,
-      availability: 'in_stock',
-    } as any,
-  ],
-  meta: { current_page: 1, last_page: 1, total: 1 },
-} as any);
+const product = (id: number): Product =>
+  ({
+    id,
+    name: `Product ${id}`,
+    class: 'CORE',
+    category: 'stationery',
+    from_price: 7.58,
+    currency: 'SGD',
+    is_printable: true,
+    availability: 'in_stock',
+  }) as Product;
 
-it('renders search hero, category tiles, new arrivals and popular rails - no explainer sections', async () => {
+const page = (ids: number[], current = 1, last = 1) => ({
+  data: ids.map(product),
+  meta: { current_page: current, last_page: last, total: ids.length },
+});
+
+const testUser: User = {
+  id: 1,
+  company_id: null,
+  name: 'Ada Buyer',
+  email: 'ada@example.com',
+  role: 'buyer',
+};
+
+const renderHome = () =>
   render(
     <ThemeProvider>
       <MemoryRouter>
@@ -30,17 +43,73 @@ it('renders search hero, category tiles, new arrivals and popular rails - no exp
     </ThemeProvider>,
   );
 
-  expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole('search')).toBeInTheDocument();
-  expect(screen.getByText(/shop by category/i)).toBeInTheDocument();
-  // Drinkware appears twice (hero quick-link + category tile) - assert all point at the category URL.
-  const drinkwareLinks = screen.getAllByRole('link', { name: /drinkware/i });
-  expect(drinkwareLinks.length).toBeGreaterThanOrEqual(2);
-  drinkwareLinks.forEach((l) => expect(l).toHaveAttribute('href', '/products?category=drinkware'));
-  expect(screen.getByText(/new arrivals/i)).toBeInTheDocument();
-  // The product appears in both rails.
-  await waitFor(() => expect(screen.getAllByText(/A5 Notebook/).length).toBeGreaterThanOrEqual(2));
-  // Marketplace, not a pitch page: explainers must be gone.
-  expect(screen.queryByText(/how it works/i)).not.toBeInTheDocument();
-  expect(screen.queryByText(/3-day turnaround/i)).not.toBeInTheDocument();
+// Replace-mode reset so no per-test user leaks - same idiom as SiteHeader.test.tsx.
+const initialStore = useAuthStore.getState();
+afterEach(() => {
+  vi.restoreAllMocks();
+  useAuthStore.setState(initialStore, true);
+});
+
+describe('HomePage', () => {
+  it('has no search - the header owns the only one', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    renderHome();
+
+    await waitFor(() => expect(screen.getAllByText('Product 1').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('search')).not.toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+
+  it('drops the Featured gifts section - there is no popularity signal', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    renderHome();
+
+    await waitFor(() => expect(screen.getAllByText('Product 1').length).toBeGreaterThan(0));
+    expect(screen.queryByText(/featured gifts/i)).not.toBeInTheDocument();
+  });
+
+  it('hides the reorder rail when signed out and never asks for quotes', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    const spy = vi.spyOn(quotes, 'fetchRecentQuotes').mockResolvedValue([]);
+    renderHome();
+
+    await waitFor(() => expect(screen.getAllByText('Product 1').length).toBeGreaterThan(0));
+    expect(screen.queryByText(/reorder from a past quote/i)).not.toBeInTheDocument();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('shows the reorder rail when signed in with quotes', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    vi.spyOn(quotes, 'fetchRecentQuotes').mockResolvedValue([
+      { id: 7, currency: 'SGD', total: '250.00' } as Quote,
+    ]);
+    useAuthStore.setState({ user: testUser, status: 'ready', error: null });
+    renderHome();
+
+    await waitFor(() => expect(screen.getByText(/reorder from a past quote/i)).toBeInTheDocument());
+  });
+
+  it('appends the next page on Load more, then hides the button at the last page', async () => {
+    // Keyed on the query, not swapped mid-test: page 2 only ever resolves for a
+    // request that actually asked for page 2, so this fails if the page never advances.
+    vi.spyOn(catalogue, 'fetchCatalogue').mockImplementation((q: catalogue.CatalogueQuery = {}) =>
+      Promise.resolve(
+        (q.sort === 'newest' ? page([9]) : page([q.page === 2 ? 2 : 1], q.page ?? 1, 2)) as any,
+      ),
+    );
+    renderHome();
+
+    await userEvent.click(await screen.findByRole('button', { name: /load more/i }));
+
+    await waitFor(() => expect(screen.getByText('Product 2')).toBeInTheDocument());
+    expect(screen.getByText('Product 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it('surfaces a retry when the catalogue fails', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockRejectedValue(new Error('down'));
+    renderHome();
+
+    await waitFor(() => expect(screen.getByText(/could not load products/i)).toBeInTheDocument());
+  });
 });
