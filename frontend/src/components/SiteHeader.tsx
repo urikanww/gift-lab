@@ -59,8 +59,11 @@ export default function SiteHeader() {
             Products
           </NavLink>
           <CategoriesMenu />
-          <NavLink to="/track" className={navLinkClass}>
-            Track order
+          <NavLink to="/kits" className={navLinkClass}>
+            Kits
+          </NavLink>
+          <NavLink to="/gift-ideas" className={navLinkClass}>
+            Gift ideas
           </NavLink>
           {user && !isStaffRole(user.role) && (
             <NavLink to="/brand-kit" className={navLinkClass}>
@@ -83,7 +86,7 @@ export default function SiteHeader() {
           )}
         </nav>
 
-        <form onSubmit={onSearch} role="search" className="hidden lg:block lg:w-56">
+        <form onSubmit={onSearch} role="search" className="hidden md:block md:max-w-xs md:flex-1">
           <Input name="q" type="search" aria-label="Search products" placeholder="Search products…" />
         </form>
 
@@ -356,6 +359,12 @@ function MobileDrawer({
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
+            <NavLink to="/kits" onClick={onClose} className={navLinkClass}>
+              Kits
+            </NavLink>
+            <NavLink to="/gift-ideas" onClick={onClose} className={navLinkClass}>
+              Gift ideas
+            </NavLink>
             <NavLink to="/track" onClick={onClose} className={navLinkClass}>
               Track order
             </NavLink>
