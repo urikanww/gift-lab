@@ -1,24 +1,42 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { fetchBulkPricing, formatPct } from '../../lib/catalogue';
 
-const TILES = [
-  {
-    to: '/kits',
-    title: 'Build a kit',
-    blurb: 'Bundle several gifts into one branded box for your team.',
-    icon: '📦',
-  },
-  {
-    to: '/products',
-    title: 'Bulk pricing',
-    blurb: 'Unit price drops as quantity climbs. Quote any item in the catalogue.',
-    icon: '🏢',
-  },
-];
+// True at any config and states no numbers - the engine's discount is a single
+// step, so "drops as quantity climbs" would oversell it.
+const BULK_FALLBACK_BLURB = 'Unit price drops on larger orders. Quote any item in the catalogue.';
+
+const KIT_TILE = {
+  to: '/kits',
+  title: 'Build a kit',
+  blurb: 'Bundle several gifts into one branded box for your team.',
+  icon: '📦',
+};
 
 export default function PromoTiles() {
+  // The real offer, when we can get it. This tile is on the public home page,
+  // so a failed fetch must degrade to generic-but-true copy, never a blank.
+  const [bulkBlurb, setBulkBlurb] = useState(BULK_FALLBACK_BLURB);
+
+  useEffect(() => {
+    let active = true;
+    fetchBulkPricing().then((b) => {
+      if (!active || !b || b.bulkQty === null) return;
+      setBulkBlurb(`${formatPct(b.discountPct)}% off at ${b.bulkQty}+ units. Quote any item in the catalogue.`);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const tiles = [
+    KIT_TILE,
+    { to: '/products', title: 'Bulk pricing', blurb: bulkBlurb, icon: '🏢' },
+  ];
+
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {TILES.map((t) => (
+      {tiles.map((t) => (
         <li key={t.to}>
           <Link
             to={t.to}
