@@ -51,6 +51,27 @@ afterEach(() => {
 });
 
 describe('HomePage', () => {
+  it('roots the document outline with an h1, even though nothing here is a visible headline', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    renderHome();
+
+    await waitFor(() => expect(screen.getAllByText('Product 1').length).toBeGreaterThan(0));
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
+  });
+
+  it('keeps the reorder rail away from staff - they see every company\'s quotes', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    const spy = vi.spyOn(quotes, 'fetchRecentQuotes').mockResolvedValue([
+      { id: 7, currency: 'SGD', total: '250.00' } as Quote,
+    ]);
+    useAuthStore.setState({ user: { ...testUser, role: 'staff_admin' }, status: 'ready', error: null });
+    renderHome();
+
+    await waitFor(() => expect(screen.getAllByText('Product 1').length).toBeGreaterThan(0));
+    expect(screen.queryByText(/reorder from a past quote/i)).not.toBeInTheDocument();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('has no search - the header owns the only one', async () => {
     vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
     renderHome();

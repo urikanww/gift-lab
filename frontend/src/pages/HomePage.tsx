@@ -9,6 +9,7 @@ import ProductRail from '../components/home/ProductRail';
 import ReorderRail from '../components/home/ReorderRail';
 import { Motion, staggerContainer } from '../motion';
 import { fetchCatalogue, productPath } from '../lib/catalogue';
+import { isStaffRole } from '../lib/roles';
 import { useAuthStore } from '../stores/authStore';
 import type { Product } from '../types';
 
@@ -72,10 +73,17 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-8 sm:gap-10">
+      {/* The shelf opens straight into the category band - a marketplace, not a
+          pitch page - so nothing here is a visible headline. The outline still
+          needs a root, and the h2s below need something to hang under. */}
+      <h1 className="sr-only">Personalised gifts for teams, in bulk</h1>
+
       <CategoryRail />
       <PromoTiles />
 
-      {user && <ReorderRail />}
+      {/* Staff see every company's quotes, so "reorder yours" is meaningless to
+          them; mirrors the buyer-only gate SiteHeader uses for the brand kit. */}
+      {user && !isStaffRole(user.role) && <ReorderRail />}
 
       {/* A bare heading over a blank rail reads as broken, so the section is
           hidden outright when empty; the load error surfaces in Browse below. */}
