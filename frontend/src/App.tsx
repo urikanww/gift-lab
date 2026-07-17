@@ -184,9 +184,13 @@ export default function App() {
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
               <Route path="pricing-admin" element={<ProtectedRoute superadminOnly><PricingAdminPage /></ProtectedRoute>} />
-              <Route path="user-admin" element={<ProtectedRoute staffOnly><UserAdminPage /></ProtectedRoute>} />
-              <Route path="user-admin/new" element={<ProtectedRoute staffOnly><UserAdminCreatePage /></ProtectedRoute>} />
-              <Route path="user-admin/:id" element={<ProtectedRoute staffOnly><UserAdminDetailPage /></ProtectedRoute>} />
+              {/* Superadmin-only, mirroring the backend: every /admin/users and
+                  /admin/companies endpoint behind these pages gates on
+                  isSuperadmin(), so a staff_admin who reached them would only
+                  collect 403s. StaffLayout already hides the nav link. */}
+              <Route path="user-admin" element={<ProtectedRoute superadminOnly><UserAdminPage /></ProtectedRoute>} />
+              <Route path="user-admin/new" element={<ProtectedRoute superadminOnly><UserAdminCreatePage /></ProtectedRoute>} />
+              <Route path="user-admin/:id" element={<ProtectedRoute superadminOnly><UserAdminDetailPage /></ProtectedRoute>} />
             </Route>
           </Route>
         </Routes>
