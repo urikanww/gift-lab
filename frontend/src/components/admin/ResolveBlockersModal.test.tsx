@@ -113,6 +113,42 @@ it('stays open and names what is left when the row is still blocked', async () =
 
   expect(await screen.findByText(/saved, but still blocked/i)).toBeInTheDocument();
   expect(screen.getByText(/stock level unreadable/i)).toBeInTheDocument();
+  expect(screen.getByText(/can’t be fixed here/i)).toBeInTheDocument();
+  // Nothing to retry - source-truth only, so no way back to the fields.
+  expect(screen.queryByRole('button', { name: /back to fields/i })).not.toBeInTheDocument();
+});
+
+it('does not claim a surviving fixable blocker is unfixable, and offers a retry', async () => {
+  // A sub-cent price passes the server's gt:0 but stores as 0.00 on a
+  // decimal(12,2), so the gate re-emits missing_price - which IS fixable here.
+  mockResolve({ published: false, cannot_publish_reasons: ['missing_price'] });
+  renderModal(item({ cannot_publish_reasons: ['missing_price'], base_cost: '0.00' }));
+
+  await userEvent.type(screen.getByLabelText(/base cost/i), '0.004');
+  await userEvent.click(screen.getByRole('button', { name: /save and publish/i }));
+
+  expect(await screen.findByText(/saved, but still blocked/i)).toBeInTheDocument();
+  expect(screen.getByText(/no price from source/i)).toBeInTheDocument();
+  expect(screen.getByText(/check the value against the source listing/i)).toBeInTheDocument();
+  expect(screen.queryByText(/can’t be fixed here/i)).not.toBeInTheDocument();
+
+  // The retry lands back on the field, with the rejected value still there.
+  await userEvent.click(screen.getByRole('button', { name: /back to fields/i }));
+  expect(screen.getByLabelText(/base cost/i)).toHaveValue('0.004');
+});
+
+it('splits survivors into what to retry and what it cannot fix', async () => {
+  mockResolve({ published: false, cannot_publish_reasons: ['missing_price', 'stock_unreadable'] });
+  renderModal(item({ cannot_publish_reasons: ['missing_price'], base_cost: '0.00' }));
+
+  await userEvent.type(screen.getByLabelText(/base cost/i), '0.004');
+  await userEvent.click(screen.getByRole('button', { name: /save and publish/i }));
+
+  expect(await screen.findByText(/check the value against the source listing/i)).toBeInTheDocument();
+  expect(screen.getByText(/no price from source/i)).toBeInTheDocument();
+  // The source-truth one keeps its "can't be fixed here" framing + explanation.
+  expect(screen.getByText(/can’t be fixed here/i)).toBeInTheDocument();
+  expect(screen.getByText(/resolves on the next sync/i)).toBeInTheDocument();
 });
 
 it('maps a 422 onto the field it names', async () => {

@@ -34,6 +34,21 @@ export function blockerLabel(token: string): string {
 }
 
 /**
+ * The scraped-gate blockers a staffer can clear by typing a fact off the source
+ * listing, i.e. the ones the resolve-blockers popup renders a field group for.
+ * Everything else (stock_unreadable, source_dead, needs_re-review) is
+ * source-truth and resolves on the next sync - see the design spec.
+ *
+ * Module-private: `isFixableBlocker` is the whole public surface, and nothing
+ * needs to enumerate the tokens.
+ */
+const FIXABLE_BLOCKERS = ['missing_dimensions', 'not_printable', 'missing_price'] as const;
+
+export function isFixableBlocker(token: string): boolean {
+  return (FIXABLE_BLOCKERS as readonly string[]).includes(token);
+}
+
+/**
  * Why a source-truth blocker can't be cleared by staff. Deliberately covers ONLY
  * these three: every other blocker is either fixable in the resolve-blockers
  * popup or cleared by an inline row tool, and a blanket "resolves at the source"

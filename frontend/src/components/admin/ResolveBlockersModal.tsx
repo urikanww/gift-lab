@@ -1,20 +1,9 @@
 import { useState } from 'react';
 import { Badge, Button, Input, Modal, Select } from '../../ui';
 import { apiFieldErrors } from '../../lib/api';
-import { blockerHelp, blockerLabel } from '../../lib/blockerCopy';
+import { blockerHelp, blockerLabel, isFixableBlocker } from '../../lib/blockerCopy';
 import { useCatalogueAdminStore, type ResolveBlockersPayload } from '../../stores/catalogueAdminStore';
 import type { AdminCatalogueItem } from '../../types';
-
-/**
- * The scraped-gate blockers a staffer can clear by typing a fact off the source
- * listing. Everything else (stock_unreadable, source_dead, needs_re-review) is
- * source-truth and resolves on the next sync - see the design spec.
- */
-export const FIXABLE_BLOCKERS = ['missing_dimensions', 'not_printable', 'missing_price'] as const;
-
-export function isFixableBlocker(token: string): boolean {
-  return (FIXABLE_BLOCKERS as readonly string[]).includes(token);
-}
 
 /**
  * Mirrors the server's sanity ceilings so a typo fails before a round-trip.
@@ -62,7 +51,7 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  /** Set when the save persisted but the row is still blocked by source-truth. */
+  /** Set when the save persisted but the gate still holds the row back. */
   const [remaining, setRemaining] = useState<string[] | null>(null);
 
   const submit = async () => {
@@ -115,7 +104,7 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
         onClose();
         return;
       }
-      // Saved, but a source-truth blocker survives. Keep the popup open and say
+      // Saved, but the re-gate still holds the row. Keep the popup open and say
       // so - the typed work persisted, which is the whole point of the 200.
       setRemaining(result.cannot_publish_reasons ?? []);
       onResolved(false);
@@ -129,31 +118,72 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
   };
 
   if (remaining !== null) {
+    // A survivor the popup owns a field for means the saved value didn't satisfy
+    // the gate (e.g. a sub-cent price rounds to 0.00) - it IS fixable here, so
+    // never file it under "can't be fixed here".
+    const fixable = remaining.filter(isFixableBlocker);
+    const sourceTruth = remaining.filter((token) => !isFixableBlocker(token));
+
     return (
       <Modal
         open={open}
         onClose={onClose}
         title="Saved, but still blocked"
         description={product.name}
-        footer={<Button onClick={onClose}>Close</Button>}
+        footer={
+          fixable.length > 0 ? (
+            <>
+              <Button variant="ghost" onClick={onClose}>
+                Close
+              </Button>
+              <Button onClick={() => setRemaining(null)}>Back to fields</Button>
+            </>
+          ) : (
+            <Button onClick={onClose}>Close</Button>
+          )
+        }
       >
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-fg-muted">
-            Your changes were saved. These blockers can&apos;t be fixed here:
-          </p>
-          <ul className="flex flex-col gap-2">
-            {remaining.map((token) => {
-              const help = blockerHelp(token);
-              return (
-                <li key={token} className="flex flex-col gap-1">
-                  <Badge tone="warning" size="sm">
-                    {blockerLabel(token)}
-                  </Badge>
-                  {help && <span className="text-sm text-fg-subtle">{help}</span>}
-                </li>
-              );
-            })}
-          </ul>
+        <div className="flex flex-col gap-4">
+          {fixable.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-fg-muted">
+                Your changes were saved, but the gate still rejects these. Check the value against
+                the source listing and save again:
+              </p>
+              <ul className="flex flex-col gap-2">
+                {fixable.map((token) => (
+                  <li key={token}>
+                    <Badge tone="warning" size="sm">
+                      {blockerLabel(token)}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {sourceTruth.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-fg-muted">
+                {fixable.length > 0
+                  ? 'These can’t be fixed here:'
+                  : 'Your changes were saved. These blockers can’t be fixed here:'}
+              </p>
+              <ul className="flex flex-col gap-2">
+                {sourceTruth.map((token) => {
+                  const help = blockerHelp(token);
+                  return (
+                    <li key={token} className="flex flex-col gap-1">
+                      <Badge tone="warning" size="sm">
+                        {blockerLabel(token)}
+                      </Badge>
+                      {help && <span className="text-sm text-fg-subtle">{help}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       </Modal>
     );
