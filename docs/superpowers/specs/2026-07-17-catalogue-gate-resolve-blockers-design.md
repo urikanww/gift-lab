@@ -92,11 +92,21 @@ Auto-publish is a policy about *scraper ingest*, not about staff edits.
 `ingest()` / `resync()` behaviour is unchanged. Only the reason-computation and
 state-write are shared.
 
-### 2. `POST /api/admin/catalogue/{product}/resolve-blockers`
+### 2. `POST /api/admin/products/{product}/resolve-blockers`
 
 New method on `AdminCatalogueController`, beside `publish`. Route registered in
-the staff block, `routes/api.php` (near `:124-141`). Staff-gated in-controller
+the staff block, `routes/api.php` (near `:124-142`). Staff-gated in-controller
 with `abort_unless($request->user()->isStaff(), 403)` — same as every sibling.
+
+**Path note:** the gate's endpoints all live under `/admin/products/{product}/…`
+despite hanging off `AdminCatalogueController` (`publish`, `verify-estimates`,
+`model-file` — `routes/api.php:125-141`). This follows that convention rather
+than inventing an `/admin/catalogue/{product}/` prefix that exists nowhere.
+
+`AdminCatalogueController` does not currently inject `AuditLogger` — it gains a
+fourth constructor dependency. Note `AdminProductController` already injects
+`AdminCatalogueController`, so the new dependency must not create a cycle;
+`AuditLogger` is a leaf service, so it doesn't.
 
 **Guards**, in order:
 
