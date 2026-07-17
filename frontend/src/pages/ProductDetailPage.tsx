@@ -23,18 +23,19 @@ const ModelViewer = lazy(() => import('../components/ModelViewer'));
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import {
   designPath,
+  fetchBulkPricing,
   fetchProduct,
   fetchRelated,
   fetchTierPrices,
+  formatPct,
   productPath,
+  type BulkPricing,
   type TierPrice,
 } from '../lib/catalogue';
 import { categoryLabel } from '../lib/categories';
 import { AVAILABILITY } from '../lib/availability';
 import { useCartStore } from '../stores/cartStore';
 import type { PrintMethod, Product, Variant } from '../types';
-
-const TIER_QUANTITIES = [25, 100, 250, 500];
 
 // Keep aligned with the studio's Model3dPersonalizer / spool inventory. White
 // default: light colours give the best UV-print contrast.
@@ -100,6 +101,26 @@ export default function ProductDetailPage() {
   const [tiers, setTiers] = useState<TierPrice[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
 
+  // The engine applies ONE discount at ONE threshold, so the strip has at most
+  // two meaningful quantities. `bulk` is product-independent; null means we
+  // couldn't find out, and we then say nothing about discounts.
+  const [bulk, setBulk] = useState<BulkPricing | null>(null);
+  const [bulkResolved, setBulkResolved] = useState(false);
+
+  const minQty = Math.max(1, product?.min_order_qty ?? 1);
+  const bulkQty = bulk?.bulkQty ?? null;
+
+  // Two prices exist, not four: full below the threshold, discounted at or
+  // above it. Anchor the low end at the MOQ so every tile is a quantity this
+  // buyer can actually order - a tile below the MOQ advertises a price that
+  // clicking it cannot produce. Drop the high tile when the MOQ already clears
+  // the threshold (every order is discounted; there is no break to show) or
+  // when no offer exists.
+  const tierQuantities = useMemo(
+    () => (bulkQty !== null && bulkQty > minQty ? [minQty, bulkQty] : [minQty]),
+    [minQty, bulkQty],
+  );
+
   // ── Load the product (with unmount/stale guard). ──────────────────────────
   useEffect(() => {
     let active = true;
@@ -145,12 +166,27 @@ export default function ProductDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id]);
 
-  // ── Tier pricing - re-fetch when product or selected variant changes. ─────
+  // ── The bulk offer (config-driven, product-independent). ──────────────────
   useEffect(() => {
-    if (!product) return;
+    let active = true;
+    fetchBulkPricing().then((b) => {
+      if (!active) return;
+      setBulk(b);
+      setBulkResolved(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // ── Tier pricing - re-fetch when product or selected variant changes. ─────
+  // Gated on the offer resolving: the quantities are derived from it, so
+  // probing earlier would price a strip we're about to replace.
+  useEffect(() => {
+    if (!product || !bulkResolved) return;
     let active = true;
     setTiersLoading(true);
-    fetchTierPrices(product.id, selectedVariantId, TIER_QUANTITIES)
+    fetchTierPrices(product.id, selectedVariantId, tierQuantities)
       .then((res) => {
         if (!active) return;
         setTiers(res);
@@ -164,7 +200,7 @@ export default function ProductDetailPage() {
     return () => {
       active = false;
     };
-  }, [product?.id, selectedVariantId]);
+  }, [product?.id, selectedVariantId, bulkResolved, tierQuantities]);
 
   // ── Live price for the chosen quantity (reuses the tier-price endpoint). ──
   useEffect(() => {
@@ -238,8 +274,16 @@ export default function ProductDetailPage() {
   const currency = product.currency;
   const previewHref = safeHref(product.image_url);
 
-  const minQty = Math.max(1, product.min_order_qty ?? 1);
   const is3d = product.class === 'MODEL_3D';
+
+  // State the real offer or say nothing - never imply a break that the engine
+  // doesn't apply. `bulk === null` is "we don't know" (fetch failed).
+  const bulkNote =
+    bulk === null || bulkQty === null
+      ? null
+      : minQty >= bulkQty
+        ? `Bulk pricing is already applied at this product's minimum order of ${minQty}.`
+        : `${formatPct(bulk.discountPct)}% off at ${bulkQty}+ units.`;
 
   // Customization is optional, so buyers can order the product plain straight
   // from the PDP with a chosen quantity - no detour through the studio. 3D items
@@ -488,13 +532,11 @@ export default function ProductDetailPage() {
             </div>
           </Motion>
 
-          {/* Volume discounts apply to larger orders - the price breaks above show
-              the per-unit rate at each tier. */}
-          <Motion variants={staggerItem}>
-            <p className="text-xs text-fg-subtle">
-              Volume discounts apply to larger orders - see the price breaks above.
-            </p>
-          </Motion>
+          {bulkNote && (
+            <Motion variants={staggerItem}>
+              <p className="text-xs text-fg-subtle">{bulkNote}</p>
+            </Motion>
+          )}
 
           {/* Trust mini-row */}
           <Motion variants={staggerItem}>

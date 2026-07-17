@@ -56,19 +56,58 @@ export interface TierPrice {
   currency: string;
 }
 
+/**
+ * Per-unit price at each quantity, in one request. Each line's unit price is
+ * computed independently of the others, so probing N quantities as N line items
+ * is equivalent to N separate calls - and the PDP would otherwise burn one
+ * request per tile against a 60/min endpoint.
+ *
+ * Only lines[].unit_price is meaningful here: subtotal/delivery/total are
+ * basket-level (setup fee once per call, delivery across the whole basket), so
+ * they describe a fictional basket of every tier at once. Ignore them.
+ */
 export async function fetchTierPrices(
   productId: number,
   variantId: number | null,
   quantities: number[],
 ): Promise<TierPrice[]> {
-  const results = await Promise.all(
-    quantities.map((qty) =>
-      api
-        .post<PriceEstimate>('/price-estimate', {
-          line_items: [{ product_id: productId, variant_id: variantId, qty, has_customization: false }],
-        })
-        .then((r) => ({ qty, unitPrice: r.data.lines[0]?.unit_price ?? 0, currency: r.data.currency })),
-    ),
-  );
-  return results;
+  const { data } = await api.post<PriceEstimate>('/price-estimate', {
+    line_items: quantities.map((qty) => ({
+      product_id: productId,
+      variant_id: variantId,
+      qty,
+      has_customization: false,
+    })),
+  });
+  return quantities.map((qty, i) => ({
+    qty,
+    unitPrice: data.lines[i]?.unit_price ?? 0,
+    currency: data.currency,
+  }));
+}
+
+/**
+ * The single bulk-discount offer the quote engine applies. `bulkQty === null`
+ * means there is no offer at all - callers must then say nothing about
+ * discounts rather than invent one.
+ */
+export interface BulkPricing {
+  bulkQty: number | null;
+  discountPct: number;
+}
+
+/**
+ * A percent as a buyer would write it: no trailing zeros, no float artifacts
+ * (10 not 10.000000000000001), but a real fraction preserved (7.5).
+ */
+export function formatPct(pct: number): string {
+  return String(Number(pct.toFixed(2)));
+}
+
+/** Best-effort: `null` means "unknown", which callers treat as "say nothing". */
+export function fetchBulkPricing(): Promise<BulkPricing | null> {
+  return api
+    .get<{ bulk_qty: number | null; bulk_discount_pct: number }>('/bulk-pricing')
+    .then((r) => ({ bulkQty: r.data.bulk_qty, discountPct: r.data.bulk_discount_pct }))
+    .catch(() => null);
 }
