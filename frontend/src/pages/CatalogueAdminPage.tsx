@@ -4,9 +4,10 @@ import { useCatalogueAdminStore } from '../stores/catalogueAdminStore';
 import { useAuthStore } from '../stores/authStore';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { safeHref } from '../lib/safeHref';
-import { Badge, Button, Card, EmptyState, Input, Modal, Select, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, Select, Skeleton, Tooltip, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import ProductQuickView from '../components/ProductQuickView';
+import ResolveBlockersModal, { isFixableBlocker } from '../components/admin/ResolveBlockersModal';
 import ImageLightbox from '../components/ImageLightbox';
 import { EyeIcon, FilterIcon } from '../components/icons';
 import { CountPill, FilterChips } from '../components/admin/Filters';
@@ -65,11 +66,34 @@ function blockerLabel(token: string): string {
   return pretty.charAt(0).toUpperCase() + pretty.slice(1);
 }
 
+/**
+ * Why a source-truth blocker can't be cleared from the gate. Only these tokens
+ * get a tooltip: every other blocker is either fixable in the popup or cleared
+ * by an inline row tool, and a blanket "resolves at the source" fallback would
+ * actively mislead there (e.g. missing_model_file is fixed by Attach below).
+ */
+const BLOCKER_HELP: Record<string, string> = {
+  stock_unreadable: 'Stock comes from the source listing - resolves on the next sync.',
+  source_dead: 'The source listing is gone. Re-capture the product or archive it.',
+  'needs_re-review': 'The source price moved past the drift threshold - re-checks on the next sync.',
+};
+
+function blockerHelp(token: string): string | undefined {
+  return BLOCKER_HELP[token];
+}
+
 /** Mirrors the render condition of Model3dRowTools (inline fix available). */
 function hasInlineTools(item: AdminCatalogueItem): boolean {
   return (
     item.class === 'MODEL_3D' &&
     ((item.cannot_publish_reasons?.includes('missing_model_file') ?? false) || !item.estimates_verified)
+  );
+}
+
+/** A SCRAPED_UV row with at least one blocker staff can clear in the popup. */
+function hasFixableBlockers(item: AdminCatalogueItem): boolean {
+  return (
+    item.class === 'SCRAPED_UV' && (item.cannot_publish_reasons?.some(isFixableBlocker) ?? false)
   );
 }
 
@@ -216,6 +240,9 @@ export default function CatalogueAdminPage() {
 
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
+  // Holds a snapshot of the row being fixed. Non-null also mounts the popup -
+  // its state seeds from props once, so it must unmount between products.
+  const [blockersFor, setBlockersFor] = useState<AdminCatalogueItem | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [captureUrl, setCaptureUrl] = useState('');
@@ -691,13 +718,48 @@ export default function CatalogueAdminPage() {
                   </Badge>
                 </div>
 
+                {/* Per-token: a row can mix fixable and source-truth blockers.
+                    Fixable ones open the popup; the rest stay inert, with a
+                    tooltip saying why when we can explain it. */}
                 <div className="flex min-w-0 flex-wrap gap-1.5">
                   {it.cannot_publish_reasons?.length ? (
-                    it.cannot_publish_reasons.map((r) => (
-                      <Badge key={r} tone="warning" size="sm">
-                        {blockerLabel(r)}
-                      </Badge>
-                    ))
+                    it.cannot_publish_reasons.map((r) => {
+                      if (it.class === 'SCRAPED_UV' && isFixableBlocker(r)) {
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setBlockersFor(it)}
+                            aria-label={`Fix: ${blockerLabel(r)} on ${it.name}`}
+                            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Badge tone="warning" size="sm" className="cursor-pointer hover:opacity-80">
+                              {blockerLabel(r)}
+                            </Badge>
+                          </button>
+                        );
+                      }
+                      const help = blockerHelp(r);
+                      if (!help) {
+                        return (
+                          <Badge key={r} tone="warning" size="sm">
+                            {blockerLabel(r)}
+                          </Badge>
+                        );
+                      }
+                      return (
+                        <Tooltip key={r} content={help}>
+                          <span
+                            tabIndex={0}
+                            className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <Badge tone="warning" size="sm">
+                              {blockerLabel(r)}
+                            </Badge>
+                          </span>
+                        </Tooltip>
+                      );
+                    })
                   ) : (
                     <span className="text-sm text-fg-subtle">-</span>
                   )}
@@ -734,9 +796,11 @@ export default function CatalogueAdminPage() {
                   )}
                   {it.publish_state === 'CANNOT_PUBLISH' && (
                     <span className="text-xs text-fg-subtle lg:text-right">
-                      {hasInlineTools(it)
-                        ? 'Use the tools below to clear the blockers.'
-                        : 'Fix the blockers at the source - re-checked on next sync.'}
+                      {hasFixableBlockers(it)
+                        ? 'Click a blocker to fix it here.'
+                        : hasInlineTools(it)
+                          ? 'Use the tools below to clear the blockers.'
+                          : 'Fix the blockers at the source - re-checked on next sync.'}
                     </span>
                   )}
                 </div>
@@ -781,6 +845,22 @@ export default function CatalogueAdminPage() {
         backTo="/catalogue-admin"
         onClose={() => setQuickViewId(null)}
       />
+
+      {blockersFor && (
+        <ResolveBlockersModal
+          key={blockersFor.id}
+          product={blockersFor}
+          open
+          onClose={() => setBlockersFor(null)}
+          onResolved={(published) =>
+            toast(
+              published
+                ? { title: 'Published', description: blockersFor.name, tone: 'success' }
+                : { title: 'Saved - still blocked', description: blockersFor.name, tone: 'warning' },
+            )
+          }
+        />
+      )}
     </div>
   );
 }
