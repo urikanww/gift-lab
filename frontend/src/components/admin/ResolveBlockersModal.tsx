@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Badge, Button, Input, Modal, Select } from '../../ui';
 import { apiFieldErrors } from '../../lib/api';
+import { blockerHelp, blockerLabel } from '../../lib/blockerCopy';
 import { useCatalogueAdminStore, type ResolveBlockersPayload } from '../../stores/catalogueAdminStore';
 import type { AdminCatalogueItem } from '../../types';
 
@@ -25,19 +26,6 @@ const MAX = {
   weight: 100000,
   price: 1000000,
 } as const;
-
-/** Staff-readable names for the source-truth blockers this popup can't fix. */
-const BLOCKER_LABELS: Record<string, string> = {
-  stock_unreadable: 'Stock level unreadable',
-  source_dead: 'Source listing gone',
-  'needs_re-review': 'Needs re-review',
-};
-
-const BLOCKER_EXPLANATIONS: Record<string, string> = {
-  stock_unreadable: 'Stock comes from the source listing - it resolves on the next sync.',
-  source_dead: 'The source listing is gone. Re-capture the product or archive it.',
-  'needs_re-review': 'The source price moved past the drift threshold. It re-checks on the next sync.',
-};
 
 interface Props {
   product: AdminCatalogueItem;
@@ -154,16 +142,17 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
             Your changes were saved. These blockers can&apos;t be fixed here:
           </p>
           <ul className="flex flex-col gap-2">
-            {remaining.map((token) => (
-              <li key={token} className="flex flex-col gap-1">
-                <Badge tone="warning" size="sm">
-                  {BLOCKER_LABELS[token] ?? token}
-                </Badge>
-                {BLOCKER_EXPLANATIONS[token] && (
-                  <span className="text-sm text-fg-subtle">{BLOCKER_EXPLANATIONS[token]}</span>
-                )}
-              </li>
-            ))}
+            {remaining.map((token) => {
+              const help = blockerHelp(token);
+              return (
+                <li key={token} className="flex flex-col gap-1">
+                  <Badge tone="warning" size="sm">
+                    {blockerLabel(token)}
+                  </Badge>
+                  {help && <span className="text-sm text-fg-subtle">{help}</span>}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </Modal>

@@ -12,6 +12,7 @@ import ImageLightbox from '../components/ImageLightbox';
 import { EyeIcon, FilterIcon } from '../components/icons';
 import { CountPill, FilterChips } from '../components/admin/Filters';
 import { CATEGORIES, categoryLabel } from '../lib/categories';
+import { BLOCKER_LABELS, blockerHelp, blockerLabel } from '../lib/blockerCopy';
 import { SOURCE_KIND_LABELS, type SourceKind } from '../lib/sourceKind';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import type { AdminCatalogueItem, ProductClass, PublishState } from '../types';
@@ -35,52 +36,6 @@ const STATE_LABELS: Record<PublishState, string> = {
   PUBLISHED: 'Published',
   CANNOT_PUBLISH: 'Cannot publish',
 };
-
-/**
- * Human labels for the machine reason tokens emitted by the backend gates
- * (CompletenessGate + Model3dCatalogueService + resync commands). Unknown or
- * future tokens fall back to a prettified form so a raw enum never renders.
- */
-const BLOCKER_LABELS: Record<string, string> = {
-  missing_model_file: 'No printable model file',
-  awaiting_model_file: 'Awaiting 3D model (skipped until pulled)',
-  license_review: 'Licence needs review',
-  multi_file_review: 'Multi-file set needs review',
-  estimates_unverified: 'Filament estimates unverified',
-  missing_price: 'No price from source',
-  missing_dimensions: 'Missing dimensions or weight',
-  not_printable: 'No print method set',
-  stock_unreadable: 'Stock level unreadable',
-  source_dead: 'Source listing gone',
-  'needs_re-review': 'Needs re-review',
-  license_blocked: 'Licence blocks commercial use',
-  missing_credit: 'Creator credit missing',
-};
-
-function blockerLabel(token: string): string {
-  const known = BLOCKER_LABELS[token];
-  if (known) return known;
-  if (token.startsWith('ip_flag:')) return `IP flag: ${token.slice('ip_flag:'.length)}`;
-  // Fallback prettifier: snake/kebab token → sentence case.
-  const pretty = token.replace(/[_-]+/g, ' ').trim();
-  return pretty.charAt(0).toUpperCase() + pretty.slice(1);
-}
-
-/**
- * Why a source-truth blocker can't be cleared from the gate. Only these tokens
- * get a tooltip: every other blocker is either fixable in the popup or cleared
- * by an inline row tool, and a blanket "resolves at the source" fallback would
- * actively mislead there (e.g. missing_model_file is fixed by Attach below).
- */
-const BLOCKER_HELP: Record<string, string> = {
-  stock_unreadable: 'Stock comes from the source listing - resolves on the next sync.',
-  source_dead: 'The source listing is gone. Re-capture the product or archive it.',
-  'needs_re-review': 'The source price moved past the drift threshold - re-checks on the next sync.',
-};
-
-function blockerHelp(token: string): string | undefined {
-  return BLOCKER_HELP[token];
-}
 
 /** Mirrors the render condition of Model3dRowTools (inline fix available). */
 function hasInlineTools(item: AdminCatalogueItem): boolean {
