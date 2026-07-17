@@ -135,6 +135,12 @@ class AdminCatalogueController extends Controller
             'class' => $p->class->value,
             'publish_state' => $p->publish_state->value,
             'cannot_publish_reasons' => $p->cannot_publish_reasons,
+            // Prefill for the inline blocker-resolution popup (the fields the
+            // scraped gate's reasons actually name).
+            'weight' => $p->weight,
+            'dimensions' => $p->dimensions,
+            'print_method' => $p->print_method?->value,
+            'is_printable' => (bool) $p->is_printable,
             'base_cost' => $p->base_cost,
             'currency' => $p->currency,
             'creator_credit' => $p->creator_credit,

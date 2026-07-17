@@ -390,3 +390,21 @@ it('audit-logs a blocker resolution', function (): void {
         'user_id' => $this->staff->id,
     ]);
 });
+
+it('returns the blocker-prefill fields on each gate row', function (): void {
+    Product::factory()->scrapedUv()->create([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'weight' => 250,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60, 'unit' => 'mm'],
+        'print_method' => 'UV',
+        'is_printable' => true,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/catalogue')->assertOk();
+
+    $res->assertJsonPath('data.0.weight', '250.000')
+        ->assertJsonPath('data.0.dimensions.l', 100)
+        ->assertJsonPath('data.0.print_method', 'UV')
+        ->assertJsonPath('data.0.is_printable', true);
+});
