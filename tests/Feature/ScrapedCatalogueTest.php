@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Enums\PublishState;
 use App\Models\PricingConfig;
+use App\Models\Product;
 use App\Services\Catalogue\ScrapedCatalogueService;
 use App\Services\Scraper\FixtureScraperClient;
 use App\Services\Scraper\ScrapedProductData;
@@ -95,4 +97,43 @@ it('never pulls an already-published item when the source blips dead', function 
 
     expect($product->fresh()->publish_state->value)->toBe('PUBLISHED')
         ->and($product->fresh()->cannot_publish_reasons)->toBeNull();
+});
+
+it('regates a fixed-up product to ReadyToApprove without publishing it', function (): void {
+    // auto_publish ON: regate must still NOT jump straight to Published -
+    // publication stays an explicit staff decision.
+    PricingConfig::updateOrCreate(['group' => 'catalogue', 'key' => 'auto_publish'], ['value' => true]);
+
+    $product = Product::factory()->scrapedUv()->create([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'cannot_publish_reasons' => ['missing_dimensions'],
+        'base_cost' => 12.00,
+        'dimensions' => ['l' => 10, 'w' => 10, 'h' => 10, 'unit' => 'mm'],
+        'weight' => 250,
+        'is_printable' => true,
+        'print_method' => 'UV',
+    ]);
+
+    $service = app(ScrapedCatalogueService::class);
+    $result = $service->regate($product);
+
+    expect($result->publish_state)->toBe(PublishState::ReadyToApprove)
+        ->and($result->cannot_publish_reasons)->toBeNull();
+});
+
+it('regates an incomplete product back to CannotPublish with fresh reasons', function (): void {
+    $product = Product::factory()->scrapedUv()->create([
+        'publish_state' => 'READY_TO_APPROVE',
+        'cannot_publish_reasons' => null,
+        'base_cost' => 12.00,
+        'dimensions' => ['l' => 10, 'w' => 10, 'h' => 10, 'unit' => 'mm'],
+        'weight' => null,          // → missing_dimensions
+        'is_printable' => true,
+        'print_method' => 'UV',
+    ]);
+
+    $result = app(ScrapedCatalogueService::class)->regate($product);
+
+    expect($result->publish_state)->toBe(PublishState::CannotPublish)
+        ->and($result->cannot_publish_reasons)->toBe(['missing_dimensions']);
 });
