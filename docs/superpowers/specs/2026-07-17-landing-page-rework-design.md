@@ -69,13 +69,20 @@ Top to bottom, logged-out:
 2. **Promo pair** — two static tiles: "Build a kit" → `/kits`, and "Bulk
    pricing" → `/products`. Hardcoded content; no CMS.
 3. **New arrivals** — `fetchCatalogue({ sort: 'newest' })`, first 8, in a rail.
-4. **Browse grid** — `fetchCatalogue({ page })`, 20 per page, "Load more" button
-   appending pages until `meta.current_page === meta.last_page`.
+4. **Browse grid** — `fetchCatalogue({ page })`, "Load more" button appending
+   pages until `meta.current_page === meta.last_page`. Page size is
+   server-controlled at 24/page (`catalogue.ts:16`); we only advance the page.
 
 Logged-in: identical, plus **Reorder from a past quote** inserted above New
-arrivals. Fed by `fetchQuotes(1)`, showing up to 3 most recent quotes, each
-linking to `/quotes/:id`. Hidden entirely when the buyer has no quotes, so new
-accounts see exactly the logged-out shelf.
+arrivals, showing up to 3 most recent quotes, each linking to `/quotes/:id`.
+Hidden entirely when the buyer has no quotes, so new accounts see exactly the
+logged-out shelf.
+
+It does **not** use `quoteStore.fetchQuotes`: that action returns `void`, writes
+into store state consumed by `QuoteListPage`, and parks errors in a shared field
+(`quoteStore.ts:62-75`) — wrong shape for an optional silent row. A new
+`fetchRecentQuotes(limit)` helper mirrors the existing best-effort `fetchRelated`
+pattern (`catalogue.ts:30-35`) and resolves to `[]` on any failure.
 
 Deleted: the hero block (`HomePage.tsx:58-99`) in full — headline, search form,
 and "Browse:" chips. The "Featured gifts" section (`HomePage.tsx:161-210`).
