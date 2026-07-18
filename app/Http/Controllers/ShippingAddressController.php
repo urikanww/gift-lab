@@ -16,7 +16,10 @@ class ShippingAddressController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        return response()->json(['data' => $quote->shippingAddressOrDefault()]);
+        return response()->json([
+            'data' => $quote->shippingAddressOrDefault(),
+            'saved' => $quote->shippingAddress !== null,
+        ]);
     }
 
     public function update(UpdateShippingAddressRequest $request, Quote $quote): JsonResponse
@@ -26,8 +29,11 @@ class ShippingAddressController extends Controller
             $request->validated(),
         );
 
-        return response()->json(['data' => $address->only([
-            'recipient_name', 'phone', 'email', 'line1', 'line2', 'city', 'state', 'postal_code', 'country', 'notes',
-        ])]);
+        return response()->json([
+            'data' => $address->only([
+                'recipient_name', 'phone', 'email', 'line1', 'line2', 'city', 'state', 'postal_code', 'country', 'notes',
+            ]),
+            'saved' => true,
+        ]);
     }
 }

@@ -520,7 +520,7 @@ function DeliveryAddressPanel({
     let active = true;
     setLoading(true);
     void fetchShippingAddress(quoteId)
-      .then((addr) => {
+      .then(({ address: addr, saved }) => {
         if (!active) return;
         setForm({
           recipient_name: addr.recipient_name ?? '',
@@ -534,7 +534,9 @@ function DeliveryAddressPanel({
           country: addr.country ?? '',
           notes: addr.notes ?? '',
         });
-        onLoaded(!!addr.line1?.trim());
+        // Gate the create-shipment button on a persisted row, not a defaulted
+        // line1 - the company free-text default is not a shippable structured address.
+        onLoaded(saved);
       })
       .catch((err) => {
         if (active) {

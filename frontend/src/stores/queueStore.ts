@@ -33,7 +33,7 @@ interface QueueStoreState {
   advance: (jobId: number, state: JobState, consignmentRef?: string, carrier?: string) => Promise<void>;
   advanceBatch: (jobIds: number[], state: 'IN_PRODUCTION' | 'CLOSED') => Promise<{ advanced: number[]; skipped: number[] }>;
   advanceNext: (jobId: number) => Promise<void>;
-  fetchShippingAddress: (quoteId: number) => Promise<ShippingAddress>;
+  fetchShippingAddress: (quoteId: number) => Promise<{ address: ShippingAddress; saved: boolean }>;
   saveShippingAddress: (quoteId: number, payload: ShippingAddressInput) => Promise<ShippingAddress>;
   createShipment: (jobId: number) => Promise<ShipmentResult>;
   subscribe: () => void;
@@ -113,8 +113,12 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
   // Delivery address for a quote (staff-gated): the saved address or a
   // company-defaulted one. Read-only fetch, so it does not touch store error.
   fetchShippingAddress: async (quoteId) => {
-    const { data } = await api.get<{ data: ShippingAddress }>(`/quotes/${quoteId}/shipping-address`);
-    return data.data;
+    const { data } = await api.get<{ data: ShippingAddress; saved?: boolean }>(
+      `/quotes/${quoteId}/shipping-address`,
+    );
+    // `saved` distinguishes a persisted row from the company-defaulted address;
+    // the create-shipment gate depends on persistence truth, not a non-empty line1.
+    return { address: data.data, saved: Boolean(data.saved) };
   },
 
   saveShippingAddress: async (quoteId, payload) => {

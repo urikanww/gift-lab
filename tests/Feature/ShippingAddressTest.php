@@ -56,7 +56,9 @@ it('lets staff read a quote shipping address (defaulted)', function (): void {
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     $this->getJson("/api/quotes/{$quote->id}/shipping-address")
-        ->assertOk()->assertJsonPath('data.line1', '10 Anson Rd');
+        ->assertOk()
+        ->assertJsonPath('data.line1', '10 Anson Rd')
+        ->assertJsonPath('saved', false);
 });
 
 it('lets staff upsert a quote shipping address', function (): void {
@@ -66,9 +68,15 @@ it('lets staff upsert a quote shipping address', function (): void {
     $this->putJson("/api/quotes/{$quote->id}/shipping-address", [
         'recipient_name' => 'Rachel Tan', 'phone' => '+6591234567',
         'line1' => '1 Marina Blvd', 'postal_code' => '018989', 'country' => 'SG',
-    ])->assertOk();
+    ])->assertOk()->assertJsonPath('saved', true);
 
     expect($quote->fresh()->shippingAddress->recipient_name)->toBe('Rachel Tan');
+
+    // A subsequent read now reflects a persisted row, not the company default.
+    $this->getJson("/api/quotes/{$quote->id}/shipping-address")
+        ->assertOk()
+        ->assertJsonPath('data.line1', '1 Marina Blvd')
+        ->assertJsonPath('saved', true);
 });
 
 it('forbids a buyer from editing the shipping address', function (): void {

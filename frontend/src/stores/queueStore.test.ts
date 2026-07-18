@@ -90,18 +90,31 @@ describe('queueStore', () => {
     expect(get).toHaveBeenCalledWith('/production-queue');
   });
 
-  it('fetchShippingAddress GETs the quote address and returns data.data', async () => {
+  it('fetchShippingAddress GETs the quote address and passes through the saved flag', async () => {
     const address = {
       recipient_name: 'Ada', phone: '+65 1234 5678', email: null,
       line1: '1 Robinson Rd', line2: null, city: 'Singapore', state: null,
       postal_code: '048542', country: 'SG', notes: null,
     };
-    get.mockResolvedValue({ data: { data: address } });
+    get.mockResolvedValue({ data: { data: address, saved: true } });
 
     const result = await useQueueStore.getState().fetchShippingAddress(10);
 
     expect(get).toHaveBeenCalledWith('/quotes/10/shipping-address');
-    expect(result).toEqual(address);
+    expect(result).toEqual({ address, saved: true });
+  });
+
+  it('fetchShippingAddress reports saved=false for a defaulted (unpersisted) address', async () => {
+    const address = {
+      recipient_name: 'Acme Co', phone: null, email: null,
+      line1: '10 Anson Rd', line2: null, city: null, state: null,
+      postal_code: null, country: 'SG', notes: null,
+    };
+    get.mockResolvedValue({ data: { data: address } }); // no `saved` key
+
+    const result = await useQueueStore.getState().fetchShippingAddress(10);
+
+    expect(result).toEqual({ address, saved: false });
   });
 
   it('saveShippingAddress ensures CSRF, PUTs the payload, and returns data.data', async () => {
