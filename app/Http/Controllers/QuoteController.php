@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\AmendQuoteRequest;
+use App\Http\Requests\CancelQuoteRequest;
 use App\Http\Requests\IssueInvoiceRequest;
 use App\Http\Requests\StoreQuoteRequest;
 use App\Http\Resources\QuoteResource;
@@ -123,9 +124,9 @@ class QuoteController extends Controller
         return new QuoteResource($this->quotes->procure($quote));
     }
 
-    public function cancel(Request $request, Quote $quote): QuoteResource
+    public function cancel(CancelQuoteRequest $request, Quote $quote): QuoteResource
     {
-        $this->authorize('update', $quote);
+        $this->authorize('manageProduction', $quote);
 
         return new QuoteResource($this->quotes->cancel($quote, $request->input('reason')));
     }
