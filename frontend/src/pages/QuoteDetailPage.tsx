@@ -74,6 +74,12 @@ export default function QuoteDetailPage() {
 
   const [artworkRef, setArtworkRef] = useState('');
   const [artworkRefError, setArtworkRefError] = useState<string | undefined>();
+  // Dedicated state for the DRAFT send-with-proof field. Kept separate from the
+  // issue-proof state above: the component does not unmount across a state
+  // change, so a shared field would bleed a typed DRAFT ref into the
+  // Issue-proof input if the quote transitions to PROOFING under it.
+  const [sendProofRef, setSendProofRef] = useState('');
+  const [sendProofRefError, setSendProofRefError] = useState<string | undefined>();
   const [poRef, setPoRef] = useState('');
   const [poRefError, setPoRefError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -369,7 +375,11 @@ export default function QuoteDetailPage() {
         {/* Buyer status note - passive "what happens next" for every
             buyer-facing state with no buyer action, so the ball is never
             silently in our court. Mirrors the staff fallback line. */}
-        {!isStaff && BUYER_STATUS_NOTE[quote.state] && (
+        {!isStaff &&
+          BUYER_STATUS_NOTE[quote.state] &&
+          // PROOFING's "being prepared" copy is contradictory once a proof is
+          // actually open for review - the sign-off card above covers that case.
+          !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs)) && (
           <Motion variants={staggerItem}>
             <Card padding="lg">
               <h2 className="font-display text-xl text-fg">What happens next</h2>
@@ -388,14 +398,49 @@ export default function QuoteDetailPage() {
 
               <div className="mt-4">
                 {quote.state === 'DRAFT' && (
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() => run(() => send(quote.id), 'Sent to buyer')}
-                  >
-                    Send to buyer
-                  </Button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <Input
+                        label="Attach proof (optional)"
+                        hint="Leave blank to send a plain quote, or add an artwork reference to send it straight into proofing."
+                        placeholder="object-store key"
+                        value={sendProofRef}
+                        error={sendProofRefError}
+                        onChange={(e) => {
+                          setSendProofRef(e.target.value);
+                          setSendProofRefError(undefined);
+                        }}
+                      />
+                    </div>
+                    <Button
+                      variant="primary"
+                      loading={busy}
+                      disabled={busy}
+                      onClick={() => {
+                        // Empty field: frictionless plain send (DRAFT -> SENT),
+                        // no validation and nothing to reset.
+                        if (!sendProofRef.trim()) {
+                          void run(() => send(quote.id), 'Sent to buyer');
+                          return;
+                        }
+                        // Validate BEFORE run() so a bad ref never triggers run's
+                        // success toast (it toasts whenever store.error is unset).
+                        const err = validateArtworkRef(sendProofRef);
+                        if (err) {
+                          setSendProofRefError(err);
+                          return;
+                        }
+                        void run(async () => {
+                          await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
+                          // send() swallows errors into store.error and never
+                          // rejects, so only clear the field on a clean send.
+                          if (!useQuoteStore.getState().error) setSendProofRef('');
+                        }, 'Sent to buyer with proof');
+                      }}
+                    >
+                      Send to buyer
+                    </Button>
+                  </div>
                 )}
 
                 {(quote.state === 'ACCEPTED' || quote.state === 'PROOFING') && (

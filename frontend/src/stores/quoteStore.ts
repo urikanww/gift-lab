@@ -38,7 +38,7 @@ interface QuoteStoreState {
     neededBy?: string | null,
     idempotencyKey?: string | null,
   ) => Promise<Quote | null>;
-  send: (id: number) => Promise<void>;
+  send: (id: number, proof?: { artwork_version_ref: string; notes?: string }) => Promise<void>;
   accept: (id: number) => Promise<void>;
   procure: (id: number) => Promise<void>;
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
@@ -116,11 +116,11 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   // unhandled promise rejection (the page awaits these in a try/finally with no
   // catch). On success the affected quote is refetched so state stays truthful
   // even if the Reverb broadcast is missed.
-  send: async (id) => {
+  send: async (id, proof) => {
     set({ error: null });
     try {
       await ensureCsrf();
-      await api.post(`/quotes/${id}/send`);
+      await api.post(`/quotes/${id}/send`, proof ?? {});
       await get().fetchQuote(id);
     } catch (err) {
       set({ error: apiError(err) });

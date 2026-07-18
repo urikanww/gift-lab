@@ -162,6 +162,96 @@ it('rejects a whitespace-only PO reference without calling the API', async () =>
   expect(screen.getByText(/enter the po number/i)).toBeInTheDocument();
 });
 
+it('sends a plain quote when staff leaves the artwork reference blank on DRAFT', async () => {
+  const send = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({ send } as any);
+  asStaff();
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  expect(send).toHaveBeenCalledWith(42);
+});
+
+it('posts the artwork ref when sending with a proof from DRAFT', async () => {
+  const send = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({ send } as any);
+  asStaff();
+  renderPage();
+
+  await userEvent.type(screen.getByLabelText(/attach proof/i), 'proofs/v1.pdf');
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'proofs/v1.pdf' });
+});
+
+it('clears the DRAFT proof field after a successful send-with-proof', async () => {
+  const send = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({ send } as any);
+  asStaff();
+  renderPage();
+
+  const field = screen.getByLabelText(/attach proof/i);
+  await userEvent.type(field, 'proofs/v1.pdf');
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  await waitFor(() => expect(field).toHaveValue(''));
+});
+
+it('keeps the DRAFT proof field when the send-with-proof fails', async () => {
+  // send() swallows errors into store.error and never rejects; the field must
+  // survive so the user can retry without re-typing.
+  const send = vi.fn(async () => {
+    useQuoteStore.setState({ error: 'nope' } as any);
+  });
+  seedQuote('DRAFT');
+  useQuoteStore.setState({ send } as any);
+  asStaff();
+  renderPage();
+
+  const field = screen.getByLabelText(/attach proof/i);
+  await userEvent.type(field, 'proofs/v1.pdf');
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'proofs/v1.pdf' });
+  expect(field).toHaveValue('proofs/v1.pdf');
+});
+
+it('rejects a DRAFT artwork reference containing spaces without calling send', async () => {
+  const send = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({ send } as any);
+  asStaff();
+  renderPage();
+
+  await userEvent.type(screen.getByLabelText(/attach proof/i), 'proofs/my file.pdf');
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  expect(send).not.toHaveBeenCalled();
+  expect(screen.getByText(/cannot contain spaces/i)).toBeInTheDocument();
+});
+
+it('hides the "proof being prepared" note for a buyer once a proof is open in PROOFING', () => {
+  seedQuote('PROOFING');
+  seedOpenProof();
+  asBuyer();
+  renderPage();
+
+  expect(screen.queryByText(/proof is being prepared/i)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /approve proof/i })).toBeInTheDocument();
+});
+
+it('shows the "proof being prepared" note for a buyer in PROOFING with no open proof yet', () => {
+  seedQuote('PROOFING');
+  asBuyer();
+  renderPage();
+
+  expect(screen.getByText(/proof is being prepared/i)).toBeInTheDocument();
+});
+
 it('surfaces the buyer-uploaded finished-look callout on a line so staff proof before printing', () => {
   seedQuote('ACCEPTED');
   useQuoteStore.setState({
