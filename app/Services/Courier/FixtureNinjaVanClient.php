@@ -8,15 +8,16 @@ use App\Enums\Carrier;
 use App\Services\Courier\Contracts\CourierClient;
 
 /**
- * Deterministic fake for local/testing: no network, a stable tracking ref
- * derived from the order reference so tests can assert on it.
+ * Deterministic fake for local/testing: no network, echoes the merchant-supplied
+ * tracking number back as the tracking ref (mirroring real NinjaVan behavior
+ * where the merchant number IS the tracking number) so tests can assert on it.
  */
 final class FixtureNinjaVanClient implements CourierClient
 {
     public function createShipment(CourierShipment $shipment): CourierShipmentResult
     {
         return new CourierShipmentResult(
-            trackingRef: 'NVSGTEST'.substr(md5($shipment->reference), 0, 10),
+            trackingRef: $shipment->requestedTrackingNumber,
             carrier: Carrier::NinjaVan->value,
             labelUrl: null,
         );

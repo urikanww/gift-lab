@@ -13,6 +13,13 @@ class UpdateShippingAddressRequest extends FormRequest
         return $this->user()?->isStaff() ?? false;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (blank($this->input('country'))) {
+            $this->merge(['country' => 'SG']);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -27,7 +34,7 @@ class UpdateShippingAddressRequest extends FormRequest
             'city' => ['nullable', 'string', 'max:120'],
             'state' => ['nullable', 'string', 'max:120'],
             'postal_code' => ['required', 'string', 'max:16'],
-            'country' => ['nullable', 'string', 'size:2'],
+            'country' => ['required', 'string', 'size:2'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

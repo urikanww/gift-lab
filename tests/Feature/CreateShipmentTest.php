@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Courier\Contracts\CourierClient;
 use App\Services\Courier\CourierShipment;
 use App\Services\Courier\CourierShipmentResult;
+use App\Services\Courier\NinjaVanTrackingNumber;
 use Laravel\Sanctum\Sanctum;
 
 it('creates a NinjaVan shipment and marks the job shipped', function (): void {
@@ -28,7 +29,36 @@ it('creates a NinjaVan shipment and marks the job shipped', function (): void {
     $job->refresh();
     expect($job->state->value)->toBe('SHIPPED')
         ->and($job->carrier->value)->toBe('NINJAVAN')
-        ->and($job->consignment_ref)->not->toBeNull();
+        ->and($job->consignment_ref)->not->toBeNull()
+        ->and($job->consignment_ref)->toBe(NinjaVanTrackingNumber::forQuote($quote->id));
+});
+
+it('refuses to re-ship a job that already has a consignment', function (): void {
+    // A courier spy that blows up if reached: the 422 must come from the
+    // idempotency guard, proving the (billable) courier was never invoked.
+    app()->bind(CourierClient::class, fn () => new class implements CourierClient
+    {
+        public function createShipment(CourierShipment $s): CourierShipmentResult
+        {
+            throw new \RuntimeException('courier must not be called when the job already has a consignment');
+        }
+    });
+
+    $quote = Quote::factory()->create();
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+    $job = ProductionJob::factory()->create(['quote_id' => $quote->id, 'state' => 'IN_PRODUCTION']);
+    $job->update(['consignment_ref' => 'GLEXISTING']);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/production-jobs/{$job->id}/create-shipment")
+        ->assertStatus(422);
+
+    // The idempotency guard fires before the courier call: ref unchanged.
+    expect($job->fresh()->consignment_ref)->toBe('GLEXISTING');
 });
 
 it('refuses to ship without a shipping address', function (): void {

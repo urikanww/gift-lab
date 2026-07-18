@@ -14,13 +14,13 @@ it('fixture returns a deterministic tracking ref', function (): void {
         line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
         postalCode: '018989', country: 'SG', notes: null,
         parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
     );
 
     $result = $client->createShipment($shipment);
     $again = $client->createShipment($shipment);
 
-    expect($result->trackingRef)->not->toBe('')
-        ->and($result->trackingRef)->toStartWith('NVSGTEST')
+    expect($result->trackingRef)->toBe('GL1AB')
         ->and($result->trackingRef)->toBe($again->trackingRef)
         ->and($result->carrier)->toBe(Carrier::NinjaVan->value);
 });

@@ -19,5 +19,7 @@ final readonly class CourierShipment
         public string $country,
         public ?string $notes,
         public int $parcelCount,
+        public string $requestedTrackingNumber, // merchant-supplied AWB (NinjaVan requires it); we generate + store it
+        public string $deliveryStartDate,       // 'Y-m-d'; from quote needed_by, or today + lead-days
     ) {}
 }

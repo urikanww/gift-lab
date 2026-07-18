@@ -28,6 +28,17 @@ final class ShipmentService
     public function createForJob(ProductionJob $job): ProductionJob
     {
         $quote = $job->quote;
+
+        // Idempotency guard FIRST: the merchant-supplied tracking number is
+        // deterministic per quote, so a job that already carries a consignment_ref
+        // has already booked a consignment - refuse to double-book.
+        // TOCTOU: two truly-concurrent requests could both pass this check, but the
+        // deterministic requested_tracking_number is the remote-uniqueness backstop
+        // (NinjaVan rejects the duplicate booking), so no second SHIPPED results.
+        if ($job->consignment_ref !== null) {
+            throw new DomainRuleException('This job already has a shipment.');
+        }
+
         $addr = $quote->shippingAddress;
         if ($addr === null) {
             throw new DomainRuleException('A shipping address is required before creating a shipment.');
@@ -40,12 +51,17 @@ final class ShipmentService
             throw new DomainRuleException('This job cannot be shipped from its current state.');
         }
 
+        $trackingNumber = \App\Services\Courier\NinjaVanTrackingNumber::forQuote((int) $quote->id);
+        $deliveryStartDate = $quote->needed_by?->toDateString()
+            ?? now()->addDays((int) config('services.ninjavan.lead_days', 2))->toDateString();
+
         $shipment = new CourierShipment(
             reference: (string) ($quote->tracking_code ?? $quote->id),
             recipientName: $addr->recipient_name, phone: $addr->phone, email: $addr->email,
             line1: $addr->line1, line2: $addr->line2, city: $addr->city, state: $addr->state,
             postalCode: $addr->postal_code, country: $addr->country, notes: $addr->notes,
             parcelCount: 1,
+            requestedTrackingNumber: $trackingNumber, deliveryStartDate: $deliveryStartDate,
         );
 
         $result = $this->courier->createShipment($shipment); // throws CourierException on failure

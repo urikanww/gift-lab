@@ -119,10 +119,14 @@ return [
     'ninjavan' => [
         'client_id' => env('NINJAVAN_CLIENT_ID'),
         'client_secret' => env('NINJAVAN_CLIENT_SECRET'),
-        // Full host + country segment, e.g. https://api-sandbox.ninjavan.co/SG
-        // (NinjaVan uses an UPPERCASE country code). Switch to the production host
-        // (https://api.ninjavan.co/SG) when going live.
-        'base_url' => env('NINJAVAN_BASE_URL', 'https://api-sandbox.ninjavan.co/SG'),
+        // Full host + country segment, e.g. https://api-sandbox.ninjavan.co/sg.
+        // Switch to the production host (https://api.ninjavan.co/sg) when going live.
+        'base_url' => env('NINJAVAN_BASE_URL', 'https://api-sandbox.ninjavan.co/sg'),
+        // Prefix for the merchant-supplied requested_tracking_number (1-9 chars,
+        // no account prefix - NinjaVan prepends that). Lead days is the fallback
+        // window for delivery_start_date when the quote has no needed_by date.
+        'tracking_prefix' => env('NINJAVAN_TRACKING_PREFIX', 'GL'),
+        'lead_days' => env('NINJAVAN_LEAD_DAYS', 2),
         'service_type' => env('NINJAVAN_SERVICE_TYPE', 'Parcel'),
         'service_level' => env('NINJAVAN_SERVICE_LEVEL', 'Standard'),
         'default_weight_kg' => env('NINJAVAN_DEFAULT_WEIGHT_KG', 1),
