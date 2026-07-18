@@ -84,7 +84,7 @@ final class PaymentService
             }
 
             try {
-                $po = $this->quotes->issuePurchaseOrder($locked, 'B2C-'.$locked->id, $reference, 'PREPAID');
+                $po = $this->quotes->issueInvoice($locked, 'B2C-'.$locked->id, $reference, 'PREPAID');
             } catch (QueryException $e) {
                 if ($this->isUniqueViolation($e) && ($winner = $locked->purchaseOrders()->first()) !== null) {
                     Log::warning('Duplicate payment capture collapsed to existing PO.', [

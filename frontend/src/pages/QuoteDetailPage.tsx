@@ -18,7 +18,7 @@ const TIMELINE: QuoteState[] = [
   'ACCEPTED',
   'PROOFING',
   'PROOF_APPROVED',
-  'PO_ISSUED',
+  'INVOICED',
   'CONFIRMED',
   'PROCURING',
   'READY',
@@ -44,7 +44,7 @@ const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
   ACCEPTED: 'Quote accepted. Our team is preparing your first proof - we’ll let you know when it’s ready to review.',
   CHANGES_REQUESTED: 'We’ve received your change request and will send a revised proof shortly.',
   PROOFING: 'Your proof is being prepared. We’ll notify you as soon as it’s ready to review.',
-  PO_ISSUED: 'Payment received and a purchase order has been issued. We’re confirming your order for production.',
+  INVOICED: 'Payment received and an invoice has been issued. We’re confirming your order for production.',
   CONFIRMED: 'Your order is confirmed. It will be scheduled for production shortly.',
   PROCURING: 'Your order is being prepared for production.',
   READY: 'Your order is ready. We’ll be in touch about delivery.',
@@ -64,7 +64,7 @@ export default function QuoteDetailPage() {
     procure,
     issueProof,
     decideProof,
-    issuePurchaseOrder,
+    issueInvoice,
     payNow,
   } = useQuoteStore();
   const user = useAuthStore((s) => s.user);
@@ -453,12 +453,12 @@ export default function QuoteDetailPage() {
                           return;
                         }
                         void run(async () => {
-                          await issuePurchaseOrder(quote.id, poRef.trim(), null);
+                          await issueInvoice(quote.id, poRef.trim(), null);
                           setPoRef('');
-                        }, 'Purchase order issued');
+                        }, 'Invoice issued');
                       }}
                     >
-                      Issue PO
+                      Issue invoice
                     </Button>
                   </div>
                 )}

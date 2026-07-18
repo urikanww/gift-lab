@@ -69,7 +69,7 @@ Live designer estimate (event-driven; **never polled**). Indicative only.
 | POST | `/quotes/{quote}/send` | staff | DRAFT → SENT |
 | POST | `/quotes/{quote}/accept` | owner/staff | SENT → ACCEPTED |
 | POST | `/quotes/{quote}/proofs` | staff | Issue proof (→ PROOFING) |
-| POST | `/quotes/{quote}/purchase-order` | staff | PROOF_APPROVED → PO_ISSUED → CONFIRMED |
+| POST | `/quotes/{quote}/invoice` | staff | PROOF_APPROVED → INVOICED → CONFIRMED |
 | POST | `/quotes/{quote}/procure` | staff | CONFIRMED → PROCURING → (queue when ready) |
 
 ### `POST /quotes`
@@ -88,11 +88,11 @@ Live designer estimate (event-driven; **never polled**). Indicative only.
 ```
 `422` if any `unit_price` below margin floor over landed cost.
 
-### `POST /quotes/{quote}/purchase-order`
+### `POST /quotes/{quote}/invoice`
 ```json
 { "po_ref": "PO-2026-001", "invoice_ref": null, "terms": "NET30" }
 ```
-`201` → `{ "purchase_order": {…}, "quote": QuoteResource }`.
+`201` → `{ "invoice": {…}, "quote": QuoteResource }`.
 
 ---
 
@@ -182,7 +182,7 @@ on realtime).
 
 ## State machines (authoritative)
 
-- **Quote**: `DRAFT→SENT→(CHANGES_REQUESTED→DRAFT)*→ACCEPTED→PROOFING→PROOF_APPROVED→PO_ISSUED→CONFIRMED→PROCURING→READY→CLOSED`; any pre-production state (`DRAFT`…`PROCURING`) `→CANCELLED` - once `READY`/`CLOSED` there is no cancel edge.
+- **Quote**: `DRAFT→SENT→(CHANGES_REQUESTED→DRAFT)*→ACCEPTED→PROOFING→PROOF_APPROVED→INVOICED→CONFIRMED→PROCURING→READY→CLOSED`; any pre-production state (`DRAFT`…`PROCURING`) `→CANCELLED` - once `READY`/`CLOSED` there is no cancel edge.
 - **LineItem**: `PENDING→PROCURING→{PURCHASED→INBOUND→RECEIVED→READY | AWAITING_RECONFIRM→(AMENDED→PROCURING | approve→…→READY | DROPPED)}`.
 - **Proof**: `SENT→{APPROVED(terminal) | CHANGES_REQUESTED}`.
 - **Job**: `READY→IN_PRODUCTION→SHIPPED→CLOSED`.

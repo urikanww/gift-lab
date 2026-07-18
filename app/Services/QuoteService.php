@@ -327,12 +327,12 @@ final class QuoteService
     }
 
     /**
-     * Staff issues the PO/invoice: quote PROOF_APPROVED -> PO_ISSUED -> CONFIRMED.
+     * Staff issues the invoice: quote PROOF_APPROVED -> INVOICED -> CONFIRMED.
      */
-    public function issuePurchaseOrder(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): Invoice
+    public function issueInvoice(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): Invoice
     {
         return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): Invoice {
-            $po = Invoice::create([
+            $invoice = Invoice::create([
                 'quote_id' => $quote->id,
                 'po_ref' => $poRef,
                 'invoice_ref' => $invoiceRef,
@@ -349,9 +349,9 @@ final class QuoteService
             $quote->transitionTo(QuoteState::Confirmed);
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
-            $this->audit->log($po, 'purchase_order.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
+            $this->audit->log($invoice, 'invoice.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
 
-            return $po;
+            return $invoice;
         });
     }
 
@@ -519,14 +519,14 @@ final class QuoteService
         $quote->total = round((float) $quote->subtotal + (float) $quote->delivery, 2);
         $quote->save();
 
-        // The PO amount was frozen at issue time; keep the authoritative
+        // The invoice amount was frozen at issue time; keep the authoritative
         // invoice figure in lock-step with the amended quote.
-        $po = $quote->purchaseOrders()->latest('issued_at')->first();
-        if ($po !== null) {
-            $poBefore = ['amount' => $po->amount];
-            $po->amount = $quote->total;
-            $po->save();
-            $this->audit->log($po, 'purchase_order.retotaled', $poBefore, ['amount' => $po->amount]);
+        $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
+        if ($invoice !== null) {
+            $invoiceBefore = ['amount' => $invoice->amount];
+            $invoice->amount = $quote->total;
+            $invoice->save();
+            $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, ['amount' => $invoice->amount]);
         }
 
         $this->audit->log($quote, 'quote.retotaled_after_reconfirm', $before, [

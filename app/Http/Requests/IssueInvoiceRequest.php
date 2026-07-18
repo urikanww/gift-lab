@@ -7,10 +7,10 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Staff issues the PO/invoice for a proof-approved quote. Payment is reconciled
+ * Staff issues the invoice for a proof-approved quote. Payment is reconciled
  * manually in the B2B launch (no Stripe), so payment_state starts UNPAID.
  */
-class IssuePurchaseOrderRequest extends FormRequest
+class IssueInvoiceRequest extends FormRequest
 {
     public function authorize(): bool
     {

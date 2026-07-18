@@ -149,16 +149,16 @@ it('rejects an artwork storage key containing spaces without calling the API', a
 });
 
 it('rejects a whitespace-only PO reference without calling the API', async () => {
-  const issuePurchaseOrder = vi.fn(async () => {});
+  const issueInvoice = vi.fn(async () => {});
   seedQuote('PROOF_APPROVED');
-  useQuoteStore.setState({ issuePurchaseOrder } as any);
+  useQuoteStore.setState({ issueInvoice } as any);
   asStaff();
   renderPage();
 
   await userEvent.type(screen.getByLabelText(/po reference/i), '   ');
-  await userEvent.click(screen.getByRole('button', { name: /issue po/i }));
+  await userEvent.click(screen.getByRole('button', { name: /issue invoice/i }));
 
-  expect(issuePurchaseOrder).not.toHaveBeenCalled();
+  expect(issueInvoice).not.toHaveBeenCalled();
   expect(screen.getByText(/enter the po number/i)).toBeInTheDocument();
 });
 

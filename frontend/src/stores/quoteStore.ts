@@ -43,7 +43,7 @@ interface QuoteStoreState {
   procure: (id: number) => Promise<void>;
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
   decideProof: (proofId: number, decision: 'approve' | 'request_changes', notes: string | null) => Promise<void>;
-  issuePurchaseOrder: (id: number, poRef: string, terms: string | null) => Promise<void>;
+  issueInvoice: (id: number, poRef: string, terms: string | null) => Promise<void>;
   /** Resolves true when payment was captured immediately (no redirect). */
   payNow: (id: number) => Promise<boolean>;
   subscribeCompany: (companyId: number) => void;
@@ -170,11 +170,11 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  issuePurchaseOrder: async (id, poRef, terms) => {
+  issueInvoice: async (id, poRef, terms) => {
     set({ error: null });
     try {
       await ensureCsrf();
-      await api.post(`/quotes/${id}/purchase-order`, { po_ref: poRef, terms });
+      await api.post(`/quotes/${id}/invoice`, { po_ref: poRef, terms });
       await get().fetchQuote(id);
     } catch (err) {
       set({ error: apiError(err) });

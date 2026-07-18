@@ -103,7 +103,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend']);
     Route::post('/quotes/{quote}/send', [QuoteController::class, 'send']);
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
-    Route::post('/quotes/{quote}/purchase-order', [QuoteController::class, 'issuePurchaseOrder']);
+    Route::post('/quotes/{quote}/invoice', [QuoteController::class, 'issueInvoice']);
     Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure']);
     Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel']);
     Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);

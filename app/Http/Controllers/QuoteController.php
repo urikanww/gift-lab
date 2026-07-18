@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\AmendQuoteRequest;
-use App\Http\Requests\IssuePurchaseOrderRequest;
+use App\Http\Requests\IssueInvoiceRequest;
 use App\Http\Requests\StoreQuoteRequest;
 use App\Http\Resources\QuoteResource;
 use App\Models\Quote;
@@ -94,9 +94,9 @@ class QuoteController extends Controller
         return new QuoteResource($this->quotes->accept($quote));
     }
 
-    public function issuePurchaseOrder(IssuePurchaseOrderRequest $request, Quote $quote): JsonResponse
+    public function issueInvoice(IssueInvoiceRequest $request, Quote $quote): JsonResponse
     {
-        $po = $this->quotes->issuePurchaseOrder(
+        $invoice = $this->quotes->issueInvoice(
             $quote,
             $request->string('po_ref')->toString(),
             $request->input('invoice_ref'),
@@ -104,13 +104,13 @@ class QuoteController extends Controller
         );
 
         return response()->json([
-            'purchase_order' => [
-                'id' => $po->id,
-                'po_ref' => $po->po_ref,
-                'invoice_ref' => $po->invoice_ref,
-                'amount' => $po->amount,
-                'currency' => $po->currency,
-                'payment_state' => $po->payment_state->value,
+            'invoice' => [
+                'id' => $invoice->id,
+                'po_ref' => $invoice->po_ref,
+                'invoice_ref' => $invoice->invoice_ref,
+                'amount' => $invoice->amount,
+                'currency' => $invoice->currency,
+                'payment_state' => $invoice->payment_state->value,
             ],
             'quote' => new QuoteResource($quote->fresh()),
         ], 201);
