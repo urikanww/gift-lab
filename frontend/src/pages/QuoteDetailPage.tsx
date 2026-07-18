@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
-import { Badge, Button, Card, Input, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, Input, Modal, Skeleton, Textarea, useToast } from '../ui';
 import { EmptyState as LegacyEmpty, ErrorState } from '../components/ui/States';
 import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
@@ -18,7 +18,7 @@ const TIMELINE: QuoteState[] = [
   'ACCEPTED',
   'PROOFING',
   'PROOF_APPROVED',
-  'PO_ISSUED',
+  'INVOICED',
   'CONFIRMED',
   'PROCURING',
   'READY',
@@ -44,7 +44,7 @@ const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
   ACCEPTED: 'Quote accepted. Our team is preparing your first proof - we’ll let you know when it’s ready to review.',
   CHANGES_REQUESTED: 'We’ve received your change request and will send a revised proof shortly.',
   PROOFING: 'Your proof is being prepared. We’ll notify you as soon as it’s ready to review.',
-  PO_ISSUED: 'Payment received and a purchase order has been issued. We’re confirming your order for production.',
+  INVOICED: 'Payment received and an invoice has been issued. We’re confirming your order for production.',
   CONFIRMED: 'Your order is confirmed. It will be scheduled for production shortly.',
   PROCURING: 'Your order is being prepared for production.',
   READY: 'Your order is ready. We’ll be in touch about delivery.',
@@ -64,8 +64,9 @@ export default function QuoteDetailPage() {
     procure,
     issueProof,
     decideProof,
-    issuePurchaseOrder,
+    issueInvoice,
     payNow,
+    cancelQuote,
   } = useQuoteStore();
   const user = useAuthStore((s) => s.user);
   const isStaff = isStaffRole(user?.role);
@@ -73,6 +74,12 @@ export default function QuoteDetailPage() {
 
   const [artworkRef, setArtworkRef] = useState('');
   const [artworkRefError, setArtworkRefError] = useState<string | undefined>();
+  // Dedicated state for the DRAFT send-with-proof field. Kept separate from the
+  // issue-proof state above: the component does not unmount across a state
+  // change, so a shared field would bleed a typed DRAFT ref into the
+  // Issue-proof input if the quote transitions to PROOFING under it.
+  const [sendProofRef, setSendProofRef] = useState('');
+  const [sendProofRefError, setSendProofRefError] = useState<string | undefined>();
   const [poRef, setPoRef] = useState('');
   const [poRefError, setPoRefError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -80,6 +87,9 @@ export default function QuoteDetailPage() {
   // of firing a canned note.
   const [changesOpen, setChangesOpen] = useState(false);
   const [changeNotes, setChangeNotes] = useState('');
+  // Staff-only cancel confirm modal.
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
     void fetchQuote(quoteId);
@@ -123,6 +133,7 @@ export default function QuoteDetailPage() {
   if (!current) return <LegacyEmpty title="Quote not found." />;
 
   const quote = current;
+  const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
 
   return (
     <Motion variants={staggerContainer} initial="hidden" animate="visible">
@@ -364,7 +375,11 @@ export default function QuoteDetailPage() {
         {/* Buyer status note - passive "what happens next" for every
             buyer-facing state with no buyer action, so the ball is never
             silently in our court. Mirrors the staff fallback line. */}
-        {!isStaff && BUYER_STATUS_NOTE[quote.state] && (
+        {!isStaff &&
+          BUYER_STATUS_NOTE[quote.state] &&
+          // PROOFING's "being prepared" copy is contradictory once a proof is
+          // actually open for review - the sign-off card above covers that case.
+          !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs)) && (
           <Motion variants={staggerItem}>
             <Card padding="lg">
               <h2 className="font-display text-xl text-fg">What happens next</h2>
@@ -383,14 +398,49 @@ export default function QuoteDetailPage() {
 
               <div className="mt-4">
                 {quote.state === 'DRAFT' && (
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() => run(() => send(quote.id), 'Sent to buyer')}
-                  >
-                    Send to buyer
-                  </Button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1">
+                      <Input
+                        label="Attach proof (optional)"
+                        hint="Leave blank to send a plain quote, or add an artwork reference to send it straight into proofing."
+                        placeholder="object-store key"
+                        value={sendProofRef}
+                        error={sendProofRefError}
+                        onChange={(e) => {
+                          setSendProofRef(e.target.value);
+                          setSendProofRefError(undefined);
+                        }}
+                      />
+                    </div>
+                    <Button
+                      variant="primary"
+                      loading={busy}
+                      disabled={busy}
+                      onClick={() => {
+                        // Empty field: frictionless plain send (DRAFT -> SENT),
+                        // no validation and nothing to reset.
+                        if (!sendProofRef.trim()) {
+                          void run(() => send(quote.id), 'Sent to buyer');
+                          return;
+                        }
+                        // Validate BEFORE run() so a bad ref never triggers run's
+                        // success toast (it toasts whenever store.error is unset).
+                        const err = validateArtworkRef(sendProofRef);
+                        if (err) {
+                          setSendProofRefError(err);
+                          return;
+                        }
+                        void run(async () => {
+                          await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
+                          // send() swallows errors into store.error and never
+                          // rejects, so only clear the field on a clean send.
+                          if (!useQuoteStore.getState().error) setSendProofRef('');
+                        }, 'Sent to buyer with proof');
+                      }}
+                    >
+                      Send to buyer
+                    </Button>
+                  </div>
                 )}
 
                 {(quote.state === 'ACCEPTED' || quote.state === 'PROOFING') && (
@@ -453,12 +503,12 @@ export default function QuoteDetailPage() {
                           return;
                         }
                         void run(async () => {
-                          await issuePurchaseOrder(quote.id, poRef.trim(), null);
+                          await issueInvoice(quote.id, poRef.trim(), null);
                           setPoRef('');
-                        }, 'Purchase order issued');
+                        }, 'Invoice issued');
                       }}
                     >
-                      Issue PO
+                      Issue invoice
                     </Button>
                   </div>
                 )}
@@ -494,8 +544,62 @@ export default function QuoteDetailPage() {
                   quote.state,
                 ) && <p className="text-sm text-fg-muted">No staff action available for this state.</p>}
               </div>
+
+              {/* Cancel: staff-only, available from every pre-production state. */}
+              {isCancellable && (
+                <div className="mt-6 border-t border-border pt-4">
+                  <Button variant="danger" disabled={busy} onClick={() => setCancelOpen(true)}>
+                    Cancel quote
+                  </Button>
+                </div>
+              )}
             </Card>
           </Motion>
+        )}
+
+        {isStaff && isCancellable && (
+          <Modal
+            open={cancelOpen}
+            onClose={() => {
+              setCancelOpen(false);
+              setCancelReason('');
+            }}
+            title="Cancel this quote?"
+            description="Stock already consumed will be returned. This cannot be undone."
+            footer={
+              <>
+                <Button variant="ghost" disabled={busy} onClick={() => setCancelOpen(false)}>
+                  Keep quote
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={busy}
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      const ok = await cancelQuote(quote.id, cancelReason.trim() || undefined);
+                      if (ok) {
+                        setCancelOpen(false);
+                        setCancelReason('');
+                      }
+                    }, 'Quote cancelled')
+                  }
+                >
+                  Confirm cancellation
+                </Button>
+              </>
+            }
+          >
+            <Textarea
+              label="Reason"
+              hint="Optional - shown to staff on the quote history."
+              rows={3}
+              maxLength={2000}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Buyer requested cancellation."
+            />
+          </Modal>
         )}
       </section>
     </Motion>

@@ -53,7 +53,7 @@ it('captures a B2C payment and drives the quote into production', function (): v
     expect($response->json('paid'))->toBeTrue()
         ->and($quote->fresh()->state->value)->toBe('READY');
 
-    $this->assertDatabaseHas('purchase_orders', [
+    $this->assertDatabaseHas('invoices', [
         'quote_id' => $quote->id,
         'payment_state' => 'PAID',
     ]);

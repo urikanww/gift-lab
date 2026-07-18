@@ -53,7 +53,7 @@ it('prevents mutating an approved proof', function (): void {
 
 it('lets a buyer request changes without approving', function (): void {
     Sanctum::actingAs($this->buyer);
-    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING', 'accepted_at' => now(), 'accepted_by' => $this->buyer->id]);
     $proof = Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT']);
 
     $this->postJson("/api/proofs/{$proof->id}/decide", [

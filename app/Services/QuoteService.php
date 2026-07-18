@@ -9,15 +9,18 @@ use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Enums\StockMovementReason;
+use App\Enums\UserRole;
 use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
+use App\Mail\QuoteReadyMail;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
-use App\Models\PurchaseOrder;
+use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\StockMovement;
+use App\Models\User;
 use App\Models\Variant;
 use App\Services\Procurement\ProcurementManager;
 use App\Support\Broadcasting;
@@ -25,6 +28,8 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Orchestrates the quote spine end to end. Controllers stay thin; every state
@@ -229,25 +234,44 @@ final class QuoteService
     /**
      * Send the quote to the buyer, freezing the price snapshot timestamp.
      */
-    public function send(Quote $quote): Quote
+    public function send(Quote $quote, ?string $artworkRef = null, ?string $proofNotes = null): Quote
     {
-        $previous = $quote->state->value;
-        $quote->price_snapshot_at = now();
-        $quote->save();
-        $quote->transitionTo(QuoteState::Sent);
+        if ($quote->state !== QuoteState::Draft) {
+            throw new DomainRuleException('Only DRAFT quotes can be sent.');
+        }
 
-        Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
+        return DB::transaction(function () use ($quote, $artworkRef, $proofNotes): Quote {
+            $previous = $quote->state->value;
+            $quote->price_snapshot_at = now();
+            $quote->save();
 
-        return $quote;
+            if ($artworkRef !== null) {
+                $quote->transitionTo(QuoteState::Proofing);          // slim path
+                $this->createProofVersion($quote, $artworkRef, $proofNotes);
+                $this->emailQuoteReady($quote, true);
+            } else {
+                $quote->transitionTo(QuoteState::Sent);
+                $this->emailQuoteReady($quote, false);
+            }
+
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+
+            return $quote;
+        });
     }
 
     public function accept(Quote $quote): Quote
     {
-        $previous = $quote->state->value;
-        $quote->transitionTo(QuoteState::Accepted);
-        Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
+        return DB::transaction(function () use ($quote): Quote {
+            $previous = $quote->state->value;
+            $quote->accepted_at = now();
+            $quote->accepted_by = Auth::id();
+            $quote->save();
+            $quote->transitionTo(QuoteState::Accepted);
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
-        return $quote;
+            return $quote;
+        });
     }
 
     /**
@@ -257,30 +281,45 @@ final class QuoteService
     public function issueProof(Quote $quote, string $artworkRef, ?string $notes): Proof
     {
         return DB::transaction(function () use ($quote, $artworkRef, $notes): Proof {
+            $enteredProofing = false;
             if ($quote->state === QuoteState::Accepted) {
                 $previous = $quote->state->value;
                 $quote->transitionTo(QuoteState::Proofing);
                 DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+                $enteredProofing = true;
             }
 
             if ($quote->state !== QuoteState::Proofing) {
                 throw new DomainRuleException('Quote must be ACCEPTED or PROOFING to issue a proof.');
             }
 
-            $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
+            $proof = $this->createProofVersion($quote, $artworkRef, $notes);
 
-            $proof = Proof::create([
-                'quote_id' => $quote->id,
-                'version' => $nextVersion,
-                'artwork_version_ref' => $artworkRef,
-                'state' => ProofState::Sent->value,
-                'notes' => $notes,
-            ]);
-
-            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+            if ($enteredProofing) {
+                $this->emailQuoteReady($quote, true);
+            }
 
             return $proof;
         });
+    }
+
+    /**
+     * Create the next proof version row for a quote and broadcast it. Shared by
+     * issueProof (ACCEPTED/PROOFING) and the slim send path (DRAFT -> PROOFING).
+     */
+    private function createProofVersion(Quote $quote, string $artworkRef, ?string $notes): Proof
+    {
+        $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
+        $proof = Proof::create([
+            'quote_id' => $quote->id,
+            'version' => $nextVersion,
+            'artwork_version_ref' => $artworkRef,
+            'state' => ProofState::Sent->value,
+            'notes' => $notes,
+        ]);
+        DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+
+        return $proof;
     }
 
     /**
@@ -300,6 +339,11 @@ final class QuoteService
             ]);
 
             $quote = $proof->quote;
+            if ($quote->accepted_at === null) {
+                $quote->accepted_at = now();
+                $quote->accepted_by = Auth::id();
+                $quote->save();
+            }
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::ProofApproved);
 
@@ -311,28 +355,42 @@ final class QuoteService
     }
 
     /**
-     * Buyer requests changes: proof -> CHANGES_REQUESTED. Quote stays PROOFING
-     * so staff can issue a new proof version bound to new artwork.
+     * Buyer requests changes: proof -> CHANGES_REQUESTED. On the existing/accepted
+     * path (accepted_at set) the quote stays PROOFING so staff can issue a new proof
+     * version. On the slim path (accepted_at null) the rejection may concern price or
+     * artwork, so the quote advances to CHANGES_REQUESTED for staff triage.
      */
     public function requestProofChanges(Proof $proof, ?string $notes): Proof
     {
-        if ($notes !== null) {
-            $proof->notes = $notes;
-        }
-        $proof->transitionTo(ProofState::ChangesRequested);
+        return DB::transaction(function () use ($proof, $notes): Proof {
+            if ($notes !== null) {
+                $proof->notes = $notes;
+            }
+            $proof->transitionTo(ProofState::ChangesRequested);
 
-        Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $proof->quote->company_id));
+            $quote = $proof->quote;
+            // Slim path: price was never separately accepted, so the rejection may be
+            // about price or artwork -> send to CHANGES_REQUESTED for staff triage.
+            // Existing path (accepted_at set): artwork-only revision -> stay PROOFING.
+            if ($quote->accepted_at === null && $quote->state === QuoteState::Proofing) {
+                $previous = $quote->state->value;
+                $quote->transitionTo(QuoteState::ChangesRequested);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            }
 
-        return $proof;
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+
+            return $proof;
+        });
     }
 
     /**
-     * Staff issues the PO/invoice: quote PROOF_APPROVED -> PO_ISSUED -> CONFIRMED.
+     * Staff issues the invoice: quote PROOF_APPROVED -> INVOICED -> CONFIRMED.
      */
-    public function issuePurchaseOrder(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): PurchaseOrder
+    public function issueInvoice(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): Invoice
     {
-        return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): PurchaseOrder {
-            $po = PurchaseOrder::create([
+        return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): Invoice {
+            $invoice = Invoice::create([
                 'quote_id' => $quote->id,
                 'po_ref' => $poRef,
                 'invoice_ref' => $invoiceRef,
@@ -345,13 +403,13 @@ final class QuoteService
             ]);
 
             $previous = $quote->state->value;
-            $quote->transitionTo(QuoteState::PoIssued);
+            $quote->transitionTo(QuoteState::Invoiced);
             $quote->transitionTo(QuoteState::Confirmed);
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
-            $this->audit->log($po, 'purchase_order.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
+            $this->audit->log($invoice, 'invoice.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
 
-            return $po;
+            return $invoice;
         });
     }
 
@@ -519,14 +577,14 @@ final class QuoteService
         $quote->total = round((float) $quote->subtotal + (float) $quote->delivery, 2);
         $quote->save();
 
-        // The PO amount was frozen at issue time; keep the authoritative
+        // The invoice amount was frozen at issue time; keep the authoritative
         // invoice figure in lock-step with the amended quote.
-        $po = $quote->purchaseOrders()->latest('issued_at')->first();
-        if ($po !== null) {
-            $poBefore = ['amount' => $po->amount];
-            $po->amount = $quote->total;
-            $po->save();
-            $this->audit->log($po, 'purchase_order.retotaled', $poBefore, ['amount' => $po->amount]);
+        $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
+        if ($invoice !== null) {
+            $invoiceBefore = ['amount' => $invoice->amount];
+            $invoice->amount = $quote->total;
+            $invoice->save();
+            $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, ['amount' => $invoice->amount]);
         }
 
         $this->audit->log($quote, 'quote.retotaled_after_reconfirm', $before, [
@@ -554,6 +612,54 @@ final class QuoteService
         if ($allResolved && $anyReady && $quote->state === QuoteState::Procuring) {
             $this->queue->buildJobsForQuote($quote);
         }
+    }
+
+    /**
+     * Queue the buyer-facing "quote (and proof) ready" email. Fires only after
+     * the enclosing transaction commits, so a rolled-back send never emails.
+     * No-ops silently if no buyer recipient can be resolved for the company.
+     */
+    private function emailQuoteReady(Quote $quote, bool $hasProof): void
+    {
+        $recipient = $this->resolveBuyerRecipient($quote);
+        if ($recipient === null) {
+            return;
+        }
+
+        $proofImageUrl = null;
+        if ($hasProof && ($proof = $quote->proofs()->latest('version')->first()) !== null) {
+            $proofImageUrl = URL::temporarySignedRoute('proofs.image', now()->addDays(14), ['proof' => $proof->id]);
+        }
+
+        DB::afterCommit(fn () => Mail::to($recipient->email)->queue(
+            new QuoteReadyMail($quote, $hasProof, $proofImageUrl, $recipient->name)
+        ));
+    }
+
+    /**
+     * Resolve the genuine buyer user to notify for this quote. The email CTA
+     * links to the login-gated /quotes/{id} SPA route, so we only ever target
+     * a real buyer account - never the company's shared billing_email inbox.
+     */
+    private function resolveBuyerRecipient(Quote $quote): ?User
+    {
+        // Self-service: the creator is a genuine buyer of this company -> notify them.
+        $creator = $quote->creator;
+        if ($creator !== null
+            && $creator->email !== null
+            && $creator->company_id === $quote->company_id) {
+            return $creator;
+        }
+
+        // Staff-created (or creator isn't a company buyer): notify the company's
+        // primary buyer contact - the earliest buyer user with an email. The CTA is
+        // login-gated, so we target a real buyer account, not the shared billing_email.
+        return User::query()
+            ->where('company_id', $quote->company_id)
+            ->where('role', UserRole::Buyer->value)
+            ->whereNotNull('email')
+            ->orderBy('id')
+            ->first();
     }
 
     private function hasCustomization(?array $customization): bool

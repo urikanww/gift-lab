@@ -13,7 +13,7 @@ const quoteToneMap: Partial<Record<QuoteState, BadgeTone>> = {
   ACCEPTED: 'info',
   PROOFING: 'info',
   PROOF_APPROVED: 'brand',
-  PO_ISSUED: 'brand',
+  INVOICED: 'brand',
   CONFIRMED: 'brand',
   PROCURING: 'brand',
   READY: 'success',

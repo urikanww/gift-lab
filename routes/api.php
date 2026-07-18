@@ -19,6 +19,7 @@ use App\Http\Controllers\PricingConfigController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
+use App\Http\Controllers\ProofImageController;
 use App\Http\Controllers\QuoteController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\TrackingController;
@@ -88,6 +89,12 @@ Route::get('/track/view', [TrackingController::class, 'view'])
 // Stripe webhook - unauthenticated, verified by signature (see controller).
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');
 
+// Sessionless, signature-authenticated proof thumbnail for buyer emails
+// (email clients can't send cookies, so the signature is the auth).
+Route::get('/proofs/{proof}/image', ProofImageController::class)
+    ->name('proofs.image')
+    ->middleware(['signed', 'throttle:60,1']);
+
 Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
@@ -103,7 +110,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend']);
     Route::post('/quotes/{quote}/send', [QuoteController::class, 'send']);
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
-    Route::post('/quotes/{quote}/purchase-order', [QuoteController::class, 'issuePurchaseOrder']);
+    Route::post('/quotes/{quote}/invoice', [QuoteController::class, 'issueInvoice']);
     Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure']);
     Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel']);
     Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);

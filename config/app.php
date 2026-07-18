@@ -54,6 +54,11 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Absolute base for buyer-facing deep links in emails (e.g. the "review your
+    // quote" CTA). Defaults to APP_URL for the same-origin deploy (SPA at root,
+    // API under /api); set FRONTEND_URL if the SPA is served from a distinct host.
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost')),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

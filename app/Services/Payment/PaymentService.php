@@ -8,8 +8,8 @@ use App\Enums\PaymentState;
 use App\Enums\QuoteState;
 use App\Exceptions\DomainRuleException;
 use App\Exceptions\FeatureNotEnabledException;
+use App\Models\Invoice;
 use App\Models\PricingConfig;
-use App\Models\PurchaseOrder;
 use App\Models\Quote;
 use App\Services\AuditLogger;
 use App\Services\Payment\Contracts\PaymentGateway;
@@ -63,7 +63,7 @@ final class PaymentService
      * shared queue. Idempotent: a second call for an already-processed quote
      * returns the existing PO without re-transitioning.
      */
-    public function confirmPaid(Quote $quote, string $reference): PurchaseOrder
+    public function confirmPaid(Quote $quote, string $reference): Invoice
     {
         // TOCTOU hardening: Stripe retries deliver checkout.session.completed more
         // than once. We serialize concurrent deliveries by taking a row-level
@@ -71,7 +71,7 @@ final class PaymentService
         // until the first commits, then observes the freshly-created PO and
         // returns it idempotently. A residual unique-violation on po_ref (a
         // delivery that raced in via a non-locked path) is collapsed into success.
-        return DB::transaction(function () use ($quote, $reference): PurchaseOrder {
+        return DB::transaction(function () use ($quote, $reference): Invoice {
             /** @var Quote $locked */
             $locked = Quote::query()
                 ->whereKey($quote->getKey())
@@ -84,7 +84,7 @@ final class PaymentService
             }
 
             try {
-                $po = $this->quotes->issuePurchaseOrder($locked, 'B2C-'.$locked->id, $reference, 'PREPAID');
+                $po = $this->quotes->issueInvoice($locked, 'B2C-'.$locked->id, $reference, 'PREPAID');
             } catch (QueryException $e) {
                 if ($this->isUniqueViolation($e) && ($winner = $locked->purchaseOrders()->first()) !== null) {
                     Log::warning('Duplicate payment capture collapsed to existing PO.', [

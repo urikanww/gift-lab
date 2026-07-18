@@ -50,6 +50,8 @@ class Quote extends Model
         'delivery',
         'total',
         'price_snapshot_at',
+        'accepted_at',
+        'accepted_by',
         'amendment_log',
         'notes',
         'needed_by',
@@ -65,6 +67,7 @@ class Quote extends Model
             'delivery' => 'decimal:2',
             'total' => 'decimal:2',
             'price_snapshot_at' => 'datetime',
+            'accepted_at' => 'datetime',
             'amendment_log' => 'array',
             'needed_by' => 'immutable_date',
         ];
@@ -117,6 +120,14 @@ class Quote extends Model
     }
 
     /**
+     * @return BelongsTo<User, Quote>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
      * @return HasMany<LineItem>
      */
     public function lineItems(): HasMany
@@ -141,11 +152,11 @@ class Quote extends Model
     }
 
     /**
-     * @return HasMany<PurchaseOrder>
+     * @return HasMany<Invoice>
      */
     public function purchaseOrders(): HasMany
     {
-        return $this->hasMany(PurchaseOrder::class);
+        return $this->hasMany(Invoice::class);
     }
 
     /**
@@ -220,7 +231,7 @@ class Quote extends Model
         }
 
         return match ($this->state) {
-            QuoteState::ProofApproved, QuoteState::PoIssued,
+            QuoteState::ProofApproved, QuoteState::Invoiced,
             QuoteState::Confirmed, QuoteState::Procuring => 'CONFIRMED',
             default => 'REVIEW',
         };
