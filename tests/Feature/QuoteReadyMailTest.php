@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Mail\QuoteReadyMail;
+use App\Models\Company;
 use App\Models\Quote;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
@@ -73,7 +74,7 @@ it('emails the buyer with the proof variant when the first proof is issued', fun
     Mail::assertQueuedCount(1);
 });
 
-it('does not email when the quote creator is staff (not a company buyer)', function (): void {
+it('does not email a staff-created quote when the company has no buyer contact', function (): void {
     Mail::fake();
     $staff = User::factory()->staffAdmin()->create();
     $quote = Quote::factory()->create(['state' => 'DRAFT', 'created_by' => $staff->id]);
@@ -82,6 +83,20 @@ it('does not email when the quote creator is staff (not a company buyer)', funct
     $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
 
     Mail::assertNothingQueued();
+});
+
+it('emails the company buyer contact for a staff-created quote', function (): void {
+    Mail::fake();
+    $company = Company::factory()->create();
+    $buyer = User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']);
+    $staff = User::factory()->staffAdmin()->create();
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'DRAFT', 'created_by' => $staff->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
+
+    Mail::assertQueued(QuoteReadyMail::class, fn ($m) => $m->hasTo($buyer->email));
+    Mail::assertQueuedCount(1);
 });
 
 it('does not re-email on a v2 proof (already in proofing)', function (): void {

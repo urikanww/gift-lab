@@ -9,6 +9,7 @@ use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Enums\StockMovementReason;
+use App\Enums\UserRole;
 use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
@@ -19,6 +20,7 @@ use App\Models\Proof;
 use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\StockMovement;
+use App\Models\User;
 use App\Models\Variant;
 use App\Services\Procurement\ProcurementManager;
 use App\Support\Broadcasting;
@@ -615,19 +617,12 @@ final class QuoteService
     /**
      * Queue the buyer-facing "quote (and proof) ready" email. Fires only after
      * the enclosing transaction commits, so a rolled-back send never emails.
-     * No-ops silently if the quote has no creator or the creator has no email.
+     * No-ops silently if no buyer recipient can be resolved for the company.
      */
     private function emailQuoteReady(Quote $quote, bool $hasProof): void
     {
-        $recipient = $quote->creator;
-        // Only notify a genuine buyer of this quote's company. created_by can be a
-        // staff user (staff may raise a quote on a company's behalf); a staff creator
-        // must never receive this buyer-facing email. Staff-created quotes therefore
-        // send no buyer notification yet — a known gap pending a company-contact
-        // recipient decision.
-        if ($recipient === null
-            || $recipient->email === null
-            || $recipient->company_id !== $quote->company_id) {
+        $recipient = $this->resolveBuyerRecipient($quote);
+        if ($recipient === null) {
             return;
         }
 
@@ -637,8 +632,34 @@ final class QuoteService
         }
 
         DB::afterCommit(fn () => Mail::to($recipient->email)->queue(
-            new QuoteReadyMail($quote, $hasProof, $proofImageUrl)
+            new QuoteReadyMail($quote, $hasProof, $proofImageUrl, $recipient->name)
         ));
+    }
+
+    /**
+     * Resolve the genuine buyer user to notify for this quote. The email CTA
+     * links to the login-gated /quotes/{id} SPA route, so we only ever target
+     * a real buyer account - never the company's shared billing_email inbox.
+     */
+    private function resolveBuyerRecipient(Quote $quote): ?User
+    {
+        // Self-service: the creator is a genuine buyer of this company -> notify them.
+        $creator = $quote->creator;
+        if ($creator !== null
+            && $creator->email !== null
+            && $creator->company_id === $quote->company_id) {
+            return $creator;
+        }
+
+        // Staff-created (or creator isn't a company buyer): notify the company's
+        // primary buyer contact - the earliest buyer user with an email. The CTA is
+        // login-gated, so we target a real buyer account, not the shared billing_email.
+        return User::query()
+            ->where('company_id', $quote->company_id)
+            ->where('role', UserRole::Buyer->value)
+            ->whereNotNull('email')
+            ->orderBy('id')
+            ->first();
     }
 
     private function hasCustomization(?array $customization): bool

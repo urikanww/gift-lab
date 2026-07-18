@@ -24,6 +24,7 @@ class QuoteReadyMail extends Mailable implements ShouldQueue
         public Quote $quote,
         public bool $hasProof,
         public ?string $proofImageUrl,
+        public ?string $greetingName = null,
     ) {}
 
     public function envelope(): Envelope
@@ -44,7 +45,7 @@ class QuoteReadyMail extends Mailable implements ShouldQueue
                 'hasProof' => $this->hasProof,
                 'proofImageUrl' => $this->proofImageUrl,
                 'quoteUrl' => rtrim((string) config('app.frontend_url', config('app.url')), '/').'/quotes/'.$this->quote->id,
-                'greetingName' => optional($this->quote->creator)->name,
+                'greetingName' => $this->greetingName ?? optional($this->quote->creator)->name,
             ],
         );
     }
