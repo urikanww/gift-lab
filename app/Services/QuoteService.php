@@ -243,11 +243,16 @@ final class QuoteService
 
     public function accept(Quote $quote): Quote
     {
-        $previous = $quote->state->value;
-        $quote->transitionTo(QuoteState::Accepted);
-        Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
+        return DB::transaction(function () use ($quote): Quote {
+            $previous = $quote->state->value;
+            $quote->accepted_at = now();
+            $quote->accepted_by = Auth::id();
+            $quote->save();
+            $quote->transitionTo(QuoteState::Accepted);
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
-        return $quote;
+            return $quote;
+        });
     }
 
     /**

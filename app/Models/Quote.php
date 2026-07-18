@@ -50,6 +50,8 @@ class Quote extends Model
         'delivery',
         'total',
         'price_snapshot_at',
+        'accepted_at',
+        'accepted_by',
         'amendment_log',
         'notes',
         'needed_by',
@@ -65,6 +67,7 @@ class Quote extends Model
             'delivery' => 'decimal:2',
             'total' => 'decimal:2',
             'price_snapshot_at' => 'datetime',
+            'accepted_at' => 'datetime',
             'amendment_log' => 'array',
             'needed_by' => 'immutable_date',
         ];
