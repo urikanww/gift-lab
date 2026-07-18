@@ -113,4 +113,32 @@ return [
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
+    // NinjaVan courier (delivery dispatch). When client id + secret are present
+    // the live HTTP client is bound; otherwise the fixture serves local/testing
+    // (AppServiceProvider decides).
+    'ninjavan' => [
+        'client_id' => env('NINJAVAN_CLIENT_ID'),
+        'client_secret' => env('NINJAVAN_CLIENT_SECRET'),
+        // Full host + country segment, e.g. https://api-sandbox.ninjavan.co/SG
+        // (NinjaVan uses an UPPERCASE country code). Switch to the production host
+        // (https://api.ninjavan.co/SG) when going live.
+        'base_url' => env('NINJAVAN_BASE_URL', 'https://api-sandbox.ninjavan.co/SG'),
+        'service_type' => env('NINJAVAN_SERVICE_TYPE', 'Parcel'),
+        'service_level' => env('NINJAVAN_SERVICE_LEVEL', 'Standard'),
+        'default_weight_kg' => env('NINJAVAN_DEFAULT_WEIGHT_KG', 1),
+        'timezone' => env('NINJAVAN_TIMEZONE', 'Asia/Singapore'),
+        'timeslot_start' => env('NINJAVAN_TIMESLOT_START', '09:00'),
+        'timeslot_end' => env('NINJAVAN_TIMESLOT_END', '18:00'),
+        'pickup' => [
+            'name' => env('NINJAVAN_PICKUP_NAME', 'Gift Lab'),
+            'phone' => env('NINJAVAN_PICKUP_PHONE'),
+            'email' => env('NINJAVAN_PICKUP_EMAIL'),
+            'address1' => env('NINJAVAN_PICKUP_ADDRESS1'),
+            'city' => env('NINJAVAN_PICKUP_CITY'),
+            'state' => env('NINJAVAN_PICKUP_STATE'),
+            'postcode' => env('NINJAVAN_PICKUP_POSTCODE'),
+            'country' => env('NINJAVAN_PICKUP_COUNTRY', 'SG'),
+        ],
+    ],
+
 ];
