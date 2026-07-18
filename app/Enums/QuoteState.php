@@ -30,7 +30,7 @@ enum QuoteState: string
     public function nextStates(): array
     {
         return match ($this) {
-            self::Draft => [self::Sent, self::Cancelled],
+            self::Draft => [self::Sent, self::Proofing, self::Cancelled],
             self::Sent => [self::ChangesRequested, self::Accepted, self::Cancelled],
             self::ChangesRequested => [self::Draft, self::Cancelled],
             self::Accepted => [self::Proofing, self::Cancelled],

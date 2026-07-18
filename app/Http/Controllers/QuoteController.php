@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\AmendQuoteRequest;
 use App\Http\Requests\CancelQuoteRequest;
 use App\Http\Requests\IssueInvoiceRequest;
+use App\Http\Requests\SendQuoteRequest;
 use App\Http\Requests\StoreQuoteRequest;
 use App\Http\Resources\QuoteResource;
 use App\Models\Quote;
@@ -81,11 +82,15 @@ class QuoteController extends Controller
         return new QuoteResource($quote->load('lineItems'));
     }
 
-    public function send(Request $request, Quote $quote): QuoteResource
+    public function send(SendQuoteRequest $request, Quote $quote): QuoteResource
     {
         $this->authorize('manageProduction', $quote);
 
-        return new QuoteResource($this->quotes->send($quote));
+        return new QuoteResource($this->quotes->send(
+            $quote,
+            $request->input('artwork_version_ref'),
+            $request->input('notes'),
+        ));
     }
 
     public function accept(Request $request, Quote $quote): QuoteResource

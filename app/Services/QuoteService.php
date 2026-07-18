@@ -229,16 +229,28 @@ final class QuoteService
     /**
      * Send the quote to the buyer, freezing the price snapshot timestamp.
      */
-    public function send(Quote $quote): Quote
+    public function send(Quote $quote, ?string $artworkRef = null, ?string $proofNotes = null): Quote
     {
-        $previous = $quote->state->value;
-        $quote->price_snapshot_at = now();
-        $quote->save();
-        $quote->transitionTo(QuoteState::Sent);
+        if ($quote->state !== QuoteState::Draft) {
+            throw new DomainRuleException('Only DRAFT quotes can be sent.');
+        }
 
-        Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
+        return DB::transaction(function () use ($quote, $artworkRef, $proofNotes): Quote {
+            $previous = $quote->state->value;
+            $quote->price_snapshot_at = now();
+            $quote->save();
 
-        return $quote;
+            if ($artworkRef !== null) {
+                $quote->transitionTo(QuoteState::Proofing);          // slim path
+                $this->createProofVersion($quote, $artworkRef, $proofNotes);
+            } else {
+                $quote->transitionTo(QuoteState::Sent);
+            }
+
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+
+            return $quote;
+        });
     }
 
     public function accept(Quote $quote): Quote
@@ -272,20 +284,29 @@ final class QuoteService
                 throw new DomainRuleException('Quote must be ACCEPTED or PROOFING to issue a proof.');
             }
 
-            $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
-
-            $proof = Proof::create([
-                'quote_id' => $quote->id,
-                'version' => $nextVersion,
-                'artwork_version_ref' => $artworkRef,
-                'state' => ProofState::Sent->value,
-                'notes' => $notes,
-            ]);
-
-            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+            $proof = $this->createProofVersion($quote, $artworkRef, $notes);
 
             return $proof;
         });
+    }
+
+    /**
+     * Create the next proof version row for a quote and broadcast it. Shared by
+     * issueProof (ACCEPTED/PROOFING) and the slim send path (DRAFT -> PROOFING).
+     */
+    private function createProofVersion(Quote $quote, string $artworkRef, ?string $notes): Proof
+    {
+        $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
+        $proof = Proof::create([
+            'quote_id' => $quote->id,
+            'version' => $nextVersion,
+            'artwork_version_ref' => $artworkRef,
+            'state' => ProofState::Sent->value,
+            'notes' => $notes,
+        ]);
+        DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+
+        return $proof;
     }
 
     /**
