@@ -54,3 +54,15 @@ it('returns 404 when the proof artwork file is missing on the disk', function ()
     $url = URL::temporarySignedRoute('proofs.image', now()->addDays(14), ['proof' => $proof->id]);
     $this->get($url)->assertStatus(404);
 });
+
+it('rejects a proof image ref with a path traversal sequence', function (): void {
+    Storage::fake('local');
+    $quote = Quote::factory()->create();
+    $proof = Proof::create([
+        'quote_id' => $quote->id, 'version' => 1,
+        'artwork_version_ref' => 'artwork/../../secrets.env', 'state' => 'SENT',
+    ]);
+
+    $url = URL::temporarySignedRoute('proofs.image', now()->addDays(14), ['proof' => $proof->id]);
+    $this->get($url)->assertStatus(404);
+});

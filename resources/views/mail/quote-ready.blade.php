@@ -126,7 +126,7 @@
                 <tr>
                     <td align="center" style="padding:28px 24px 0 24px;">
                         <p style="margin:0; font-family:Helvetica,Arial,sans-serif; font-size:12px; line-height:20px; color:#a89b7d;">
-                            Gift Lab &middot; This link takes you straight to your quote, no login required.
+                            Gift Lab &middot; Sign in to review and approve your quote.
                         </p>
                     </td>
                 </tr>
