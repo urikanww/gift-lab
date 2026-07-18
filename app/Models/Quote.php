@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -157,6 +158,47 @@ class Quote extends Model
     public function purchaseOrders(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    /**
+     * @return HasOne<ShippingAddress>
+     */
+    public function shippingAddress(): HasOne
+    {
+        return $this->hasOne(ShippingAddress::class);
+    }
+
+    /**
+     * The ship-to for courier calls: the saved per-quote address, or a best-effort
+     * default with the company's single free-text address copied into line1 when
+     * none is saved yet.
+     *
+     * @return array<string, string|null>
+     */
+    public function shippingAddressOrDefault(): array
+    {
+        if ($this->shippingAddress !== null) {
+            return $this->shippingAddress->only([
+                'recipient_name', 'phone', 'email', 'line1', 'line2', 'city', 'state', 'postal_code', 'country', 'notes',
+            ]);
+        }
+
+        // company() is a plain belongsTo and Company uses SoftDeletes, so the
+        // parent can be null (soft-deleted). Guard every access.
+        $company = $this->company;
+
+        return [
+            'recipient_name' => $company?->name,
+            'phone' => $company?->phone,
+            'email' => null,
+            'line1' => (string) $company?->address, // single free-text line, copied verbatim
+            'line2' => null,
+            'city' => null,
+            'state' => null,
+            'postal_code' => null,
+            'country' => 'SG',
+            'notes' => null,
+        ];
     }
 
     /**

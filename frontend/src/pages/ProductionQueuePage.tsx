@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueueStore } from '../stores/queueStore';
 import JobLabel from '../components/JobLabel';
 import api, { apiError } from '../lib/api';
-import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Skeleton, Textarea, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import Model3dDecalPreview from '../components/Model3dDecalPreview';
 import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
-import type { JobLineItem, JobState, ModelPart } from '../types';
+import type { JobLineItem, JobState, ModelPart, ShippingAddressInput } from '../types';
 import type { PrintZone } from '../lib/printZone';
 
 const NEXT_STATE: Partial<Record<JobState, { label: string; to: JobState }>> = {
@@ -56,10 +56,30 @@ function filenameFromDisposition(header: unknown): string | null {
 }
 
 export default function ProductionQueuePage() {
-  const { jobs, loading, error, fetchQueue, advance, advanceBatch, advanceNext, subscribe, unsubscribe } = useQueueStore();
+  const {
+    jobs,
+    loading,
+    error,
+    fetchQueue,
+    advance,
+    advanceBatch,
+    advanceNext,
+    createShipment,
+    subscribe,
+    unsubscribe,
+  } = useQueueStore();
   const { toast } = useToast();
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  // Which job's delivery-address panel is expanded (staff editor).
+  const [addressPanelId, setAddressPanelId] = useState<number | null>(null);
+  // Quote ids known to have a delivery address (loaded or just saved) - gates the
+  // automated NinjaVan create-shipment button so we don't fire a doomed 422.
+  const [addressReady, setAddressReady] = useState<Set<number>>(new Set());
+  // Single-flight guard for the automated NinjaVan shipment booking.
+  const [creatingShipmentId, setCreatingShipmentId] = useState<number | null>(null);
+  const markAddressReady = (quoteId: number) =>
+    setAddressReady((prev) => (prev.has(quoteId) ? prev : new Set(prev).add(quoteId)));
   // Shipping is confirm-gated: marking a job shipped requires a consignment ref
   // (that transition fires the buyer's "on the way" signal). This tracks which
   // card is mid-confirmation and its typed reference.
@@ -142,6 +162,27 @@ export default function ProductionQueuePage() {
       setCarrier('');
     } finally {
       setPendingId(null);
+    }
+  };
+
+  // Automated NinjaVan path (separate from the manual consignment-entry flow).
+  // The store action throws on error and refetches on success (flipping the row
+  // to SHIPPED); we toast the tracking ref, or the 422/502 message on failure.
+  const onCreateShipment = async (jobId: number) => {
+    if (creatingShipmentId !== null) return;
+    setCreatingShipmentId(jobId);
+    try {
+      const res = await createShipment(jobId);
+      const trackingLine = res.consignment_ref ? `Tracking ${res.consignment_ref}` : 'Shipment created';
+      toast({
+        title: 'Shipment created',
+        description: res.tracking_url ? `${trackingLine} - ${res.tracking_url}` : trackingLine,
+        tone: 'success',
+      });
+    } catch (err) {
+      toast({ title: 'Could not create shipment', description: apiError(err), tone: 'danger' });
+    } finally {
+      setCreatingShipmentId(null);
     }
   };
 
@@ -325,6 +366,39 @@ export default function ProductionQueuePage() {
                       Print label
                     </Button>
 
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      fullWidth
+                      onClick={() => setAddressPanelId((v) => (v === j.id ? null : j.id))}
+                    >
+                      {addressPanelId === j.id ? 'Hide delivery address' : 'Delivery address'}
+                    </Button>
+
+                    {addressPanelId === j.id && (
+                      <DeliveryAddressPanel
+                        quoteId={j.quote_id}
+                        onLoaded={(hasAddress) => hasAddress && markAddressReady(j.quote_id)}
+                        onSaved={() => markAddressReady(j.quote_id)}
+                      />
+                    )}
+
+                    {j.state === 'IN_PRODUCTION' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        fullWidth
+                        loading={creatingShipmentId === j.id}
+                        disabled={
+                          !addressReady.has(j.quote_id) ||
+                          (creatingShipmentId !== null && creatingShipmentId !== j.id)
+                        }
+                        onClick={() => void onCreateShipment(j.id)}
+                      >
+                        Create NinjaVan shipment
+                      </Button>
+                    )}
+
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
                       <div className="mt-auto flex flex-col gap-2">
                         <label className="text-sm text-fg-muted">
@@ -406,6 +480,150 @@ export default function ProductionQueuePage() {
 
       {labelJobId !== null && <JobLabel jobId={labelJobId} onClose={() => setLabelJobId(null)} />}
     </section>
+  );
+}
+
+/**
+ * Staff delivery-address editor for a quote, shown inline on the job card. On
+ * expand it loads the saved (or company-defaulted) address and prefills a small
+ * form; saving PUTs the writable fields. `onLoaded`/`onSaved` let the parent
+ * know an address exists so the automated create-shipment button can enable.
+ */
+function DeliveryAddressPanel({
+  quoteId,
+  onLoaded,
+  onSaved,
+}: {
+  quoteId: number;
+  onLoaded: (hasAddress: boolean) => void;
+  onSaved: () => void;
+}) {
+  const fetchShippingAddress = useQueueStore((s) => s.fetchShippingAddress);
+  const saveShippingAddress = useQueueStore((s) => s.saveShippingAddress);
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<Record<keyof ShippingAddressInput, string>>({
+    recipient_name: '',
+    phone: '',
+    line1: '',
+    postal_code: '',
+    email: '',
+    line2: '',
+    city: '',
+    state: '',
+    country: '',
+    notes: '',
+  });
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    void fetchShippingAddress(quoteId)
+      .then(({ address: addr, saved }) => {
+        if (!active) return;
+        setForm({
+          recipient_name: addr.recipient_name ?? '',
+          phone: addr.phone ?? '',
+          line1: addr.line1 ?? '',
+          postal_code: addr.postal_code ?? '',
+          email: addr.email ?? '',
+          line2: addr.line2 ?? '',
+          city: addr.city ?? '',
+          state: addr.state ?? '',
+          country: addr.country ?? '',
+          notes: addr.notes ?? '',
+        });
+        // Gate the create-shipment button on a persisted row, not a defaulted
+        // line1 - the company free-text default is not a shippable structured address.
+        onLoaded(saved);
+      })
+      .catch((err) => {
+        if (active) {
+          toast({ title: 'Could not load delivery address', description: apiError(err), tone: 'danger' });
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // Reload only when the target quote changes; parent callbacks are stable enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteId]);
+
+  const update =
+    (k: keyof ShippingAddressInput) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const required = ['recipient_name', 'phone', 'line1', 'postal_code'] as const;
+  const missingRequired = required.some((k) => !form[k].trim());
+
+  const onSave = async () => {
+    if (saving || missingRequired) return;
+    setSaving(true);
+    try {
+      // Required fields always sent; optional ones only when non-empty so we
+      // don't overwrite a defaulted value with a blank string.
+      const optional: (keyof ShippingAddressInput)[] = ['email', 'line2', 'city', 'state', 'country', 'notes'];
+      const payload: ShippingAddressInput = {
+        recipient_name: form.recipient_name.trim(),
+        phone: form.phone.trim(),
+        line1: form.line1.trim(),
+        postal_code: form.postal_code.trim(),
+      };
+      for (const k of optional) {
+        const v = form[k].trim();
+        if (v) payload[k] = v;
+      }
+      await saveShippingAddress(quoteId, payload);
+      toast({ title: 'Delivery address saved', tone: 'success' });
+      onSaved();
+    } catch (err) {
+      toast({ title: 'Could not save delivery address', description: apiError(err), tone: 'danger' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2 border-t border-border pt-3">
+        <Skeleton width="60%" height={14} />
+        <Skeleton width="100%" height={36} />
+        <Skeleton width="100%" height={36} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <Input label="Recipient name" required value={form.recipient_name} onChange={update('recipient_name')} />
+      <Input label="Phone" required value={form.phone} onChange={update('phone')} />
+      <Input label="Email" type="email" value={form.email} onChange={update('email')} />
+      <Input label="Address line 1" required value={form.line1} onChange={update('line1')} />
+      <Input label="Address line 2" value={form.line2} onChange={update('line2')} />
+      <div className="grid grid-cols-2 gap-2">
+        <Input label="City" value={form.city} onChange={update('city')} />
+        <Input label="State" value={form.state} onChange={update('state')} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Input label="Postal code" required value={form.postal_code} onChange={update('postal_code')} />
+        <Input label="Country" placeholder="SG" maxLength={2} value={form.country} onChange={update('country')} />
+      </div>
+      <Textarea label="Notes" rows={2} value={form.notes} onChange={update('notes')} />
+      <Button
+        variant="primary"
+        size="sm"
+        fullWidth
+        loading={saving}
+        disabled={missingRequired}
+        onClick={() => void onSave()}
+      >
+        Save delivery address
+      </Button>
+    </div>
   );
 }
 

@@ -55,6 +55,48 @@ export interface Shipment {
   ref: string;
 }
 
+/**
+ * A quote's delivery address as returned by GET /quotes/:id/shipping-address
+ * (the saved address, or a company-defaulted one when none is stored yet).
+ */
+export interface ShippingAddress {
+  recipient_name: string;
+  phone: string;
+  email: string | null;
+  line1: string;
+  line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string;
+  country: string | null;
+  notes: string | null;
+}
+
+/**
+ * The writable subset sent to PUT /quotes/:id/shipping-address.
+ * recipient_name, phone, line1, postal_code are required; the rest optional.
+ */
+export interface ShippingAddressInput {
+  recipient_name: string;
+  phone: string;
+  line1: string;
+  postal_code: string;
+  email?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  notes?: string | null;
+}
+
+/** Result of POST /production-jobs/:id/create-shipment (NinjaVan). */
+export interface ShipmentResult {
+  state: string;
+  carrier: string | null;
+  consignment_ref: string | null;
+  tracking_url: string | null;
+}
+
 /** One step in the order tracking timeline (code + human label). */
 export interface TrackStage {
   code: string;

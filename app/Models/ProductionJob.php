@@ -9,6 +9,7 @@ use App\Enums\JobTrack;
 use App\Enums\PrintMethod;
 use App\Exceptions\InvalidStateTransitionException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,6 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class ProductionJob extends Model
 {
+    use HasFactory;
     use SoftDeletes;
 
     protected $table = 'production_jobs';

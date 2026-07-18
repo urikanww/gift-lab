@@ -8,6 +8,9 @@ use App\Events\OrderTrackingUpdated;
 use App\Events\QuoteStateChanged;
 use App\Models\Quote;
 use App\Policies\QuotePolicy;
+use App\Services\Courier\Contracts\CourierClient;
+use App\Services\Courier\FixtureNinjaVanClient;
+use App\Services\Courier\HttpNinjaVanClient;
 use App\Services\Model3d\CompositeModel3dApiClient;
 use App\Services\Model3d\Contracts\Model3dApiClient;
 use App\Services\Model3d\HttpCults3dClient;
@@ -111,6 +114,22 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $app->make(FixturePaymentGateway::class);
+        });
+
+        // Courier (NinjaVan): the live HTTP client is used once client id +
+        // secret are configured. Otherwise the fixture serves local/testing;
+        // production without creds must fail closed (refuse to resolve) rather
+        // than silently binding a fake that never dispatches a real parcel.
+        $this->app->singleton(CourierClient::class, function ($app) {
+            if (config('services.ninjavan.client_id') && config('services.ninjavan.client_secret')) {
+                return $app->make(HttpNinjaVanClient::class);
+            }
+
+            if ($app->environment(['local', 'testing'])) {
+                return new FixtureNinjaVanClient();
+            }
+
+            throw new RuntimeException('NinjaVan courier client is not configured for the "'.$app->environment().'" environment. The fixture never dispatches a real parcel; set NINJAVAN_CLIENT_ID/SECRET before shipping in this environment.');
         });
     }
 

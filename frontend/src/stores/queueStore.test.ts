@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductionJob } from '../types';
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const { get, post, put } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 vi.mock('../lib/api', () => ({
-  default: { get, post },
+  default: { get, post, put },
   apiError: (e: unknown) => String(e),
   ensureCsrf: vi.fn(),
 }));
@@ -31,6 +31,7 @@ beforeEach(() => {
   useQueueStore.setState({ jobs: [], loading: false, error: null });
   get.mockReset();
   post.mockReset();
+  put.mockReset();
 });
 
 describe('queueStore', () => {
@@ -86,6 +87,63 @@ describe('queueStore', () => {
       state: 'IN_PRODUCTION',
     });
     expect(result).toEqual({ advanced: [1, 2], skipped: [] });
+    expect(get).toHaveBeenCalledWith('/production-queue');
+  });
+
+  it('fetchShippingAddress GETs the quote address and passes through the saved flag', async () => {
+    const address = {
+      recipient_name: 'Ada', phone: '+65 1234 5678', email: null,
+      line1: '1 Robinson Rd', line2: null, city: 'Singapore', state: null,
+      postal_code: '048542', country: 'SG', notes: null,
+    };
+    get.mockResolvedValue({ data: { data: address, saved: true } });
+
+    const result = await useQueueStore.getState().fetchShippingAddress(10);
+
+    expect(get).toHaveBeenCalledWith('/quotes/10/shipping-address');
+    expect(result).toEqual({ address, saved: true });
+  });
+
+  it('fetchShippingAddress reports saved=false for a defaulted (unpersisted) address', async () => {
+    const address = {
+      recipient_name: 'Acme Co', phone: null, email: null,
+      line1: '10 Anson Rd', line2: null, city: null, state: null,
+      postal_code: null, country: 'SG', notes: null,
+    };
+    get.mockResolvedValue({ data: { data: address } }); // no `saved` key
+
+    const result = await useQueueStore.getState().fetchShippingAddress(10);
+
+    expect(result).toEqual({ address, saved: false });
+  });
+
+  it('saveShippingAddress ensures CSRF, PUTs the payload, and returns data.data', async () => {
+    const { ensureCsrf } = await import('../lib/api');
+    const payload = {
+      recipient_name: 'Ada', phone: '+65 1234 5678',
+      line1: '1 Robinson Rd', postal_code: '048542',
+    };
+    const saved = { ...payload, email: null, line2: null, city: null, state: null, country: 'SG', notes: null };
+    put.mockResolvedValue({ data: { data: saved } });
+
+    const result = await useQueueStore.getState().saveShippingAddress(10, payload);
+
+    expect(ensureCsrf).toHaveBeenCalled();
+    expect(put).toHaveBeenCalledWith('/quotes/10/shipping-address', payload);
+    expect(result).toEqual(saved);
+  });
+
+  it('createShipment ensures CSRF, posts to create-shipment, returns the payload, and silently refetches', async () => {
+    const { ensureCsrf } = await import('../lib/api');
+    const shipment = { state: 'SHIPPED', carrier: 'NINJAVAN', consignment_ref: 'NV-TEST-123', tracking_url: 'https://track/NV-TEST-123' };
+    post.mockResolvedValue({ data: { data: shipment } });
+    get.mockResolvedValue({ data: { data: [] } });
+
+    const result = await useQueueStore.getState().createShipment(7);
+
+    expect(ensureCsrf).toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith('/production-jobs/7/create-shipment');
+    expect(result).toEqual(shipment);
     expect(get).toHaveBeenCalledWith('/production-queue');
   });
 });
