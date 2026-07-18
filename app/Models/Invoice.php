@@ -13,9 +13,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int $id
  * @property int $quote_id
  * @property string $po_ref
+ * @property string|null $invoice_ref
+ * @property string|null $terms
  * @property PaymentState $payment_state
+ * @property string $amount
+ * @property string $currency
+ * @property int|null $issued_by
+ * @property \Illuminate\Support\Carbon|null $issued_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
  */
-class PurchaseOrder extends Model
+class Invoice extends Model
 {
     use SoftDeletes;
 
@@ -41,7 +48,7 @@ class PurchaseOrder extends Model
     }
 
     /**
-     * @return BelongsTo<Quote, PurchaseOrder>
+     * @return BelongsTo<Quote, Invoice>
      */
     public function quote(): BelongsTo
     {
@@ -49,7 +56,7 @@ class PurchaseOrder extends Model
     }
 
     /**
-     * @return BelongsTo<User, PurchaseOrder>
+     * @return BelongsTo<User, Invoice>
      */
     public function issuer(): BelongsTo
     {

@@ -23,8 +23,8 @@ class IssuePurchaseOrderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'po_ref' => ['required', 'string', 'max:64', 'unique:purchase_orders,po_ref'],
-            'invoice_ref' => ['nullable', 'string', 'max:64', 'unique:purchase_orders,invoice_ref'],
+            'po_ref' => ['required', 'string', 'max:64', 'unique:invoices,po_ref'],
+            'invoice_ref' => ['nullable', 'string', 'max:64', 'unique:invoices,invoice_ref'],
             'terms' => ['nullable', 'string', 'max:255'],
         ];
     }

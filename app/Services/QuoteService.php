@@ -15,7 +15,7 @@ use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
-use App\Models\PurchaseOrder;
+use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\StockMovement;
 use App\Models\Variant;
@@ -329,10 +329,10 @@ final class QuoteService
     /**
      * Staff issues the PO/invoice: quote PROOF_APPROVED -> PO_ISSUED -> CONFIRMED.
      */
-    public function issuePurchaseOrder(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): PurchaseOrder
+    public function issuePurchaseOrder(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): Invoice
     {
-        return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): PurchaseOrder {
-            $po = PurchaseOrder::create([
+        return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): Invoice {
+            $po = Invoice::create([
                 'quote_id' => $quote->id,
                 'po_ref' => $poRef,
                 'invoice_ref' => $invoiceRef,

@@ -141,11 +141,11 @@ class Quote extends Model
     }
 
     /**
-     * @return HasMany<PurchaseOrder>
+     * @return HasMany<Invoice>
      */
     public function purchaseOrders(): HasMany
     {
-        return $this->hasMany(PurchaseOrder::class);
+        return $this->hasMany(Invoice::class);
     }
 
     /**

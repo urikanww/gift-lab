@@ -7,7 +7,7 @@ use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
-use App\Models\PurchaseOrder;
+use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\SupplierReorder;
 use App\Models\User;
@@ -108,7 +108,7 @@ it('retotals the quote and PO after a reconfirmation amend', function (): void {
         'delivery' => 60.00,
         'total' => 422593.00,
     ]);
-    $po = PurchaseOrder::create([
+    $po = Invoice::create([
         'quote_id' => $quote->id,
         'po_ref' => 'PO-TEST',
         'payment_state' => 'UNPAID',
