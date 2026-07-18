@@ -128,6 +128,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Streams the job's print-ready file (3D UV decal or approved proof
     // artwork) off the private disk so the floor can print it. Staff-gated.
     Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile']);
+    Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment']);
 
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
     Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index']);

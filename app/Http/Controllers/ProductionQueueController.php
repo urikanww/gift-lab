@@ -10,6 +10,7 @@ use App\Http\Resources\ProductionJobResource;
 use App\Models\ProductionJob;
 use App\Models\Quote;
 use App\Services\QueueService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Storage;
@@ -21,8 +22,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ProductionQueueController extends Controller
 {
-    public function __construct(private readonly QueueService $queue)
-    {
+    public function __construct(
+        private readonly QueueService $queue,
+        private readonly \App\Services\ShipmentService $shipment,
+    ) {
     }
 
     public function index(Request $request): AnonymousResourceCollection
@@ -98,5 +101,35 @@ class ProductionQueueController extends Controller
         }
 
         return $disk->download($ref, basename($ref));
+    }
+
+    /**
+     * Hand a produced job to the courier and mark it SHIPPED with the returned
+     * consignment ref + carrier. Staff-gated by the same policy as the rest of
+     * the queue. A missing ship-to yields 422; a courier failure yields 502.
+     */
+    public function createShipment(Request $request, ProductionJob $job): JsonResponse
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        // DomainRuleException (missing address / wrong state) is intentionally NOT
+        // caught here - bootstrap/app.php renders it to a logged 422. Only the
+        // courier failure needs a bespoke 502 with a safe, non-leaking message.
+        try {
+            $job = $this->shipment->createForJob($job);
+        } catch (\App\Exceptions\CourierException $e) {
+            \Illuminate\Support\Facades\Log::warning('Courier shipment failed.', ['job_id' => $job->id, 'error' => $e->getMessage()]);
+
+            return response()->json(['message' => 'The courier could not create this shipment. Please try again.'], 502);
+        }
+
+        return response()->json([
+            'data' => [
+                'state' => $job->state->value,
+                'carrier' => $job->carrier?->value,
+                'consignment_ref' => $job->consignment_ref,
+                'tracking_url' => $job->carrier?->trackingUrl((string) $job->consignment_ref),
+            ],
+        ]);
     }
 }
