@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
-import type { JobState, ProductionJob } from '../types';
+import type {
+  JobState,
+  ProductionJob,
+  ShipmentResult,
+  ShippingAddress,
+  ShippingAddressInput,
+} from '../types';
 
 // Unregister handle for the reconnect-refetch subscription.
 let offReconnect: (() => void) | null = null;
@@ -27,6 +33,9 @@ interface QueueStoreState {
   advance: (jobId: number, state: JobState, consignmentRef?: string, carrier?: string) => Promise<void>;
   advanceBatch: (jobIds: number[], state: 'IN_PRODUCTION' | 'CLOSED') => Promise<{ advanced: number[]; skipped: number[] }>;
   advanceNext: (jobId: number) => Promise<void>;
+  fetchShippingAddress: (quoteId: number) => Promise<ShippingAddress>;
+  saveShippingAddress: (quoteId: number, payload: ShippingAddressInput) => Promise<ShippingAddress>;
+  createShipment: (jobId: number) => Promise<ShipmentResult>;
   subscribe: () => void;
   unsubscribe: () => void;
 }
@@ -99,6 +108,34 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       set({ error: apiError(err) });
       await get().fetchQueue({ silent: true });
     }
+  },
+
+  // Delivery address for a quote (staff-gated): the saved address or a
+  // company-defaulted one. Read-only fetch, so it does not touch store error.
+  fetchShippingAddress: async (quoteId) => {
+    const { data } = await api.get<{ data: ShippingAddress }>(`/quotes/${quoteId}/shipping-address`);
+    return data.data;
+  },
+
+  saveShippingAddress: async (quoteId, payload) => {
+    await ensureCsrf();
+    const { data } = await api.put<{ data: ShippingAddress }>(
+      `/quotes/${quoteId}/shipping-address`,
+      payload,
+    );
+    return data.data;
+  },
+
+  // Automated NinjaVan path: book the shipment, then silently refetch so the row
+  // flips to SHIPPED. Deliberately lets the error THROW - the page needs the
+  // 422/502 message to toast it (swallowing into store.error would hide it).
+  createShipment: async (jobId) => {
+    await ensureCsrf();
+    const { data } = await api.post<{ data: ShipmentResult }>(
+      `/production-jobs/${jobId}/create-shipment`,
+    );
+    await get().fetchQueue({ silent: true });
+    return data.data;
   },
 
   subscribe: () => {
