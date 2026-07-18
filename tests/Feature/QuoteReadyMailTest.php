@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Mail\QuoteReadyMail;
 use App\Models\Quote;
 use App\Models\User;
+use Illuminate\Support\Facades\Mail;
 
 it('builds the quote+proof variant with a subject', function (): void {
     $quote = Quote::factory()->create();
@@ -34,4 +35,63 @@ it('escapes a malicious creator name in the greeting', function (): void {
 
     // second arg false = literal needle (no auto-escaping): the raw tag must be absent.
     $mail->assertDontSeeInHtml('<script>', false);
+});
+
+it('emails the buyer with the proof variant on slim send', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'created_by' => $buyer->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/quotes/{$quote->id}/send", ['artwork_version_ref' => 'a/v1.png'])->assertOk();
+
+    Mail::assertQueued(QuoteReadyMail::class, fn ($m) => $m->hasProof === true && $m->hasTo($buyer->email));
+    Mail::assertQueuedCount(1);
+});
+
+it('emails the buyer with the quote-only variant on plain send', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'created_by' => $buyer->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
+
+    Mail::assertQueued(QuoteReadyMail::class, fn ($m) => $m->hasProof === false);
+    Mail::assertQueuedCount(1);
+});
+
+it('emails the buyer with the proof variant when the first proof is issued', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'ACCEPTED', 'accepted_at' => now(), 'accepted_by' => $buyer->id, 'created_by' => $buyer->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/quotes/{$quote->id}/proofs", ['artwork_version_ref' => 'a/v1.png'])->assertCreated();
+
+    Mail::assertQueued(QuoteReadyMail::class, fn ($m) => $m->hasProof === true && $m->hasTo($buyer->email));
+    Mail::assertQueuedCount(1);
+});
+
+it('does not email when the quote creator is staff (not a company buyer)', function (): void {
+    Mail::fake();
+    $staff = User::factory()->staffAdmin()->create();
+    $quote = Quote::factory()->create(['state' => 'DRAFT', 'created_by' => $staff->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
+
+    Mail::assertNothingQueued();
+});
+
+it('does not re-email on a v2 proof (already in proofing)', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'PROOFING', 'accepted_at' => now(), 'accepted_by' => $buyer->id, 'created_by' => $buyer->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    // already PROOFING → issuing a proof does NOT transition, so no email fires
+    $this->postJson("/api/quotes/{$quote->id}/proofs", ['artwork_version_ref' => 'a/v2.png'])->assertCreated();
+
+    Mail::assertNothingQueued();
 });

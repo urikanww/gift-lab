@@ -12,6 +12,7 @@ use App\Enums\StockMovementReason;
 use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
+use App\Mail\QuoteReadyMail;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
@@ -25,6 +26,8 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Orchestrates the quote spine end to end. Controllers stay thin; every state
@@ -243,8 +246,10 @@ final class QuoteService
             if ($artworkRef !== null) {
                 $quote->transitionTo(QuoteState::Proofing);          // slim path
                 $this->createProofVersion($quote, $artworkRef, $proofNotes);
+                $this->emailQuoteReady($quote, true);
             } else {
                 $quote->transitionTo(QuoteState::Sent);
+                $this->emailQuoteReady($quote, false);
             }
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
@@ -274,10 +279,12 @@ final class QuoteService
     public function issueProof(Quote $quote, string $artworkRef, ?string $notes): Proof
     {
         return DB::transaction(function () use ($quote, $artworkRef, $notes): Proof {
+            $enteredProofing = false;
             if ($quote->state === QuoteState::Accepted) {
                 $previous = $quote->state->value;
                 $quote->transitionTo(QuoteState::Proofing);
                 DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+                $enteredProofing = true;
             }
 
             if ($quote->state !== QuoteState::Proofing) {
@@ -285,6 +292,10 @@ final class QuoteService
             }
 
             $proof = $this->createProofVersion($quote, $artworkRef, $notes);
+
+            if ($enteredProofing) {
+                $this->emailQuoteReady($quote, true);
+            }
 
             return $proof;
         });
@@ -599,6 +610,35 @@ final class QuoteService
         if ($allResolved && $anyReady && $quote->state === QuoteState::Procuring) {
             $this->queue->buildJobsForQuote($quote);
         }
+    }
+
+    /**
+     * Queue the buyer-facing "quote (and proof) ready" email. Fires only after
+     * the enclosing transaction commits, so a rolled-back send never emails.
+     * No-ops silently if the quote has no creator or the creator has no email.
+     */
+    private function emailQuoteReady(Quote $quote, bool $hasProof): void
+    {
+        $recipient = $quote->creator;
+        // Only notify a genuine buyer of this quote's company. created_by can be a
+        // staff user (staff may raise a quote on a company's behalf); a staff creator
+        // must never receive this buyer-facing email. Staff-created quotes therefore
+        // send no buyer notification yet — a known gap pending a company-contact
+        // recipient decision.
+        if ($recipient === null
+            || $recipient->email === null
+            || $recipient->company_id !== $quote->company_id) {
+            return;
+        }
+
+        $proofImageUrl = null;
+        if ($hasProof && ($proof = $quote->proofs()->latest('version')->first()) !== null) {
+            $proofImageUrl = URL::temporarySignedRoute('proofs.image', now()->addDays(14), ['proof' => $proof->id]);
+        }
+
+        DB::afterCommit(fn () => Mail::to($recipient->email)->queue(
+            new QuoteReadyMail($quote, $hasProof, $proofImageUrl)
+        ));
     }
 
     private function hasCustomization(?array $customization): bool
