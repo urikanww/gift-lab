@@ -326,6 +326,11 @@ final class QuoteService
             ]);
 
             $quote = $proof->quote;
+            if ($quote->accepted_at === null) {
+                $quote->accepted_at = now();
+                $quote->accepted_by = Auth::id();
+                $quote->save();
+            }
             $previous = $quote->state->value;
             $quote->transitionTo(QuoteState::ProofApproved);
 
@@ -337,19 +342,33 @@ final class QuoteService
     }
 
     /**
-     * Buyer requests changes: proof -> CHANGES_REQUESTED. Quote stays PROOFING
-     * so staff can issue a new proof version bound to new artwork.
+     * Buyer requests changes: proof -> CHANGES_REQUESTED. On the existing/accepted
+     * path (accepted_at set) the quote stays PROOFING so staff can issue a new proof
+     * version. On the slim path (accepted_at null) the rejection may concern price or
+     * artwork, so the quote advances to CHANGES_REQUESTED for staff triage.
      */
     public function requestProofChanges(Proof $proof, ?string $notes): Proof
     {
-        if ($notes !== null) {
-            $proof->notes = $notes;
-        }
-        $proof->transitionTo(ProofState::ChangesRequested);
+        return DB::transaction(function () use ($proof, $notes): Proof {
+            if ($notes !== null) {
+                $proof->notes = $notes;
+            }
+            $proof->transitionTo(ProofState::ChangesRequested);
 
-        Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $proof->quote->company_id));
+            $quote = $proof->quote;
+            // Slim path: price was never separately accepted, so the rejection may be
+            // about price or artwork -> send to CHANGES_REQUESTED for staff triage.
+            // Existing path (accepted_at set): artwork-only revision -> stay PROOFING.
+            if ($quote->accepted_at === null && $quote->state === QuoteState::Proofing) {
+                $previous = $quote->state->value;
+                $quote->transitionTo(QuoteState::ChangesRequested);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            }
 
-        return $proof;
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+
+            return $proof;
+        });
     }
 
     /**

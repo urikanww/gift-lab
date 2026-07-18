@@ -60,3 +60,45 @@ it('sends a quote without a proof and lands in SENT', function (): void {
     $this->postJson("/api/quotes/{$quote->id}/send")
         ->assertOk()->assertJsonPath('data.state', 'SENT');
 });
+
+it('stamps acceptance when a buyer approves a slim-path proof', function (): void {
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/quotes/{$quote->id}/send", ['artwork_version_ref' => 'a/v1.png']);
+
+    $proof = $quote->fresh()->proofs()->first();
+    Laravel\Sanctum\Sanctum::actingAs($buyer);
+    $this->postJson("/api/proofs/{$proof->id}/decide", ['decision' => 'approve'])->assertOk();
+
+    $quote->refresh();
+    expect($quote->state->value)->toBe('PROOF_APPROVED')
+        ->and($quote->accepted_at)->not->toBeNull()
+        ->and($quote->accepted_by)->toBe($buyer->id);
+});
+
+it('routes a slim-path request-changes to CHANGES_REQUESTED', function (): void {
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/quotes/{$quote->id}/send", ['artwork_version_ref' => 'a/v1.png']);
+    $proof = $quote->fresh()->proofs()->first();
+
+    Laravel\Sanctum\Sanctum::actingAs($buyer);
+    $this->postJson("/api/proofs/{$proof->id}/decide", ['decision' => 'request_changes', 'notes' => 'too pricey'])->assertOk();
+
+    expect($quote->refresh()->state->value)->toBe('CHANGES_REQUESTED');
+});
+
+it('keeps an accepted quote in PROOFING on request-changes (existing behavior)', function (): void {
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'ACCEPTED', 'accepted_at' => now(), 'accepted_by' => $buyer->id]);
+    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/quotes/{$quote->id}/proofs", ['artwork_version_ref' => 'a/v1.png']);
+    $proof = $quote->fresh()->proofs()->first();
+
+    Laravel\Sanctum\Sanctum::actingAs($buyer);
+    $this->postJson("/api/proofs/{$proof->id}/decide", ['decision' => 'request_changes', 'notes' => 'fix logo'])->assertOk();
+
+    expect($quote->refresh()->state->value)->toBe('PROOFING');
+});
