@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
-import { Badge, Button, Card, Input, Skeleton, useToast } from '../ui';
+import { Badge, Button, Card, Input, Modal, Skeleton, Textarea, useToast } from '../ui';
 import { EmptyState as LegacyEmpty, ErrorState } from '../components/ui/States';
 import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
@@ -66,6 +66,7 @@ export default function QuoteDetailPage() {
     decideProof,
     issueInvoice,
     payNow,
+    cancelQuote,
   } = useQuoteStore();
   const user = useAuthStore((s) => s.user);
   const isStaff = isStaffRole(user?.role);
@@ -80,6 +81,9 @@ export default function QuoteDetailPage() {
   // of firing a canned note.
   const [changesOpen, setChangesOpen] = useState(false);
   const [changeNotes, setChangeNotes] = useState('');
+  // Staff-only cancel confirm modal.
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
     void fetchQuote(quoteId);
@@ -123,6 +127,7 @@ export default function QuoteDetailPage() {
   if (!current) return <LegacyEmpty title="Quote not found." />;
 
   const quote = current;
+  const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
 
   return (
     <Motion variants={staggerContainer} initial="hidden" animate="visible">
@@ -494,8 +499,62 @@ export default function QuoteDetailPage() {
                   quote.state,
                 ) && <p className="text-sm text-fg-muted">No staff action available for this state.</p>}
               </div>
+
+              {/* Cancel: staff-only, available from every pre-production state. */}
+              {isCancellable && (
+                <div className="mt-6 border-t border-border pt-4">
+                  <Button variant="danger" disabled={busy} onClick={() => setCancelOpen(true)}>
+                    Cancel quote
+                  </Button>
+                </div>
+              )}
             </Card>
           </Motion>
+        )}
+
+        {isStaff && isCancellable && (
+          <Modal
+            open={cancelOpen}
+            onClose={() => {
+              setCancelOpen(false);
+              setCancelReason('');
+            }}
+            title="Cancel this quote?"
+            description="Stock already consumed will be returned. This cannot be undone."
+            footer={
+              <>
+                <Button variant="ghost" disabled={busy} onClick={() => setCancelOpen(false)}>
+                  Keep quote
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={busy}
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      const ok = await cancelQuote(quote.id, cancelReason.trim() || undefined);
+                      if (ok) {
+                        setCancelOpen(false);
+                        setCancelReason('');
+                      }
+                    }, 'Quote cancelled')
+                  }
+                >
+                  Confirm cancellation
+                </Button>
+              </>
+            }
+          >
+            <Textarea
+              label="Reason"
+              hint="Optional - shown to staff on the quote history."
+              rows={3}
+              maxLength={2000}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Buyer requested cancellation."
+            />
+          </Modal>
         )}
       </section>
     </Motion>

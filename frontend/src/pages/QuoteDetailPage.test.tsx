@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, ToastProvider } from '../ui';
@@ -235,4 +235,49 @@ it('does NOT show the buyer note for staff (staff sees their own controls)', () 
 
   expect(screen.queryByText('What happens next')).not.toBeInTheDocument();
   expect(screen.getByText('Staff actions')).toBeInTheDocument();
+});
+
+it('shows the Cancel quote control to staff on a cancellable quote', () => {
+  seedQuote('SENT');
+  asStaff();
+  renderPage();
+
+  expect(screen.getByRole('button', { name: /cancel quote/i })).toBeInTheDocument();
+});
+
+it('never shows the Cancel quote control to a buyer', () => {
+  seedQuote('SENT');
+  asBuyer();
+  renderPage();
+
+  expect(screen.queryByRole('button', { name: /cancel quote/i })).not.toBeInTheDocument();
+});
+
+it.each(['READY', 'CLOSED', 'CANCELLED'] as const)(
+  'hides the Cancel quote control once the quote is %s',
+  (state) => {
+    seedQuote(state);
+    asStaff();
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: /cancel quote/i })).not.toBeInTheDocument();
+  },
+);
+
+it('confirming the cancel modal calls cancelQuote with the trimmed reason and closes on success', async () => {
+  const cancelQuote = vi.fn(async () => true);
+  seedQuote('SENT');
+  useQuoteStore.setState({ cancelQuote } as any);
+  asStaff();
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /cancel quote/i }));
+  await userEvent.type(screen.getByLabelText(/reason/i), '  Buyer changed their mind.  ');
+  await userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+
+  expect(cancelQuote).toHaveBeenCalledWith(42, 'Buyer changed their mind.');
+  // Modal closes on success - its confirm button is no longer in the document.
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: /confirm cancellation/i })).not.toBeInTheDocument(),
+  );
 });

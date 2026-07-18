@@ -46,6 +46,8 @@ interface QuoteStoreState {
   issueInvoice: (id: number, poRef: string, terms: string | null) => Promise<void>;
   /** Resolves true when payment was captured immediately (no redirect). */
   payNow: (id: number) => Promise<boolean>;
+  /** Resolves true on success so the confirm modal only closes when the cancel actually landed. */
+  cancelQuote: (id: number, reason?: string) => Promise<boolean>;
   subscribeCompany: (companyId: number) => void;
   unsubscribeCompany: () => void;
 }
@@ -200,6 +202,19 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       set({ error: apiError(err) });
     }
     return false;
+  },
+
+  cancelQuote: async (id, reason) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/cancel`, { reason });
+      await get().fetchQuote(id);
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
   },
 
   subscribeCompany: (companyId) => {
