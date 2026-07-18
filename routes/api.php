@@ -20,6 +20,7 @@ use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
 use App\Http\Controllers\QuoteController;
+use App\Http\Controllers\ShippingAddressController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\TrackingController;
 use App\Http\Controllers\UploadController;
@@ -107,6 +108,10 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure']);
     Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel']);
     Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);
+
+    // Per-quote shipping address (staff read/upsert; buyers are 403).
+    Route::get('/quotes/{quote}/shipping-address', [ShippingAddressController::class, 'show']);
+    Route::put('/quotes/{quote}/shipping-address', [ShippingAddressController::class, 'update']);
 
     // Proofs
     Route::post('/quotes/{quote}/proofs', [ProofController::class, 'store']);
