@@ -120,6 +120,14 @@ class Quote extends Model
     }
 
     /**
+     * @return BelongsTo<User, Quote>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
      * @return HasMany<LineItem>
      */
     public function lineItems(): HasMany
