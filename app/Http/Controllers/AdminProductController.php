@@ -43,7 +43,7 @@ class AdminProductController extends Controller
         'ACCEPTED',
         'PROOFING',
         'PROOF_APPROVED',
-        'PO_ISSUED',
+        'INVOICED',
         'CONFIRMED',
         'PROCURING',
         'READY',

@@ -30,7 +30,7 @@ class DashboardMetrics
 
     /** Quote states counted as commercially "booked". */
     private const BOOKED_STATES = [
-        'ACCEPTED', 'PROOFING', 'PROOF_APPROVED', 'PO_ISSUED', 'CONFIRMED', 'PROCURING', 'READY',
+        'ACCEPTED', 'PROOFING', 'PROOF_APPROVED', 'INVOICED', 'CONFIRMED', 'PROCURING', 'READY',
     ];
 
     /** @return array<string,mixed> */

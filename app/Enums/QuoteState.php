@@ -17,7 +17,7 @@ enum QuoteState: string
     case Accepted = 'ACCEPTED';
     case Proofing = 'PROOFING';
     case ProofApproved = 'PROOF_APPROVED';
-    case PoIssued = 'PO_ISSUED';
+    case Invoiced = 'INVOICED';
     case Confirmed = 'CONFIRMED';
     case Procuring = 'PROCURING';
     case Ready = 'READY';
@@ -35,8 +35,8 @@ enum QuoteState: string
             self::ChangesRequested => [self::Draft, self::Cancelled],
             self::Accepted => [self::Proofing, self::Cancelled],
             self::Proofing => [self::ProofApproved, self::ChangesRequested, self::Cancelled],
-            self::ProofApproved => [self::PoIssued, self::Cancelled],
-            self::PoIssued => [self::Confirmed, self::Cancelled],
+            self::ProofApproved => [self::Invoiced, self::Cancelled],
+            self::Invoiced => [self::Confirmed, self::Cancelled],
             self::Confirmed => [self::Procuring, self::Cancelled],
             self::Procuring => [self::Ready, self::Cancelled],
             // Once on the floor (READY) the order is in production - no cancel edge.

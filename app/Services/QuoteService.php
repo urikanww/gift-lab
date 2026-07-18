@@ -345,7 +345,7 @@ final class QuoteService
             ]);
 
             $previous = $quote->state->value;
-            $quote->transitionTo(QuoteState::PoIssued);
+            $quote->transitionTo(QuoteState::Invoiced);
             $quote->transitionTo(QuoteState::Confirmed);
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 

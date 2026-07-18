@@ -220,7 +220,7 @@ class Quote extends Model
         }
 
         return match ($this->state) {
-            QuoteState::ProofApproved, QuoteState::PoIssued,
+            QuoteState::ProofApproved, QuoteState::Invoiced,
             QuoteState::Confirmed, QuoteState::Procuring => 'CONFIRMED',
             default => 'REVIEW',
         };

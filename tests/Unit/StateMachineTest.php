@@ -13,8 +13,8 @@ it('allows the happy-path quote transitions', function (): void {
         ->and(QuoteState::Sent->canTransitionTo(QuoteState::Accepted))->toBeTrue()
         ->and(QuoteState::Accepted->canTransitionTo(QuoteState::Proofing))->toBeTrue()
         ->and(QuoteState::Proofing->canTransitionTo(QuoteState::ProofApproved))->toBeTrue()
-        ->and(QuoteState::ProofApproved->canTransitionTo(QuoteState::PoIssued))->toBeTrue()
-        ->and(QuoteState::PoIssued->canTransitionTo(QuoteState::Confirmed))->toBeTrue()
+        ->and(QuoteState::ProofApproved->canTransitionTo(QuoteState::Invoiced))->toBeTrue()
+        ->and(QuoteState::Invoiced->canTransitionTo(QuoteState::Confirmed))->toBeTrue()
         ->and(QuoteState::Confirmed->canTransitionTo(QuoteState::Procuring))->toBeTrue()
         ->and(QuoteState::Procuring->canTransitionTo(QuoteState::Ready))->toBeTrue()
         ->and(QuoteState::Ready->canTransitionTo(QuoteState::Closed))->toBeTrue();
