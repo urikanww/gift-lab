@@ -19,10 +19,17 @@
 - **Inbound status webhook (auto in-transit/delivered) is PARKED** — explicitly out of scope for this workstream. Do not build it. (It is `pending_features.md` #8; mirror `StripeWebhookController` when it's picked up later.)
 - **Courier:** NinjaVan first. The `Carrier` enum already has a `NinjaVan` case with a `trackingUrl()` deep-link — reuse it.
 
-## Decisions to confirm early in the session (the real unknowns)
+## NinjaVan API — confirmed against the live spec
 
-1. **NinjaVan API contract.** This plan writes the *contract* and *fixture* concretely (we own those) and structures the HTTP impl against NinjaVan's OAuth2 + Orders API, but **the exact request/response JSON and endpoint version must be confirmed against NinjaVan's live API docs / sandbox** before the HTTP impl is trusted. Treat the HTTP-impl task's field mapping as provisional until checked against a real sandbox call.
-2. **Credentials + fixed config the owner must provide:** NinjaVan `client_id`, `client_secret`, country code, sandbox vs production base URL, the **pickup/"from" address** (your warehouse), and the default **service type/parcel** defaults. The build works fully stubbed (fixture) until these land — same as the repo's Stripe/scraper pattern.
+The Order API details below were verified against NinjaVan's published OpenAPI spec (`api-docs.ninjavan.co/static/media/orderapi.*.yaml`). Three things differ from a naive first guess and are baked into Tasks 3–5:
+
+1. **Endpoint is `v4.1`, country code in the path:** `POST {base}/4.1/orders`, where `base` = `https://api-sandbox.ninjavan.co/sg` (sandbox) or `https://api.ninjavan.co/sg` (prod). Token: `POST {base}/2.0/oauth/access_token`, `grant_type=client_credentials`.
+2. **The merchant supplies the tracking number — NinjaVan does not generate it.** `requested_tracking_number` is **required**; NinjaVan echoes it. So we generate a short, deterministic, unique tracking number (`"GL"` + base36 of the quote id), send it, and store it as the job's `consignment_ref`. It doubles as the idempotency key (no idempotency header is documented). ⚠️ Confirm the exact allowed length/charset against the live spec (it reads short — "1–9 alphanumeric + dash"); if `"GL"+base36(id)` exceeds it, hash/truncate to fit while staying unique.
+3. **`parcel_job.delivery_start_date` is required** — map from `quote->needed_by`, or `today + lead-days default` when null.
+
+Required address fields per the spec: `name`, `address.address1`, `address.country`, `address.postcode`. Cache the OAuth token via its `expires_in`. `service_type='Parcel'`, `service_level` ∈ {`Standard`,`Express`}.
+
+**Credentials + fixed config the owner must provide:** NinjaVan `client_id`, `client_secret`, sandbox vs production base URL, the **pickup/"from" address** (your warehouse), and the default `service_level` + lead-days. The build works fully stubbed (fixture) until these land — same as the repo's Stripe/scraper pattern. **Rate limits are not published in the spec — confirm with NinjaVan before high volume.**
 
 ## ⚠️ Parallel-worktree coordination (read first)
 
@@ -299,7 +306,9 @@ class UpdateShippingAddressRequest extends FormRequest
             'city' => ['nullable', 'string', 'max:120'],
             'state' => ['nullable', 'string', 'max:120'],
             'postal_code' => ['required', 'string', 'max:16'],
-            'country' => ['nullable', 'string', 'size:2'],
+            // NinjaVan requires country + postcode on the to-address. Default SG
+            // if omitted (see prepareForValidation) but store a real value.
+            'country' => ['required', 'string', 'size:2'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
@@ -385,10 +394,12 @@ declare(strict_types=1);
 use App\Services\Courier\Contracts\CourierClient;
 use App\Services\Courier\CourierShipment;
 
-it('fixture returns a deterministic tracking ref', function (): void {
+it('fixture echoes the merchant-supplied tracking number', function (): void {
     $client = app(CourierClient::class); // fixture in the testing env
     $shipment = new CourierShipment(
         reference: 'GL-2041',
+        trackingNumber: 'GL1AB',           // we generate + supply this
+        deliveryStartDate: '2026-08-05',
         recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
         line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
         postalCode: '018989', country: 'SG', notes: null,
@@ -397,7 +408,8 @@ it('fixture returns a deterministic tracking ref', function (): void {
 
     $result = $client->createShipment($shipment);
 
-    expect($result->trackingRef)->not->toBe('')
+    // NinjaVan echoes what we send — the result IS our tracking number.
+    expect($result->trackingRef)->toBe('GL1AB')
         ->and($result->carrier)->toBe('NINJAVAN');
 });
 ```
@@ -421,7 +433,9 @@ namespace App\Services\Courier;
 final readonly class CourierShipment
 {
     public function __construct(
-        public string $reference,       // our order/quote ref, echoed to the carrier
+        public string $reference,        // merchant_order_number (quote tracking_code/id)
+        public string $trackingNumber,   // requested_tracking_number — we generate + supply it
+        public string $deliveryStartDate, // Y-m-d; parcel_job.delivery_start_date (required)
         public string $recipientName,
         public string $phone,
         public ?string $email,
@@ -488,15 +502,16 @@ namespace App\Services\Courier;
 use App\Services\Courier\Contracts\CourierClient;
 
 /**
- * Deterministic fake for local/testing: no network, a stable tracking ref
- * derived from the order reference so tests can assert on it.
+ * Deterministic fake for local/testing: no network. Echoes the merchant-supplied
+ * tracking number, exactly as the real NinjaVan API does, so tests assert on the
+ * value we sent.
  */
 final class FixtureNinjaVanClient implements CourierClient
 {
     public function createShipment(CourierShipment $shipment): CourierShipmentResult
     {
         return new CourierShipmentResult(
-            trackingRef: 'NVSGTEST'.substr(md5($shipment->reference), 0, 10),
+            trackingRef: $shipment->trackingNumber,
             carrier: 'NINJAVAN',
             labelUrl: null,
         );
@@ -595,6 +610,25 @@ it('forbids a buyer from creating a shipment', function (): void {
     $this->postJson("/api/admin/production-jobs/{$job->id}/create-shipment")
         ->assertStatus(403);
 });
+
+it('refuses to double-ship a job that already has a consignment ref', function (): void {
+    // The merchant-supplied tracking number is the idempotency key; guard our side
+    // so a retry never creates a second NinjaVan order for the same job.
+    $quote = Quote::factory()->create();
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+    $job = ProductionJob::factory()->create([
+        'quote_id' => $quote->id, 'state' => 'SHIPPED',
+        'consignment_ref' => 'GLABC', 'carrier' => 'NINJAVAN',
+    ]);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $this->postJson("/api/admin/production-jobs/{$job->id}/create-shipment")
+        ->assertStatus(422);
+});
 ```
 
 Adjust `ProductionJob::factory()` fields/state names to reality (check the factory).
@@ -637,14 +671,33 @@ final class ShipmentService
 
     public function createForJob(ProductionJob $job): ProductionJob
     {
+        // Idempotency guard: the tracking number we supply to NinjaVan is unique,
+        // so a job that already carries one has already been shipped — never send
+        // a second order.
+        if ($job->consignment_ref !== null && $job->consignment_ref !== '') {
+            throw new DomainRuleException('This job has already been shipped.');
+        }
+
         $quote = $job->quote;
         $addr = $quote->shippingAddress;
         if ($addr === null) {
             throw new DomainRuleException('A shipping address is required before creating a shipment.');
         }
 
+        // Merchant-supplied tracking number: short, deterministic, unique per quote.
+        // "GL" + base36(quote id). Confirm the allowed length/charset against the
+        // NinjaVan spec; hash/truncate if the id ever pushes it past the limit.
+        $trackingNumber = 'GL'.strtoupper(base_convert((string) $quote->id, 10, 36));
+
+        // delivery_start_date is required by NinjaVan — use the buyer's needed-by,
+        // else today + a configurable lead time.
+        $deliveryStart = ($quote->needed_by ?? now()->addDays((int) config('services.ninjavan.lead_days', 2)))
+            ->format('Y-m-d');
+
         $shipment = new CourierShipment(
             reference: (string) ($quote->tracking_code ?? $quote->id),
+            trackingNumber: $trackingNumber,
+            deliveryStartDate: $deliveryStart,
             recipientName: $addr->recipient_name, phone: $addr->phone, email: $addr->email,
             line1: $addr->line1, line2: $addr->line2, city: $addr->city, state: $addr->state,
             postalCode: $addr->postal_code, country: $addr->country, notes: $addr->notes,
@@ -654,7 +707,8 @@ final class ShipmentService
         $result = $this->courier->createShipment($shipment); // throws CourierException on failure
 
         // Reuse the existing SHIPPED advance so consignment_ref + carrier land the
-        // same way a manual advance would, with the same broadcasts/audit.
+        // same way a manual advance would, with the same broadcasts/audit. The
+        // stored consignment_ref is the tracking number we generated (echoed back).
         return DB::transaction(fn () => $this->queue->advance(
             $job,
             'SHIPPED',
@@ -665,7 +719,7 @@ final class ShipmentService
 }
 ```
 
-**Confirm `QueueService::advance`'s signature** (`app/Services/QueueService.php:213`) — the arg names/order for state + consignment ref + carrier may differ; adapt this call to match. If `advance` is not cleanly callable with those args, extract the SHIPPED-write portion into a small method both the controller and this service use.
+**Confirm `QueueService::advance`'s signature** (`app/Services/QueueService.php:213`) — the arg names/order for state + consignment ref + carrier may differ; adapt this call to match. If `advance` is not cleanly callable with those args, extract the SHIPPED-write portion into a small method both the controller and this service use. Also confirm `$quote->needed_by` is cast to a date/Carbon on the `Quote` model (it is a `date` column) so `->format()` works; if it's a plain string, wrap in `\Illuminate\Support\Carbon::parse()`.
 
 - [ ] **Step 4: Controller + route**
 
@@ -722,7 +776,7 @@ git commit -m "feat(courier): create-shipment endpoint -> job SHIPPED with track
 - Modify: `config/services.php`, `.env.example`, `app/Providers/AppServiceProvider.php`
 - Test: `tests/Feature/NinjaVanClientTest.php`
 
-> **⚠️ Confirm the API contract first.** NinjaVan's real API (OAuth2 client-credentials token, then a create-order call) has specific request/response JSON this task approximates from their public docs. **Before trusting it, make one sandbox call** (or read the current NinjaVan API reference) and correct the endpoint version, auth flow, and field mapping. The contract + fixture + orchestration above do not depend on these specifics — only this file does.
+> **API contract confirmed against the live spec** (see "NinjaVan API" section up top): endpoint `POST {base}/4.1/orders`, merchant-supplied `requested_tracking_number` (required), `parcel_job.delivery_start_date` (required). One residual to verify in a sandbox call: the exact allowed length/charset of `requested_tracking_number`, and whether the token endpoint wants a JSON or form body (this uses JSON — NinjaVan's `Http::post` default).
 
 - [ ] **Step 1: Write the failing test (Http::fake)**
 
@@ -737,10 +791,11 @@ use App\Services\Courier\CourierShipment;
 use App\Services\Courier\HttpNinjaVanClient;
 use Illuminate\Support\Facades\Http;
 
-it('creates an order and returns the tracking number', function (): void {
+it('creates an order and returns the tracking number we supplied', function (): void {
     Http::fake([
         '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
-        '*/4.2/orders' => Http::response(['tracking_number' => 'NVSGX123', 'requested_tracking_number' => 'NVSGX123']),
+        // NinjaVan echoes requested_tracking_number; assert on what we sent.
+        '*/4.1/orders' => Http::response(['requested_tracking_number' => 'GL1AB', 'status' => 'Pending Pickup']),
     ]);
 
     config()->set('services.ninjavan.client_id', 'id');
@@ -750,12 +805,18 @@ it('creates an order and returns the tracking number', function (): void {
 
     $client = app(HttpNinjaVanClient::class);
     $result = $client->createShipment(new CourierShipment(
-        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        reference: 'GL-2041', trackingNumber: 'GL1AB', deliveryStartDate: '2026-08-05',
+        recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
         line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
         postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
     ));
 
-    expect($result->trackingRef)->toBe('NVSGX123')->and($result->carrier)->toBe('NINJAVAN');
+    expect($result->trackingRef)->toBe('GL1AB')->and($result->carrier)->toBe('NINJAVAN');
+
+    // Assert we sent the required fields the spec demands.
+    Http::assertSent(fn ($req) => str_contains($req->url(), '/4.1/orders')
+        && $req['requested_tracking_number'] === 'GL1AB'
+        && $req['parcel_job']['delivery_start_date'] === '2026-08-05');
 });
 ```
 
@@ -768,7 +829,7 @@ Expected: FAIL — class missing.
 
 - [ ] **Step 3: The client**
 
-Create `app/Services/Courier/HttpNinjaVanClient.php` (structure mirrors `StripePaymentGateway` — config-driven, timeouts, retry, `Throwable`→`CourierException`). **Field mapping provisional — confirm against NinjaVan docs:**
+Create `app/Services/Courier/HttpNinjaVanClient.php` (structure mirrors `StripePaymentGateway` — config-driven, timeouts, retry, `Throwable`→`CourierException`). Endpoint/fields are the spec-confirmed shapes:
 
 ```php
 <?php
@@ -777,6 +838,7 @@ namespace App\Services\Courier;
 
 use App\Exceptions\CourierException;
 use App\Services\Courier\Contracts\CourierClient;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -788,15 +850,15 @@ final class HttpNinjaVanClient implements CourierClient
             $base = rtrim((string) config('services.ninjavan.base_url'), '/');
             $token = $this->accessToken($base);
             $pickup = (array) config('services.ninjavan.pickup');
+            $level = (string) config('services.ninjavan.service_level', 'Standard');
 
-            // NOTE: endpoint version + body shape per NinjaVan's Orders API —
-            // confirm against their live reference before production use.
             $resp = Http::withToken($token)
                 ->connectTimeout(5)->timeout(20)->retry(2, 500, throw: false)
-                ->post($base.'/4.2/orders', [
+                ->post($base.'/4.1/orders', [
                     'service_type' => 'Parcel',
-                    'service_level' => 'Standard',
-                    'requested_tracking_number' => null,
+                    'service_level' => $level,
+                    // We supply the tracking number; NinjaVan echoes it. Required.
+                    'requested_tracking_number' => $shipment->trackingNumber,
                     'reference' => ['merchant_order_number' => $shipment->reference],
                     'from' => [
                         'name' => $pickup['name'] ?? '', 'phone_number' => $pickup['phone'] ?? '',
@@ -810,17 +872,19 @@ final class HttpNinjaVanClient implements CourierClient
                             'postcode' => $shipment->postalCode, 'country' => $shipment->country,
                         ],
                     ],
-                    'parcel_job' => ['delivery_instructions' => $shipment->notes],
+                    'parcel_job' => [
+                        'delivery_start_date' => $shipment->deliveryStartDate, // required
+                        'delivery_instructions' => $shipment->notes,
+                    ],
                 ]);
 
             if ($resp->failed()) {
-                throw new CourierException('NinjaVan order failed: HTTP '.$resp->status());
+                throw new CourierException('NinjaVan order failed: HTTP '.$resp->status().' '.$resp->body());
             }
 
-            $tracking = (string) ($resp->json('tracking_number') ?? $resp->json('requested_tracking_number') ?? '');
-            if ($tracking === '') {
-                throw new CourierException('NinjaVan returned no tracking number.');
-            }
+            // NinjaVan echoes requested_tracking_number; fall back to what we sent
+            // (a 2xx means the order was accepted with our number).
+            $tracking = (string) ($resp->json('requested_tracking_number') ?? $shipment->trackingNumber);
 
             return new CourierShipmentResult($tracking, 'NINJAVAN', $resp->json('label_url'));
         } catch (CourierException $e) {
@@ -830,22 +894,30 @@ final class HttpNinjaVanClient implements CourierClient
         }
     }
 
+    /**
+     * Cache the client-credentials token for its lifetime (minus a safety margin)
+     * so we authenticate once, not per shipment.
+     */
     private function accessToken(string $base): string
     {
-        $resp = Http::connectTimeout(5)->timeout(20)->post($base.'/2.0/oauth/access_token', [
-            'client_id' => config('services.ninjavan.client_id'),
-            'client_secret' => config('services.ninjavan.client_secret'),
-            'grant_type' => 'client_credentials',
-        ]);
-        $token = (string) $resp->json('access_token');
-        if ($token === '') {
-            throw new CourierException('NinjaVan auth failed.');
-        }
+        return Cache::remember('ninjavan.token', now()->addMinutes(50), function () use ($base): string {
+            $resp = Http::connectTimeout(5)->timeout(20)->post($base.'/2.0/oauth/access_token', [
+                'client_id' => config('services.ninjavan.client_id'),
+                'client_secret' => config('services.ninjavan.client_secret'),
+                'grant_type' => 'client_credentials',
+            ]);
+            $token = (string) $resp->json('access_token');
+            if ($token === '') {
+                throw new CourierException('NinjaVan auth failed.');
+            }
 
-        return $token;
+            return $token;
+        });
     }
 }
 ```
+
+Note: the 50-minute cache TTL is a safe floor; if you want it exact, read `expires_in` from the token response and cache for `expires_in - 60`s. The `Http::fake` in the test satisfies both the token and order calls.
 
 - [ ] **Step 4: Config + env + live binding**
 
@@ -855,7 +927,11 @@ In `config/services.php` add:
 'ninjavan' => [
     'client_id' => env('NINJAVAN_CLIENT_ID'),
     'client_secret' => env('NINJAVAN_CLIENT_SECRET'),
+    // Base URL carries the country code. Sandbox: https://api-sandbox.ninjavan.co/sg
+    // Production: https://api.ninjavan.co/sg
     'base_url' => env('NINJAVAN_BASE_URL', 'https://api-sandbox.ninjavan.co/sg'),
+    'service_level' => env('NINJAVAN_SERVICE_LEVEL', 'Standard'), // Standard | Express
+    'lead_days' => env('NINJAVAN_LEAD_DAYS', 2), // fallback delivery_start_date offset
     'pickup' => [
         'name' => env('NINJAVAN_PICKUP_NAME', 'Gift Lab'),
         'phone' => env('NINJAVAN_PICKUP_PHONE'),
@@ -866,7 +942,7 @@ In `config/services.php` add:
 ],
 ```
 
-Add the `NINJAVAN_*` keys (blank) to `.env.example` with a comment: owner fills client id/secret from the NinjaVan Dashboard → Developer, sets `NINJAVAN_BASE_URL` to the production URL when going live, and the pickup fields to the real warehouse.
+Add the `NINJAVAN_*` keys (blank) to `.env.example` with a comment: owner fills client id/secret from the NinjaVan Dashboard → Developer, sets `NINJAVAN_BASE_URL` to the production URL (`https://api.ninjavan.co/{country}`) when going live, and the pickup fields to the real warehouse. Rate limits are not published — confirm with NinjaVan before high volume.
 
 Update the `AppServiceProvider` binding (from Task 3) to the fail-closed live branch:
 
@@ -951,6 +1027,7 @@ With sandbox `NINJAVAN_*` creds in `.env`, repeat and confirm a real sandbox tra
 - **Reuses existing machinery:** `production_jobs.consignment_ref`/`carrier`, the SHIPPED transition, `OrderTrackingUpdated`, and `Carrier::trackingUrl` — no new buyer-tracking code.
 - **Fail-closed binding** matches the repo's Payment exemplar; fixture until creds land.
 - **Parked:** inbound status webhook (auto in-transit/delivered) — explicitly out of scope; revisit as `pending_features.md` #8.
-- **Verify-before-relying flags:** the NinjaVan API request/response shape (Task 5 — confirm against sandbox), `QueueService::advance` signature (Task 4), `ProductionJob` factory states + job→quote relation (Tasks 4), and which frontend surface hosts the UI given Workstream A's overlap (Task 6).
+- **NinjaVan API confirmed against the live spec** (v4.1 endpoint, merchant-supplied `requested_tracking_number`, required `delivery_start_date`, cached token). One residual to check in a sandbox call: the exact allowed length/charset of the tracking number (Task 4's `"GL"+base36(id)` generator) and the token body format.
+- **Verify-before-relying flags:** `QueueService::advance` signature (Task 4), `ProductionJob` factory states + job→quote relation (Task 4), `Quote::needed_by` date cast (Task 4), and which frontend surface hosts the UI given Workstream A's overlap (Task 6).
 - **Owner inputs needed to go live:** NinjaVan `client_id`/`client_secret`, base URL (sandbox→prod), pickup/warehouse address, service defaults.
 ```
