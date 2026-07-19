@@ -52,7 +52,7 @@ final class QuoteService
      *
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
-    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null, ?string $idempotencyKey = null): Quote
+    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null, ?string $idempotencyKey = null, ?array $shipping = null): Quote
     {
         // Replay of an already-submitted cart (double-click / network retry)
         // returns the original draft instead of minting a duplicate (audit A12).
@@ -68,7 +68,7 @@ final class QuoteService
         }
 
         try {
-            return $this->createFresh($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey);
+            return $this->createFresh($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey, $shipping);
         } catch (UniqueConstraintViolationException $e) {
             // Two identical submits raced past the lookup; the loser lands
             // here and returns the winner's quote.
@@ -87,9 +87,9 @@ final class QuoteService
     /**
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
-    private function createFresh(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy, ?string $idempotencyKey): Quote
+    private function createFresh(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy, ?string $idempotencyKey, ?array $shipping): Quote
     {
-        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey): Quote {
+        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey, $shipping): Quote {
             // Batch-load products/variants once (two queries) instead of one
             // query per line - same pattern as PriceEstimateController.
             $productIds = array_values(array_unique(array_map(
@@ -151,6 +151,25 @@ final class QuoteService
                 'needed_by' => $neededBy,
                 'created_by' => Auth::id(),
             ]);
+
+            // Snapshot the buyer's ship-to as its own row on the quote. Text is
+            // copied here, not referenced - a later edit to a saved address must
+            // never mutate this placed order. Staff may omit it, in which case
+            // shippingAddressOrDefault() keeps returning the company default.
+            if ($shipping !== null) {
+                $quote->shippingAddress()->create([
+                    'recipient_name' => $shipping['recipient_name'],
+                    'phone' => $shipping['phone'],
+                    'email' => $shipping['email'] ?? null,
+                    'line1' => $shipping['line1'],
+                    'line2' => $shipping['line2'] ?? null,
+                    'city' => $shipping['city'] ?? null,
+                    'state' => $shipping['state'] ?? null,
+                    'postal_code' => $shipping['postal_code'],
+                    'country' => ($shipping['country'] ?? null) ?: 'SG',
+                    'notes' => $shipping['notes'] ?? null,
+                ]);
+            }
 
             foreach ($resolved as $index => $r) {
                 LineItem::create([

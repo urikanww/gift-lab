@@ -36,6 +36,12 @@ function quotePayload(array $lineOverrides = [], array $overrides = []): array
                 'qty' => 100,
             ], $lineOverrides),
         ],
+        'shipping_address' => [
+            'recipient_name' => 'Rachel Tan',
+            'phone' => '+6591234567',
+            'line1' => '1 Marina Blvd',
+            'postal_code' => '018989',
+        ],
     ], $overrides);
 }
 

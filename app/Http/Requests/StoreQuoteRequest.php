@@ -86,6 +86,20 @@ class StoreQuoteRequest extends FormRequest
             'line_items.*.customization.placement_notes' => ['nullable', 'string', 'max:2000'],
             'line_items.*.customization.reference_refs' => ['nullable', 'array', 'max:6'],
             'line_items.*.customization.reference_refs.*' => ['string', 'max:2048', 'regex:'.self::ARTWORK_REF_PATTERN],
+            // Ship-to captured at storefront checkout. Required for buyers,
+            // optional for staff (who fall back to the company default). Copied
+            // verbatim into the per-quote ShippingAddress by QuoteService.
+            'shipping_address' => [Rule::requiredIf(! ($this->user()?->isStaff() ?? false)), 'array'],
+            'shipping_address.recipient_name' => ['required_with:shipping_address', 'string', 'max:255'],
+            'shipping_address.phone' => ['required_with:shipping_address', 'string', 'max:32'],
+            'shipping_address.email' => ['nullable', 'email', 'max:255'],
+            'shipping_address.line1' => ['required_with:shipping_address', 'string', 'max:255'],
+            'shipping_address.line2' => ['nullable', 'string', 'max:255'],
+            'shipping_address.city' => ['nullable', 'string', 'max:120'],
+            'shipping_address.state' => ['nullable', 'string', 'max:120'],
+            'shipping_address.postal_code' => ['required_with:shipping_address', 'string', 'max:16'],
+            'shipping_address.country' => ['nullable', 'string', 'size:2'],
+            'shipping_address.notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
 
