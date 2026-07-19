@@ -34,6 +34,12 @@ it('lets a buyer create a draft quote priced from config', function (): void {
         'line_items' => [
             ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 3],
         ],
+        'shipping_address' => [
+            'recipient_name' => 'Rachel Tan',
+            'phone' => '+6591234567',
+            'line1' => '1 Marina Blvd',
+            'postal_code' => '018989',
+        ],
     ]);
 
     $response->assertCreated()->assertJsonPath('data.state', 'DRAFT');
@@ -70,6 +76,12 @@ it('creates a multi-line quote with batched product/variant lookups', function (
             ['product_id' => $second->id, 'variant_id' => $variant->id, 'qty' => 5],
             ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 2],
         ],
+        'shipping_address' => [
+            'recipient_name' => 'Rachel Tan',
+            'phone' => '+6591234567',
+            'line1' => '1 Marina Blvd',
+            'postal_code' => '018989',
+        ],
     ]);
 
     $response->assertCreated()->assertJsonPath('data.state', 'DRAFT');
@@ -97,6 +109,12 @@ it('persists the need-by deadline and returns it on fetch', function (): void {
         'needed_by' => $neededBy,
         'line_items' => [
             ['product_id' => $this->product->id, 'variant_id' => null, 'qty' => 2],
+        ],
+        'shipping_address' => [
+            'recipient_name' => 'Rachel Tan',
+            'phone' => '+6591234567',
+            'line1' => '1 Marina Blvd',
+            'postal_code' => '018989',
         ],
     ])->assertCreated()->assertJsonPath('data.needed_by', $neededBy);
 

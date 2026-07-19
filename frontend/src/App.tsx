@@ -32,6 +32,7 @@ const BrandKitPage = lazy(() => import('./pages/BrandKitPage'));
 const GiftIdeasPage = lazy(() => import('./pages/GiftIdeasPage'));
 const KitBuilderPage = lazy(() => import('./pages/KitBuilderPage'));
 const QuoteListPage = lazy(() => import('./pages/QuoteListPage'));
+const AddressBookPage = lazy(() => import('./pages/AddressBookPage'));
 const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
 const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
@@ -173,6 +174,7 @@ export default function App() {
             <Route element={<RouteBoundary />}>
               <Route path="quotes" element={<QuoteListPage />} />
               <Route path="quotes/:id" element={<QuoteDetailPage />} />
+              <Route path="account/addresses" element={<AddressBookPage />} />
               <Route path="brand-kit" element={<BrandKitPage />} />
               <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
               <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />

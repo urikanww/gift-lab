@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
-import type { CartLine, Paginated, Proof, Quote, QuoteState } from '../types';
+import type { CartLine, Paginated, Proof, Quote, QuoteState, ShippingAddressInput } from '../types';
 
 // Unregister handle for the reconnect-refetch subscription.
 let offReconnect: (() => void) | null = null;
@@ -37,6 +37,7 @@ interface QuoteStoreState {
     notes: string | null,
     neededBy?: string | null,
     idempotencyKey?: string | null,
+    shippingAddress?: ShippingAddressInput | null,
   ) => Promise<Quote | null>;
   send: (id: number, proof?: { artwork_version_ref: string; notes?: string }) => Promise<void>;
   accept: (id: number) => Promise<void>;
@@ -86,7 +87,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  createQuote: async (companyId, lines, notes, neededBy = null, idempotencyKey = null) => {
+  createQuote: async (companyId, lines, notes, neededBy = null, idempotencyKey = null, shippingAddress = null) => {
     set({ error: null });
     try {
       await ensureCsrf();
@@ -98,6 +99,8 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
         // Same cart re-submitted (double click / retry) returns the original
         // quote server-side instead of creating a duplicate draft.
         idempotency_key: idempotencyKey,
+        // Buyer's checkout ship-to; snapshotted server-side onto the quote.
+        shipping_address: shippingAddress,
         line_items: lines.map((l) => ({
           product_id: l.product.id,
           variant_id: l.variant?.id ?? null,

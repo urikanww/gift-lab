@@ -101,6 +101,12 @@ it('lets staff create a CORE product with a variant and stock, then a buyer quot
             'variant_id' => $variantId,
             'qty' => 10,
         ]],
+        'shipping_address' => [
+            'recipient_name' => 'Rachel Tan',
+            'phone' => '+6591234567',
+            'line1' => '1 Marina Blvd',
+            'postal_code' => '018989',
+        ],
     ])->assertCreated();
 });
 

@@ -36,6 +36,12 @@ function quotePayload(array $lineOverrides = [], array $overrides = []): array
                 'qty' => 100,
             ], $lineOverrides),
         ],
+        'shipping_address' => [
+            'recipient_name' => 'Rachel Tan',
+            'phone' => '+6591234567',
+            'line1' => '1 Marina Blvd',
+            'postal_code' => '018989',
+        ],
     ], $overrides);
 }
 
@@ -201,6 +207,9 @@ it('returns the original quote when the same idempotency key is replayed', funct
 
     expect($second)->toBe($first);
     $this->assertDatabaseCount('quotes', 1);
+    // The replay returned the original quote and must not have snapshotted a
+    // second ship-to - the address is copied once, inside the create txn.
+    $this->assertDatabaseCount('shipping_addresses', 1);
 });
 
 it('scopes idempotency keys per company', function (): void {

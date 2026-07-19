@@ -21,6 +21,7 @@ use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
 use App\Http\Controllers\ProofImageController;
 use App\Http\Controllers\QuoteController;
+use App\Http\Controllers\SavedAddressController;
 use App\Http\Controllers\ShippingAddressController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\TrackingController;
@@ -119,6 +120,12 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Per-quote shipping address (staff read/upsert; buyers are 403).
     Route::get('/quotes/{quote}/shipping-address', [ShippingAddressController::class, 'show']);
     Route::put('/quotes/{quote}/shipping-address', [ShippingAddressController::class, 'update']);
+
+    // Buyer address book (personal, max 3; owner-only).
+    Route::get('/saved-addresses', [SavedAddressController::class, 'index']);
+    Route::post('/saved-addresses', [SavedAddressController::class, 'store']);
+    Route::put('/saved-addresses/{savedAddress}', [SavedAddressController::class, 'update']);
+    Route::delete('/saved-addresses/{savedAddress}', [SavedAddressController::class, 'destroy']);
 
     // Proofs
     Route::post('/quotes/{quote}/proofs', [ProofController::class, 'store']);

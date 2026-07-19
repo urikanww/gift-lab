@@ -572,7 +572,16 @@ export default function ProductDetailPage() {
               Object.entries(product.dimensions).map(([k, v]) => (
                 <SpecRow key={k} label={`Dimension (${k})`} value={String(v)} />
               ))}
-            {product.weight && <SpecRow label="Weight" value={`${product.weight} g`} />}
+            {product.weight && (
+              <SpecRow
+                label="Weight"
+                value={`${
+                  Number.isFinite(Number(product.weight))
+                    ? Number(product.weight).toFixed(2)
+                    : product.weight
+                } g`}
+              />
+            )}
             <SpecRow label="Availability" value={AVAILABILITY[product.availability].label} />
           </dl>
         </Card>

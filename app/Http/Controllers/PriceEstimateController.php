@@ -75,6 +75,7 @@ class PriceEstimateController extends Controller
             'subtotal' => $totals['subtotal'],
             'delivery' => $totals['delivery'],
             'total' => $totals['total'],
+            'delivery_reliable' => $totals['delivery_reliable'],
         ]);
     }
 }

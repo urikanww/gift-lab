@@ -9,7 +9,55 @@ import { ErrorState } from '../components/ui/States';
 import { CartGlyph, SummaryRow, customizationLabel, optionsLabel } from '../components/cart/CartSummary';
 import { Motion, fadeInUp, staggerItem, useReducedMotionSafe } from '../motion';
 import TrackingQr from '../components/TrackingQr';
-import type { Quote } from '../types';
+import ShippingFields, {
+  EMPTY_SHIPPING,
+  isShippingValid,
+  type ShippingFieldsValue,
+} from '../components/checkout/ShippingFields';
+import { useSavedAddressStore } from '../stores/savedAddressStore';
+import type { Quote, SavedAddress, ShippingAddressInput, CompanySummary } from '../types';
+
+/** Prefill the shipping form from the company's stored default address. */
+function companyToShipping(company: CompanySummary | null): ShippingFieldsValue {
+  return {
+    ...EMPTY_SHIPPING,
+    recipient_name: company?.name ?? '',
+    line1: company?.address ?? '',
+  };
+}
+
+/** Prefill the shipping form from a saved address book entry. */
+function savedToShipping(a: SavedAddress): ShippingFieldsValue {
+  return {
+    label: a.label ?? '',
+    recipient_name: a.recipient_name,
+    phone: a.phone,
+    email: a.email ?? '',
+    line1: a.line1,
+    line2: a.line2 ?? '',
+    city: a.city ?? '',
+    state: a.state ?? '',
+    postal_code: a.postal_code,
+    country: a.country || 'SG',
+    notes: a.notes ?? '',
+  };
+}
+
+/** Trim the form values into the payload createQuote sends to the API. */
+function toShippingInput(v: ShippingFieldsValue): ShippingAddressInput {
+  return {
+    recipient_name: v.recipient_name.trim(),
+    phone: v.phone.trim(),
+    email: v.email?.trim() || null,
+    line1: v.line1.trim(),
+    line2: v.line2?.trim() || null,
+    city: v.city?.trim() || null,
+    state: v.state?.trim() || null,
+    postal_code: v.postal_code.trim(),
+    country: (v.country || 'SG').trim(),
+    notes: v.notes?.trim() || null,
+  };
+}
 
 /**
  * Storefront-styled checkout: a thin, celebratory wrapper over the existing B2B
@@ -39,18 +87,53 @@ export default function CheckoutPage() {
   // quote instead of creating a duplicate draft (audit A12).
   const idempotencyKey = useRef<string>(crypto.randomUUID());
 
+  const savedAddresses = useSavedAddressStore((s) => s.addresses);
+  const fetchSaved = useSavedAddressStore((s) => s.fetch);
+
+  const [selection, setSelection] = useState<string>('company'); // 'company' | 'new' | saved id
+  const [shipping, setShipping] = useState<ShippingFieldsValue>(EMPTY_SHIPPING);
+  // True once the buyer edits any field: prevents later fetch resolutions /
+  // dep churn from re-prefilling and wiping their typed-in address.
+  const touchedRef = useRef(false);
+
   // Refresh the estimate on mount / whenever the cart changes.
   useEffect(() => {
     void refreshEstimate();
   }, [lines, refreshEstimate]);
 
+  useEffect(() => {
+    if (!user) return;
+    void fetchSaved();
+  }, [user, fetchSaved]);
+
+  // Default to the first saved address once addresses arrive (only while still on company default).
+  useEffect(() => {
+    if (!touchedRef.current && savedAddresses.length > 0 && selection === 'company') {
+      setSelection(String(savedAddresses[0].id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedAddresses]);
+
   const totalUnits = lines.reduce((sum, l) => sum + l.qty, 0);
-  // Delivery destination reuses the company's stored address - shown read-only
-  // so the buyer sees where the order ships (no per-order address entry).
+  // Delivery destination defaults to a saved address (or the company's stored
+  // address), but the buyer can pick another saved address or enter a new one.
   const company = user?.company ?? null;
   const neededByLabel = neededBy
     ? new Date(neededBy).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
+
+  // Prefill the form whenever the selection (or the underlying defaults) change.
+  useEffect(() => {
+    if (touchedRef.current) return;
+    if (selection === 'company') {
+      setShipping(companyToShipping(company));
+    } else if (selection === 'new') {
+      setShipping(EMPTY_SHIPPING);
+    } else {
+      const picked = savedAddresses.find((a) => String(a.id) === selection);
+      if (picked) setShipping(savedToShipping(picked));
+    }
+  }, [selection, company, savedAddresses]);
 
   const placeOrder = async () => {
     // Login gate - should be unreachable while anonymous (button is not
@@ -63,9 +146,20 @@ export default function CheckoutPage() {
       setSubmitError('Your account is not linked to a company. Contact your administrator.');
       return;
     }
+    if (!isShippingValid(shipping)) {
+      setSubmitError('Please complete the shipping address (recipient, phone, address, postal code).');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
-    const quote = await createQuote(user.company_id, lines, null, neededBy, idempotencyKey.current);
+    const quote = await createQuote(
+      user.company_id,
+      lines,
+      null,
+      neededBy,
+      idempotencyKey.current,
+      toShippingInput(shipping),
+    );
     setSubmitting(false);
     if (quote) {
       setPlacedQuote(quote);
@@ -151,16 +245,43 @@ export default function CheckoutPage() {
                 Delivery
               </h2>
               <dl className="mt-4 flex flex-col gap-4 text-sm">
-                <div className="flex flex-col gap-1">
-                  <dt className="text-fg-subtle">Ships to</dt>
-                  {company?.address ? (
-                    <dd className="whitespace-pre-line text-fg">{company.address}</dd>
-                  ) : (
-                    <dd className="text-fg-muted">
-                      No company address on file. Contact your administrator to add one.
-                    </dd>
-                  )}
-                  {company?.name && <dd className="text-fg-muted">{company.name}</dd>}
+                <div className="flex flex-col gap-2">
+                  <dt className="text-fg-subtle">Ship to</dt>
+                  <dd>
+                    <div className="flex flex-col gap-2">
+                      <label className="flex flex-col gap-1">
+                        <span className="sr-only">Ship to</span>
+                        <select
+                          value={selection}
+                          onChange={(e) => {
+                            touchedRef.current = false;
+                            setSelection(e.target.value);
+                          }}
+                          className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {savedAddresses.map((a) => (
+                            <option key={a.id} value={String(a.id)}>
+                              {a.label ? `${a.label} — ${a.line1}` : a.line1}
+                            </option>
+                          ))}
+                          <option value="company">Company default address</option>
+                          <option value="new">Enter a new address</option>
+                        </select>
+                      </label>
+                      <ShippingFields
+                        value={shipping}
+                        onChange={(next) => {
+                          touchedRef.current = true;
+                          setShipping(next);
+                        }}
+                      />
+                      {!isShippingValid(shipping) && (
+                        <p className="text-xs text-fg-subtle" aria-live="polite">
+                          Complete recipient, phone, address line 1, and postal code to place the order.
+                        </p>
+                      )}
+                    </div>
+                  </dd>
                 </div>
                 <div className="flex flex-col gap-1">
                   <dt className="text-fg-subtle">Need it by</dt>
@@ -247,12 +368,27 @@ export default function CheckoutPage() {
               ) : estimate ? (
                 <dl className="flex flex-col gap-3">
                   <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
-                  <SummaryRow label="Delivery" value={`${estimate.currency} ${estimate.delivery.toFixed(2)}`} />
+                  <SummaryRow
+                    label="Estimated delivery"
+                    value={
+                      estimate.delivery_reliable
+                        ? `${estimate.currency} ${estimate.delivery.toFixed(2)}`
+                        : 'Confirmed on quote'
+                    }
+                  />
+                  <p className="-mt-1 text-2xs leading-snug text-fg-subtle">
+                    {estimate.delivery_reliable
+                      ? 'Rough estimate only. Many items fold or stack to shrink the parcel, so our production team confirms the actual delivery fee on your formal quote — it may be lower, and you won’t be charged more without seeing it first.'
+                      : 'We can’t estimate delivery for these items yet — our production team confirms the actual fee on your formal quote, before any payment. Nothing is charged until you’ve seen it.'}
+                  </p>
                   <div className="my-1 border-t border-border" />
                   <div className="flex items-baseline justify-between">
-                    <dt className="font-medium text-fg">Estimated total</dt>
+                    <dt className="font-medium text-fg">
+                      {estimate.delivery_reliable ? 'Estimated total' : 'Est. total (excl. delivery)'}
+                    </dt>
                     <dd className="font-display text-2xl text-fg">
-                      {estimate.currency} {estimate.total.toFixed(2)}
+                      {estimate.currency}{' '}
+                      {(estimate.delivery_reliable ? estimate.total : estimate.subtotal).toFixed(2)}
                     </dd>
                   </div>
                 </dl>

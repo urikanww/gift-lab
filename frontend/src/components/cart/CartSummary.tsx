@@ -1,3 +1,5 @@
+import { cn } from '../../ui';
+import { safeHref } from '../../lib/safeHref';
 import type { CartLine } from '../../types';
 
 /** Human label for a cart line's customization (filament colour + logo size). */
@@ -20,6 +22,53 @@ export function SummaryRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline justify-between text-sm">
       <dt className="text-fg-muted">{label}</dt>
       <dd className="tabular-nums text-fg">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * The buyer's captured design composited onto the product photo. The captured
+ * artwork PNG is transparent (only the design layers - the product backdrop is
+ * a DOM layer in the designer, never baked into the export), so on its own it
+ * reads as "a logo floating on a checkerboard". Here we put the product photo
+ * back underneath so the preview shows the product WITH their design on it -
+ * the same stacked-layer trick the designer canvas uses (product `object-cover`
+ * backdrop, design on top), so no cross-origin canvas export / taint is needed.
+ */
+export function DesignOnProduct({
+  productImageUrl,
+  designSrc,
+  alt = '',
+  className,
+}: {
+  productImageUrl?: string | null;
+  designSrc: string;
+  alt?: string;
+  className?: string;
+}) {
+  const productHref = safeHref(productImageUrl);
+  return (
+    <div
+      className={cn(
+        'relative overflow-hidden bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:12px_12px]',
+        className,
+      )}
+    >
+      {productHref && (
+        <img
+          src={productHref}
+          alt=""
+          aria-hidden="true"
+          referrerPolicy="no-referrer"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      <img
+        src={designSrc}
+        alt={alt}
+        referrerPolicy="no-referrer"
+        className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+      />
     </div>
   );
 }
