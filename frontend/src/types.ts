@@ -89,6 +89,32 @@ export interface ShippingAddressInput {
   notes?: string | null;
 }
 
+/**
+ * Structured ship-to captured at checkout / stored on a quote. No id.
+ * Distinct from ShippingAddressInput (the PUT /quotes/:id/shipping-address
+ * payload, where country is optional): saved addresses always require a
+ * country (StoreSavedAddressRequest defaults it to 'SG' when blank, and the
+ * saved_addresses.country column is NOT NULL).
+ */
+export interface SavedAddressInput {
+  recipient_name: string;
+  phone: string;
+  email?: string | null;
+  line1: string;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code: string;
+  country: string;
+  notes?: string | null;
+}
+
+/** A buyer's saved address book entry (max 3 per user). */
+export interface SavedAddress extends SavedAddressInput {
+  id: number;
+  label: string | null;
+}
+
 /** Result of POST /production-jobs/:id/create-shipment (NinjaVan). */
 export interface ShipmentResult {
   state: string;
