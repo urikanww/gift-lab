@@ -307,6 +307,10 @@ export interface PriceEstimate {
   subtotal: number;
   delivery: number;
   total: number;
+  // False when a line is missing trustworthy weight/dimensions, so the derived
+  // delivery fee would understate the real cost. The storefront then hides the
+  // number and defers to the staff-confirmed quote.
+  delivery_reliable: boolean;
 }
 
 // A designer cart line held client-side before a quote is requested.

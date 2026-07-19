@@ -178,6 +178,35 @@ it('uses the override in a full quote total while still charging dynamic deliver
         ->and($totals['total'])->toBe(round($totals['subtotal'] + $delivery, 2));
 });
 
+it('flags the delivery estimate unreliable when a line has placeholder weight and dimensions', function (): void {
+    // Mirrors scraped-catalogue reality: 0.5 g "weight" + a 1 cm cube collapse
+    // the chargeable weight to ~0, so the derived tier would understate the fee.
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV',
+        'weight' => 0.5, 'dimensions' => ['l' => 10, 'w' => 10, 'h' => 10, 'unit' => 'mm'],
+    ]);
+
+    $totals = $this->pricing->quoteTotals([[
+        'product' => $product, 'variant' => null, 'qty' => 50,
+        'has_customization' => false,
+    ]]);
+
+    expect($totals['delivery_reliable'])->toBeFalse();
+});
+
+it('flags the delivery estimate reliable when weight clears the trust floor', function (): void {
+    $product = Product::factory()->create([
+        'base_cost' => 10, 'print_method' => 'UV', 'weight' => 200, 'dimensions' => null,
+    ]);
+
+    $totals = $this->pricing->quoteTotals([[
+        'product' => $product, 'variant' => null, 'qty' => 3,
+        'has_customization' => false,
+    ]]);
+
+    expect($totals['delivery_reliable'])->toBeTrue();
+});
+
 it('charges the heaviest delivery tier when weight exceeds every tier', function (): void {
     // Misconfigured table without a null-max catch-all must not fall through
     // to free shipping.

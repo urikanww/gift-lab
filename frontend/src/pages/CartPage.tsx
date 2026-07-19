@@ -3,7 +3,13 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useCartStore } from '../stores/cartStore';
 import { Button, Card, EmptyState, LinkButton, Skeleton, cn } from '../ui';
 import { ErrorState } from '../components/ui/States';
-import { CartGlyph, SummaryRow, customizationLabel, optionsLabel } from '../components/cart/CartSummary';
+import {
+  CartGlyph,
+  DesignOnProduct,
+  SummaryRow,
+  customizationLabel,
+  optionsLabel,
+} from '../components/cart/CartSummary';
 import ImageLightbox from '../components/ImageLightbox';
 import { safeHref } from '../lib/safeHref';
 import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
@@ -104,6 +110,7 @@ export default function CartPage() {
                         <CustomizationPreview
                           customization={l.customization}
                           productName={l.product.name}
+                          productImageUrl={l.product.image_url}
                         />
                       </div>
                     </div>
@@ -157,12 +164,27 @@ export default function CartPage() {
               ) : estimate ? (
                 <dl className="flex flex-col gap-3">
                   <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
-                  <SummaryRow label="Delivery" value={`${estimate.currency} ${estimate.delivery.toFixed(2)}`} />
+                  <SummaryRow
+                    label="Estimated delivery"
+                    value={
+                      estimate.delivery_reliable
+                        ? `${estimate.currency} ${estimate.delivery.toFixed(2)}`
+                        : 'Confirmed on quote'
+                    }
+                  />
+                  <p className="-mt-1 text-2xs leading-snug text-fg-subtle">
+                    {estimate.delivery_reliable
+                      ? 'Rough estimate only. Many items fold or stack to shrink the parcel, so our production team confirms the actual delivery fee on your formal quote — it may be lower, and you won’t be charged more without seeing it first.'
+                      : 'We can’t estimate delivery for these items yet — our production team confirms the actual fee on your formal quote, before any payment. Nothing is charged until you’ve seen it.'}
+                  </p>
                   <div className="my-1 border-t border-border" />
                   <div className="flex items-baseline justify-between">
-                    <dt className="font-medium text-fg">Estimated total</dt>
+                    <dt className="font-medium text-fg">
+                      {estimate.delivery_reliable ? 'Estimated total' : 'Est. total (excl. delivery)'}
+                    </dt>
                     <dd className="font-display text-2xl text-fg">
-                      {estimate.currency} {estimate.total.toFixed(2)}
+                      {estimate.currency}{' '}
+                      {(estimate.delivery_reliable ? estimate.total : estimate.subtotal).toFixed(2)}
                     </dd>
                   </div>
                 </dl>
@@ -224,11 +246,18 @@ function customizationImageRef(c?: Customization | null): string | null {
 function CustomizationPreview({
   customization,
   productName,
+  productImageUrl,
 }: {
   customization?: Customization | null;
   productName: string;
+  productImageUrl?: string | null;
 }) {
   const ref = customizationImageRef(customization);
+  // A captured canvas design (artwork_ref) is a transparent PNG of only the
+  // design layers, so we composite it back onto the product photo. A buyer's
+  // reference photo already shows the finished look and stands on its own.
+  const isCapturedDesign = !!customization?.artwork_ref;
+  const baseImageUrl = isCapturedDesign ? (productImageUrl ?? null) : null;
   const [url, setUrl] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -265,14 +294,29 @@ function CustomizationPreview({
         )}
         aria-label={`Preview your design for ${productName}`}
       >
-        <img
-          src={url}
-          alt=""
-          className="h-12 w-12 rounded bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:12px_12px] object-contain"
-        />
+        {baseImageUrl ? (
+          <DesignOnProduct
+            productImageUrl={baseImageUrl}
+            designSrc={url}
+            className="h-12 w-12 rounded"
+          />
+        ) : (
+          <img
+            src={url}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="h-12 w-12 rounded bg-[repeating-conic-gradient(var(--color-surface-2)_0%_25%,var(--color-surface)_0%_50%)] bg-[length:12px_12px] object-contain"
+          />
+        )}
         <span className="text-xs font-medium text-fg">Your design</span>
       </button>
-      <ImageLightbox src={url} alt={`${productName} customization`} open={open} onClose={() => setOpen(false)} />
+      <ImageLightbox
+        src={url}
+        baseImageUrl={baseImageUrl}
+        alt={`${productName} customization`}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 }

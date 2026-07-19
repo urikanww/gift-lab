@@ -247,12 +247,27 @@ export default function CheckoutPage() {
               ) : estimate ? (
                 <dl className="flex flex-col gap-3">
                   <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
-                  <SummaryRow label="Delivery" value={`${estimate.currency} ${estimate.delivery.toFixed(2)}`} />
+                  <SummaryRow
+                    label="Estimated delivery"
+                    value={
+                      estimate.delivery_reliable
+                        ? `${estimate.currency} ${estimate.delivery.toFixed(2)}`
+                        : 'Confirmed on quote'
+                    }
+                  />
+                  <p className="-mt-1 text-2xs leading-snug text-fg-subtle">
+                    {estimate.delivery_reliable
+                      ? 'Rough estimate only. Many items fold or stack to shrink the parcel, so our production team confirms the actual delivery fee on your formal quote — it may be lower, and you won’t be charged more without seeing it first.'
+                      : 'We can’t estimate delivery for these items yet — our production team confirms the actual fee on your formal quote, before any payment. Nothing is charged until you’ve seen it.'}
+                  </p>
                   <div className="my-1 border-t border-border" />
                   <div className="flex items-baseline justify-between">
-                    <dt className="font-medium text-fg">Estimated total</dt>
+                    <dt className="font-medium text-fg">
+                      {estimate.delivery_reliable ? 'Estimated total' : 'Est. total (excl. delivery)'}
+                    </dt>
                     <dd className="font-display text-2xl text-fg">
-                      {estimate.currency} {estimate.total.toFixed(2)}
+                      {estimate.currency}{' '}
+                      {(estimate.delivery_reliable ? estimate.total : estimate.subtotal).toFixed(2)}
                     </dd>
                   </div>
                 </dl>

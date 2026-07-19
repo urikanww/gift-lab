@@ -118,7 +118,7 @@ final class PricingService
      * Compute a full quote total from resolved line specs.
      *
      * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
-     * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float}
+     * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float, delivery_reliable: bool}
      */
     public function quoteTotals(array $lines): array
     {
@@ -141,6 +141,13 @@ final class PricingService
         $priced = [];
         $subtotal = 0.0;
         $totalWeightG = 0.0;
+        // The scraped catalogue seeds placeholder weight/dimensions on some
+        // products (e.g. 0.5 g / a 1 cm cube), which collapse the chargeable
+        // weight to ~0 and park every order in the cheapest delivery tier -
+        // a misleadingly low fee. Flag the estimate as unreliable when any
+        // line's per-unit chargeable weight sits below a trust floor so the
+        // storefront can hide the number and defer to the staff-confirmed quote.
+        $deliveryReliable = true;
 
         foreach ($lines as $line) {
             $unit = $this->unitPrice($line['product'], $line['variant'], $line['qty']);
@@ -162,7 +169,11 @@ final class PricingService
             // Shipment weight is the chargeable (max of actual + volumetric)
             // weight so a light-but-bulky item ships at its volume; MODEL_3D with
             // neither falls back to filament grams (audit G8).
-            $totalWeightG += $this->chargeableWeightG($line['product']) * $line['qty'];
+            $unitWeightG = $this->chargeableWeightG($line['product']);
+            $totalWeightG += $unitWeightG * $line['qty'];
+            if (! $this->weightIsTrustworthy($unitWeightG)) {
+                $deliveryReliable = false;
+            }
 
             $priced[] = ['unit_price' => $unit, 'line_total' => $lineTotal];
         }
@@ -176,7 +187,21 @@ final class PricingService
             'subtotal' => $subtotal,
             'delivery' => $delivery,
             'total' => $total,
+            'delivery_reliable' => $deliveryReliable,
         ];
+    }
+
+    /**
+     * Whether a per-unit chargeable weight (grams) is high enough to trust for a
+     * delivery quote. Anything under the configured floor almost certainly means
+     * the product is missing real weight AND dimensions (placeholder scraped
+     * data), so the derived delivery tier would understate the true cost.
+     */
+    private function weightIsTrustworthy(float $chargeableWeightG): bool
+    {
+        $floor = (float) PricingConfig::value('delivery', 'min_trustworthy_g', 20);
+
+        return $chargeableWeightG >= $floor;
     }
 
     /**

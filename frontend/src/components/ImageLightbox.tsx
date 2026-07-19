@@ -7,6 +7,12 @@ interface Props {
   alt?: string;
   open: boolean;
   onClose: () => void;
+  /**
+   * Optional product photo drawn as an `object-cover` backdrop directly behind
+   * `src`, zoomed/panned as one unit. Used to show a buyer's transparent design
+   * export sitting ON the product, mirroring the designer's stacked layers.
+   */
+  baseImageUrl?: string | null;
 }
 
 const MIN_SCALE = 1;
@@ -18,7 +24,7 @@ const STEP = 0.5;
  * and pan (drag when zoomed). Portalled overlay matching the app's Modal
  * conventions - z-modal, ink backdrop, body scroll lock, Escape to close.
  */
-export default function ImageLightbox({ src, alt = '', open, onClose }: Props) {
+export default function ImageLightbox({ src, alt = '', open, onClose, baseImageUrl = null }: Props) {
   const [scale, setScale] = useState(1);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
@@ -127,11 +133,7 @@ export default function ImageLightbox({ src, alt = '', open, onClose }: Props) {
           if (e.target === e.currentTarget) onClose();
         }}
       >
-        <img
-          src={src}
-          alt={alt}
-          draggable={false}
-          referrerPolicy="no-referrer"
+        <div
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -139,14 +141,35 @@ export default function ImageLightbox({ src, alt = '', open, onClose }: Props) {
             if (scale === 1) zoomTo(scale + STEP);
           }}
           className={cn(
-            'max-h-full max-w-full select-none object-contain',
+            'relative select-none',
             scale > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in',
           )}
           style={{
             transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
             transition: dragging.current ? 'none' : 'transform 120ms ease-out',
           }}
-        />
+        >
+          {/* Product photo backdrop, sized to and clipped by the design's box so
+              the two zoom/pan as one - matches the designer's object-cover
+              backdrop under the transparent design layer. */}
+          {baseImageUrl && (
+            <img
+              src={baseImageUrl}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              referrerPolicy="no-referrer"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            />
+          )}
+          <img
+            src={src}
+            alt={alt}
+            draggable={false}
+            referrerPolicy="no-referrer"
+            className="relative block max-h-[80vh] max-w-full object-contain"
+          />
+        </div>
       </div>
     </div>,
     document.body,
