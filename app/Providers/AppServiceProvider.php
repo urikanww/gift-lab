@@ -7,7 +7,9 @@ namespace App\Providers;
 use App\Events\OrderTrackingUpdated;
 use App\Events\QuoteStateChanged;
 use App\Models\Quote;
+use App\Models\SavedAddress;
 use App\Policies\QuotePolicy;
+use App\Policies\SavedAddressPolicy;
 use App\Services\Courier\Contracts\CourierClient;
 use App\Services\Courier\FixtureNinjaVanClient;
 use App\Services\Courier\HttpNinjaVanClient;
@@ -140,6 +142,11 @@ class AppServiceProvider extends ServiceProvider
         // isolation for every quote action, instead of relying on scattered
         // inline abort_unless() checks that a new endpoint could forget.
         Gate::policy(Quote::class, QuotePolicy::class);
+
+        // A saved address is personal: only its owner may read, edit, or
+        // delete it. No staff override here - staff manage the per-quote
+        // ShippingAddress, not a buyer's private address book.
+        Gate::policy(SavedAddress::class, SavedAddressPolicy::class);
 
         // Public, account-free artwork upload limiter (P2-2): each request can
         // write a 10 MB file to storage, so throttle it far tighter than the
