@@ -28,6 +28,7 @@ export default function AddressBookPage() {
   const { addresses, error, fetch, create, update, remove } = useSavedAddressStore();
   const [editing, setEditing] = useState<number | 'new' | null>(null);
   const [form, setForm] = useState<ShippingFieldsValue>(EMPTY_SHIPPING);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   useEffect(() => {
     void fetch();
@@ -36,10 +37,12 @@ export default function AddressBookPage() {
   const startNew = () => {
     setForm(EMPTY_SHIPPING);
     setEditing('new');
+    setConfirmingDelete(null);
   };
   const startEdit = (a: SavedAddress) => {
     setForm(toValue(a));
     setEditing(a.id);
+    setConfirmingDelete(null);
   };
 
   const save = async () => {
@@ -80,7 +83,27 @@ export default function AddressBookPage() {
               </div>
               <div className="flex shrink-0 gap-2">
                 <Button variant="ghost" size="sm" onClick={() => startEdit(a)}>Edit</Button>
-                <Button variant="ghost" size="sm" onClick={() => void remove(a.id)}>Delete</Button>
+                {confirmingDelete === a.id ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        void remove(a.id);
+                        setConfirmingDelete(null);
+                      }}
+                    >
+                      Confirm
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(null)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(a.id)}>
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
           </Card>
