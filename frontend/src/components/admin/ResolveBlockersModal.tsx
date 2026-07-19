@@ -14,6 +14,7 @@ const MAX = {
   dimension: 2000,
   weight: 100000,
   price: 1000000,
+  stock: 1000000,
 } as const;
 
 interface Props {
@@ -39,6 +40,7 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
   const needsDims = reasons.includes('missing_dimensions');
   const needsPrintable = reasons.includes('not_printable');
   const needsPrice = reasons.includes('missing_price');
+  const needsStock = reasons.includes('stock_unreadable');
 
   const [length, setLength] = useState(String(product.dimensions?.l ?? ''));
   const [width, setWidth] = useState(String(product.dimensions?.w ?? ''));
@@ -48,6 +50,9 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
   // Blocked on price means the stored base_cost is null/zero - prefilling it
   // would just seed the field with the value the gate already rejected.
   const [baseCost, setBaseCost] = useState(needsPrice ? '' : product.base_cost);
+  // Blocked on stock means stock_estimate is null (the affiliate feed never
+  // reads a quantity), so there is nothing to prefill.
+  const [stock, setStock] = useState(String(product.stock_estimate ?? ''));
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -91,6 +96,16 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
       if (price === 'empty') nextErrors.base_cost = 'Required.';
       else if (price === 'invalid') nextErrors.base_cost = 'Enter a price greater than 0.';
       else payload.base_cost = price;
+    }
+
+    // Stock is a whole-unit count, so a decimal is rejected on top of the
+    // shared positive/ceiling check parsePositive applies.
+    if (needsStock) {
+      const qty = parsePositive(stock, MAX.stock);
+      if (qty === 'empty') nextErrors.stock_estimate = 'Required.';
+      else if (qty === 'invalid' || !Number.isInteger(qty))
+        nextErrors.stock_estimate = `Enter a whole number between 1 and ${MAX.stock}.`;
+      else payload.stock_estimate = qty;
     }
 
     setErrors(nextErrors);
@@ -266,6 +281,17 @@ export default function ResolveBlockersModal({ product, open, onClose, onResolve
             error={errors.base_cost}
             hint="What we pay the supplier per unit."
             onChange={(e) => setBaseCost(e.target.value)}
+          />
+        )}
+
+        {needsStock && (
+          <Input
+            label="Stock on hand"
+            inputMode="numeric"
+            value={stock}
+            error={errors.stock_estimate}
+            hint="The affiliate feed never returns a quantity, so enter it manually. Indicative only - the order-time stock ledger is what prevents overselling."
+            onChange={(e) => setStock(e.target.value)}
           />
         )}
       </div>

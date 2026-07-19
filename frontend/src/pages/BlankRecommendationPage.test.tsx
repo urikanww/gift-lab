@@ -109,6 +109,33 @@ it('renders an affiliate Shopee preview link on each card', async () => {
   expect(link).toHaveAttribute('rel', expect.stringContaining('sponsored'));
 });
 
+it('adds to the gate then opens the resolve-blockers popup to fix it', async () => {
+  vi.spyOn(recs, 'searchCandidates').mockResolvedValue({
+    data: [candidate('3_4', 'Fix Mug')], page: 1, has_more: false,
+  });
+  const add = vi.spyOn(recs, 'addBlank').mockResolvedValue({
+    id: 55,
+    publish_state: 'CANNOT_PUBLISH',
+    cannot_publish_reasons: ['missing_dimensions', 'not_printable'],
+    base_cost: 9.9,
+  });
+  renderPage();
+
+  await userEvent.type(screen.getByLabelText(/keyword/i), 'mug');
+  await userEvent.click(screen.getByRole('button', { name: /^search$/i }));
+  await waitFor(() => expect(screen.getByText('Fix Mug')).toBeInTheDocument());
+
+  await userEvent.click(screen.getByRole('button', { name: /add as blank/i }));
+
+  // Add commits first, then the SAME gate popup opens with real fix fields
+  // (not the old descriptive notice).
+  await waitFor(() => expect(add).toHaveBeenCalledWith(candidate('3_4', 'Fix Mug')));
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent(/resolve blockers/i);
+  expect(screen.getByLabelText(/length/i)).toBeInTheDocument();
+  expect(screen.getByLabelText(/print method/i)).toBeInTheDocument();
+});
+
 it('loads the next page and appends results', async () => {
   // Keyed by page so the mount browse + the search both get page 1 consistently.
   const spy = vi.spyOn(recs, 'searchCandidates').mockImplementation(async (_kw, _limit, page) =>

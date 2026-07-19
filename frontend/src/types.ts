@@ -441,6 +441,8 @@ export interface AdminCatalogueItem {
   dimensions: { l?: number; w?: number; h?: number; unit?: string } | null;
   print_method: 'UV' | 'FDM' | 'RESIN' | null;
   is_printable: boolean;
+  /** Indicative stock (non-authoritative); null = unreadable → gate blocker. */
+  stock_estimate: number | null;
   base_cost: string;
   currency: string;
   creator_credit: string | null;

@@ -26,8 +26,8 @@ it('filters by source kind and returns source_kind in the payload', function ():
     // -> source_kind, per the Product saving hooks and SourceKindTest), so the
     // buy link must carry the host we are filtering on - setting source_url alone
     // is overwritten by the factory's default source_links.
-    Product::factory()->scrapedUv()->create(['name' => 'Shp', 'source_url' => 'https://shopee.sg/product/1/2', 'source_links' => [['label' => 'S', 'url' => 'https://shopee.sg/product/1/2', 'kind' => 'marketplace', 'price' => 9.9, 'currency' => 'SGD', 'last_checked' => null]]]);
-    Product::factory()->scrapedUv()->create(['name' => 'Loc', 'source_url' => 'https://blankco.sg/mug', 'source_links' => [['label' => 'L', 'url' => 'https://blankco.sg/mug', 'kind' => 'local', 'price' => 9.9, 'currency' => 'SGD', 'last_checked' => null]]]);
+    Product::factory()->scrapedUv()->create(['name' => 'Shp', 'publish_state' => 'CANNOT_PUBLISH', 'source_url' => 'https://shopee.sg/product/1/2', 'source_links' => [['label' => 'S', 'url' => 'https://shopee.sg/product/1/2', 'kind' => 'marketplace', 'price' => 9.9, 'currency' => 'SGD', 'last_checked' => null]]]);
+    Product::factory()->scrapedUv()->create(['name' => 'Loc', 'publish_state' => 'CANNOT_PUBLISH', 'source_url' => 'https://blankco.sg/mug', 'source_links' => [['label' => 'L', 'url' => 'https://blankco.sg/mug', 'kind' => 'local', 'price' => 9.9, 'currency' => 'SGD', 'last_checked' => null]]]);
 
     $res = $this->getJson('/api/admin/catalogue?source=local')->assertOk();
     $rows = collect($res->json('data'));
@@ -36,16 +36,16 @@ it('filters by source kind and returns source_kind in the payload', function ():
 });
 
 it('filters by print method', function (): void {
-    Product::factory()->scrapedUv()->create(['name' => 'UvOne', 'print_method' => 'UV']);
-    Product::factory()->model3d()->create(['name' => 'FdmOne', 'print_method' => 'FDM']);
+    Product::factory()->scrapedUv()->create(['name' => 'UvOne', 'publish_state' => 'CANNOT_PUBLISH', 'print_method' => 'UV']);
+    Product::factory()->model3d()->create(['name' => 'FdmOne', 'publish_state' => 'CANNOT_PUBLISH', 'print_method' => 'FDM']);
 
     $res = $this->getJson('/api/admin/catalogue?print_method=FDM')->assertOk();
     expect(collect($res->json('data'))->pluck('name'))->toContain('FdmOne')->not->toContain('UvOne');
 });
 
 it('filters missing buy link (SCRAPED_UV with no source_links)', function (): void {
-    Product::factory()->scrapedUv()->create(['name' => 'HasLink', 'source_links' => [['label' => 'S', 'url' => 'https://x.sg/1', 'kind' => 'local', 'price' => 1.0, 'currency' => 'SGD', 'last_checked' => null]]]);
-    Product::factory()->scrapedUv()->create(['name' => 'NoLink', 'source_links' => []]);
+    Product::factory()->scrapedUv()->create(['name' => 'HasLink', 'publish_state' => 'CANNOT_PUBLISH', 'source_links' => [['label' => 'S', 'url' => 'https://x.sg/1', 'kind' => 'local', 'price' => 1.0, 'currency' => 'SGD', 'last_checked' => null]]]);
+    Product::factory()->scrapedUv()->create(['name' => 'NoLink', 'publish_state' => 'CANNOT_PUBLISH', 'source_links' => []]);
 
     $res = $this->getJson('/api/admin/catalogue?missing_link=1')->assertOk();
     expect(collect($res->json('data'))->pluck('name'))->toContain('NoLink')->not->toContain('HasLink');

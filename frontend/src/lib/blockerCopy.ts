@@ -36,13 +36,15 @@ export function blockerLabel(token: string): string {
 /**
  * The scraped-gate blockers a staffer can clear by typing a fact off the source
  * listing, i.e. the ones the resolve-blockers popup renders a field group for.
- * Everything else (stock_unreadable, source_dead, needs_re-review) is
+ * stock_unreadable is here too: the affiliate feed never carries a quantity, so
+ * a sync can't clear it on its own - the staffer enters a manual (indicative)
+ * stock in the popup instead. Everything else (source_dead, needs_re-review) is
  * source-truth and resolves on the next sync - see the design spec.
  *
  * Module-private: `isFixableBlocker` is the whole public surface, and nothing
  * needs to enumerate the tokens.
  */
-const FIXABLE_BLOCKERS = ['missing_dimensions', 'not_printable', 'missing_price'] as const;
+const FIXABLE_BLOCKERS = ['missing_dimensions', 'not_printable', 'missing_price', 'stock_unreadable'] as const;
 
 export function isFixableBlocker(token: string): boolean {
   return (FIXABLE_BLOCKERS as readonly string[]).includes(token);
@@ -50,14 +52,13 @@ export function isFixableBlocker(token: string): boolean {
 
 /**
  * Why a source-truth blocker can't be cleared by staff. Deliberately covers ONLY
- * these three: every other blocker is either fixable in the resolve-blockers
+ * these two: every other blocker is either fixable in the resolve-blockers
  * popup or cleared by an inline row tool, and a blanket "resolves at the source"
  * fallback would actively mislead there (e.g. missing_model_file is cleared by
  * the Attach model file button on the row). Callers must handle `undefined` by
  * saying nothing rather than guessing.
  */
 export const BLOCKER_HELP: Record<string, string> = {
-  stock_unreadable: 'Stock comes from the source listing - it resolves on the next sync.',
   source_dead: 'The source listing is gone. Re-capture the product or archive it.',
   'needs_re-review': 'The source price moved past the drift threshold. It re-checks on the next sync.',
 };

@@ -24,6 +24,8 @@ export interface ResolveBlockersPayload {
   dimensions?: { l: number; w: number; h: number };
   print_method?: 'UV' | 'FDM' | 'RESIN';
   is_printable?: boolean;
+  /** Manual (indicative) stock the staffer types to clear stock_unreadable. */
+  stock_estimate?: number;
 }
 
 export interface ResolveBlockersResult {
@@ -82,6 +84,8 @@ interface CatalogueAdminState {
   ) => Promise<boolean>;
   uploadModelFile: (id: number, file: File) => Promise<boolean>;
   resolveBlockers: (id: number, payload: ResolveBlockersPayload) => Promise<ResolveBlockersResult>;
+  deleteProduct: (id: number) => Promise<boolean>;
+  bulkDelete: (ids: number[]) => Promise<{ deleted: number; failed: number } | null>;
 }
 
 export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => ({
@@ -209,6 +213,40 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     } catch (err) {
       set({ error: apiError(err) });
       throw err;
+    }
+  },
+
+  // Soft-delete (archive) an unpublished gate item, then silently refetch so it
+  // drops out of the list. Returns success so the row can close its confirm.
+  deleteProduct: async (id) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.delete(`/admin/catalogue/${id}`);
+      await get().fetch(undefined, { silent: true });
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
+  },
+
+  // Bulk soft-delete the selected rows in one request, then silently refetch so
+  // the list reflects the removals. Returns the {deleted, failed} tally (or null
+  // on request failure) so the page can toast.
+  bulkDelete: async (ids) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ meta: { deleted: number; failed: number } }>(
+        '/admin/catalogue/bulk-delete',
+        { ids },
+      );
+      await get().fetch(undefined, { silent: true });
+      return { deleted: data.meta.deleted, failed: data.meta.failed };
+    } catch (err) {
+      set({ error: apiError(err) });
+      return null;
     }
   },
 

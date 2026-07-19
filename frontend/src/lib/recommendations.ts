@@ -1,4 +1,5 @@
 import api, { ensureCsrf } from './api';
+import type { PublishState } from '../types';
 
 export interface Candidate {
   source_product_id: string;
@@ -36,15 +37,24 @@ export async function searchCandidates(
   return data;
 }
 
-export async function addBlank(c: Candidate): Promise<void> {
+/** Gate verdict returned by "Add as blank", enough to open the fix popup. */
+export interface AddBlankResult {
+  id: number;
+  publish_state: PublishState;
+  cannot_publish_reasons: string[] | null;
+  base_cost: string | number | null;
+}
+
+export async function addBlank(c: Candidate): Promise<AddBlankResult> {
   await ensureCsrf();
-  await api.post('/admin/blank-recommendations/add', {
+  const { data } = await api.post<{ data: AddBlankResult }>('/admin/blank-recommendations/add', {
     source_product_id: c.source_product_id,
     name: c.name,
     price: c.price,
     image_url: c.image_url,
     product_link: c.product_link,
   });
+  return data.data;
 }
 
 export async function featureCandidate(c: Candidate): Promise<void> {

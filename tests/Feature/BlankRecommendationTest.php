@@ -110,8 +110,34 @@ it('adds a candidate as a SCRAPED_UV blank in the gate with the plain product li
 
     $product = Product::findOrFail($res->json('data.id'));
     expect($product->class->value)->toBe('SCRAPED_UV')
-        ->and($product->publish_state->value)->toBe('CANNOT_PUBLISH')
+        ->and($product->publish_state->value)->toBe('CANNOT_PUBLISH') // still blocked on dims/print
+        ->and($product->stock_estimate)->toBeNull() // no stock sent; make-to-order doesn't gate on it
+        ->and($product->cannot_publish_reasons)->not->toContain('stock_unreadable')
         ->and($product->source_links[0]['url'])->toBe('https://shopee.sg/product/3/4');
+});
+
+it('seeds a manual stock estimate from the add-to-gate popup', function (): void {
+    Sanctum::actingAs($this->staff);
+    $res = $this->postJson('/api/admin/blank-recommendations/add', [
+        'source_product_id' => '3_4', 'name' => 'Plain Ceramic Mug 440ml', 'price' => 9.90,
+        'image_url' => 'https://i/2', 'product_link' => 'https://shopee.sg/product/3/4',
+        'stock_estimate' => 40,
+    ])->assertOk();
+
+    $product = Product::findOrFail($res->json('data.id'));
+    // The manual quantity clears stock_unreadable up front; dims/weight/print
+    // are still missing, so the row is still gated (just not on stock).
+    expect($product->stock_estimate)->toBe(40)
+        ->and($product->cannot_publish_reasons)->not->toContain('stock_unreadable');
+});
+
+it('rejects a fractional manual stock on add', function (): void {
+    Sanctum::actingAs($this->staff);
+    $this->postJson('/api/admin/blank-recommendations/add', [
+        'source_product_id' => '3_4', 'name' => 'Plain Ceramic Mug 440ml', 'price' => 9.90,
+        'image_url' => 'https://i/2', 'product_link' => 'https://shopee.sg/product/3/4',
+        'stock_estimate' => 4.5,
+    ])->assertStatus(422)->assertJsonValidationErrors(['stock_estimate']);
 });
 
 it('lists featured items for staff management (incl. IP-flagged)', function (): void {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Catalogue;
 
+use App\Enums\StockMode;
 use App\Models\Product;
 
 /**
@@ -36,7 +37,13 @@ final class CompletenessGate
             $reasons[] = 'not_printable';
         }
 
-        if ($product->stock_estimate === null) {
+        // Stock only gates items we actually hold and count (STOCKED). For
+        // buy-per-order blanks (MAKE_TO_ORDER) stock is unknowable at import -
+        // they're third-party affiliate listings and no authorized API reads
+        // another seller's inventory - and irrelevant until a staffer procures
+        // the unit and reads the live listing (the MarketplaceRechecker step).
+        // So a null estimate is expected there, not a blocker.
+        if ($product->stock_mode === StockMode::Stocked && $product->stock_estimate === null) {
             $reasons[] = 'stock_unreadable';
         }
 

@@ -94,6 +94,10 @@ class AdminCatalogueController extends Controller
         // filtered catalogue total - not just the current page or the state subset.
         $byState = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
+            // The gate is a review surface for not-yet-live items; published
+            // products are managed from the product admin, so they're excluded
+            // from both the list and these summary counts.
+            ->where('publish_state', '!=', PublishState::Published->value)
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->where($searchScope)
             ->where($filterScope)
@@ -118,6 +122,7 @@ class AdminCatalogueController extends Controller
 
         $paginator = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
+            ->where('publish_state', '!=', PublishState::Published->value)
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->when($request->filled('state'), fn ($q) => $q->where('publish_state', $request->string('state')->toString()))
             ->where($searchScope)
@@ -141,6 +146,7 @@ class AdminCatalogueController extends Controller
             'dimensions' => $p->dimensions,
             'print_method' => $p->print_method?->value,
             'is_printable' => (bool) $p->is_printable,
+            'stock_estimate' => $p->stock_estimate,
             'base_cost' => $p->base_cost,
             'currency' => $p->currency,
             'creator_credit' => $p->creator_credit,
@@ -232,6 +238,11 @@ class AdminCatalogueController extends Controller
             'dimensions.h' => ['required_with:dimensions', 'numeric', 'gt:0', 'max:2000'],
             'print_method' => ['sometimes', 'string', 'in:UV,FDM,RESIN'],
             'is_printable' => ['sometimes', 'boolean'],
+            // Manual stock the staffer reads off the source listing: the affiliate
+            // feed never carries a quantity, so a fuller sync can't clear
+            // stock_unreadable on its own. Indicative only (non-authoritative) -
+            // the order-time StockLedger is what actually prevents overselling.
+            'stock_estimate' => ['sometimes', 'integer', 'gt:0', 'max:1000000'],
         ]);
 
         if (isset($validated['dimensions'])) {
@@ -244,6 +255,7 @@ class AdminCatalogueController extends Controller
             'dimensions' => $product->dimensions,
             'print_method' => $product->print_method?->value,
             'is_printable' => $product->is_printable,
+            'stock_estimate' => $product->stock_estimate,
             'publish_state' => $product->publish_state->value,
         ];
 
@@ -269,6 +281,7 @@ class AdminCatalogueController extends Controller
             'dimensions' => $product->dimensions,
             'print_method' => $product->print_method?->value,
             'is_printable' => $product->is_printable,
+            'stock_estimate' => $product->stock_estimate,
             'publish_state' => $product->publish_state->value,
         ]);
 
@@ -277,6 +290,61 @@ class AdminCatalogueController extends Controller
             'publish_state' => $product->publish_state->value,
             'cannot_publish_reasons' => $product->cannot_publish_reasons,
         ]);
+    }
+
+    /**
+     * Staff delete (archive) an unpublished gate item. Soft delete so it's
+     * recoverable via the product-admin restore. Published products are refused -
+     * they're live, managed from the product admin, and the gate no longer lists
+     * them anyway.
+     */
+    public function destroy(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        if ($product->publish_state === PublishState::Published) {
+            return response()->json(['message' => 'Unpublish a live product before deleting it.'], 422);
+        }
+
+        $product->delete();
+
+        $this->audit->log($product, 'product.gate_deleted', ['publish_state' => $product->publish_state->value], null);
+
+        return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * Staff bulk-delete (archive) unpublished gate items. Published rows are
+     * skipped and counted as failed rather than aborting the whole batch, so a
+     * stray live id in the selection can't block the rest. Soft delete.
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'max:200'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $deleted = 0;
+        $failed = 0;
+
+        foreach ($validated['ids'] as $id) {
+            $product = Product::find($id);
+
+            if ($product === null || $product->publish_state === PublishState::Published) {
+                $failed++;
+
+                continue;
+            }
+
+            $product->delete();
+            $this->audit->log($product, 'product.gate_deleted', ['publish_state' => $product->publish_state->value], null);
+            $deleted++;
+        }
+
+        return response()->json(['meta' => ['deleted' => $deleted, 'failed' => $failed]]);
     }
 
     public function unpublish(Request $request, Product $product): JsonResponse

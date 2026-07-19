@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminCatalogueItem } from '../types';
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const { get, post, del } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn() }));
 vi.mock('../lib/api', () => ({
-  default: { get, post, patch: vi.fn() },
+  default: { get, post, patch: vi.fn(), delete: del },
   apiError: (e: unknown) => String(e),
   ensureCsrf: vi.fn(),
 }));
@@ -20,6 +20,7 @@ const item: AdminCatalogueItem = {
   dimensions: null,
   print_method: null,
   is_printable: false,
+  stock_estimate: null,
   base_cost: '4.00',
   currency: 'SGD',
   creator_credit: null,
@@ -37,6 +38,7 @@ beforeEach(() => {
   useCatalogueAdminStore.setState({ items: [], loading: false, error: null, autoPublishSaving: false });
   get.mockReset();
   post.mockReset();
+  del.mockReset();
 });
 
 describe('catalogueAdminStore', () => {
@@ -57,6 +59,50 @@ describe('catalogueAdminStore', () => {
 
     expect(post).toHaveBeenCalledWith('/admin/products/7/publish');
     expect(get).toHaveBeenCalledOnce();
+  });
+
+  it('deletes a gate product then refetches', async () => {
+    del.mockResolvedValue({ data: { deleted: true } });
+    get.mockResolvedValue({ data: { data: [] } });
+
+    const ok = await useCatalogueAdminStore.getState().deleteProduct(7);
+
+    expect(ok).toBe(true);
+    expect(del).toHaveBeenCalledWith('/admin/catalogue/7');
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it('returns false and records an error when delete fails', async () => {
+    del.mockImplementation(async () => {
+      throw new Error('nope');
+    });
+
+    const ok = await useCatalogueAdminStore.getState().deleteProduct(7);
+
+    expect(ok).toBe(false);
+    expect(useCatalogueAdminStore.getState().error).toContain('nope');
+  });
+
+  it('bulk-deletes selected rows then refetches', async () => {
+    post.mockResolvedValue({ data: { meta: { deleted: 2, failed: 1 } } });
+    get.mockResolvedValue({ data: { data: [] } });
+
+    const result = await useCatalogueAdminStore.getState().bulkDelete([1, 2, 3]);
+
+    expect(result).toEqual({ deleted: 2, failed: 1 });
+    expect(post).toHaveBeenCalledWith('/admin/catalogue/bulk-delete', { ids: [1, 2, 3] });
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it('returns null when bulk delete fails', async () => {
+    post.mockImplementation(async () => {
+      throw new Error('boom');
+    });
+
+    const result = await useCatalogueAdminStore.getState().bulkDelete([1]);
+
+    expect(result).toBeNull();
+    expect(useCatalogueAdminStore.getState().error).toContain('boom');
   });
 
   it('records an error on fetch failure', async () => {

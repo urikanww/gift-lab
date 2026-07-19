@@ -77,6 +77,11 @@ final class AdminBlankRecommendationController extends Controller
             'price' => ['nullable', 'numeric'],
             'image_url' => ['nullable', 'url', 'max:2048'],
             'product_link' => ['required', 'url', 'max:2048'],
+            // Optional manual stock the staffer types in the add-to-gate popup:
+            // the affiliate API never returns a quantity, so this is the only way
+            // to seed stock_estimate at ingest and pre-clear the stock_unreadable
+            // gate reason. Indicative only - the order-time ledger is authoritative.
+            'stock_estimate' => ['nullable', 'integer', 'gt:0', 'max:1000000'],
         ]);
 
         $product = $service->ingest(new ScrapedProductData(
@@ -84,7 +89,8 @@ final class AdminBlankRecommendationController extends Controller
             sourceUrl: $v['product_link'],
             name: $v['name'],
             price: isset($v['price']) ? (float) $v['price'] : null,
-            dimensions: null, weight: null, stockEstimate: null,
+            dimensions: null, weight: null,
+            stockEstimate: isset($v['stock_estimate']) ? (int) $v['stock_estimate'] : null,
             imageUrl: $v['image_url'] ?? null,
             printable: false,
         ));
@@ -98,7 +104,14 @@ final class AdminBlankRecommendationController extends Controller
         ]);
         $product->save();
 
-        return response()->json(['data' => ['id' => $product->id, 'publish_state' => $product->publish_state->value]]);
+        // Return the gate verdict so the recommender can open the same
+        // resolve-blockers popup on the freshly-added draft.
+        return response()->json(['data' => [
+            'id' => $product->id,
+            'publish_state' => $product->publish_state->value,
+            'cannot_publish_reasons' => $product->cannot_publish_reasons,
+            'base_cost' => $product->base_cost,
+        ]]);
     }
 
     public function feature(Request $request): JsonResponse

@@ -27,8 +27,8 @@ it('lists scraped and 3D items for staff', function (): void {
 });
 
 it('sorts the gate list by creation date ascending or descending', function (): void {
-    $old = Product::factory()->model3d()->create(['name' => 'Older', 'created_at' => now()->subDays(3)]);
-    $new = Product::factory()->model3d()->create(['name' => 'Newer', 'created_at' => now()->subDay()]);
+    $old = Product::factory()->model3d()->create(['name' => 'Older', 'publish_state' => 'READY_TO_APPROVE', 'created_at' => now()->subDays(3)]);
+    $new = Product::factory()->model3d()->create(['name' => 'Newer', 'publish_state' => 'READY_TO_APPROVE', 'created_at' => now()->subDay()]);
 
     Sanctum::actingAs($this->staff);
 
@@ -42,8 +42,8 @@ it('sorts the gate list by creation date ascending or descending', function (): 
 });
 
 it('sorts the gate list by name when asked', function (): void {
-    Product::factory()->model3d()->create(['name' => 'Zeta']);
-    Product::factory()->model3d()->create(['name' => 'Alpha']);
+    Product::factory()->model3d()->create(['name' => 'Zeta', 'publish_state' => 'READY_TO_APPROVE']);
+    Product::factory()->model3d()->create(['name' => 'Alpha', 'publish_state' => 'READY_TO_APPROVE']);
 
     Sanctum::actingAs($this->staff);
     $res = $this->getJson('/api/admin/catalogue?sort=name&dir=asc')->assertOk();
@@ -51,28 +51,95 @@ it('sorts the gate list by name when asked', function (): void {
     expect(collect($res->json('data'))->pluck('name')->all())->toBe(['Alpha', 'Zeta']);
 });
 
-it('returns full-set state counts independent of pagination and the state filter', function (): void {
-    Product::factory()->count(3)->model3d()->create(['publish_state' => 'PUBLISHED']);
+it('excludes published items from the gate list and counts', function (): void {
+    Product::factory()->count(3)->model3d()->create(['publish_state' => 'PUBLISHED']); // hidden
     Product::factory()->count(2)->scrapedUv()->create(['publish_state' => 'READY_TO_APPROVE']);
     Product::factory()->model3d()->create(['publish_state' => 'CANNOT_PUBLISH']);
     Product::factory()->model3d()->create(['publish_state' => 'PENDING']);
     Product::factory()->create(['class' => 'CORE', 'publish_state' => 'PUBLISHED']); // not in the gate
 
     Sanctum::actingAs($this->staff);
-    // A single filtered page must not shrink the summary counts.
-    $res = $this->getJson('/api/admin/catalogue?per_page=2&state=PUBLISHED')->assertOk();
+    $res = $this->getJson('/api/admin/catalogue')->assertOk();
 
-    $res->assertJsonPath('counts.total', 7)
-        ->assertJsonPath('counts.published', 3)
+    // Published items are managed from the product admin, never surfaced here.
+    $res->assertJsonPath('counts.total', 4) // 2 ready + 1 blocked + 1 pending
+        ->assertJsonPath('counts.published', 0)
         ->assertJsonPath('counts.ready', 2)
         ->assertJsonPath('counts.blocked', 1)
         ->assertJsonPath('counts.pending', 1);
-    expect($res->json('data'))->toHaveCount(2); // page still limited + state-filtered
+
+    $states = collect($res->json('data'))->pluck('publish_state')->unique()->all();
+    expect($states)->not->toContain('PUBLISHED');
+});
+
+it('hides published rows even when explicitly filtered to PUBLISHED', function (): void {
+    Product::factory()->count(2)->scrapedUv()->create(['publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/catalogue?state=PUBLISHED')->assertOk();
+
+    expect($res->json('data'))->toHaveCount(0)
+        ->and($res->json('counts.total'))->toBe(0);
+});
+
+it('soft-deletes an unpublished gate product (staff)', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs($this->staff);
+    $this->deleteJson("/api/admin/catalogue/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('deleted', true);
+
+    expect(Product::find($product->id))->toBeNull() // gone from default scope
+        ->and(Product::withTrashed()->find($product->id)->trashed())->toBeTrue(); // archived, recoverable
+});
+
+it('bulk-deletes unpublished rows and skips published ones', function (): void {
+    $a = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+    $b = Product::factory()->model3d()->create(['publish_state' => 'READY_TO_APPROVE']);
+    $live = Product::factory()->scrapedUv()->create(['publish_state' => 'PUBLISHED']); // skipped
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson('/api/admin/catalogue/bulk-delete', ['ids' => [$a->id, $b->id, $live->id]])
+        ->assertOk()
+        ->assertJsonPath('meta.deleted', 2)
+        ->assertJsonPath('meta.failed', 1);
+
+    expect(Product::find($a->id))->toBeNull()
+        ->and(Product::find($b->id))->toBeNull()
+        ->and(Product::find($live->id))->not->toBeNull(); // published survives
+});
+
+it('forbids a non-staff user from bulk-deleting gate products', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs(User::factory()->create()); // buyer
+    $this->postJson('/api/admin/catalogue/bulk-delete', ['ids' => [$product->id]])->assertStatus(403);
+
+    expect(Product::find($product->id))->not->toBeNull();
+});
+
+it('refuses to delete a published product from the gate', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->staff);
+    $this->deleteJson("/api/admin/catalogue/{$product->id}")->assertStatus(422);
+
+    expect(Product::find($product->id))->not->toBeNull();
+});
+
+it('forbids a non-staff user from deleting a gate product', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs(User::factory()->create()); // buyer
+    $this->deleteJson("/api/admin/catalogue/{$product->id}")->assertStatus(403);
+
+    expect(Product::find($product->id))->not->toBeNull();
 });
 
 it('filters the gate list and counts by a name/creator search term', function (): void {
     Product::factory()->model3d()->create(['name' => 'Baby Groot Planter', 'publish_state' => 'READY_TO_APPROVE']);
-    Product::factory()->model3d()->create(['name' => 'Cable Holder', 'creator_credit' => 'GrootFan', 'publish_state' => 'PUBLISHED']);
+    Product::factory()->model3d()->create(['name' => 'Cable Holder', 'creator_credit' => 'GrootFan', 'publish_state' => 'CANNOT_PUBLISH']);
     Product::factory()->scrapedUv()->create(['name' => 'Ceramic Mug', 'publish_state' => 'READY_TO_APPROVE']);
 
     Sanctum::actingAs($this->staff);
@@ -274,9 +341,10 @@ it('resolves every blocker and publishes in one call', function (): void {
         ->and($product->dimensions)->toBe(['l' => 100, 'w' => 80, 'h' => 60, 'unit' => 'mm']);
 });
 
-it('saves the fix but does not publish when an unfixable blocker remains', function (): void {
-    // stock_estimate is source-truth and NOT settable here, so the row stays
-    // blocked - but the typed weight must still persist.
+it('publishes a make-to-order blank even when stock is left unset', function (): void {
+    // Buy-per-order blanks (MAKE_TO_ORDER, the scraped default) don't gate on
+    // stock - it's unknowable at import and checked by a human at procurement -
+    // so filling the physical facts publishes with no stock value at all.
     $product = blockedScrapedProduct(['stock_estimate' => null]);
 
     Sanctum::actingAs($this->staff);
@@ -288,12 +356,49 @@ it('saves the fix but does not publish when an unfixable blocker remains', funct
         'print_method' => 'UV',
     ])
         ->assertOk()
-        ->assertJsonPath('published', false)
-        ->assertJsonPath('cannot_publish_reasons', ['stock_unreadable']);
+        ->assertJsonPath('published', true)
+        ->assertJsonPath('cannot_publish_reasons', null);
 
     $product->refresh();
-    expect($product->publish_state->value)->toBe('CANNOT_PUBLISH')
-        ->and($product->weight)->toBe('250.000'); // work was NOT thrown away
+    expect($product->publish_state->value)->toBe('PUBLISHED')
+        ->and($product->stock_estimate)->toBeNull(); // stayed unknowable, not a blocker
+});
+
+it('still accepts and stores a manual stock estimate as optional metadata', function (): void {
+    // Stock no longer blocks a make-to-order blank, but staff may still record
+    // an indicative quantity - it persists and blocks nothing.
+    $product = Product::factory()->scrapedUv()->create([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'cannot_publish_reasons' => ['missing_dimensions'],
+        'dimensions' => null,
+        'weight' => null,
+        'stock_estimate' => null,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
+        'weight' => 250,
+        'stock_estimate' => 25,
+    ])
+        ->assertOk()
+        ->assertJsonPath('published', true);
+
+    $product->refresh();
+    expect($product->publish_state->value)->toBe('PUBLISHED')
+        ->and($product->stock_estimate)->toBe(25);
+});
+
+it('rejects a fractional or non-positive manual stock', function (): void {
+    $product = blockedScrapedProduct(['stock_estimate' => null]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['stock_estimate' => 4.5])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['stock_estimate']);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", ['stock_estimate' => 0])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['stock_estimate']);
 });
 
 it('rejects a non-positive weight and writes nothing', function (): void {

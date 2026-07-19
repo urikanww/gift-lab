@@ -31,6 +31,7 @@ function item(overrides: Partial<AdminCatalogueItem> = {}): AdminCatalogueItem {
     dimensions: null,
     print_method: null,
     is_printable: false,
+    stock_estimate: null,
     ...overrides,
   };
 }
@@ -102,7 +103,9 @@ it('sends the typed values and reports a publish', async () => {
 });
 
 it('stays open and names what is left when the row is still blocked', async () => {
-  mockResolve({ published: false, cannot_publish_reasons: ['stock_unreadable'] });
+  // source_dead is source-truth (not settable in the popup), so it's the
+  // genuine "can't be fixed here" case now that stock is manually fixable.
+  mockResolve({ published: false, cannot_publish_reasons: ['source_dead'] });
   renderModal(item({ cannot_publish_reasons: ['missing_dimensions'] }));
 
   await userEvent.type(screen.getByLabelText(/length/i), '100');
@@ -112,10 +115,34 @@ it('stays open and names what is left when the row is still blocked', async () =
   await userEvent.click(screen.getByRole('button', { name: /save and publish/i }));
 
   expect(await screen.findByText(/saved, but still blocked/i)).toBeInTheDocument();
-  expect(screen.getByText(/stock level unreadable/i)).toBeInTheDocument();
+  expect(screen.getByText(/source listing gone/i)).toBeInTheDocument();
   expect(screen.getByText(/can’t be fixed here/i)).toBeInTheDocument();
   // Nothing to retry - source-truth only, so no way back to the fields.
   expect(screen.queryByRole('button', { name: /back to fields/i })).not.toBeInTheDocument();
+});
+
+it('renders a stock field when the row is blocked on unreadable stock', async () => {
+  const fn = mockResolve({ published: true, cannot_publish_reasons: null });
+  renderModal(item({ cannot_publish_reasons: ['stock_unreadable'] }));
+
+  const field = screen.getByLabelText(/stock on hand/i);
+  expect(field).toBeInTheDocument();
+
+  await userEvent.type(field, '40');
+  await userEvent.click(screen.getByRole('button', { name: /save and publish/i }));
+
+  await waitFor(() => expect(fn).toHaveBeenCalledWith(7, { stock_estimate: 40 }));
+});
+
+it('rejects a fractional stock quantity', async () => {
+  const fn = mockResolve({ published: true, cannot_publish_reasons: null });
+  renderModal(item({ cannot_publish_reasons: ['stock_unreadable'] }));
+
+  await userEvent.type(screen.getByLabelText(/stock on hand/i), '4.5');
+  await userEvent.click(screen.getByRole('button', { name: /save and publish/i }));
+
+  expect(await screen.findByText(/whole number between 1 and 1000000/i)).toBeInTheDocument();
+  expect(fn).not.toHaveBeenCalled();
 });
 
 it('does not claim a surviving fixable blocker is unfixable, and offers a retry', async () => {
@@ -138,7 +165,7 @@ it('does not claim a surviving fixable blocker is unfixable, and offers a retry'
 });
 
 it('splits survivors into what to retry and what it cannot fix', async () => {
-  mockResolve({ published: false, cannot_publish_reasons: ['missing_price', 'stock_unreadable'] });
+  mockResolve({ published: false, cannot_publish_reasons: ['missing_price', 'source_dead'] });
   renderModal(item({ cannot_publish_reasons: ['missing_price'], base_cost: '0.00' }));
 
   await userEvent.type(screen.getByLabelText(/base cost/i), '0.004');
@@ -148,7 +175,7 @@ it('splits survivors into what to retry and what it cannot fix', async () => {
   expect(screen.getByText(/no price from source/i)).toBeInTheDocument();
   // The source-truth one keeps its "can't be fixed here" framing + explanation.
   expect(screen.getByText(/can’t be fixed here/i)).toBeInTheDocument();
-  expect(screen.getByText(/resolves on the next sync/i)).toBeInTheDocument();
+  expect(screen.getByText(/re-capture the product or archive it/i)).toBeInTheDocument();
 });
 
 it('maps a 422 onto the field it names', async () => {

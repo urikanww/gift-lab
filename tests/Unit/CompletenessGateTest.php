@@ -38,7 +38,16 @@ it('flags not printable', function (): void {
         ->toContain('not_printable');
 });
 
-it('flags unreadable stock', function (): void {
-    expect((new CompletenessGate())->reasons(scrapedProduct(['stock_estimate' => null])))
-        ->toContain('stock_unreadable');
+it('flags unreadable stock for a STOCKED item we actually hold', function (): void {
+    expect((new CompletenessGate())->reasons(
+        scrapedProduct(['stock_mode' => 'STOCKED', 'stock_estimate' => null]),
+    ))->toContain('stock_unreadable');
+});
+
+it('waives stock for a buy-per-order (MAKE_TO_ORDER) blank', function (): void {
+    // Stock is unknowable for third-party affiliate listings and checked by a
+    // human at procurement, so a null estimate must NOT block publication.
+    expect((new CompletenessGate())->reasons(
+        scrapedProduct(['stock_mode' => 'MAKE_TO_ORDER', 'stock_estimate' => null]),
+    ))->not->toContain('stock_unreadable');
 });

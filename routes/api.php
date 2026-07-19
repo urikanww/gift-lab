@@ -144,6 +144,12 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // method, price), then re-gate + publish in one call.
     Route::post('/admin/products/{product}/resolve-blockers', [AdminCatalogueController::class, 'resolveBlockers']);
     Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish']);
+    // Bulk-delete (archive) unpublished gate items. POST (not DELETE) so a body
+    // of ids is conventional; registered before the {product} wildcard delete.
+    Route::post('/admin/catalogue/bulk-delete', [AdminCatalogueController::class, 'bulkDestroy']);
+    // Delete (archive) an unpublished gate item. Distinct URI from the product
+    // admin's DELETE /admin/products/{product} so both can coexist.
+    Route::delete('/admin/catalogue/{product}', [AdminCatalogueController::class, 'destroy']);
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone']);

@@ -186,7 +186,7 @@ function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
 }
 
 export default function CatalogueAdminPage() {
-  const { items, meta, counts, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
+  const { items, meta, counts, loading, error, fetch, publish, bulkPublish, deleteProduct, bulkDelete, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
@@ -195,6 +195,11 @@ export default function CatalogueAdminPage() {
 
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
+  // The row awaiting delete confirmation (destructive → explicit confirm).
+  const [deleteTarget, setDeleteTarget] = useState<AdminCatalogueItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   // Holds a snapshot of the row being fixed. Non-null also mounts the popup -
   // its state seeds from props once, so it must unmount between products.
   const [blockersFor, setBlockersFor] = useState<AdminCatalogueItem | null>(null);
@@ -347,12 +352,35 @@ export default function CatalogueAdminPage() {
     }
   };
 
-  // Only READY_TO_APPROVE rows can be bulk-published. Keep the eligible-id set
-  // and prune any stale selections (a row that dropped out of the list or
-  // changed state after a refetch must not linger in `selected`).
-  const eligibleIds = useMemo(
-    () => items.filter((it) => it.publish_state === 'READY_TO_APPROVE').map((it) => it.id),
+  const runDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    const name = deleteTarget.name;
+    const ok = await deleteProduct(deleteTarget.id);
+    setDeleting(false);
+    if (ok) {
+      setDeleteTarget(null);
+      toast({ title: 'Product deleted', description: name, tone: 'success' });
+    } else {
+      toast({
+        title: 'Could not delete',
+        description: useCatalogueAdminStore.getState().error ?? 'Please try again.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  // Every gate row is selectable (all are deletable now that published items are
+  // hidden). Publish still only applies to the READY_TO_APPROVE subset.
+  const selectableIds = useMemo(() => items.map((it) => it.id), [items]);
+  const readyIds = useMemo(
+    () => new Set(items.filter((it) => it.publish_state === 'READY_TO_APPROVE').map((it) => it.id)),
     [items],
+  );
+  // The selected rows eligible for bulk publish (intersection with READY).
+  const readySelected = useMemo(
+    () => [...selected].filter((id) => readyIds.has(id)),
+    [selected, readyIds],
   );
 
   const filterChips = useMemo(() => {
@@ -369,15 +397,17 @@ export default function CatalogueAdminPage() {
     return chips;
   }, [q, classFilter, stateFilter, blocker, source, printMethod, category, ipFlagged, missingLink]);
 
+  // Prune stale selections (a row that dropped out of the list after a refetch
+  // must not linger in `selected`).
   useEffect(() => {
     setSelected((prev) => {
-      const eligible = new Set(eligibleIds);
-      const next = new Set([...prev].filter((id) => eligible.has(id)));
+      const live = new Set(selectableIds);
+      const next = new Set([...prev].filter((id) => live.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [eligibleIds]);
+  }, [selectableIds]);
 
-  const allEligibleSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selected.has(id));
+  const allSelectableSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
 
   const toggleRow = (id: number) => {
     setSelected((prev) => {
@@ -388,14 +418,14 @@ export default function CatalogueAdminPage() {
     });
   };
 
-  const toggleAllEligible = () => {
-    setSelected((prev) => (prev.size === eligibleIds.length ? new Set() : new Set(eligibleIds)));
+  const toggleAllSelectable = () => {
+    setSelected((prev) => (prev.size === selectableIds.length ? new Set() : new Set(selectableIds)));
   };
 
   const runBulkPublish = async () => {
-    if (bulkBusy || selected.size === 0) return;
+    if (bulkBusy || readySelected.length === 0) return;
     setBulkBusy(true);
-    const result = await bulkPublish([...selected]);
+    const result = await bulkPublish(readySelected);
     setBulkBusy(false);
     if (result) {
       toast({
@@ -405,6 +435,25 @@ export default function CatalogueAdminPage() {
       setSelected(new Set());
     } else {
       toast({ title: 'Bulk publish failed', description: 'Please try again.', tone: 'danger' });
+    }
+  };
+
+  const runBulkDelete = async () => {
+    if (bulkDeleting || selected.size === 0) return;
+    setBulkDeleting(true);
+    const result = await bulkDelete([...selected]);
+    setBulkDeleting(false);
+    if (result) {
+      toast({
+        title: result.failed > 0
+          ? `Deleted ${result.deleted}, skipped ${result.failed}`
+          : `Deleted ${result.deleted}`,
+        tone: result.failed > 0 ? 'warning' : 'success',
+      });
+      setSelected(new Set());
+      setBulkDeleteOpen(false);
+    } else {
+      toast({ title: 'Bulk delete failed', description: 'Please try again.', tone: 'danger' });
     }
   };
 
@@ -452,17 +501,27 @@ export default function CatalogueAdminPage() {
             <Badge tone="neutral">{counts.total} total</Badge>
             {counts.pending > 0 && <Badge tone="neutral">{counts.pending} pending</Badge>}
             {counts.ready > 0 && <Badge tone="warning">{counts.ready} ready to approve</Badge>}
-            {counts.published > 0 && <Badge tone="success">{counts.published} published</Badge>}
             {counts.blocked > 0 && <Badge tone="danger">{counts.blocked} blocked</Badge>}
-            {eligibleIds.length > 0 && (
-              <div className="ml-auto">
+            {selected.size > 0 && (
+              <div className="ml-auto flex gap-2">
+                {readyIds.size > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={bulkBusy}
+                    disabled={readySelected.length === 0}
+                    onClick={() => void runBulkPublish()}
+                  >
+                    Publish selected ({readySelected.length})
+                  </Button>
+                )}
                 <Button
                   size="sm"
-                  loading={bulkBusy}
-                  disabled={selected.size === 0}
-                  onClick={() => void runBulkPublish()}
+                  variant="danger"
+                  loading={bulkDeleting}
+                  onClick={() => setBulkDeleteOpen(true)}
                 >
-                  Publish selected ({selected.size})
+                  Delete selected ({selected.size})
                 </Button>
               </div>
             )}
@@ -512,7 +571,6 @@ export default function CatalogueAdminPage() {
               <option value="">All states</option>
               <option value="PENDING">Pending</option>
               <option value="READY_TO_APPROVE">Ready to approve</option>
-              <option value="PUBLISHED">Published</option>
               <option value="CANNOT_PUBLISH">Cannot publish</option>
             </Select>
             <Select label="Blocker" value={draft.blocker} onChange={(e) => setDraftKey('blocker', e.target.value)}>
@@ -602,10 +660,10 @@ export default function CatalogueAdminPage() {
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-[var(--color-primary)]"
-                aria-label="Select all eligible items"
-                checked={allEligibleSelected}
-                disabled={eligibleIds.length === 0}
-                onChange={toggleAllEligible}
+                aria-label="Select all items"
+                checked={allSelectableSelected}
+                disabled={selectableIds.length === 0}
+                onChange={toggleAllSelectable}
               />
             </span>
             <span>Item</span>
@@ -630,10 +688,9 @@ export default function CatalogueAdminPage() {
                 <div className="flex items-center">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-40"
+                    className="h-4 w-4 accent-[var(--color-primary)]"
                     aria-label={`Select ${it.name}`}
                     checked={selected.has(it.id)}
-                    disabled={it.publish_state !== 'READY_TO_APPROVE'}
                     onChange={() => toggleRow(it.id)}
                   />
                 </div>
@@ -720,7 +777,7 @@ export default function CatalogueAdminPage() {
                   )}
                 </div>
 
-                <div className="flex lg:justify-end">
+                <div className="flex flex-col items-stretch gap-2 lg:items-end">
                   {it.publish_state === 'READY_TO_APPROVE' && (
                     <Button
                       size="sm"
@@ -729,17 +786,6 @@ export default function CatalogueAdminPage() {
                       onClick={() => void runRow(it.id, 'Publish', publish)}
                     >
                       Publish
-                    </Button>
-                  )}
-                  {it.publish_state === 'PUBLISHED' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      loading={pendingId === it.id}
-                      disabled={pendingId !== null && pendingId !== it.id}
-                      onClick={() => void runRow(it.id, 'Unpublish', unpublish)}
-                    >
-                      Unpublish
                     </Button>
                   )}
                   {/* No-action states: tell the staffer what unblocks the row
@@ -758,6 +804,17 @@ export default function CatalogueAdminPage() {
                           : 'Fix the blockers at the source - re-checked on next sync.'}
                     </span>
                   )}
+                  {/* Delete (archive) any unpublished row - published items never
+                      reach the gate list, so this is always a not-live draft. */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-danger"
+                    disabled={pendingId !== null || deleting}
+                    onClick={() => setDeleteTarget(it)}
+                  >
+                    Delete
+                  </Button>
                 </div>
 
                 {it.class === 'MODEL_3D' && <Model3dRowTools item={it} />}
@@ -816,6 +873,51 @@ export default function CatalogueAdminPage() {
           }
         />
       )}
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={() => (deleting ? undefined : setDeleteTarget(null))}
+        title="Delete this product?"
+        description={deleteTarget?.name}
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={deleting} onClick={() => void runDelete()}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-muted">
+          It&apos;s removed from the catalogue gate and archived. Not permanent - it can be restored
+          from the product admin.
+        </p>
+      </Modal>
+
+      <Modal
+        open={bulkDeleteOpen}
+        onClose={() => (bulkDeleting ? undefined : setBulkDeleteOpen(false))}
+        title={`Delete ${selected.size} selected ${selected.size === 1 ? 'product' : 'products'}?`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleting}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={bulkDeleting} onClick={() => void runBulkDelete()}>
+              Delete {selected.size}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-muted">
+          They&apos;re removed from the catalogue gate and archived. Not permanent - each can be
+          restored from the product admin.
+        </p>
+      </Modal>
     </div>
   );
 }

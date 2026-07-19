@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Input, Modal, Select, useOptionalToast } from '../ui';
 import { apiError } from '../lib/api';
 import { ShopeeLink } from '../components/ShopeeLink';
+import ResolveBlockersModal from '../components/admin/ResolveBlockersModal';
 import {
   addBlank,
   featureCandidate,
   searchCandidates,
+  type AddBlankResult,
   type Candidate,
   type CandidateSort,
 } from '../lib/recommendations';
+import type { AdminCatalogueItem } from '../types';
 
 const PAGE_SIZE = 20;
 
@@ -35,6 +38,8 @@ export default function BlankRecommendationPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Candidate | null>(null);
   const [help, setHelp] = useState(false);
+  // The freshly-added draft whose blockers the gate popup is resolving.
+  const [resolveItem, setResolveItem] = useState<AdminCatalogueItem | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
 
   const run = async (sortOverride?: CandidateSort) => {
@@ -99,12 +104,58 @@ export default function BlankRecommendationPage() {
     return () => io.disconnect();
   }, [hasMore, loadMore]);
 
-  const act = async (c: Candidate, kind: 'add' | 'feature') => {
-    setBusy(`${kind}:${c.source_product_id}`);
+  const feature = async (c: Candidate) => {
+    setBusy(`feature:${c.source_product_id}`);
     try {
-      if (kind === 'add') await addBlank(c);
-      else await featureCandidate(c);
-      toast({ title: kind === 'add' ? 'Added to gate' : 'Featured', description: c.name, tone: 'success' });
+      await featureCandidate(c);
+      toast({ title: 'Featured', description: c.name, tone: 'success' });
+    } catch (err) {
+      toast({ title: 'Action failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Build the gate-row shape the resolve-blockers popup expects from the
+  // candidate + the add verdict. The physical facts the feed can't read are
+  // null - which is exactly what the popup is there to fill in.
+  const toGateItem = (c: Candidate, res: AddBlankResult): AdminCatalogueItem => ({
+    id: res.id,
+    name: c.name,
+    class: 'SCRAPED_UV',
+    publish_state: res.publish_state,
+    cannot_publish_reasons: res.cannot_publish_reasons,
+    weight: null,
+    dimensions: null,
+    print_method: null,
+    is_printable: false,
+    stock_estimate: null,
+    base_cost: String(res.base_cost ?? c.price ?? 0),
+    currency: c.currency,
+    creator_credit: null,
+    image_url: c.image_url,
+    source_url: c.product_link,
+    source_kind: null,
+    filament_material: null,
+    filament_color: null,
+    est_grams: null,
+    estimates_verified: false,
+    model_file_ref: null,
+  });
+
+  // "Add as blank" now commits the draft to the gate, then opens the same
+  // resolve-blockers popup used on the Catalogue gate so staff can fill the
+  // missing facts (dimensions/weight, print method, price) and publish in place.
+  const addAndFix = async (c: Candidate) => {
+    setBusy(`add:${c.source_product_id}`);
+    try {
+      const res = await addBlank(c);
+      toast({
+        title: 'Added to catalogue gate',
+        description: `${c.name} - draft saved. Resolve its blockers to publish.`,
+        tone: 'success',
+      });
+      setResolveItem(toGateItem(c, res));
     } catch (err) {
       toast({ title: 'Action failed', description: apiError(err), tone: 'danger' });
     } finally {
@@ -200,8 +251,8 @@ export default function BlankRecommendationPage() {
                   note above; procurement uses the plain link on the gate). */}
               <ShopeeLink href={c.offer_link} rel="sponsored nofollow noopener noreferrer" className="w-full">View on Shopee</ShopeeLink>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" loading={busy === `add:${c.source_product_id}`} onClick={() => void act(c, 'add')}>Add as blank</Button>
-                <Button size="sm" variant="outline" loading={busy === `feature:${c.source_product_id}`} onClick={() => void act(c, 'feature')}>Feature</Button>
+                <Button size="sm" loading={busy === `add:${c.source_product_id}`} onClick={() => void addAndFix(c)}>Add as blank</Button>
+                <Button size="sm" variant="outline" loading={busy === `feature:${c.source_product_id}`} onClick={() => void feature(c)}>Feature</Button>
               </div>
             </div>
           </Card>
@@ -217,6 +268,26 @@ export default function BlankRecommendationPage() {
           <Button size="sm" variant="outline" onClick={() => void loadMore()}>Load more</Button>
         )}
       </div>
+
+      {resolveItem && (
+        <ResolveBlockersModal
+          key={resolveItem.id}
+          product={resolveItem}
+          open
+          onClose={() => setResolveItem(null)}
+          onResolved={(published) =>
+            toast(
+              published
+                ? { title: 'Published', description: resolveItem.name, tone: 'success' }
+                : {
+                    title: 'Saved to gate - still blocked',
+                    description: `${resolveItem.name}. Finish it on the Catalogue gate.`,
+                    tone: 'warning',
+                  },
+            )
+          }
+        />
+      )}
 
       <Modal open={zoom !== null} onClose={() => setZoom(null)} title={zoom?.name ?? ''} size="lg">
         {zoom?.image_url && (
