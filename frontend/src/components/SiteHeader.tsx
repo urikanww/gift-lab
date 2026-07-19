@@ -94,11 +94,17 @@ export default function SiteHeader() {
           <ThemeToggle />
           <CartLink count={cartCount} />
           <div className="hidden md:flex md:items-center md:gap-1">
-            <AccountLink user={user} />
-            {user && (
-              <Button variant="ghost" size="sm" onClick={onLogout}>
-                Log out
-              </Button>
+            {user && !isStaffRole(user.role) ? (
+              <AccountMenu user={user} onLogout={onLogout} />
+            ) : (
+              <>
+                <AccountLink user={user} />
+                {user && (
+                  <Button variant="ghost" size="sm" onClick={onLogout}>
+                    Log out
+                  </Button>
+                )}
+              </>
             )}
           </div>
 
@@ -187,6 +193,80 @@ function CategoriesMenu() {
               </span>
             </Link>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // Close on any click outside the menu (standard disclosure pattern). Focus
+  // is NOT restored here - the user clicked elsewhere on purpose.
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setOpen(false);
+          // Keyboard dismissal returns focus to the trigger (mirrors Modal).
+          buttonRef.current?.focus();
+        }
+      }}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          'flex min-h-[44px] items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          open ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
+        )}
+      >
+        {user.name} <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-dropdown mt-1 flex w-48 flex-col rounded-lg border border-border bg-surface p-1 shadow-lg">
+          <Link
+            to="/quotes"
+            onClick={() => setOpen(false)}
+            className="rounded-md px-3 py-2 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            My Orders
+          </Link>
+          <Link
+            to="/account/addresses"
+            onClick={() => setOpen(false)}
+            className="rounded-md px-3 py-2 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Addresses
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="rounded-md px-3 py-2 text-left text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Log out
+          </button>
         </div>
       )}
     </div>
@@ -386,6 +466,11 @@ function MobileDrawer({
                     Procurement
                   </NavLink>
                 </>
+              )}
+              {user && !isStaffRole(user.role) && (
+                <NavLink to="/account/addresses" onClick={onClose} className={navLinkClass}>
+                  Addresses
+                </NavLink>
               )}
               <AccountLink user={user} onClick={onClose} />
               {user && (

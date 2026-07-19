@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
@@ -102,4 +102,12 @@ it('drops track order from the desktop nav - it lives in the footer now', () => 
   renderHeader();
   const nav = screen.getByRole('navigation', { name: /primary/i });
   expect(within(nav).queryByRole('link', { name: /track order/i })).not.toBeInTheDocument();
+});
+
+it('shows a buyer account menu with an Addresses link', () => {
+  useAuthStore.setState({ user: testUser, status: 'ready', error: null });
+  renderHeader();
+
+  fireEvent.click(screen.getByRole('button', { name: /ada buyer/i }));
+  expect(screen.getByRole('link', { name: /addresses/i })).toBeInTheDocument();
 });
