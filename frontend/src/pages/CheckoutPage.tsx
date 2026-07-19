@@ -92,6 +92,9 @@ export default function CheckoutPage() {
 
   const [selection, setSelection] = useState<string>('company'); // 'company' | 'new' | saved id
   const [shipping, setShipping] = useState<ShippingFieldsValue>(EMPTY_SHIPPING);
+  // True once the buyer edits any field: prevents later fetch resolutions /
+  // dep churn from re-prefilling and wiping their typed-in address.
+  const touchedRef = useRef(false);
 
   // Refresh the estimate on mount / whenever the cart changes.
   useEffect(() => {
@@ -105,7 +108,7 @@ export default function CheckoutPage() {
 
   // Default to the first saved address once addresses arrive (only while still on company default).
   useEffect(() => {
-    if (savedAddresses.length > 0 && selection === 'company') {
+    if (!touchedRef.current && savedAddresses.length > 0 && selection === 'company') {
       setSelection(String(savedAddresses[0].id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,6 +124,7 @@ export default function CheckoutPage() {
 
   // Prefill the form whenever the selection (or the underlying defaults) change.
   useEffect(() => {
+    if (touchedRef.current) return;
     if (selection === 'company') {
       setShipping(companyToShipping(company));
     } else if (selection === 'new') {
@@ -249,7 +253,10 @@ export default function CheckoutPage() {
                         <span className="sr-only">Ship to</span>
                         <select
                           value={selection}
-                          onChange={(e) => setSelection(e.target.value)}
+                          onChange={(e) => {
+                            touchedRef.current = false;
+                            setSelection(e.target.value);
+                          }}
                           className="h-11 rounded-md border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {savedAddresses.map((a) => (
@@ -261,9 +268,15 @@ export default function CheckoutPage() {
                           <option value="new">Enter a new address</option>
                         </select>
                       </label>
-                      <ShippingFields value={shipping} onChange={setShipping} />
+                      <ShippingFields
+                        value={shipping}
+                        onChange={(next) => {
+                          touchedRef.current = true;
+                          setShipping(next);
+                        }}
+                      />
                       {!isShippingValid(shipping) && (
-                        <p className="text-xs text-fg-subtle">
+                        <p className="text-xs text-fg-subtle" aria-live="polite">
                           Complete recipient, phone, address line 1, and postal code to place the order.
                         </p>
                       )}
