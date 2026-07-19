@@ -75,3 +75,21 @@ it('lets the owner delete their address', function (): void {
     $this->deleteJson("/api/saved-addresses/{$addr->id}")->assertOk();
     expect(SavedAddress::find($addr->id))->toBeNull();
 });
+
+it('forbids deleting another users address', function (): void {
+    $owner = User::factory()->create();
+    $addr = SavedAddress::factory()->create(['user_id' => $owner->id]);
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->deleteJson("/api/saved-addresses/{$addr->id}")->assertForbidden();
+    expect(SavedAddress::find($addr->id))->not->toBeNull();
+});
+
+it('lists only the callers own addresses', function (): void {
+    $me = User::factory()->create();
+    SavedAddress::factory()->create(['user_id' => $me->id]);
+    SavedAddress::factory()->create(['user_id' => User::factory()->create()->id]);
+    Sanctum::actingAs($me);
+
+    $this->getJson('/api/saved-addresses')->assertOk()->assertJsonCount(1, 'data');
+});
