@@ -203,11 +203,14 @@ export default function CheckoutPage() {
   };
 
   const finishCelebration = () => {
-    const id = celebrating;
     const ref = placedQuote?.reference;
     setCelebrating(null);
     clear();
-    toast({ title: 'Order placed', description: `Quote #${id} is on its way.`, tone: 'success' });
+    toast({
+      title: 'Order placed',
+      description: ref ? `Order ${ref} is on its way.` : 'Your order is on its way.',
+      tone: 'success',
+    });
     if (ref) navigate(`/orders/${ref}`);
   };
 
@@ -481,8 +484,8 @@ export default function CheckoutPage() {
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <SuccessBurst />
           <p className="text-sm text-fg-muted">
-            Quote{celebrating ? ` #${celebrating}` : ''} has been created. You can track its status any time
-            from your quotes.
+            Order{placedQuote ? ` ${placedQuote.reference}` : ''} has been created. You can track its status
+            any time from your orders.
           </p>
           {placedQuote?.tracking_link && (
             <div className="mt-2 flex flex-col items-center gap-3 border-t border-border pt-4">

@@ -130,7 +130,7 @@ export default function QuoteDetailPage() {
                 { label: 'Home', to: '/' },
                 { label: 'My account', to: '/account' },
                 { label: 'My Orders', to: '/quotes' },
-                { label: `Quote #${quote.id}` },
+                { label: `Order ${quote.reference}` },
               ]}
             />
           </Motion>
@@ -141,7 +141,7 @@ export default function QuoteDetailPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 id="quote-heading" className="font-display text-3xl text-fg">
-                Quote #{quote.id}
+                Order {quote.reference}
               </h1>
               {quote.created_at && (
                 <p className="mt-1 text-sm text-fg-muted">

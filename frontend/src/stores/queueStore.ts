@@ -17,6 +17,8 @@ let queueUpdatedListener: ((e: QueueUpdatedPayload) => void) | null = null;
 interface QueueUpdatedPayload {
   job_id: number;
   quote_id: number;
+  /** Displayed identifier; quote_id stays the key rows are matched on. */
+  quote_reference?: string | null;
   track: ProductionJob['track'];
   state: JobState;
   ready_at: string | null;
@@ -156,6 +158,9 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
         const next: ProductionJob = {
           id: e.job_id,
           quote_id: e.quote_id,
+          // The broadcast carries the reference, but fall back to what we
+          // already loaded so a realtime tick can never blank the identifier.
+          quote_reference: e.quote_reference ?? existing?.quote_reference ?? null,
           track: e.track,
           state: e.state,
           ready_at: e.ready_at,

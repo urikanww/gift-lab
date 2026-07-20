@@ -101,7 +101,7 @@ export default function ProcurementPage() {
                         <p className="font-display text-lg leading-tight text-fg">
                           Line #{a.line_item_id}
                         </p>
-                        <p className="text-sm text-fg-muted">Quote #{a.quote_id}</p>
+                        <p className="text-sm text-fg-muted">Order {a.quote_reference}</p>
                       </div>
                       <Badge tone="warning">{a.reason}</Badge>
                     </div>

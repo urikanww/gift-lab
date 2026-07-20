@@ -36,7 +36,7 @@ describe('ReorderRail', () => {
     renderRail();
 
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: /quote #7/i })).toHaveAttribute('href', '/orders/REF7'),
+      expect(screen.getByRole('link', { name: /order REF7/i })).toHaveAttribute('href', '/orders/REF7'),
     );
   });
 
@@ -59,7 +59,7 @@ describe('ReorderRail', () => {
     const { container } = renderRail();
 
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: /quote #7/i })).toBeInTheDocument(),
+      expect(screen.getByRole('link', { name: /order REF7/i })).toBeInTheDocument(),
     );
 
     const list = container.querySelector('ul');

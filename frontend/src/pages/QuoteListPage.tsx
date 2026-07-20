@@ -244,7 +244,7 @@ function QuoteRow({
           className="font-medium text-fg hover:text-primary focus-visible:outline-none focus-visible:underline"
           onClick={(e) => e.stopPropagation()}
         >
-          Quote #{quote.id}
+          Order {quote.reference}
         </Link>
       </td>
       {showCompany && (
@@ -277,7 +277,7 @@ function QuoteCard({ quote, showCompany }: { quote: Quote; showCompany: boolean 
               className="font-display text-lg text-fg focus-visible:outline-none focus-visible:underline"
               onClick={(e) => e.stopPropagation()}
             >
-              Quote #{quote.id}
+              Order {quote.reference}
             </Link>
             <p className="mt-0.5 text-xs text-fg-muted">{formatDate(quote.created_at)}</p>
             {showCompany && (

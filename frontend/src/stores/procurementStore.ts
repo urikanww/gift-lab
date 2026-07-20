@@ -8,6 +8,8 @@ let reconfirmListener: ((e: ReconfirmAlert) => void) | null = null;
 export interface ReconfirmAlert {
   line_item_id: number;
   quote_id: number;
+  /** Displayed identifier; quote_id stays the key alerts are matched on. */
+  quote_reference?: string | null;
   reason: string;
   ordered_qty: number;
   procured_qty: number | null;

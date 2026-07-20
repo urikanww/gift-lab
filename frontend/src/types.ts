@@ -257,6 +257,8 @@ export interface Customization {
 export interface LineItem {
   id: number;
   quote_id: number;
+  /** Display identity. quote_id remains the key realtime updates match on. */
+  quote_reference?: string | null;
   job_id: number | null;
   product_id: number;
   variant_id: number | null;
@@ -275,6 +277,8 @@ export interface LineItem {
 export interface Proof {
   id: number;
   quote_id: number;
+  /** Display identity. quote_id remains the key realtime updates match on. */
+  quote_reference?: string | null;
   version: number;
   artwork_version_ref: string;
   state: ProofState;
@@ -311,6 +315,8 @@ export interface Quote {
 export interface ProductionJob {
   id: number;
   quote_id: number;
+  /** Display identity. quote_id remains the key realtime updates match on. */
+  quote_reference?: string | null;
   track: JobTrack;
   state: JobState;
   ready_at: string | null;

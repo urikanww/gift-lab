@@ -79,7 +79,7 @@ export default function BuyerDashboardPage() {
                     className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
                   >
                     <span className="text-sm text-fg">
-                      Quote #{o.id} ·{' '}
+                      Order {o.reference} ·{' '}
                       <span className="text-fg-muted">{action?.note ?? humanizeState(o.state)}</span>
                     </span>
                     <LinkButton to={`/orders/${o.reference}`} variant="secondary" size="sm">
@@ -145,7 +145,7 @@ export default function BuyerDashboardPage() {
                   to={`/orders/${q.reference}`}
                   className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:opacity-80 focus-visible:outline-none focus-visible:underline"
                 >
-                  <span className="font-medium text-fg">Quote #{q.id}</span>
+                  <span className="font-medium text-fg">Order {q.reference}</span>
                   <Badge tone={quoteStateTone(q.state)} dot>
                     {humanizeState(q.state)}
                   </Badge>

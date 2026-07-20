@@ -25,6 +25,7 @@ function seedQuote(state: QuoteState) {
     current: {
       id: 42,
       company_id: 7,
+      reference: '9BWVKWCDXH',
       state,
       currency: 'SGD',
       subtotal: '100.00',
@@ -420,4 +421,17 @@ it('confirming the cancel modal calls cancelQuote with the trimmed reason and cl
   await waitFor(() =>
     expect(screen.queryByRole('button', { name: /confirm cancellation/i })).not.toBeInTheDocument(),
   );
+});
+
+it('identifies the order by reference, never by the sequential id', async () => {
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, id: 42, reference: '9BWVKWCDXH' },
+  } as any);
+  asBuyer();
+  renderPage();
+
+  expect(screen.getAllByText(/9BWVKWCDXH/).length).toBeGreaterThan(0);
+  // A stray "#42" anywhere means a surface was missed.
+  expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
 });

@@ -12,7 +12,7 @@ const baseSummary = {
   in_production: 1,
   completed: 5,
   total: 8,
-  awaiting_orders: [{ id: 12, state: 'PROOFING' as const }],
+  awaiting_orders: [{ id: 12, reference: '9BWVKWCDXH', state: 'PROOFING' as const }],
 };
 
 function seed(summary = baseSummary) {
@@ -22,7 +22,9 @@ function seed(summary = baseSummary) {
   } as any);
   useQuoteStore.setState({
     summary,
-    quotes: [{ id: 12, state: 'PROOFING', currency: 'SGD', total: '457.00' }] as any,
+    quotes: [
+      { id: 12, reference: '9BWVKWCDXH', state: 'PROOFING', currency: 'SGD', total: '457.00' },
+    ] as any,
     loading: false,
     fetchSummary: vi.fn(),
     fetchQuotes: vi.fn(),
@@ -70,4 +72,15 @@ it('links to the full orders list', () => {
   seed();
   renderPage();
   expect(screen.getByRole('link', { name: /view all orders/i })).toBeInTheDocument();
+});
+
+it('identifies orders by reference, never by the sequential id', () => {
+  seed();
+  renderPage();
+
+  // Positive control: the reference IS rendered in the awaiting callout and
+  // the recent-orders list, so removing the identifier could not pass here.
+  expect(screen.getAllByText(/9BWVKWCDXH/).length).toBeGreaterThan(0);
+  // A stray "#12" anywhere means a surface was missed.
+  expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
 });

@@ -309,7 +309,7 @@ export default function ProductionQueuePage() {
                         />
                         <div>
                           <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
-                          <p className="text-sm text-fg-muted">Quote #{j.quote_id}</p>
+                          <p className="text-sm text-fg-muted">Order {j.quote_reference}</p>
                         </div>
                       </div>
                       <Badge tone={meta.tone}>{meta.label}</Badge>

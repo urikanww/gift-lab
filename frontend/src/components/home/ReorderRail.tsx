@@ -54,10 +54,10 @@ export default function ReorderRail() {
           <li key={q.id} className="w-56 shrink-0">
             <Link
               to={`/orders/${q.reference}`}
-              aria-label={`Quote #${q.id}`}
+              aria-label={`Order ${q.reference}`}
               className="flex min-h-[44px] flex-col gap-1 rounded-xl border border-border bg-surface p-4 shadow-card transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="font-display text-sm text-fg">Quote #{q.id}</span>
+              <span className="font-display text-sm text-fg">Order {q.reference}</span>
               <span className="text-xs text-fg-muted">
                 {q.currency} {q.total}
               </span>

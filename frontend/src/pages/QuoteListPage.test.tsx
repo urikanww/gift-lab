@@ -48,6 +48,7 @@ afterEach(() => {
 
 const sampleQuote = {
   id: 42,
+  reference: '9BWVKWCDXH',
   company_id: 7,
   company_name: 'Acme Gifts Pte Ltd',
   state: 'SENT',
@@ -326,4 +327,21 @@ it('re-applies the search term when the socket reconnects', async () => {
 
   expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123');
   expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
+});
+
+it('identifies orders by reference, never by the sequential id', () => {
+  seedQuotes();
+  useAuthStore.setState({
+    user: { id: 2, company_id: 7, name: 'Ada', email: 'ada@x.test', role: 'buyer' },
+    status: 'ready',
+    error: null,
+  });
+
+  renderPage();
+
+  // Positive control: the reference IS on screen (desktop row + mobile card),
+  // so deleting the identifier outright could not pass this test.
+  expect(screen.getAllByText(/9BWVKWCDXH/).length).toBeGreaterThan(0);
+  // A stray "#42" anywhere means a surface was missed.
+  expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
 });
