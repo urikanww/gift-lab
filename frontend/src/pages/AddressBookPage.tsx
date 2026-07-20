@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Card } from '../ui';
+import Breadcrumb from '../components/Breadcrumb';
 import { MAX_SAVED_ADDRESSES, useSavedAddressStore } from '../stores/savedAddressStore';
 import ShippingFields, {
   EMPTY_SHIPPING,
@@ -65,7 +66,15 @@ export default function AddressBookPage() {
 
   return (
     <section aria-labelledby="addresses-heading" className="mx-auto max-w-2xl">
-      <h1 id="addresses-heading" className="mb-6 font-display text-3xl text-fg">
+      <Breadcrumb
+        items={[
+          { label: 'Home', to: '/' },
+          { label: 'My account', to: '/account' },
+          { label: 'Saved addresses' },
+        ]}
+      />
+
+      <h1 id="addresses-heading" className="mb-6 mt-4 font-display text-3xl text-fg">
         Saved addresses
       </h1>
 

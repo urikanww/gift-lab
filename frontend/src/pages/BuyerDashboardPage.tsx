@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useQuoteStore } from '../stores/quoteStore';
 import { Badge, Card, LinkButton, Skeleton } from '../ui';
+import Breadcrumb from '../components/Breadcrumb';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 import { humanizeState, quoteStateTone } from '../lib/quoteStatus';
 import type { QuoteState } from '../types';
@@ -33,6 +34,8 @@ export default function BuyerDashboardPage() {
 
   return (
     <section aria-labelledby="dashboard-heading" className="flex flex-col gap-6">
+      <Breadcrumb items={[{ label: 'Home', to: '/' }, { label: 'My account' }]} />
+
       <Motion variants={fadeInUp} initial="hidden" animate="visible">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

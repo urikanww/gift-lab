@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
 import { Badge, Button, Card, EmptyState, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
+import Breadcrumb from '../components/Breadcrumb';
 import {
   Motion,
   fadeInUp,
@@ -32,7 +33,19 @@ export default function QuoteListPage() {
 
   return (
     <section aria-labelledby="quotes-heading">
-      <Motion variants={fadeInUp} initial="hidden" animate="visible" className="mb-6">
+      {/* Buyers-only: staff reach this from the console, where "My account" is
+          not their path and the crumb would point somewhere they never came from. */}
+      {!staff && (
+        <Breadcrumb
+          items={[
+            { label: 'Home', to: '/' },
+            { label: 'My account', to: '/account' },
+            { label: 'My Orders' },
+          ]}
+        />
+      )}
+
+      <Motion variants={fadeInUp} initial="hidden" animate="visible" className="mb-6 mt-4">
         <h1 id="quotes-heading" className="font-display text-3xl text-fg">
           {/* Buyers reach this page via the "My Orders" nav item - keep the
               title consistent with that entry point. Staff keep "Quotes". */}
