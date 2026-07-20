@@ -113,9 +113,11 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/quotes', [QuoteController::class, 'store'])->middleware('throttle:8,1');
     // {ref} resolves by opaque reference OR numeric id (see controller).
     Route::get('/quotes/{ref}', [QuoteController::class, 'show']);
-    // Buyer-facing order timeline (state trail, oldest first). Tenancy is the
-    // view policy's call - see QuoteController::history.
-    Route::get('/quotes/{quote}/history', [QuoteController::class, 'history']);
+    // Buyer-facing order timeline (state trail, oldest first). {ref} resolves by
+    // reference OR numeric id, matching GET /quotes/{ref} above, so the UI can
+    // pass through the reference it loaded the order with. Tenancy is the view
+    // policy's call - see QuoteController::history.
+    Route::get('/quotes/{ref}/history', [QuoteController::class, 'history']);
     Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend']);
     Route::post('/quotes/{quote}/send', [QuoteController::class, 'send']);
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);

@@ -169,9 +169,26 @@ class QuoteController extends Controller
     /**
      * The quote's state trail, oldest first, for the buyer-facing order
      * timeline. Reads the audit rows Quote::transitionTo() writes.
+     *
+     * Resolves {ref} exactly as show() does - opaque reference or numeric id -
+     * so the buyer UI can pass through the same identifier it loaded the order
+     * with (/orders/{reference}) instead of needing the id it never sees.
      */
-    public function history(Request $request, Quote $quote): AnonymousResourceCollection
+    public function history(Request $request, string $ref): AnonymousResourceCollection
     {
+        // No company_id scope on this query, deliberately: it resolves exactly
+        // one row and the policy below authorises it, mirroring show(). A
+        // tenancy scope here would sit beside a bare orWhere, which is the flat-
+        // orWhere escape - the orWhere would break back out of the scope.
+        $quote = Quote::query()
+            ->where('reference', $ref)
+            // Gated on all-digit input so a reference containing digits is never
+            // compared against the id column (same reasoning as index()'s search).
+            ->when(ctype_digit($ref), fn ($q) => $q->orWhere('id', (int) $ref))
+            // Before authorize, as in show(): an unknown order is a 404, not a
+            // 403 - a 403 on a nonexistent id would confirm which ids exist.
+            ->firstOrFail();
+
         // The policy, not an inline company_id compare: tenancy lives in one
         // place and already covers staff-sees-everything. A bespoke check on a
         // new route is how cross-tenant leaks get introduced.

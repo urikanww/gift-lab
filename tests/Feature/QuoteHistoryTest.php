@@ -89,7 +89,7 @@ it('records each hop of a multi-step journey in order', function (): void {
 
 /*
 |--------------------------------------------------------------------------
-| GET /api/quotes/{quote}/history
+| GET /api/quotes/{ref}/history
 |--------------------------------------------------------------------------
 | The read side of the trail above. Tenancy is the policy's call, not an
 | inline company_id compare, and the actor is rendered by NAME only - a buyer
@@ -139,7 +139,11 @@ it('refuses a buyer reading another company history with 403', function (): void
 
     // 403, not 200-with-an-empty-list: an empty list would silently confirm the
     // order exists and would go green if the tenancy filter were ever dropped.
+    //
+    // Both identifier shapes, because they are two different branches of the
+    // lookup - and the reference is the one the buyer UI actually passes.
     $this->getJson("/api/quotes/{$quote->id}/history")->assertForbidden();
+    $this->getJson("/api/quotes/{$quote->reference}/history")->assertForbidden();
 });
 
 it('never leaks an email address in the history payload', function (): void {
@@ -198,4 +202,56 @@ it('returns 200 and an empty array for a quote with no transitions', function ()
     $this->getJson("/api/quotes/{$quote->id}/history")
         ->assertOk()
         ->assertExactJson(['data' => []]);
+});
+
+it('resolves the history by opaque reference as well as by id', function (): void {
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create([
+        'company_id' => $buyer->company_id,
+        'state' => 'DRAFT',
+    ]);
+
+    Sanctum::actingAs($buyer);
+
+    $quote->transitionTo(QuoteState::Sent);
+
+    // The buyer UI loads an order at /orders/{reference} and never sees the id,
+    // so it must be able to pass that same identifier straight through here.
+    $response = $this->getJson("/api/quotes/{$quote->reference}/history")->assertOk();
+
+    expect($response->json('data'))->toHaveCount(1)
+        ->and($response->json('data.0.from'))->toBe('DRAFT')
+        ->and($response->json('data.0.to'))->toBe('SENT');
+});
+
+it('returns 404 for an identifier that matches no quote', function (): void {
+    Sanctum::actingAs(User::factory()->create());
+
+    // Missing, not forbidden: a 403 on an unknown id would confirm which ids
+    // exist. Both shapes of identifier take the same not-found path.
+    $this->getJson('/api/quotes/NOSUCHREF01/history')->assertNotFound();
+    $this->getJson('/api/quotes/999999/history')->assertNotFound();
+});
+
+it('never matches a digit-leading reference against the id column', function (): void {
+    $buyer = User::factory()->create();
+
+    $quote = Quote::factory()->create([
+        'company_id' => $buyer->company_id,
+        'state' => 'DRAFT',
+    ]);
+
+    Sanctum::actingAs($buyer);
+
+    $quote->transitionTo(QuoteState::Sent);
+
+    // References are drawn from an alphabet that includes 0-9, so a real one can
+    // lead with a digit; cast naively, "<id>ABCDEFGHJ" collapses to that id.
+    // Nothing owns this reference, so the only honest answer is 404.
+    //
+    // Deliberately shaped so exactly one row can match either way: without the
+    // ctype_digit gate the orWhere resolves this to the quote whose id is the
+    // numeric prefix and serves ITS timeline. Asserting on which row wins a
+    // two-row match would prove nothing - that order is engine-dependent.
+    $this->getJson("/api/quotes/{$quote->id}ABCDEFGHJ/history")->assertNotFound();
 });
