@@ -12,28 +12,8 @@ import TrackingQr from '../components/TrackingQr';
 import Breadcrumb from '../components/Breadcrumb';
 import CustomizationPreview from '../components/CustomizationPreview';
 import ProductThumb from '../components/product/ProductThumb';
+import QuoteTimeline from '../components/quote/QuoteTimeline';
 import type { LineItem, Proof, Quote, QuoteState } from '../types';
-
-/** Ordered happy-path lifecycle used to render the status timeline. */
-const TIMELINE: QuoteState[] = [
-  'DRAFT',
-  'SENT',
-  'ACCEPTED',
-  'PROOFING',
-  'PROOF_APPROVED',
-  'INVOICED',
-  'CONFIRMED',
-  'PROCURING',
-  'READY',
-];
-
-function timelineIndex(state: QuoteState): number {
-  const i = TIMELINE.indexOf(state);
-  if (i !== -1) return i;
-  // Off-path states (CHANGES_REQUESTED, CLOSED, CANCELLED) - treat as end/first.
-  if (state === 'CLOSED') return TIMELINE.length - 1;
-  return 0;
-}
 
 /**
  * Passive "what happens next" copy for buyer-facing states that carry no buyer
@@ -196,7 +176,7 @@ export default function QuoteDetailPage() {
 
         {/* Status timeline */}
         <Motion variants={staggerItem}>
-          <StatusTimeline state={quote.state} />
+          <QuoteTimeline state={quote.state} />
         </Motion>
 
         {/* Login-free tracking link + QR - share with the recipient. */}
@@ -621,61 +601,6 @@ export default function QuoteDetailPage() {
         )}
       </section>
     </Motion>
-  );
-}
-
-function StatusTimeline({ state }: { state: QuoteState }) {
-  const cancelled = state === 'CANCELLED';
-  const currentIdx = timelineIndex(state);
-
-  if (cancelled) {
-    return (
-      <Card padding="md">
-        <div className="flex items-center gap-2">
-          <Badge tone="danger" dot>
-            Cancelled
-          </Badge>
-          <span className="text-sm text-fg-muted">This quote was cancelled.</span>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card padding="md">
-      <ol className="flex flex-wrap items-center gap-x-2 gap-y-3">
-        {TIMELINE.map((step, i) => {
-          const done = i < currentIdx;
-          const active = i === currentIdx;
-          return (
-            <li key={step} className="flex items-center gap-2">
-              <span
-                className={
-                  'flex h-6 w-6 items-center justify-center rounded-full text-2xs font-semibold ' +
-                  (active
-                    ? 'bg-primary text-primary-fg'
-                    : done
-                      ? 'bg-success text-white'
-                      : 'bg-surface-2 text-fg-subtle')
-                }
-                aria-hidden="true"
-              >
-                {done ? '✓' : i + 1}
-              </span>
-              <span
-                className={
-                  'text-xs ' + (active ? 'font-semibold text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle')
-                }
-              >
-                {humanizeState(step)}
-                {active && <span className="sr-only"> (current status)</span>}
-              </span>
-              {i < TIMELINE.length - 1 && <span className="mx-1 h-px w-4 bg-border" aria-hidden="true" />}
-            </li>
-          );
-        })}
-      </ol>
-    </Card>
   );
 }
 
