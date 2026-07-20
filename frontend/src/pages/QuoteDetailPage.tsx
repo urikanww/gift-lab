@@ -13,6 +13,7 @@ import Breadcrumb from '../components/Breadcrumb';
 import CustomizationPreview from '../components/CustomizationPreview';
 import ProductThumb from '../components/product/ProductThumb';
 import QuoteTimeline from '../components/quote/QuoteTimeline';
+import StatusHistory from '../components/quote/StatusHistory';
 import type { LineItem, Proof, Quote, QuoteState } from '../types';
 
 /**
@@ -177,6 +178,11 @@ export default function QuoteDetailPage() {
         {/* Status timeline */}
         <Motion variants={staggerItem}>
           <QuoteTimeline state={quote.state} />
+        </Motion>
+
+        {/* Recorded state changes - how the order got where it is. */}
+        <Motion variants={staggerItem}>
+          <StatusHistory reference={quote.reference} />
         </Motion>
 
         {/* Login-free tracking link + QR - share with the recipient. */}
