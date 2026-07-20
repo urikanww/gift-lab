@@ -14,6 +14,14 @@ import type {
 // Unregister handle for the reconnect-refetch subscription.
 let offReconnect: (() => void) | null = null;
 
+// Monotonic request token for the list fetch, mirroring CataloguePage: only the
+// latest initiated request may commit. searchTerm is written at request START
+// and rows at RESOLVE, so without this a slow response for an old term lands
+// after a newer one and leaves the store describing rows it did not produce.
+// Reachable in practice - the reconnect refetch fires on an arbitrary socket
+// event, and the debounce cancels its timer but never an in-flight request.
+let fetchQuotesSeq = 0;
+
 interface QuoteStateChangedPayload {
   quote_id: number;
   state: QuoteState;
@@ -85,6 +93,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   searchTerm: undefined,
 
   fetchQuotes: async (page = 1, term) => {
+    const seq = ++fetchQuotesSeq;
     set({ loading: true, error: null, searchTerm: term });
     try {
       // Omitted rather than sent empty: the API treats a blank q as no filter,
@@ -92,6 +101,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       const { data } = await api.get<Paginated<Quote>>('/quotes', {
         params: term ? { page, q: term } : { page },
       });
+      if (seq !== fetchQuotesSeq) return;
       set({
         quotes: data.data,
         page: data.meta?.current_page ?? page,
@@ -99,6 +109,9 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
         loading: false,
       });
     } catch (err) {
+      // A superseded request's failure is equally stale - surfacing it would
+      // show an error for a search the user has already moved on from.
+      if (seq !== fetchQuotesSeq) return;
       set({ loading: false, error: apiError(err) });
     }
   },

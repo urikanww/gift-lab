@@ -5,6 +5,7 @@ import { ThemeProvider } from '../ui';
 import QuoteListPage from './QuoteListPage';
 import { useAuthStore } from '../stores/authStore';
 import { useQuoteStore } from '../stores/quoteStore';
+import api from '../lib/api';
 
 // The store tests below drive the REAL fetchQuotes, which would otherwise fire
 // an XHR; the page tests seed their own fetchQuotes and never touch this.
@@ -40,6 +41,7 @@ afterEach(() => {
   // the search effect (keyed on fetchQuotes identity) against the real API.
   cleanup();
   vi.useRealTimers();
+  capturedReconnect = null;
   useQuoteStore.setState(initialQuoteStore, true);
   useAuthStore.setState(initialAuthStore, true);
 });
@@ -194,11 +196,34 @@ it('shows search-specific empty copy when a term matches nothing', async () => {
   await tick(300);
 
   expect(screen.getByText(/no orders match that search/i)).toBeInTheDocument();
-  expect(screen.getByText(/ZZZNOPE/)).toBeInTheDocument();
+  // Scoped to the description: the sr-only status region names the term too.
+  expect(screen.getByText(/nothing matches "ZZZNOPE"/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /clear search/i })).toBeInTheDocument();
   // The no-orders-at-all copy must NOT appear - that is the false, alarming one.
   expect(screen.queryByText(/no quotes yet/i)).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /browse catalogue/i })).not.toBeInTheDocument();
+});
+
+// WCAG 4.1.3: focus stays in the input while the list is swapped underneath it,
+// and the skeleton is aria-hidden, so the result count must be announced.
+it('announces the result count to screen readers', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ fetchQuotes } as any);
+  renderPage();
+
+  // Continuously mounted, so it is already present before any search runs.
+  expect(screen.getByRole('status')).toHaveTextContent('1 order');
+
+  fireEvent.change(searchBox(), { target: { value: 'ZZZNOPE' } });
+  await tick(300);
+  // act() so the store update actually flushes to the DOM before asserting.
+  await act(async () => {
+    useQuoteStore.setState({ quotes: [] } as any);
+  });
+
+  expect(screen.getByRole('status')).toHaveTextContent('0 orders matching "ZZZNOPE"');
 });
 
 // Inverse, guarding against the condition being flipped: with no term, a
@@ -237,6 +262,46 @@ it('records the search term in the store when fetching', async () => {
   await useQuoteStore.getState().fetchQuotes(1, 'ABC123');
 
   expect(useQuoteStore.getState().searchTerm).toBe('ABC123');
+});
+
+// The query string IS the contract with QuoteController::index. Nothing else in
+// this branch exercises the real endpoint, so pin the shape here.
+it('sends q only when a term is set', async () => {
+  const apiGet = vi.mocked(api.get);
+  apiGet.mockClear();
+
+  await useQuoteStore.getState().fetchQuotes(2, 'ABC123');
+  expect(apiGet).toHaveBeenLastCalledWith('/quotes', { params: { page: 2, q: 'ABC123' } });
+
+  await useQuoteStore.getState().fetchQuotes(1);
+  expect(apiGet).toHaveBeenLastCalledWith('/quotes', { params: { page: 1 } });
+});
+
+// Out-of-order responses. searchTerm is written at request START and rows at
+// RESOLVE, so an old slow response landing after a newer one would leave the
+// store holding rows that its own searchTerm did not produce.
+it('ignores a stale response that resolves after a newer request', async () => {
+  const apiGet = vi.mocked(api.get);
+  let resolveOld!: (value: unknown) => void;
+  let resolveNew!: (value: unknown) => void;
+  const page = (id: number) => ({
+    data: { data: [{ id }], meta: { current_page: 1, last_page: 1 } },
+  });
+  apiGet
+    .mockReturnValueOnce(new Promise((resolve) => (resolveOld = resolve)) as never)
+    .mockReturnValueOnce(new Promise((resolve) => (resolveNew = resolve)) as never);
+
+  const oldFetch = useQuoteStore.getState().fetchQuotes(1, 'OLD');
+  const newFetch = useQuoteStore.getState().fetchQuotes(1, 'NEW');
+
+  // The newer request wins the race, then the older one finally lands.
+  resolveNew(page(2));
+  await newFetch;
+  resolveOld(page(1));
+  await oldFetch;
+
+  expect(useQuoteStore.getState().quotes).toEqual([{ id: 2 }]);
+  expect(useQuoteStore.getState().searchTerm).toBe('NEW');
 });
 
 // The reason the term lives in the store at all. subscribeCompany registers a

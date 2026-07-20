@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
-import { Badge, Button, Card, EmptyState, Skeleton } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import Breadcrumb from '../components/Breadcrumb';
 import {
@@ -81,16 +81,31 @@ export default function QuoteListPage() {
 
       {/* Outside the loading/empty branches below: a search that matches nothing
           must keep its own box on screen so the user can clear or amend the term. */}
-      <label className="mb-4 block">
-        <span className="sr-only">Search orders</span>
-        <input
+      <div className="mb-4 max-w-sm">
+        <Input
           type="search"
+          label="Search orders"
+          placeholder="Search by order reference or id"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          placeholder="Search by order reference or id"
-          className="w-full max-w-sm rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
-      </label>
+      </div>
+
+      {/* Focus stays in the input while the list is replaced underneath it, and
+          QuoteListSkeleton is aria-hidden, so without this the whole exchange is
+          silent to a screen reader (WCAG 4.1.3). Must stay OUTSIDE the ternary
+          below: a live region that mounts already holding content is announced
+          unreliably. The error arm is deliberately empty - ErrorState carries
+          role="alert", and both would announce one event twice. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {loading
+          ? 'Loading orders…'
+          : error
+            ? ''
+            : `${quotes.length} order${quotes.length === 1 ? '' : 's'}${
+                activeTerm ? ` matching "${activeTerm}"` : ''
+              }`}
+      </span>
 
       {loading ? (
         <QuoteListSkeleton />
