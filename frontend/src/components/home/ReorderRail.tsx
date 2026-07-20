@@ -44,9 +44,12 @@ export default function ReorderRail() {
           View all
         </Link>
       </div>
-      <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* A rail, not a grid: with up to MAX_QUOTES cards a 3-column track leaves
+          a lone quote stranded beside two empty columns. Fixed-width cards that
+          overflow into a scroll read as deliberate at any count. */}
+      <ul className="mt-4 flex gap-3 overflow-x-auto pb-1">
         {quotes.map((q) => (
-          <li key={q.id}>
+          <li key={q.id} className="w-56 shrink-0">
             <Link
               to={`/orders/${q.reference}`}
               aria-label={`Quote #${q.id}`}

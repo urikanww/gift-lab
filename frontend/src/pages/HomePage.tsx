@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Button, EmptyState } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { CardSkeleton, ProductCard } from '../components/product/ProductCard';
-import CategoryRail from '../components/home/CategoryRail';
 import PromoTiles from '../components/home/PromoTiles';
 import ProductRail from '../components/home/ProductRail';
 import ReorderRail from '../components/home/ReorderRail';
@@ -73,12 +72,14 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-8 sm:gap-10">
-      {/* The shelf opens straight into the category band - a marketplace, not a
+      {/* The shelf opens on merchandising, not navigation - a marketplace, not a
           pitch page - so nothing here is a visible headline. The outline still
-          needs a root, and the h2s below need something to hang under. */}
+          needs a root, and the h2s below need something to hang under.
+          Category links live in the header (dropdown + mobile drawer); a third
+          copy on the shelf cost the page's best strip and merchandised nothing.
+          CategoryRail is still in the tree if that call needs reversing. */}
       <h1 className="sr-only">Personalised gifts for teams, in bulk</h1>
 
-      <CategoryRail />
       <PromoTiles />
 
       {/* Staff see every company's quotes, so "reorder yours" is meaningless to

@@ -25,23 +25,38 @@ export default function PromoTiles() {
   const tiles = [{ to: '/products', title: 'Bulk pricing', blurb: bulkBlurb, icon: '🏢' }];
 
   return (
-    <ul className="grid grid-cols-1 gap-3">
+    <div className="flex flex-col gap-3">
       {tiles.map((t) => (
-        <li key={t.to}>
-          <Link
-            to={t.to}
-            className="flex h-full items-start gap-3 rounded-2xl border border-border bg-gradient-to-br from-brand-50 via-surface to-accent-50 p-5 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        <Link
+          key={t.to}
+          to={t.to}
+          className="flex min-h-[44px] items-center gap-3 rounded-xl border border-border bg-gradient-to-r from-brand-50 via-surface to-accent-50 px-4 py-3 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="text-xl" aria-hidden="true">
+            {t.icon}
+          </span>
+          {/* Title and blurb sit on one line so a single promo reads as a band
+              rather than a mostly-empty card. */}
+          <span className="flex-1 text-sm">
+            <span className="font-display text-fg">{t.title}</span>{' '}
+            <span className="text-fg-muted">{t.blurb}</span>
+          </span>
+          <svg
+            viewBox="0 0 20 20"
+            className="h-4 w-4 shrink-0 text-fg-subtle"
+            fill="none"
+            aria-hidden="true"
           >
-            <span className="text-3xl" aria-hidden="true">
-              {t.icon}
-            </span>
-            <span>
-              <span className="block font-display text-base text-fg">{t.title}</span>
-              <span className="block text-sm text-fg-muted">{t.blurb}</span>
-            </span>
-          </Link>
-        </li>
+            <path
+              d="M8 5l5 5-5 5"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </Link>
       ))}
-    </ul>
+    </div>
   );
 }

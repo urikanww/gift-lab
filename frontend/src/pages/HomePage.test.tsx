@@ -81,6 +81,16 @@ describe('HomePage', () => {
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
   });
 
+  it('leaves category navigation to the header - the band was a third copy of the same 8 links', async () => {
+    vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
+    renderHome();
+
+    await waitFor(() => expect(screen.getAllByText('Product 1').length).toBeGreaterThan(0));
+    expect(
+      screen.queryByRole('navigation', { name: /shop by category/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('drops the Featured gifts section - there is no popularity signal', async () => {
     vi.spyOn(catalogue, 'fetchCatalogue').mockResolvedValue(page([1]) as any);
     renderHome();

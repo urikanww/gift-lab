@@ -45,6 +45,14 @@ it('falls back to numberless copy when the fetch fails', async () => {
   await waitFor(() => expect(screen.queryByText(/% off/i)).not.toBeInTheDocument());
 });
 
+it('renders one strip per tile and no grid container', async () => {
+  vi.spyOn(catalogue, 'fetchBulkPricing').mockResolvedValue(null);
+  const { container } = renderTiles();
+
+  expect(screen.getAllByRole('link')).toHaveLength(1);
+  expect(container.querySelector('.grid')).toBeNull();
+});
+
 it('falls back to numberless copy when there is no bulk offer', async () => {
   vi.spyOn(catalogue, 'fetchBulkPricing').mockResolvedValue({ bulkQty: null, discountPct: 0 });
   renderTiles();

@@ -54,6 +54,19 @@ describe('ReorderRail', () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
+  it('lays the quotes out as a rail so a single quote is not stranded in a 3-column grid', async () => {
+    vi.spyOn(quotes, 'fetchRecentQuotes').mockResolvedValue([quote(7)]);
+    const { container } = renderRail();
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /quote #7/i })).toBeInTheDocument(),
+    );
+
+    const list = container.querySelector('ul');
+    expect(list?.className).toContain('overflow-x-auto');
+    expect(list?.className).not.toContain('grid-cols');
+  });
+
   it('asks for at most 3 quotes', async () => {
     const spy = vi.spyOn(quotes, 'fetchRecentQuotes').mockResolvedValue([]);
     renderRail();
