@@ -73,9 +73,13 @@ Route::middleware('throttle:60,1')->group(function (): void {
 Route::post('/uploads/artwork', [UploadController::class, 'artwork'])
     ->middleware('throttle:artwork-uploads');
 
-// Re-issue a short-lived preview URL for a stored artwork ref (cart preview).
+// Re-issue a short-lived preview URL for a stored artwork ref (cart + order
+// detail previews). Read-only, so it gets its OWN limiter rather than sharing
+// the upload budget above: one page render fires one preview per customized
+// line, which used to exhaust the 10/min upload limit and leave the designs
+// invisible. Limiter defined in AppServiceProvider::boot ('artwork-preview').
 Route::get('/uploads/artwork/preview', [UploadController::class, 'artworkPreview'])
-    ->middleware('throttle:artwork-uploads');
+    ->middleware('throttle:artwork-preview');
 
 // Login-free order tracking - opaque code + email-prefix check. Throttled
 // hard (anti-enumeration; the controller also returns a single generic error).

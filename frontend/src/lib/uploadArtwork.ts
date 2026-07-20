@@ -1,16 +1,36 @@
 import api, { ensureCsrf } from './api';
 
 /**
- * Re-issue a short-lived preview URL for a stored artwork ref so a saved
- * customization can be shown (e.g. in the cart). Returns null on failure.
+ * Outcome of a preview-URL exchange.
+ *
+ * Deliberately NOT just `string | null`: collapsing failure into null is what
+ * let a rate-limited preview render as nothing at all, with no error and no
+ * placeholder, for as long as it did. Callers must be able to tell "this line
+ * has no artwork" (nothing to show - correct) from "this line HAS artwork we
+ * could not load" (say so).
  */
-export async function fetchArtworkPreviewUrl(ref: string): Promise<string | null> {
+export type ArtworkPreviewResult = { ok: true; url: string } | { ok: false };
+
+/**
+ * Re-issue a short-lived preview URL for a stored artwork ref so a saved
+ * customization can be shown (e.g. in the cart or on the order detail page).
+ */
+export async function fetchArtworkPreview(ref: string): Promise<ArtworkPreviewResult> {
   try {
     const { data } = await api.get<{ url: string }>('/uploads/artwork/preview', { params: { ref } });
-    return data.url ?? null;
+    return data.url ? { ok: true, url: data.url } : { ok: false };
   } catch {
-    return null;
+    return { ok: false };
   }
+}
+
+/**
+ * Convenience wrapper for callers that genuinely have nothing useful to show on
+ * failure and only need the URL or nothing.
+ */
+export async function fetchArtworkPreviewUrl(ref: string): Promise<string | null> {
+  const result = await fetchArtworkPreview(ref);
+  return result.ok ? result.url : null;
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {

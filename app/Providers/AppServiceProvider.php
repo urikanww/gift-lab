@@ -159,6 +159,30 @@ class AppServiceProvider extends ServiceProvider
             Limit::perDay(100)->by($request->ip()),
         ]);
 
+        // Artwork PREVIEW limiter - deliberately separate from 'artwork-uploads'
+        // above. Re-signing a stored ref is a cheap read (a signature + an
+        // existence check), it writes nothing, and it is driven by page renders
+        // rather than by user intent: the order detail page and the cart each
+        // fire one preview per customized line, and the order page renders the
+        // desktop table AND the mobile list, so a 10-line order costs ~20
+        // requests in a single load. Sharing the upload's 10/min budget meant a
+        // normal order silently rendered with no designs at all, and the 100/day
+        // cap then blocked previews for everyone behind that IP for 24 hours.
+        //
+        // 120/min covers a ~60-line order in one load, or several loads of a
+        // normal order, with headroom for a re-render; the 5000/day backstop is
+        // an abuse ceiling only - it is far above anything real browsing reaches,
+        // so it can never be what a buyer hits.
+        //
+        // Keyed like Laravel's default throttle resolver (and so like the inline
+        // 'throttle:N,1' limiters on the routes): the authenticated user id when
+        // there is one, falling back to IP for the account-free cart. That keeps
+        // one busy office NAT from starving every other buyer behind it.
+        RateLimiter::for('artwork-preview', fn (Request $request): array => [
+            Limit::perMinute(120)->by($request->user()?->getAuthIdentifier() ?? $request->ip()),
+            Limit::perDay(5000)->by($request->user()?->getAuthIdentifier() ?? $request->ip()),
+        ]);
+
         // Mirror every quote state change onto the public tracking channel, so
         // the login-free tracker updates live without touching all eight
         // QuoteStateChanged dispatch sites. Job-level advances (which leave the

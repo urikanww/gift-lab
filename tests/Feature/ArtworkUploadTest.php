@@ -14,6 +14,7 @@ beforeEach(function (): void {
     // Isolate the per-IP upload limiter between tests (array cache persists
     // within a process, so a prior test's hits would otherwise bleed through).
     RateLimiter::clear('artwork-uploads');
+    RateLimiter::clear('artwork-preview');
 });
 
 it('stores an uploaded artwork image and returns a ref + preview url', function (): void {
@@ -79,5 +80,30 @@ it('throttles the public upload after the tightened per-minute limit', function 
 
     $this->postJson('/api/uploads/artwork', [
         'artwork' => UploadedFile::fake()->image('over-limit.png', 64, 64),
+    ])->assertStatus(429);
+});
+
+it('lets the read-only preview serve a realistic page burst the upload route would reject', function (): void {
+    // Regression: the preview shared the upload's 10/min budget, so a single
+    // order-detail render (one preview per customized line, x2 for the desktop
+    // table + mobile list) exhausted it and every design silently vanished.
+    Storage::disk($this->artworkDisk)->put('artwork/burst.png', 'x');
+    $url = '/api/uploads/artwork/preview?ref='.urlencode('artwork/burst.png');
+
+    // 40 back-to-back reads - well past the upload limit, well within a page
+    // load for a large order - must all succeed.
+    for ($i = 0; $i < 40; $i++) {
+        $this->getJson($url)->assertOk();
+    }
+
+    // The upload route keeps its tight budget: the two limiters are independent,
+    // so the burst above must not have spent any of the upload allowance.
+    for ($i = 0; $i < 10; $i++) {
+        $this->postJson('/api/uploads/artwork', [
+            'artwork' => UploadedFile::fake()->image("after-burst{$i}.png", 64, 64),
+        ])->assertCreated();
+    }
+    $this->postJson('/api/uploads/artwork', [
+        'artwork' => UploadedFile::fake()->image('upload-over-limit.png', 64, 64),
     ])->assertStatus(429);
 });
