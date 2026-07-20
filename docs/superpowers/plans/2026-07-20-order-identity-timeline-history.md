@@ -34,7 +34,7 @@ independent.
 | `app/Http/Resources/ProductionJobResource.php` | Add `quote_reference` (`:23`) | A |
 | `app/Http/Resources/LineItemResource.php` | Add `quote_reference` (`:23`) | A |
 | `app/Http/Resources/ProofResource.php` | Add `quote_reference` (`:23`) | A |
-| `app/Services/QueueService.php` | Add `quote_reference` (`:86`) | A |
+| `app/Services/QueueService.php` | Eager-load `quote` in `queue()` (`:196`) | A |
 | `app/Events/{LineItemAwaitingReconfirm,ProductionQueueUpdated,ProofStatusChanged,QuoteStateChanged}.php` | Add `quote_reference` | A |
 | `resources/views/mail/quote-ready.blade.php` | id fallback → reference (`:78`) | A |
 | `frontend/src/pages/{QuoteDetailPage,DashboardPage,ProductionQueuePage,ProcurementPage,BuyerDashboardPage,CheckoutPage}.tsx` | Display reference | A |
@@ -389,12 +389,11 @@ In `app/Http/Resources/ProductionJobResource.php`, after `'quote_id'`:
 
 Apply the identical pair to `LineItemResource.php` and `ProofResource.php`.
 
-In `app/Services/QueueService.php:86`, alongside `'quote_id' => $quote->id`:
-
-```php
-                    'quote_id' => $quote->id,
-                    'quote_reference' => $quote->reference,
-```
+`QueueService.php:86` needs NO change. An earlier draft of this plan listed it
+as a payload; it is a `ProductionJob::create([...])` attribute array and there
+is no `quote_reference` column on `production_jobs`, so adding the key would
+throw. What QueueService actually needs is the eager-load in `queue()` (see the
+next step).
 
 In each of the four events, alongside the existing `quote_id`:
 
