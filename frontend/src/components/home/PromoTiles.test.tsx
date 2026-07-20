@@ -13,11 +13,10 @@ const renderTiles = () =>
 
 beforeEach(() => vi.restoreAllMocks());
 
-it('links to the kit builder and the catalogue', async () => {
+it('links to the catalogue', async () => {
   vi.spyOn(catalogue, 'fetchBulkPricing').mockResolvedValue(null);
   renderTiles();
 
-  expect(screen.getByRole('link', { name: /build a kit/i })).toHaveAttribute('href', '/kits');
   expect(screen.getByRole('link', { name: /bulk pricing/i })).toHaveAttribute('href', '/products');
 });
 

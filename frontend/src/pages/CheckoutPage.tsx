@@ -96,6 +96,10 @@ export default function CheckoutPage() {
   // Delivery explanation collapses by default to keep the rail short; the buyer
   // expands it inline (tap-friendly, unlike a hover tooltip).
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  // Explicit acknowledgement that this is a no-obligation quote request (not a
+  // paid order). Sets expectations and adds a small accountability step against
+  // frivolous/junk orders, since there's no payment gate at this stage.
+  const [agreed, setAgreed] = useState(false);
   const [celebrating, setCelebrating] = useState<number | null>(null);
   // The full created quote is retained so the confirmation can surface its
   // signed tracking_link (Track button + QR); celebrating only holds the id.
@@ -173,6 +177,10 @@ export default function CheckoutPage() {
       setSubmitError('Please complete the shipping address (recipient, phone, address, postal code).');
       return;
     }
+    if (!agreed) {
+      setSubmitError('Please confirm you understand this is a quote request before placing it.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     const quote = await createQuote(
@@ -196,10 +204,11 @@ export default function CheckoutPage() {
 
   const finishCelebration = () => {
     const id = celebrating;
+    const ref = placedQuote?.reference;
     setCelebrating(null);
     clear();
     toast({ title: 'Order placed', description: `Quote #${id} is on its way.`, tone: 'success' });
-    if (id) navigate(`/quotes/${id}`);
+    if (ref) navigate(`/orders/${ref}`);
   };
 
   if (lines.length === 0) {
@@ -397,12 +406,25 @@ export default function CheckoutPage() {
                       <ErrorState message={submitError} />
                     </div>
                   )}
+                  <label className="mb-3 flex items-start gap-2 text-2xs leading-snug text-fg-muted">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <span>
+                      I understand this is a{' '}
+                      <span className="font-medium text-fg">quote request</span>, not a paid order — your
+                      team confirms pricing, and I&rsquo;m not charged until I approve a formal quote.
+                    </span>
+                  </label>
                   <Button
                     variant="primary"
                     fullWidth
                     onClick={placeOrder}
                     loading={submitting}
-                    disabled={submitting}
+                    disabled={submitting || !agreed}
                   >
                     {submitting ? 'Placing order…' : 'Place order'}
                   </Button>

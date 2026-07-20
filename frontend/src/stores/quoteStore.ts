@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
-import type { CartLine, Paginated, Proof, Quote, QuoteState, ShippingAddressInput } from '../types';
+import type {
+  CartLine,
+  Paginated,
+  Proof,
+  Quote,
+  QuoteState,
+  QuoteSummary,
+  ShippingAddressInput,
+} from '../types';
 
 // Unregister handle for the reconnect-refetch subscription.
 let offReconnect: (() => void) | null = null;
@@ -28,9 +36,12 @@ interface QuoteStoreState {
   page: number;
   lastPage: number;
   subscribedCompany: number | null;
+  summary: QuoteSummary | null;
 
   fetchQuotes: (page?: number) => Promise<void>;
-  fetchQuote: (id: number) => Promise<void>;
+  fetchSummary: () => Promise<void>;
+  /** Accepts an opaque order reference (buyer URLs) or a numeric id. */
+  fetchQuote: (idOrRef: string | number) => Promise<void>;
   createQuote: (
     companyId: number,
     lines: CartLine[],
@@ -61,6 +72,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   page: 1,
   lastPage: 1,
   subscribedCompany: null,
+  summary: null,
 
   fetchQuotes: async (page = 1) => {
     set({ loading: true, error: null });
@@ -74,6 +86,16 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       });
     } catch (err) {
       set({ loading: false, error: apiError(err) });
+    }
+  },
+
+  fetchSummary: async () => {
+    // Non-fatal for the dashboard: on failure the tiles simply stay empty.
+    try {
+      const { data } = await api.get<QuoteSummary>('/quotes/summary');
+      set({ summary: data });
+    } catch {
+      set({ summary: null });
     }
   },
 

@@ -28,11 +28,10 @@ const CartPage = lazy(() => import('./pages/CartPage'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const TrackPage = lazy(() => import('./pages/TrackPage'));
 const TrackViewPage = lazy(() => import('./pages/TrackViewPage'));
-const BrandKitPage = lazy(() => import('./pages/BrandKitPage'));
 const GiftIdeasPage = lazy(() => import('./pages/GiftIdeasPage'));
-const KitBuilderPage = lazy(() => import('./pages/KitBuilderPage'));
 const QuoteListPage = lazy(() => import('./pages/QuoteListPage'));
 const AddressBookPage = lazy(() => import('./pages/AddressBookPage'));
+const BuyerDashboardPage = lazy(() => import('./pages/BuyerDashboardPage'));
 const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
 const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
@@ -148,7 +147,6 @@ export default function App() {
             <Route path="checkout" element={<CheckoutPage />} />
             <Route path="track" element={<TrackPage />} />
             <Route path="track/view" element={<TrackViewPage />} />
-            <Route path="kits" element={<KitBuilderPage />} />
             <Route path="gift-ideas" element={<GiftIdeasPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
@@ -172,10 +170,10 @@ export default function App() {
             }
           >
             <Route element={<RouteBoundary />}>
+              <Route path="account" element={<BuyerDashboardPage />} />
               <Route path="quotes" element={<QuoteListPage />} />
-              <Route path="quotes/:id" element={<QuoteDetailPage />} />
+              <Route path="orders/:reference" element={<QuoteDetailPage />} />
               <Route path="account/addresses" element={<AddressBookPage />} />
-              <Route path="brand-kit" element={<BrandKitPage />} />
               <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
               <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
               <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />

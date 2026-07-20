@@ -21,6 +21,8 @@ class QuoteResource extends JsonResource
         return [
             'id' => $this->id,
             'company_id' => $this->company_id,
+            // Opaque order reference for buyer/public URLs (/orders/{reference}).
+            'reference' => $this->reference,
             // Opaque handle the buyer can share for login-free tracking.
             'tracking_code' => $this->tracking_code,
             // Permanent signed deep link for the buyer's confirmation/QR.

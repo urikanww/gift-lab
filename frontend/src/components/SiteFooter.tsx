@@ -13,7 +13,6 @@ const LINK_COLUMNS: { heading: string; links: { label: string; to: string }[] }[
     heading: 'Shop',
     links: [
       { label: 'Products', to: '/products' },
-      { label: 'Kits', to: '/kits' },
       { label: 'Gift ideas', to: '/gift-ideas' },
       { label: 'Track order', to: '/track' },
       { label: 'Cart', to: '/cart' },

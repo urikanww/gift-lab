@@ -31,6 +31,7 @@ function renderLogin() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<div>DASHBOARD PAGE</div>} />
+          <Route path="/account" element={<div>BUYER DASHBOARD</div>} />
           <Route path="/quotes" element={<div>QUOTES PAGE</div>} />
         </Routes>
       </MemoryRouter>
@@ -59,9 +60,9 @@ it('lands superadmin on the dashboard after sign-in', async () => {
   await waitFor(() => expect(screen.getByText('DASHBOARD PAGE')).toBeInTheDocument());
 });
 
-it('lands buyers on their quotes after sign-in', async () => {
+it('lands buyers on their dashboard after sign-in', async () => {
   stubLoginAs('buyer');
   renderLogin();
   await submitCredentials();
-  await waitFor(() => expect(screen.getByText('QUOTES PAGE')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('BUYER DASHBOARD')).toBeInTheDocument());
 });

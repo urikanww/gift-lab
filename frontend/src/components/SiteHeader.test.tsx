@@ -91,11 +91,11 @@ it('opens the categories menu with marketplace category links', async () => {
   expect(screen.getByRole('link', { name: /toys & figurines/i })).toBeInTheDocument();
 });
 
-it('links to kits and gift ideas from the desktop nav', () => {
+it('links to gift ideas from the desktop nav', () => {
   renderHeader();
   const nav = screen.getByRole('navigation', { name: /primary/i });
-  expect(within(nav).getByRole('link', { name: /^kits$/i })).toHaveAttribute('href', '/kits');
   expect(within(nav).getByRole('link', { name: /gift ideas/i })).toHaveAttribute('href', '/gift-ideas');
+  expect(within(nav).queryByRole('link', { name: /^kits$/i })).not.toBeInTheDocument();
 });
 
 it('drops track order from the desktop nav - it lives in the footer now', () => {

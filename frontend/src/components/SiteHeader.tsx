@@ -59,17 +59,9 @@ export default function SiteHeader() {
             Products
           </NavLink>
           <CategoriesMenu />
-          <NavLink to="/kits" className={navLinkClass}>
-            Kits
-          </NavLink>
           <NavLink to="/gift-ideas" className={navLinkClass}>
             Gift ideas
           </NavLink>
-          {user && !isStaffRole(user.role) && (
-            <NavLink to="/brand-kit" className={navLinkClass}>
-              Brand kit
-            </NavLink>
-          )}
           {isStaffRole(user?.role) && (
             <>
               <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -244,6 +236,13 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
       {open && (
         <div className="absolute right-0 top-full z-dropdown mt-1 flex w-48 flex-col rounded-lg border border-border bg-surface p-1 shadow-lg">
           <Link
+            to="/account"
+            onClick={() => setOpen(false)}
+            className="rounded-md px-3 py-2 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Dashboard
+          </Link>
+          <Link
             to="/quotes"
             onClick={() => setOpen(false)}
             className="rounded-md px-3 py-2 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -255,7 +254,7 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
             onClick={() => setOpen(false)}
             className="rounded-md px-3 py-2 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Addresses
+            Saved addresses
           </Link>
           <button
             type="button"
@@ -439,9 +438,6 @@ function MobileDrawer({
                 <span aria-hidden="true">{c.icon}</span> {c.label}
               </NavLink>
             ))}
-            <NavLink to="/kits" onClick={onClose} className={navLinkClass}>
-              Kits
-            </NavLink>
             <NavLink to="/gift-ideas" onClick={onClose} className={navLinkClass}>
               Gift ideas
             </NavLink>
@@ -450,9 +446,17 @@ function MobileDrawer({
             </NavLink>
             <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3">
               {user && !isStaffRole(user.role) && (
-                <NavLink to="/brand-kit" onClick={onClose} className={navLinkClass}>
-                  Brand kit
-                </NavLink>
+                <>
+                  <NavLink to="/account" onClick={onClose} className={navLinkClass}>
+                    Dashboard
+                  </NavLink>
+                  <NavLink to="/quotes" onClick={onClose} className={navLinkClass}>
+                    My Orders
+                  </NavLink>
+                  <NavLink to="/account/addresses" onClick={onClose} className={navLinkClass}>
+                    Saved addresses
+                  </NavLink>
+                </>
               )}
               {isStaffRole(user?.role) && (
                 <>
@@ -467,12 +471,9 @@ function MobileDrawer({
                   </NavLink>
                 </>
               )}
-              {user && !isStaffRole(user.role) && (
-                <NavLink to="/account/addresses" onClick={onClose} className={navLinkClass}>
-                  Addresses
-                </NavLink>
-              )}
-              <AccountLink user={user} onClick={onClose} />
+              {/* Buyers get explicit account links above; AccountLink now only
+                  covers staff ("Quotes") and the anonymous ("Log in") cases. */}
+              {(!user || isStaffRole(user.role)) && <AccountLink user={user} onClick={onClose} />}
               {user && (
                 <Button
                   variant="ghost"

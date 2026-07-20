@@ -48,7 +48,7 @@ export default function ReorderRail() {
         {quotes.map((q) => (
           <li key={q.id}>
             <Link
-              to={`/quotes/${q.id}`}
+              to={`/orders/${q.reference}`}
               aria-label={`Quote #${q.id}`}
               className="flex min-h-[44px] flex-col gap-1 rounded-xl border border-border bg-surface p-4 shadow-card transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >

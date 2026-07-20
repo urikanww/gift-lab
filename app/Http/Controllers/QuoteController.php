@@ -41,6 +41,47 @@ class QuoteController extends Controller
         return QuoteResource::collection($quotes);
     }
 
+    /**
+     * Buyer dashboard summary: order counts bucketed by lifecycle stage, scoped
+     * to the caller's company, plus the short list of orders waiting on a buyer
+     * decision (accept a sent quote, approve a proof, pay an invoice). Staff have
+     * no company, so this returns zeros for them - they use the staff dashboard.
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        $companyId = $request->user()->company_id;
+
+        $base = Quote::query()->where('company_id', $companyId);
+
+        // One grouped query, bucketed in PHP. Keys are the QuoteState string
+        // values as stored on the column (e.g. 'SENT').
+        $counts = (clone $base)
+            ->selectRaw('state, count(*) as c')
+            ->groupBy('state')
+            ->pluck('c', 'state');
+
+        $awaitingStates = ['SENT', 'PROOFING', 'INVOICED'];
+        $inProductionStates = ['CONFIRMED', 'PROCURING', 'READY'];
+        $sum = static fn (array $states): int => array_sum(
+            array_map(static fn (string $s): int => (int) ($counts[$s] ?? 0), $states),
+        );
+
+        $awaitingOrders = (clone $base)
+            ->whereIn('state', $awaitingStates)
+            ->latest()
+            ->limit(5)
+            ->get(['id', 'reference', 'state']);
+
+        return response()->json([
+            'active' => (int) $counts->except(['CLOSED', 'CANCELLED'])->sum(),
+            'awaiting' => $sum($awaitingStates),
+            'in_production' => $sum($inProductionStates),
+            'completed' => (int) ($counts['CLOSED'] ?? 0),
+            'total' => (int) $counts->sum(),
+            'awaiting_orders' => $awaitingOrders,
+        ]);
+    }
+
     public function store(StoreQuoteRequest $request): JsonResponse
     {
         $companyId = (int) $request->integer('company_id');
@@ -64,8 +105,18 @@ class QuoteController extends Controller
             ->setStatusCode(201);
     }
 
-    public function show(Request $request, Quote $quote): QuoteResource
+    /**
+     * Resolve by opaque reference (buyer/public URLs) or numeric id (staff and
+     * internal callers), so /orders/{reference} works without leaking ids while
+     * existing id-based callers keep working. Tenancy is enforced by the policy.
+     */
+    public function show(Request $request, string $ref): QuoteResource
     {
+        $quote = Quote::query()
+            ->where('reference', $ref)
+            ->when(ctype_digit($ref), fn ($q) => $q->orWhere('id', (int) $ref))
+            ->firstOrFail();
+
         $this->authorize('view', $quote);
 
         return new QuoteResource($quote->load(['lineItems.product', 'proofs']));

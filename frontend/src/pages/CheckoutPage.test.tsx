@@ -50,6 +50,34 @@ it('blocks placing the order until the shipping address is valid', () => {
     </ThemeProvider>,
   );
 
+  // Place order is gated on the quote-request acknowledgement; tick it so the
+  // click reaches the shipping-address validation we're asserting here.
+  fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: /place order/i }));
   expect(screen.getByText(/complete the shipping address/i)).toBeInTheDocument();
+});
+
+it('keeps Place order disabled until the quote-request box is ticked', () => {
+  useSavedAddressStore.setState({ addresses: [], loading: false, error: null });
+  useCartStore.setState({
+    lines: [{ key: 'k', product: { id: 5, name: 'A5' } as any, variant: null, qty: 1, customization: {} }],
+  });
+  useAuthStore.setState({
+    user: { id: 1, company_id: 1, role: 'buyer', company: { id: 1, name: 'Acme', address: '' } } as any,
+    status: 'ready',
+  } as any);
+
+  render(
+    <ThemeProvider>
+      <MemoryRouter initialEntries={['/checkout']}>
+        <Routes>
+          <Route path="/checkout" element={<CheckoutPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ThemeProvider>,
+  );
+
+  expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByRole('button', { name: /place order/i })).toBeEnabled();
 });

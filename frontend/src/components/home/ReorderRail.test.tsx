@@ -9,6 +9,7 @@ const quote = (id: number): Quote =>
   ({
     id,
     company_id: 1,
+    reference: `REF${id}`,
     state: 'ACCEPTED',
     currency: 'SGD',
     subtotal: '100.00',
@@ -35,7 +36,7 @@ describe('ReorderRail', () => {
     renderRail();
 
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: /quote #7/i })).toHaveAttribute('href', '/quotes/7'),
+      expect(screen.getByRole('link', { name: /quote #7/i })).toHaveAttribute('href', '/orders/REF7'),
     );
   });
 

@@ -6,13 +6,6 @@ import { fetchBulkPricing, formatPct } from '../../lib/catalogue';
 // step, so "drops as quantity climbs" would oversell it.
 const BULK_FALLBACK_BLURB = 'Unit price drops on larger orders. Quote any item in the catalogue.';
 
-const KIT_TILE = {
-  to: '/kits',
-  title: 'Build a kit',
-  blurb: 'Bundle several gifts into one branded box for your team.',
-  icon: '📦',
-};
-
 export default function PromoTiles() {
   // The real offer, when we can get it. This tile is on the public home page,
   // so a failed fetch must degrade to generic-but-true copy, never a blank.
@@ -29,13 +22,10 @@ export default function PromoTiles() {
     };
   }, []);
 
-  const tiles = [
-    KIT_TILE,
-    { to: '/products', title: 'Bulk pricing', blurb: bulkBlurb, icon: '🏢' },
-  ];
+  const tiles = [{ to: '/products', title: 'Bulk pricing', blurb: bulkBlurb, icon: '🏢' }];
 
   return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <ul className="grid grid-cols-1 gap-3">
       {tiles.map((t) => (
         <li key={t.to}>
           <Link

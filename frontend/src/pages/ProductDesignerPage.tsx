@@ -10,8 +10,6 @@ import Model3dPersonalizer, {
 } from '../components/Model3dPersonalizer';
 import { renderModelFace, type ModelFaceSnapshot } from '../lib/modelFaceSnapshot';
 import { useCartStore } from '../stores/cartStore';
-import { useAuthStore } from '../stores/authStore';
-import { fetchBrandKit, type BrandKit } from '../lib/brandKit';
 import { uploadArtwork } from '../lib/uploadArtwork';
 import type { PriceEstimate, Product, Variant } from '../types';
 import { Button, Select, Badge, Card, useToast, cn } from '../ui';
@@ -86,8 +84,6 @@ export default function ProductDesignerPage() {
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
   const lead = useLeadTimeEstimate(product ? [product.id] : []);
   // Brand kit: only a signed-in buyer (has a company) has one to apply.
-  const companyId = useAuthStore((s) => s.user?.company_id ?? null);
-  const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,21 +104,6 @@ export default function ProductDesignerPage() {
     void load();
   }, [load]);
 
-  // Load the buyer's brand kit once (if signed in with a company).
-  useEffect(() => {
-    if (!companyId) return;
-    let active = true;
-    fetchBrandKit()
-      .then((kit) => {
-        if (active) setBrandKit(kit);
-      })
-      .catch(() => {
-        if (active) setBrandKit(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [companyId]);
 
   // Render (and re-render on colour change) the model-face backdrop for 3D
   // items that stream a model file. The snapshot also carries real-mm face
@@ -511,8 +492,6 @@ export default function ProductDesignerPage() {
                     }}
                     onCapture={handleCapture}
                     onLogoChange={setLogo}
-                    brandLogo={brandKit?.logo ?? null}
-                    brandColors={brandKit?.colors ?? []}
                     canvasMm={
                       // The real zone footprint wins so mm-mapping matches the
                       // print surface; fall back to the face-snapshot footprint.

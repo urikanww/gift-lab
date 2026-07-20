@@ -57,3 +57,11 @@ Schedule::command('giftideas:refresh')
     ->dailyAt('05:30')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Auto-cancel abandoned DRAFT quote requests after the grace window. No payment
+// gates order placement, so this keeps junk/abandoned drafts from accumulating
+// for staff to clear by hand. Only untouched DRAFTs are affected.
+Schedule::command('quotes:expire-drafts')
+    ->dailyAt('02:00')
+    ->onOneServer()
+    ->withoutOverlapping();

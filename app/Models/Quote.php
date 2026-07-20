@@ -44,6 +44,7 @@ class Quote extends Model
     protected $fillable = [
         'company_id',
         'tracking_code',
+        'reference',
         'idempotency_key',
         'state',
         'currency',
@@ -85,6 +86,15 @@ class Quote extends Model
                 } while (self::withTrashed()->where('tracking_code', $code)->exists());
 
                 $quote->tracking_code = $code;
+            }
+
+            // Opaque order reference for buyer/public URLs (no numeric id leak).
+            if (empty($quote->reference)) {
+                do {
+                    $ref = self::generateReference();
+                } while (self::withTrashed()->where('reference', $ref)->exists());
+
+                $quote->reference = $ref;
             }
         });
 
@@ -229,6 +239,20 @@ class Quote extends Model
     {
         $out = 'GL-';
         for ($i = 0; $i < 6; $i++) {
+            $out .= self::TRACKING_ALPHABET[random_int(0, 31)];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Opaque order reference for buyer/public URLs. 10 chars from the same
+     * unambiguous alphabet gives ~2^50 space - non-enumerable and collision-safe.
+     */
+    public static function generateReference(): string
+    {
+        $out = '';
+        for ($i = 0; $i < 10; $i++) {
             $out .= self::TRACKING_ALPHABET[random_int(0, 31)];
         }
 

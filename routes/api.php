@@ -8,7 +8,6 @@ use App\Http\Controllers\AdminProductController;
 use App\Http\Controllers\AdminReorderController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\BrandKitController;
 use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\DashboardController;
@@ -102,13 +101,18 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::get('/user', [AuthController::class, 'user']);
 
     // Per-company brand kit (saved logo + colours; scoped to own company).
-    Route::get('/company/brand-kit', [BrandKitController::class, 'show']);
-    Route::put('/company/brand-kit', [BrandKitController::class, 'update']);
 
     // Quotes
     Route::get('/quotes', [QuoteController::class, 'index']);
-    Route::post('/quotes', [QuoteController::class, 'store']);
-    Route::get('/quotes/{quote}', [QuoteController::class, 'show']);
+    // Buyer dashboard counts - declared before /quotes/{quote} so "summary"
+    // isn't captured as a quote id by the wildcard route below.
+    Route::get('/quotes/summary', [QuoteController::class, 'summary']);
+    // Order placement is tighter-throttled than the general authed group: a
+    // real buyer never needs more than a handful a minute, but this caps
+    // scripted junk-order floods (there's no payment gate to deter them).
+    Route::post('/quotes', [QuoteController::class, 'store'])->middleware('throttle:8,1');
+    // {ref} resolves by opaque reference OR numeric id (see controller).
+    Route::get('/quotes/{ref}', [QuoteController::class, 'show']);
     Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend']);
     Route::post('/quotes/{quote}/send', [QuoteController::class, 'send']);
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);

@@ -129,6 +129,17 @@ export interface LeadTimeEstimate {
   rush_fee: number | null;
 }
 
+/** Buyer dashboard counts from GET /quotes/summary (scoped to the company). */
+export interface QuoteSummary {
+  active: number;
+  awaiting: number;
+  in_production: number;
+  completed: number;
+  total: number;
+  /** Orders waiting on a buyer decision (accept / approve proof / pay). */
+  awaiting_orders: { id: number; reference: string; state: QuoteState }[];
+}
+
 /** Result of POST /production-jobs/:id/create-shipment (NinjaVan). */
 export interface ShipmentResult {
   state: string;
@@ -275,6 +286,8 @@ export interface Proof {
 export interface Quote {
   id: number;
   company_id: number;
+  /** Opaque order reference used in buyer/public URLs (/orders/{reference}). */
+  reference: string;
   /** Opaque code for login-free tracking (share with the recipient). */
   tracking_code?: string | null;
   /** Relative signed path for login-free tracking (e.g. /track/view?code=...&signature=...). */

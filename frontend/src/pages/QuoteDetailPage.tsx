@@ -52,8 +52,9 @@ const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
 };
 
 export default function QuoteDetailPage() {
-  const { id } = useParams();
-  const quoteId = Number(id);
+  // Buyer/public URLs carry the opaque order reference; the API resolves it
+  // (or a numeric id) server-side. Once loaded, actions use the quote's real id.
+  const { reference } = useParams();
   const {
     current,
     loading,
@@ -92,8 +93,8 @@ export default function QuoteDetailPage() {
   const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
-    void fetchQuote(quoteId);
-  }, [quoteId, fetchQuote]);
+    if (reference) void fetchQuote(reference);
+  }, [reference, fetchQuote]);
 
   const run = async (fn: () => Promise<void>, successMsg?: string) => {
     setBusy(true);
@@ -129,7 +130,7 @@ export default function QuoteDetailPage() {
   };
 
   if (loading && !current) return <QuoteDetailSkeleton />;
-  if (error) return <ErrorState message={error} onRetry={() => fetchQuote(quoteId)} />;
+  if (error) return <ErrorState message={error} onRetry={() => reference && fetchQuote(reference)} />;
   if (!current) return <LegacyEmpty title="Quote not found." />;
 
   const quote = current;

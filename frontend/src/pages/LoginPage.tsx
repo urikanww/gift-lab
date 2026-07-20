@@ -29,7 +29,7 @@ export default function LoginPage() {
       // Role-aware landing: staff manage the catalogue gate; buyers see their
       // quotes. An explicit `from` (bounced off a protected route) still wins.
       const role = useAuthStore.getState().user?.role;
-      navigate(from ?? (isStaffRole(role) ? '/dashboard' : '/quotes'), { replace: true });
+      navigate(from ?? (isStaffRole(role) ? '/dashboard' : '/account'), { replace: true });
     }
   };
 

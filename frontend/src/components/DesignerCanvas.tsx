@@ -51,9 +51,6 @@ interface DesignerCanvasProps {
    * a price tier.
    */
   onLogoChange?: (info: { hasLogo: boolean; size: LogoSize }) => void;
-  /** Company brand kit: a saved logo (data URL) + colour swatches to one-click apply. */
-  brandLogo?: string | null;
-  brandColors?: string[];
   /**
    * Physical size of the full canvas footprint in product mm (known for
    * MODEL_3D face renders). When present, the captured layout also carries
@@ -105,8 +102,6 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     backgroundUrl,
     onCapture,
     onLogoChange,
-    brandLogo,
-    brandColors,
     canvasMm = null,
     onPlacementChange,
   }: DesignerCanvasProps,
@@ -420,8 +415,8 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     onLogoChange?.({ hasLogo, size });
   };
 
-  // Add a logo from a data URL (fresh upload OR the saved brand-kit logo -
-  // both are data URLs, so neither hits a CORS wall on fabric load).
+  // Add a logo from a data URL (a fresh upload is a data URL, so it never hits
+  // a CORS wall on fabric load).
   const addLogoFromDataUrl = async (dataUrl: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -738,8 +733,10 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      {/* Canvas stage */}
-      <div ref={stageRef} className="min-w-0 flex-1">
+      {/* Canvas stage. Capped so the product photo doesn't balloon to fill the
+          whole row (dims track this container's width) - keeps a balanced
+          image / tools two-column layout instead of a giant near-square. */}
+      <div ref={stageRef} className="min-w-0 flex-1 lg:max-w-[30rem]">
         <div
           tabIndex={0}
           onKeyDown={onStageKeyDown}
@@ -945,31 +942,6 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
               )}
             </div>
 
-            {/* Brand kit: one-click apply the company's saved logo + show its
-                colour swatches for reference. */}
-            {(brandLogo || (brandColors && brandColors.length > 0)) && (
-              <div className="flex flex-col gap-2 rounded-md border border-brand-100 bg-brand-50/50 p-2.5">
-                <span className="text-2xs font-semibold uppercase tracking-wide text-fg-subtle">Brand kit</span>
-                {brandLogo && (
-                  <Button variant="outline" size="sm" onClick={() => void addLogoFromDataUrl(brandLogo)}>
-                    Apply brand logo
-                  </Button>
-                )}
-                {brandColors && brandColors.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {brandColors.map((c) => (
-                      <span
-                        key={c}
-                        title={c}
-                        className="h-5 w-5 rounded-full border border-border"
-                        style={{ backgroundColor: c }}
-                        aria-label={`Brand colour ${c}`}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </fieldset>
 
           <div className="h-px bg-border" aria-hidden="true" />

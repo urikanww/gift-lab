@@ -159,11 +159,11 @@ function QuoteRow({
     <motion.tr
       variants={animate ? staggerItem : undefined}
       className="cursor-pointer border-b border-border last:border-0 transition-colors duration-fast ease-standard hover:bg-surface-2"
-      onClick={() => navigate(`/quotes/${quote.id}`)}
+      onClick={() => navigate(`/orders/${quote.reference}`)}
     >
       <td className="px-5 py-4">
         <Link
-          to={`/quotes/${quote.id}`}
+          to={`/orders/${quote.reference}`}
           className="font-medium text-fg hover:text-primary focus-visible:outline-none focus-visible:underline"
           onClick={(e) => e.stopPropagation()}
         >
@@ -192,11 +192,11 @@ function QuoteCard({ quote, showCompany }: { quote: Quote; showCompany: boolean 
   const navigate = useNavigate();
   return (
     <Motion variants={staggerItem}>
-      <Card interactive padding="md" onClick={() => navigate(`/quotes/${quote.id}`)}>
+      <Card interactive padding="md" onClick={() => navigate(`/orders/${quote.reference}`)}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <Link
-              to={`/quotes/${quote.id}`}
+              to={`/orders/${quote.reference}`}
               className="font-display text-lg text-fg focus-visible:outline-none focus-visible:underline"
               onClick={(e) => e.stopPropagation()}
             >
