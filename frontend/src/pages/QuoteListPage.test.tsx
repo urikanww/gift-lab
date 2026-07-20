@@ -161,6 +161,25 @@ it('debounces typing into one request rather than one per keystroke', async () =
   expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123');
 });
 
+// The effect keys on the TRIMMED term, so an edit that leaves it identical must
+// not re-fetch. It always fetches page 1, so a stray re-run would bounce a user
+// sitting on page 2 of filtered results back to page 1 for nothing.
+it('does not re-fetch when an edit leaves the trimmed term unchanged', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ fetchQuotes } as any);
+  renderPage();
+
+  fireEvent.change(searchBox(), { target: { value: 'ABC' } });
+  await tick(300);
+  fireEvent.change(searchBox(), { target: { value: 'ABC ' } });
+  await tick(300);
+
+  expect(fetchQuotes).toHaveBeenCalledTimes(1);
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC');
+});
+
 // Paging must re-send the term. fetchQuotes writes its `term` argument to the
 // store unconditionally, so paging without it does not merely show unfiltered
 // rows - it wipes the stored term while the text is still in the input.
