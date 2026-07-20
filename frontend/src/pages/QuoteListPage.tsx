@@ -29,11 +29,12 @@ export default function QuoteListPage() {
 
   const [term, setTerm] = useState('');
 
-  // Every fetch that is NOT the debounced search itself (paging, error retry)
-  // must re-send this. fetchQuotes always writes its `term` argument to the
-  // store, so omitting it here would clear the stored term while the text still
-  // sits in the input - store and screen would then disagree, which is the exact
-  // failure the term was moved into the store to prevent.
+  // Every fetch here sends this - the debounced search below, and equally the
+  // paging and retry handlers. fetchQuotes always writes its `term` argument to
+  // the store, so omitting it at those call sites would clear the stored term
+  // while the text still sits in the input - store and screen would then
+  // disagree, which is the exact failure the term was moved into the store to
+  // prevent.
   const activeTerm = term.trim() || undefined;
 
   // Also the mount fetch: the empty initial term means the first run asks for
@@ -41,10 +42,15 @@ export default function QuoteListPage() {
   // alongside this would fire two requests on every mount. Always page 1: a new
   // term invalidates the current offset, so a user on page 3 who searches lands
   // on page 1 of the filtered results.
+  //
+  // Keyed on activeTerm, not the raw text: typing a trailing space leaves the
+  // effective term identical, and re-running on that would bounce a user sitting
+  // on page 2 of filtered results back to page 1 for a keystroke that changed
+  // nothing.
   useEffect(() => {
-    const id = setTimeout(() => void fetchQuotes(1, term.trim() || undefined), 300);
+    const id = setTimeout(() => void fetchQuotes(1, activeTerm), 300);
     return () => clearTimeout(id);
-  }, [term, fetchQuotes]);
+  }, [activeTerm, fetchQuotes]);
 
   return (
     <section aria-labelledby="quotes-heading">

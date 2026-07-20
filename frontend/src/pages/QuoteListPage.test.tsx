@@ -6,12 +6,30 @@ import QuoteListPage from './QuoteListPage';
 import { useAuthStore } from '../stores/authStore';
 import { useQuoteStore } from '../stores/quoteStore';
 
-// The store test below drives the REAL fetchQuotes, which would otherwise fire
+// The store tests below drive the REAL fetchQuotes, which would otherwise fire
 // an XHR; the page tests seed their own fetchQuotes and never touch this.
 vi.mock('../lib/api', () => ({
   default: { get: vi.fn(async () => ({ data: { data: [], meta: { current_page: 1, last_page: 1 } } })) },
   apiError: (e: unknown) => String(e),
   ensureCsrf: async () => {},
+}));
+
+// Only the websocket transport is faked. onEchoReconnect is a plain handler
+// registry, so capturing what the store registers lets the reconnect test
+// invoke the store's OWN closure - the asserted logic is real store code.
+let capturedReconnect: (() => void) | null = null;
+vi.mock('../lib/echo', () => ({
+  onEchoReconnect: (handler: () => void) => {
+    capturedReconnect = handler;
+    return () => {
+      capturedReconnect = null;
+    };
+  },
+  joinSharedPrivate: () => {
+    const channel = { listen: () => channel };
+    return channel;
+  },
+  leaveSharedPrivate: () => {},
 }));
 
 const initialQuoteStore = useQuoteStore.getState();
@@ -161,11 +179,34 @@ it('carries the active search term when paging to the next page', async () => {
   expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
 });
 
-// Regression guard: the post-mutation refresh in the store re-fetches from
-// store state. If the term lived only in the component it would be dropped
-// there, silently resetting the user's filtered list back to everything.
-it('keeps the search term in the store across a post-mutation refresh', async () => {
+// The store must record the term at all, which is what makes the reconnect
+// refetch below able to re-apply it.
+it('records the search term in the store when fetching', async () => {
   await useQuoteStore.getState().fetchQuotes(1, 'ABC123');
 
   expect(useQuoteStore.getState().searchTerm).toBe('ABC123');
+});
+
+// The reason the term lives in the store at all. subscribeCompany registers a
+// refetch that runs when the socket reconnects after a drop; it reads page and
+// term from store state, so a component-local term would be invisible to it and
+// the user's filtered list would silently reset to every order.
+it('re-applies the search term when the socket reconnects', async () => {
+  const fetchQuotes = vi.fn(async () => {});
+  useQuoteStore.setState({
+    fetchQuotes,
+    page: 2,
+    searchTerm: 'ABC123',
+    current: null,
+    subscribedCompany: null,
+  } as any);
+
+  useQuoteStore.getState().subscribeCompany(7);
+  expect(capturedReconnect).toBeTypeOf('function');
+
+  // Fire the store's own reconnect closure, as lib/echo would on re-connect.
+  capturedReconnect!();
+
+  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123');
+  expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
 });

@@ -39,9 +39,10 @@ interface QuoteStoreState {
   summary: QuoteSummary | null;
   /**
    * Active orders-list search term, forwarded as `?q=`. Lives here rather than
-   * in QuoteListPage because the post-mutation/reconnect refresh below re-fetches
-   * from store state: a component-local term would be dropped by that refresh and
-   * silently reset the user's filtered list back to every order.
+   * in QuoteListPage because the reconnect refresh in subscribeCompany re-fetches
+   * the list from store state: a component-local term would be invisible there,
+   * so a socket drop would silently reset the user's filtered list to every order
+   * while their term sat in the input.
    */
   searchTerm: string | undefined;
 
@@ -262,8 +263,9 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     // Reconcile after a socket reconnect: refresh the list and the open quote so
     // any state-changed/proof events missed while offline are picked up.
     offReconnect = onEchoReconnect(() => {
-      // Carry the active search through the refresh, or the user's filtered
-      // list silently resets to every order while their term sits in the box.
+      // Carry the active search through the reconnect refetch, or a socket drop
+      // silently resets the user's filtered list to every order while their term
+      // sits in the box.
       void get().fetchQuotes(get().page, get().searchTerm);
       const current = get().current;
       if (current) void get().fetchQuote(current.id);
