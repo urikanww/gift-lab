@@ -36,9 +36,17 @@ class QuoteController extends Controller
             // Staff see all companies - load the name so the UI can label rows.
             ->when($user->isStaff(), fn ($q) => $q->with('company'))
             ->when($request->filled('q'), function ($query) use ($request): void {
+                // ?q[]=abc arrives as an array; casting that to string is a TypeError
+                // (a 500 on a public search box), so ignore anything not a string.
+                $raw = $request->input('q');
+                if (! is_string($raw)) {
+                    return;
+                }
+
                 // A leading # is how the id has been written everywhere until now,
-                // so buyers will paste it verbatim.
-                $term = ltrim(trim((string) $request->string('q')), '#');
+                // so buyers paste it verbatim - "#42" and "# 42" must both reach
+                // the id branch, hence the trim on either side of the strip.
+                $term = trim(ltrim(trim($raw), '#'));
                 if ($term === '') {
                     return;
                 }
@@ -46,7 +54,12 @@ class QuoteController extends Controller
                 // Nested so the orWhere cannot escape the company_id scope above -
                 // flat, a buyer could read another company's order by guessing an id.
                 $query->where(function ($w) use ($term): void {
-                    $w->where('reference', 'like', '%'.$term.'%');
+                    // Wildcards escaped so a stray % or _ narrows literally instead
+                    // of broadening, matching AdminCatalogueController::index. Not a
+                    // security boundary - the term is a bound parameter and the
+                    // company scope already bounds what can match - but the app's
+                    // two search endpoints should agree on what a % in the box means.
+                    $w->where('reference', 'like', '%'.addcslashes($term, '%_\\').'%');
                     // Exact, and only for all-digit input: LIKE on an integer key
                     // matches 1 against 10/21/100 and forfeits the index.
                     if (ctype_digit($term)) {

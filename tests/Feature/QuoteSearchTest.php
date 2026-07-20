@@ -76,6 +76,50 @@ it('accepts a leading # on an id', function (): void {
         ->assertJsonPath('data.0.id', $match->id);
 });
 
+it('accepts a hash followed by a space', function (): void {
+    // "# 42" is as plausible a paste as "#42"; both must reach the id branch
+    // rather than falling through to a reference match.
+    $match = Quote::factory()->create(['company_id' => $this->company->id, 'reference' => 'AAAAAAAAAA']);
+    Quote::factory()->create(['company_id' => $this->company->id, 'reference' => 'BBBBBBBBBB']);
+    Sanctum::actingAs($this->buyer);
+
+    $this->getJson('/api/quotes?q=%23%20'.$match->id)
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $match->id);
+});
+
+it('ignores an array search term instead of erroring', function (): void {
+    // ?q[]=abc casts to string as a TypeError; the search box must not 500.
+    Quote::factory()->count(2)->create(['company_id' => $this->company->id]);
+    Sanctum::actingAs($this->buyer);
+
+    $this->getJson('/api/quotes?q[]=abc')->assertOk()->assertJsonCount(2, 'data');
+});
+
+it('treats a LIKE wildcard as a literal character', function (): void {
+    // An unescaped % would match every row; escaped, it narrows to references
+    // actually containing a percent sign - of which there are none.
+    Quote::factory()->count(2)->create(['company_id' => $this->company->id]);
+    Sanctum::actingAs($this->buyer);
+
+    $response = $this->getJson('/api/quotes?q=%25')->assertOk();
+
+    expect($response->json('data'))->toBe([]);
+});
+
+it('never returns another company’s order when a buyer searches its reference', function (): void {
+    // Mirror of the id guard below: both branches live in the same closure, so
+    // this catches anyone later un-nesting only half the condition.
+    $other = Company::factory()->create();
+    $theirs = Quote::factory()->create(['company_id' => $other->id, 'reference' => 'SECRETREF1']);
+    Sanctum::actingAs($this->buyer);
+
+    $response = $this->getJson('/api/quotes?q='.$theirs->reference)->assertOk();
+
+    expect($response->json('data'))->toBe([]);
+});
+
 it('never returns another company’s order when a buyer searches its id', function (): void {
     // THE security guard: the id match must not escape the company_id scope.
     // Flat (un-nested) the orWhere would, and a buyer could read any order by
