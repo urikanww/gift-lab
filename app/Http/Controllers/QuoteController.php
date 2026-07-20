@@ -35,8 +35,28 @@ class QuoteController extends Controller
             ->when(! $user->isStaff(), fn ($q) => $q->where('company_id', $user->company_id))
             // Staff see all companies - load the name so the UI can label rows.
             ->when($user->isStaff(), fn ($q) => $q->with('company'))
+            ->when($request->filled('q'), function ($query) use ($request): void {
+                // A leading # is how the id has been written everywhere until now,
+                // so buyers will paste it verbatim.
+                $term = ltrim(trim((string) $request->string('q')), '#');
+                if ($term === '') {
+                    return;
+                }
+
+                // Nested so the orWhere cannot escape the company_id scope above -
+                // flat, a buyer could read another company's order by guessing an id.
+                $query->where(function ($w) use ($term): void {
+                    $w->where('reference', 'like', '%'.$term.'%');
+                    // Exact, and only for all-digit input: LIKE on an integer key
+                    // matches 1 against 10/21/100 and forfeits the index.
+                    if (ctype_digit($term)) {
+                        $w->orWhere('id', (int) $term);
+                    }
+                });
+            })
             ->latest()
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
         return QuoteResource::collection($quotes);
     }
