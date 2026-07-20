@@ -143,6 +143,24 @@ it('debounces typing into one request rather than one per keystroke', async () =
   expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123');
 });
 
+// Paging must re-send the term. fetchQuotes writes its `term` argument to the
+// store unconditionally, so paging without it does not merely show unfiltered
+// rows - it wipes the stored term while the text is still in the input.
+it('carries the active search term when paging to the next page', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ fetchQuotes, page: 1, lastPage: 2 } as any);
+  renderPage();
+
+  fireEvent.change(searchBox(), { target: { value: 'ABC123' } });
+  await tick(300);
+  fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123');
+  expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
+});
+
 // Regression guard: the post-mutation refresh in the store re-fetches from
 // store state. If the term lived only in the component it would be dropped
 // there, silently resetting the user's filtered list back to everything.

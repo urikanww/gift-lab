@@ -29,9 +29,18 @@ export default function QuoteListPage() {
 
   const [term, setTerm] = useState('');
 
+  // Every fetch that is NOT the debounced search itself (paging, error retry)
+  // must re-send this. fetchQuotes always writes its `term` argument to the
+  // store, so omitting it here would clear the stored term while the text still
+  // sits in the input - store and screen would then disagree, which is the exact
+  // failure the term was moved into the store to prevent.
+  const activeTerm = term.trim() || undefined;
+
   // Also the mount fetch: the empty initial term means the first run asks for
   // an unfiltered page 1. Keep it as one effect - a separate mount fetch
-  // alongside this would fire two requests on every mount.
+  // alongside this would fire two requests on every mount. Always page 1: a new
+  // term invalidates the current offset, so a user on page 3 who searches lands
+  // on page 1 of the filtered results.
   useEffect(() => {
     const id = setTimeout(() => void fetchQuotes(1, term.trim() || undefined), 300);
     return () => clearTimeout(id);
@@ -80,7 +89,7 @@ export default function QuoteListPage() {
       {loading ? (
         <QuoteListSkeleton />
       ) : error ? (
-        <ErrorState message={error} onRetry={() => fetchQuotes(page)} />
+        <ErrorState message={error} onRetry={() => fetchQuotes(page, activeTerm)} />
       ) : quotes.length === 0 ? (
         <EmptyState
           title="No quotes yet"
@@ -154,7 +163,7 @@ export default function QuoteListPage() {
                 variant="outline"
                 size="sm"
                 disabled={loading || page <= 1}
-                onClick={() => void fetchQuotes(page - 1)}
+                onClick={() => void fetchQuotes(page - 1, activeTerm)}
               >
                 Previous
               </Button>
@@ -165,7 +174,7 @@ export default function QuoteListPage() {
                 variant="outline"
                 size="sm"
                 disabled={loading || page >= lastPage}
-                onClick={() => void fetchQuotes(page + 1)}
+                onClick={() => void fetchQuotes(page + 1, activeTerm)}
               >
                 Next
               </Button>
