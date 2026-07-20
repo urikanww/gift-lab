@@ -261,9 +261,17 @@ final class QueueService
                 ->doesntExist();
 
             if ($allClosed) {
-                $previous = $job->quote->state->value;
-                $job->quote->transitionTo(QuoteState::Closed);
-                Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($job->quote, $previous));
+                // transitionTo does two writes (the state save and the audit
+                // insert), so it needs a transaction to stay atomic. This is the
+                // last transition in an order's life - the one the buyer's
+                // delivery tracker keys off and the top row of the status
+                // history - so a committed state with a lost audit row is the
+                // worst place for the trail to go quiet.
+                DB::transaction(function () use ($job): void {
+                    $previous = $job->quote->state->value;
+                    $job->quote->transitionTo(QuoteState::Closed);
+                    DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($job->quote, $previous)));
+                });
             }
         }
 

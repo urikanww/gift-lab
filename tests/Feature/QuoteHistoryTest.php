@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Enums\JobState;
 use App\Enums\QuoteState;
 use App\Exceptions\InvalidStateTransitionException;
 use App\Models\AuditLog;
 use App\Models\Company;
+use App\Models\ProductionJob;
 use App\Models\Quote;
 use App\Models\User;
+use App\Services\QueueService;
 use App\Services\QuoteService;
 use Laravel\Sanctum\Sanctum;
 
@@ -61,6 +64,34 @@ it('rolls the state back when the audit insert fails during procure', function (
     // Without the transaction the state would have committed as PROCURING while
     // the caller saw an exception - a transition that happened but was never logged.
     expect(Quote::query()->find($quote->id)->state)->toBe(QuoteState::Confirmed);
+});
+
+it('rolls the state back when the audit insert fails closing the last job', function (): void {
+    $quote = Quote::factory()->create(['state' => 'READY']);
+    $job = ProductionJob::factory()->create(['quote_id' => $quote->id, 'state' => 'SHIPPED']);
+
+    // Same technique as the procure case: the real AuditLogger and the real
+    // create() path still run, a `creating` hook just makes the write throw.
+    // AuditLogger is final and constructor-type-hinted, so a mock cannot bind.
+    //
+    // Scoped to quote.state_changed on purpose. advance() logs its own
+    // production_job.advanced row FIRST, so a hook that throws on every insert
+    // dies there and never reaches the quote close at all - the test would pass
+    // against the unfixed code without ever exercising the path it names.
+    AuditLog::creating(function (AuditLog $log): void {
+        if ($log->event === 'quote.state_changed') {
+            throw new RuntimeException('audit insert failed');
+        }
+    });
+
+    expect(fn () => app(QueueService::class)->advance($job, JobState::Closed))
+        ->toThrow(RuntimeException::class);
+
+    // READY -> CLOSED is the LAST transition an order makes: the one the buyer's
+    // delivery tracker keys off and the top row of the status history. Without
+    // the transaction the quote commits as CLOSED with its history entry
+    // permanently missing - a delivered order that never recorded delivering.
+    expect(Quote::query()->find($quote->id)->state)->toBe(QuoteState::Ready);
 });
 
 it('records each hop of a multi-step journey in order', function (): void {
