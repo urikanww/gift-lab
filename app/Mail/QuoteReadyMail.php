@@ -44,7 +44,10 @@ class QuoteReadyMail extends Mailable implements ShouldQueue
                 'quote' => $this->quote,
                 'hasProof' => $this->hasProof,
                 'proofImageUrl' => $this->proofImageUrl,
-                'quoteUrl' => rtrim((string) config('app.frontend_url', config('app.url')), '/').'/quotes/'.$this->quote->id,
+                // /orders/{reference}, not /quotes/{id}: the SPA only routes an
+                // order detail by opaque reference, so an id-based link falls
+                // through to the catch-all and renders NotFound.
+                'quoteUrl' => rtrim((string) config('app.frontend_url', config('app.url')), '/').'/orders/'.$this->quote->reference,
                 'greetingName' => $this->greetingName ?? optional($this->quote->creator)->name,
             ],
         );

@@ -29,6 +29,41 @@ it('uses the quote-only subject when no proof', function (): void {
     $mail->assertHasSubject('Your quote is ready to review — Gift Lab');
 });
 
+it('links the CTA to the reference-based order route, never /quotes/{id}', function (): void {
+    config(['app.frontend_url' => 'https://app.example.test']);
+    $quote = Quote::factory()->create();
+    $mail = new QuoteReadyMail($quote, hasProof: false, proofImageUrl: null);
+
+    // The SPA routes an order detail at /orders/{reference} only; /quotes/{id}
+    // falls through to the catch-all and renders NotFound, so the buyer's one
+    // CTA would be a dead link.
+    $mail->assertSeeInHtml('https://app.example.test/orders/'.$quote->reference, false);
+    $mail->assertDontSeeInHtml('/quotes/'.$quote->id, false);
+});
+
+it('shows the searchable reference under Quote ref, not the tracking code', function (): void {
+    $quote = Quote::factory()->create();
+    $mail = new QuoteReadyMail($quote, hasProof: false, proofImageUrl: null);
+
+    // The buyer types what this email calls "Quote ref" into the order search,
+    // which matches on reference (and id) only. Handing them the tracking code
+    // there gave them the one identifier the search cannot find.
+    $mail->assertSeeInHtml('Quote ref', false);
+    $mail->assertSeeInHtml($quote->reference, false);
+});
+
+it('still carries the tracking code, labelled for login-free tracking', function (): void {
+    $quote = Quote::factory()->create();
+    $mail = new QuoteReadyMail($quote, hasProof: false, proofImageUrl: null);
+
+    // Not dropped, just disambiguated: the tracking code is the shareable one a
+    // recipient without an account uses at /track.
+    expect($quote->tracking_code)->not->toBeNull();
+    $mail->assertSeeInHtml('Tracking code', false);
+    $mail->assertSeeInHtml($quote->tracking_code, false);
+    $mail->assertSeeInHtml('Share to track without an account', false);
+});
+
 it('escapes a malicious creator name in the greeting', function (): void {
     $creator = User::factory()->create(['name' => 'Mallory<script>alert(1)</script>']);
     $quote = Quote::factory()->create(['created_by' => $creator->id]);
