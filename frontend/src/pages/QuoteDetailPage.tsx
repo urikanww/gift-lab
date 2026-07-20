@@ -188,8 +188,13 @@ export default function QuoteDetailPage() {
           <StatusHistory reference={quote.reference} state={quote.state} />
         </Motion>
 
-        {/* Login-free tracking link + QR - share with the recipient. */}
-        {quote.tracking_link && (
+        {/* Login-free tracking link + QR - share with the recipient. Buyer-only:
+            the whole card is a sharing affordance (scan/bookmark to follow
+            without an account), which is meaningless to staff, who reach this
+            order through the console and already see its live state above. The
+            tracking CODE stays in the header for everyone - staff need to read
+            it back to a buyer who calls in. */}
+        {!isStaff && quote.tracking_link && (
           <Motion variants={staggerItem}>
             <Card padding="lg" aria-labelledby="track-heading">
               <h2 id="track-heading" className="font-display text-xl text-fg">
