@@ -672,7 +672,7 @@ function LineItemList({ items }: { items: LineItem[] | undefined }) {
               >
                 <td className="px-5 py-4 text-fg">
                   <div className="flex items-start gap-3">
-                    <ProductThumb product={li.product} className="h-12 w-12" />
+                    <ProductThumb product={li.product} className="h-12 w-12" zoomable />
                     <div className="min-w-0">
                       <span className="block">{li.product?.name ?? `Product #${li.product_id}`}</span>
                       {/* The buyer's design follows the line it belongs to - seeing
@@ -716,7 +716,7 @@ function LineItemList({ items }: { items: LineItem[] | undefined }) {
           <li key={li.id} className="flex flex-col gap-2 px-5 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-start gap-3">
-                <ProductThumb product={li.product} className="h-12 w-12" />
+                <ProductThumb product={li.product} className="h-12 w-12" zoomable />
                 <div className="min-w-0">
                   <span className="font-medium text-fg">
                     {li.product?.name ?? `Product #${li.product_id}`}
