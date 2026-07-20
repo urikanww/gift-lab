@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuoteStore } from '../stores/quoteStore';
@@ -27,9 +27,15 @@ export default function QuoteListPage() {
   const shouldAnimate = useReducedMotionSafe();
   const staff = isStaffRole(useAuthStore((s) => s.user?.role));
 
+  const [term, setTerm] = useState('');
+
+  // Also the mount fetch: the empty initial term means the first run asks for
+  // an unfiltered page 1. Keep it as one effect - a separate mount fetch
+  // alongside this would fire two requests on every mount.
   useEffect(() => {
-    void fetchQuotes(1);
-  }, [fetchQuotes]);
+    const id = setTimeout(() => void fetchQuotes(1, term.trim() || undefined), 300);
+    return () => clearTimeout(id);
+  }, [term, fetchQuotes]);
 
   return (
     <section aria-labelledby="quotes-heading">
@@ -57,6 +63,19 @@ export default function QuoteListPage() {
             : 'Track your gift orders from request through production.'}
         </p>
       </Motion>
+
+      {/* Outside the loading/empty branches below: a search that matches nothing
+          must keep its own box on screen so the user can clear or amend the term. */}
+      <label className="mb-4 block">
+        <span className="sr-only">Search orders</span>
+        <input
+          type="search"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          placeholder="Search by order reference or id"
+          className="w-full max-w-sm rounded-md border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </label>
 
       {loading ? (
         <QuoteListSkeleton />

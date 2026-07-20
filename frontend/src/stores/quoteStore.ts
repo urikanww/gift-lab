@@ -37,8 +37,16 @@ interface QuoteStoreState {
   lastPage: number;
   subscribedCompany: number | null;
   summary: QuoteSummary | null;
+  /**
+   * Active orders-list search term, forwarded as `?q=`. Lives here rather than
+   * in QuoteListPage because the post-mutation/reconnect refresh below re-fetches
+   * from store state: a component-local term would be dropped by that refresh and
+   * silently reset the user's filtered list back to every order.
+   */
+  searchTerm: string | undefined;
 
-  fetchQuotes: (page?: number) => Promise<void>;
+  /** `term` filters by partial reference or exact id; omitted means no filter. */
+  fetchQuotes: (page?: number, term?: string) => Promise<void>;
   fetchSummary: () => Promise<void>;
   /** Accepts an opaque order reference (buyer URLs) or a numeric id. */
   fetchQuote: (idOrRef: string | number) => Promise<void>;
@@ -73,11 +81,16 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   lastPage: 1,
   subscribedCompany: null,
   summary: null,
+  searchTerm: undefined,
 
-  fetchQuotes: async (page = 1) => {
-    set({ loading: true, error: null });
+  fetchQuotes: async (page = 1, term) => {
+    set({ loading: true, error: null, searchTerm: term });
     try {
-      const { data } = await api.get<Paginated<Quote>>('/quotes', { params: { page } });
+      // Omitted rather than sent empty: the API treats a blank q as no filter,
+      // but keeping it out of the query string keeps the URL honest.
+      const { data } = await api.get<Paginated<Quote>>('/quotes', {
+        params: term ? { page, q: term } : { page },
+      });
       set({
         quotes: data.data,
         page: data.meta?.current_page ?? page,
@@ -249,7 +262,9 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     // Reconcile after a socket reconnect: refresh the list and the open quote so
     // any state-changed/proof events missed while offline are picked up.
     offReconnect = onEchoReconnect(() => {
-      void get().fetchQuotes(get().page);
+      // Carry the active search through the refresh, or the user's filtered
+      // list silently resets to every order while their term sits in the box.
+      void get().fetchQuotes(get().page, get().searchTerm);
       const current = get().current;
       if (current) void get().fetchQuote(current.id);
     });

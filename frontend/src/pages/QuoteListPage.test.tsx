@@ -1,14 +1,27 @@
-import { afterEach, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
 import QuoteListPage from './QuoteListPage';
 import { useAuthStore } from '../stores/authStore';
 import { useQuoteStore } from '../stores/quoteStore';
 
+// The store test below drives the REAL fetchQuotes, which would otherwise fire
+// an XHR; the page tests seed their own fetchQuotes and never touch this.
+vi.mock('../lib/api', () => ({
+  default: { get: vi.fn(async () => ({ data: { data: [], meta: { current_page: 1, last_page: 1 } } })) },
+  apiError: (e: unknown) => String(e),
+  ensureCsrf: async () => {},
+}));
+
 const initialQuoteStore = useQuoteStore.getState();
 const initialAuthStore = useAuthStore.getState();
 afterEach(() => {
+  // Unmount BEFORE restoring the real store: restoring first swaps the seeded
+  // no-op fetchQuotes back to the real one while the page is mounted, re-running
+  // the search effect (keyed on fetchQuotes identity) against the real API.
+  cleanup();
+  vi.useRealTimers();
   useQuoteStore.setState(initialQuoteStore, true);
   useAuthStore.setState(initialAuthStore, true);
 });
@@ -82,4 +95,59 @@ it('hides the company column and keeps buyer copy for buyers', () => {
   // Buyers arrive via the "My Orders" nav item - the title matches it.
   expect(screen.getByRole('heading', { name: 'My Orders' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Quotes' })).not.toBeInTheDocument();
+});
+
+// userEvent is avoided in these two: its internal waits deadlock against fake
+// timers. fireEvent drives one React state update per call, which is exactly
+// the "one keystroke, one effect re-run" the debounce has to collapse.
+function searchBox() {
+  return screen.getByRole('searchbox', { name: /search orders/i });
+}
+
+async function tick(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+}
+
+it('passes the typed term to fetchQuotes', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ fetchQuotes } as any);
+  renderPage();
+
+  fireEvent.change(searchBox(), { target: { value: 'ABC123' } });
+  await tick(300);
+
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123');
+});
+
+it('debounces typing into one request rather than one per keystroke', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ fetchQuotes } as any);
+  renderPage();
+
+  // Six keystrokes inside the debounce window, plus the mount run. Every re-run
+  // must CANCEL the pending timer rather than merely delay its own - without
+  // the clearTimeout this is seven requests.
+  for (const value of ['A', 'AB', 'ABC', 'ABC1', 'ABC12', 'ABC123']) {
+    fireEvent.change(searchBox(), { target: { value } });
+    await tick(50);
+  }
+  await tick(300);
+
+  expect(fetchQuotes).toHaveBeenCalledTimes(1);
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123');
+});
+
+// Regression guard: the post-mutation refresh in the store re-fetches from
+// store state. If the term lived only in the component it would be dropped
+// there, silently resetting the user's filtered list back to everything.
+it('keeps the search term in the store across a post-mutation refresh', async () => {
+  await useQuoteStore.getState().fetchQuotes(1, 'ABC123');
+
+  expect(useQuoteStore.getState().searchTerm).toBe('ABC123');
 });
