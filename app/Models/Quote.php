@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\JobState;
 use App\Enums\QuoteState;
 use App\Exceptions\InvalidStateTransitionException;
+use App\Services\AuditLogger;
 use Database\Factories\QuoteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -213,6 +214,11 @@ class Quote extends Model
 
     /**
      * Guarded state transition. Persists the new state or throws.
+     *
+     * Audits here rather than at each QuoteService call site: the guard and the
+     * write are already atomic at this choke point, so every transition - past,
+     * present, and any future caller - lands in the trail. A caller that forgets
+     * to log leaves a silent hole in a history whose whole value is completeness.
      */
     public function transitionTo(QuoteState $target): void
     {
@@ -220,8 +226,18 @@ class Quote extends Model
             throw InvalidStateTransitionException::between('quote', $this->state->value, $target->value);
         }
 
+        $from = $this->state;
+
         $this->state = $target;
         $this->save();
+
+        // After save(): a failed write must not leave a phantom history entry.
+        app(AuditLogger::class)->log(
+            $this,
+            'quote.state_changed',
+            ['state' => $from->value],
+            ['state' => $target->value],
+        );
     }
 
     /**
