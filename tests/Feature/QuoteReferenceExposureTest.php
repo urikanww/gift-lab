@@ -33,6 +33,21 @@ function queueQueryCount(): int
     return $count;
 }
 
+/**
+ * Run the quote-show endpoint and return how many queries it took.
+ */
+function quoteShowQueryCount(Quote $quote): int
+{
+    $count = 0;
+    DB::listen(function () use (&$count): void {
+        $count++;
+    });
+
+    test()->getJson("/api/quotes/{$quote->reference}")->assertOk();
+
+    return $count;
+}
+
 it('exposes quote_reference alongside the surviving quote_id on the queue', function (): void {
     $quote = Quote::factory()->create(['company_id' => $this->company->id]);
     ProductionJob::factory()->create(['quote_id' => $quote->id]);
@@ -60,6 +75,27 @@ it('keeps the queue query count flat as jobs are added', function (): void {
     $large = queueQueryCount();
 
     // Without eager-loading the quote relation this grows by one query per job.
+    expect($large)->toBeLessThanOrEqual($small + 1);
+});
+
+it('keeps the quote-show query count flat as line items and proofs are added', function (): void {
+    $quote = Quote::factory()->create(['company_id' => $this->company->id]);
+    Sanctum::actingAs($this->staff);
+
+    LineItem::factory()->count(2)->create(['quote_id' => $quote->id]);
+    Proof::factory()->count(2)->sequence(fn ($s) => ['version' => $s->index + 1])
+        ->create(['quote_id' => $quote->id]);
+    $small = quoteShowQueryCount($quote);
+
+    LineItem::factory()->count(6)->create(['quote_id' => $quote->id]);
+    Proof::factory()->count(6)->sequence(fn ($s) => ['version' => $s->index + 3])
+        ->create(['quote_id' => $quote->id]);
+    $large = quoteShowQueryCount($quote);
+
+    // QuoteResource hands each child the parent quote via setRelation, so no
+    // child re-fetches it. Simplify that back to a plain whenLoaded and this
+    // climbs by one query per line item AND one per proof - output stays
+    // correct (lazy loading fills it in), only the query count regresses.
     expect($large)->toBeLessThanOrEqual($small + 1);
 });
 
