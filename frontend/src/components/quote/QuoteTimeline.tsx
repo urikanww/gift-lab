@@ -86,8 +86,14 @@ export default function QuoteTimeline({ state }: { state: QuoteState }) {
             "step 9 of 9" would hand READY's position to a second state. */}
         {complete && <span className="text-xs text-fg-subtle">All steps complete</span>}
 
-        {/* A cancelled order has no path left to walk, so there is nothing to
-            disclose - matches the stepper-free card this state shipped with. */}
+        {/* No disclosure for a cancelled order, deliberately asymmetric with
+            the other off-path state. CHANGES_REQUESTED is live and will rejoin
+            the path, so its stepper still describes something real. CANCELLED
+            is over, and with no current step its stepper would draw nine empty
+            circles - reading as "no progress was ever made", which is wrong for
+            an order cancelled at, say, the proofing stage. How far it actually
+            got lives in the transition history, not in the current state, so
+            the status history section is where that belongs. */}
         {!cancelled && (
           <button
             type="button"
