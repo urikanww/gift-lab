@@ -14,22 +14,14 @@ import { useAuthStore } from '../stores/authStore';
 import { fetchBrandKit, type BrandKit } from '../lib/brandKit';
 import { uploadArtwork } from '../lib/uploadArtwork';
 import type { PriceEstimate, Product, Variant } from '../types';
-import { Button, Select, Badge, Card, Input, useToast, cn } from '../ui';
+import { Button, Select, Badge, Card, useToast, cn } from '../ui';
+import NeedByField from '../components/checkout/NeedByField';
+import { useLeadTimeEstimate } from '../lib/useLeadTimeEstimate';
 import { Motion, fadeInUp } from '../motion';
 import QuantityStepper from '../components/QuantityStepper';
 import FinishedLookUploader, {
   type FinishedLookValue,
 } from '../components/FinishedLookUploader';
-
-interface LeadEstimate {
-  earliest: string;
-  latest: string;
-  rush_available: boolean;
-  rush_earliest: string | null;
-  rush_fee: number | null;
-}
-
-const fmtDate = (d: string) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 export default function ProductDesignerPage() {
   const { id } = useParams();
@@ -92,7 +84,7 @@ export default function ProductDesignerPage() {
   const [finishedLook, setFinishedLook] = useState<FinishedLookValue | null>(null);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
   // Deadline-aware delivery: queue-aware window + a "need it by" feasibility check.
-  const [lead, setLead] = useState<LeadEstimate | null>(null);
+  const lead = useLeadTimeEstimate(product ? [product.id] : []);
   // Brand kit: only a signed-in buyer (has a company) has one to apply.
   const companyId = useAuthStore((s) => s.user?.company_id ?? null);
   const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
@@ -181,24 +173,6 @@ export default function ProductDesignerPage() {
     grab();
     return () => cancelAnimationFrame(raf);
   }, [product?.id]);
-
-  // Delivery window: fetch once the product is known. Queue-depth aware, so a
-  // busy floor honestly pushes the date out. Failure is non-fatal (hide it).
-  useEffect(() => {
-    if (!product) return;
-    let active = true;
-    api
-      .post<LeadEstimate>('/lead-time-estimate', { line_items: [{ product_id: product.id }] })
-      .then(({ data }) => {
-        if (active) setLead(data);
-      })
-      .catch(() => {
-        if (active) setLead(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [product]);
 
   // Live quote: re-estimate whenever qty, variant, logo band, or captured
   // artwork changes. Event-driven single POST per change - never polled.
@@ -569,46 +543,11 @@ export default function ProductDesignerPage() {
               floats over the design controls. */}
           <div>
             <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 shadow-sm lg:flex-row lg:items-end lg:justify-between">
-              {/* Deadline-aware delivery window + feasibility check */}
-              {lead && (
-                <div className="flex flex-col gap-2 lg:max-w-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium text-fg">Estimated delivery</p>
-                      <p className="text-sm text-fg-muted">
-                        Arrives {fmtDate(lead.earliest)} – {fmtDate(lead.latest)}
-                      </p>
-                    </div>
-                    {needBy &&
-                      (needBy < lead.latest ? (
-                        <Badge tone="warning" dot>
-                          At risk
-                        </Badge>
-                      ) : (
-                        <Badge tone="success" dot>
-                          On track
-                        </Badge>
-                      ))}
-                  </div>
-                  <Input
-                    type="date"
-                    label="Need it by (optional)"
-                    value={needBy}
-                    min={lead.earliest}
-                    onChange={(e) => setNeedBy(e.target.value)}
-                  />
-                  {needBy && needBy < lead.latest && (
-                    <p className="text-sm text-warning">
-                      Tight for {fmtDate(needBy)}.
-                      {lead.rush_available && lead.rush_earliest
-                        ? ` Rush can arrive ${fmtDate(lead.rush_earliest)}${
-                            lead.rush_fee ? ` (+SGD ${lead.rush_fee.toFixed(2)})` : ''
-                          } - ask us to add it.`
-                        : ''}
-                    </p>
-                  )}
-                </div>
-              )}
+              {/* Deadline-aware delivery window + feasibility check (shared with
+                  checkout so both read/write the same cart deadline). */}
+              <div className="lg:max-w-xs">
+                <NeedByField lead={lead} value={needBy} onChange={setNeedBy} />
+              </div>
 
               {/* Quantity + live price + primary CTA */}
               <div className="flex flex-col gap-3 lg:w-80 lg:shrink-0">

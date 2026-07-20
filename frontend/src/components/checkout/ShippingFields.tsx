@@ -66,20 +66,14 @@ export default function ShippingFields({ value, onChange, showLabel = false }: P
         <Input value={value.line2 ?? ''} onChange={set('line2')} />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-subtle">City</span>
-        <Input value={value.city ?? ''} onChange={set('city')} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
         <span className="text-fg-subtle">Postal code *</span>
         <Input value={value.postal_code} onChange={set('postal_code')} required />
       </label>
+      {/* Singapore-only delivery: country is fixed (shown disabled for clarity);
+          city/state are irrelevant for a city-state and stay null in the data. */}
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-subtle">State / region</span>
-        <Input value={value.state ?? ''} onChange={set('state')} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-fg-subtle">Country *</span>
-        <Input value={value.country} onChange={set('country')} maxLength={2} required />
+        <span className="text-fg-subtle">Country</span>
+        <Input value="Singapore" disabled readOnly aria-label="Country (Singapore only)" />
       </label>
       <label className="flex flex-col gap-1 text-sm sm:col-span-2">
         <span className="text-fg-subtle">Delivery notes</span>

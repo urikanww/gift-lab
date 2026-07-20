@@ -115,6 +115,20 @@ export interface SavedAddress extends SavedAddressInput {
   label: string | null;
 }
 
+/**
+ * Order-level delivery-window estimate from POST /lead-time-estimate: the
+ * earliest/latest arrival for a set of products (gated by the slowest track and
+ * current queue depth), plus an optional rush window/fee. Informational only —
+ * no charge is applied from it.
+ */
+export interface LeadTimeEstimate {
+  earliest: string;
+  latest: string;
+  rush_available: boolean;
+  rush_earliest: string | null;
+  rush_fee: number | null;
+}
+
 /** Result of POST /production-jobs/:id/create-shipment (NinjaVan). */
 export interface ShipmentResult {
   state: string;
