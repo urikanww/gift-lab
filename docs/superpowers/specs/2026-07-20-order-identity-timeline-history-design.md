@@ -22,11 +22,12 @@ The order detail header does three things badly.
 
 | Question | Decision |
 |---|---|
-| Buyer-facing identifier | `reference` — never the id |
+| Order identifier, everywhere | `reference` — buyer, staff and admin alike |
+| `quote_id` in API payloads | Stays — it is a join key, not a label |
 | Timeline shape | Collapsed to current context, full stepper behind a disclosure |
 | Status history | Build it — new data, logged at the transition choke point |
 | Historical backfill | **None.** New events only, with an explicit "tracking started" note |
-| Staff-only ops surfaces | Keep `quote_id` (see below) |
+| Staff-only ops surfaces | Switch too — one identifier for support |
 
 ## Part A — reference as the buyer-facing identity
 
@@ -49,19 +50,54 @@ as an ordinal and the reference is not one. "Order" also matches the buyer
 vocabulary already used by the `My Orders` nav item, while "Quote" is the
 internal domain term.
 
-### Staff surfaces keep the id — deliberately
+### Staff and admin switch too
 
-`DashboardPage`, `ProductionQueuePage` and `ProcurementPage` show `Quote
-#{quote_id}`. They stay as they are:
+Two identifiers for one order means every support conversation starts by
+translating between them — the buyer says `9BWVKWCDXH`, the floor says `#1`,
+and someone has to map one to the other before the actual question can be
+answered. One identifier on both sides removes that step entirely, and it is
+worth more than the id's brevity on internal screens.
 
-- They are internal ops tools. Enumerable ids leak nothing to staff.
-- Their APIs return `quote_id` and **not** `reference`
-  (`ProductionJobResource`, the procurement alert payload), so switching them
-  means widening those resources — unrelated work for no buyer benefit.
+These payloads carry a quote identity and currently expose only `quote_id`.
+Each gains a `quote_reference` **alongside** it:
 
-`QuoteListPage` and `QuoteDetailPage` are shared, and both switch wholesale.
-One canonical public identity is worth more than letting staff keep a shorter
-string on two pages they share with buyers.
+| Source | Line |
+|---|---|
+| `ProductionJobResource` | `:23` |
+| `LineItemResource` | `:23` |
+| `ProofResource` | `:23` |
+| `QueueService` (staff dashboard feed) | `:86` |
+| `LineItemAwaitingReconfirm` (broadcast) | `:53` |
+| `ProductionQueueUpdated` (broadcast) | `:53` |
+| `ProofStatusChanged` (broadcast) | `:50` |
+| `QuoteStateChanged` (broadcast) | `:49` |
+
+**`quote_id` is not removed.** It is the key the realtime stores use to match
+an incoming broadcast against a row already on screen (`queueStore`,
+`procurementStore`). Dropping it to force the rename would break that matching
+for a cosmetic gain. The rule is narrower than "delete the id": *stop
+displaying it, keep joining on it.*
+
+Staff display surfaces to switch:
+
+| File | Line |
+|---|---|
+| `DashboardPage.tsx` | `:92` |
+| `ProductionQueuePage.tsx` | `:312` |
+| `ProcurementPage.tsx` | `:104` |
+
+Also `resources/views/mail/quote-ready.blade.php:78`, which falls back to
+`$quote->id` when `tracking_code` is null — that fallback becomes `reference`.
+
+Internal non-display uses of `quote_id` stay untouched: Stripe session
+metadata, `ShippingAddressController`, `AmendQuoteRequest` validation. They are
+keys, never shown.
+
+**Eager-loading:** `ProductionJobResource` and `ProofResource` reach the
+reference through the `quote` relation. Every controller building those
+collections must eager-load it or the queue page fires one query per job. This
+is the most likely defect in Part A and needs an explicit N+1 check, not a
+visual one.
 
 ## Part B — collapsed timeline
 
@@ -150,10 +186,30 @@ list of `{state} · {date} · {actor}`, newest first, empty state as above.
 
 ## Risks
 
-**Part A changes what buyers quote at support.** A buyer who has referenced
-`#1` in an email will now see `9BWVKWCDXH`. Staff tooling still shows the id,
-so the two identities coexist and staff need to know both map to one order.
-Worth a note to whoever answers support.
+**Old ids become unlookupable — OPEN QUESTION.** A buyer or staff member
+holding `#1` from an existing email, invoice or conversation currently finds
+that order by reading `Quote #1` off a list. After this change nothing displays
+the id.
+
+`QuoteController` has **no search or filter of any kind** — not by reference,
+not by id. So there is no lookup to widen; there is nowhere to type either
+identifier. Anyone holding an old `#1` is left scanning the list by date.
+
+Three ways out, none of them chosen yet:
+
+1. **Staff-only secondary line.** `Order 9BWVKWCDXH` as the heading with a
+   muted `internal #1` beneath it on `QuoteDetailPage`, staff only. Cheapest,
+   but partially reintroduces the second identifier this change exists to
+   remove.
+2. **Add quote search accepting both.** Solves it properly and is useful
+   regardless, but it is a new feature and grows this change.
+3. **Accept the gap.** Defensible only if old ids are not circulating outside
+   the system — you would know that better than I do.
+
+This needs a decision before Part A ships, not after.
+
+**Widening eight payloads risks an N+1.** See the eager-loading note in Part A.
+The queue page renders many jobs at once and is the likeliest place to regress.
 
 **The history endpoint is a new authorisation surface.** It must reuse the
 `view` policy rather than checking `company_id` inline; a bespoke check on a
@@ -164,8 +220,11 @@ UI-only and independently shippable.
 
 ## Testing
 
-Part A: assert each surface renders the reference and **not** `#{id}` —
-a regex on `/#\d+/` catches a partial migration.
+Part A: assert each surface renders the reference and **not** `#{id}` — a
+regex on `/#\d+/` catches a partial migration. Backend: each widened resource
+includes `quote_reference` and still includes `quote_id`. An N+1 assertion on
+the production-queue index (query count stays flat as job count grows) guards
+the eager-loading risk, since nothing visual will reveal it.
 
 Part B: collapsed by default; toggling reveals all nine; a terminal state shows
 no "next"; `aria-expanded` tracks state.
