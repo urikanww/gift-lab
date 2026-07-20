@@ -283,11 +283,13 @@ it('returns a full staff pricing breakdown with internal cost and margin', funct
     ]);
 
     $res = $this->postJson('/api/admin/price-breakdown', [
-        'line_items' => [['product_id' => $product->id, 'qty' => 5]],
+        'line_items' => [['product_id' => $product->id, 'qty' => 5, 'has_customization' => true]],
     ])->assertOk();
 
     $line = $res->json('lines.0');
     // landed 10 + 50% margin (5.00) + UV print 1.50 = 16.50/unit; ×5 = 82.50.
+    // The print pass is billed because the line is customized; a blank line
+    // would price at 15.00 (see PricingServiceTest).
     expect((float) $line['landed_cost'])->toBe(10.0)
         ->and((float) $line['margin'])->toBe(5.0)
         ->and((float) $line['print_per_unit'])->toBe(1.5)

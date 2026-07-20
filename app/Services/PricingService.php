@@ -44,10 +44,14 @@ final class PricingService
 
     /**
      * Price a single line's per-unit price (excludes flat per-line fees).
+     *
+     * $hasCustomization defaults to false so a bare call prices the blank as
+     * shipped - the storefront `from_price` and admin selling price both want
+     * the undecorated figure.
      */
-    public function unitPrice(Product $product, ?Variant $variant, int $qty): float
+    public function unitPrice(Product $product, ?Variant $variant, int $qty, bool $hasCustomization = false): float
     {
-        return $this->unitPriceBreakdown($product, $variant, $qty)['unit_price'];
+        return $this->unitPriceBreakdown($product, $variant, $qty, $hasCustomization)['unit_price'];
     }
 
     /**
@@ -58,7 +62,7 @@ final class PricingService
      *
      * @return array{landed_cost: float, margin: float, print_per_unit: float, bulk_discount: float, unit_price: float, overridden: bool, price_override: ?float}
      */
-    public function unitPriceBreakdown(Product $product, ?Variant $variant, int $qty): array
+    public function unitPriceBreakdown(Product $product, ?Variant $variant, int $qty, bool $hasCustomization = false): array
     {
         $landed = $this->landedCost($product, $variant);
 
@@ -85,10 +89,13 @@ final class PricingService
         $marginAmount = $landed * $marginPct / 100;
         $marged = $landed + $marginAmount;
 
-        // MODEL_3D machine time is already inside landed cost - the flat
-        // per-unit print fee applies only to decorate-a-blank methods.
+        // The flat per-unit print fee pays for a decoration pass, so it applies
+        // only to a line that is actually being decorated - a blank ordered
+        // as-is never goes near the printer. MODEL_3D is excluded on a separate
+        // ground: its machine time already sits inside landed cost (the UV pass
+        // on a customized 3D part is recovered in quoteTotals instead).
         $printPerUnit = 0.0;
-        if ($product->class !== ProductClass::Model3d) {
+        if ($hasCustomization && $product->class !== ProductClass::Model3d) {
             $printCosts = (array) PricingConfig::value('print_cost', 'per_unit', []);
             $method = $product->print_method?->value;
             $printPerUnit = (float) ($printCosts[$method] ?? 0);
@@ -150,7 +157,7 @@ final class PricingService
         $deliveryReliable = true;
 
         foreach ($lines as $line) {
-            $unit = $this->unitPrice($line['product'], $line['variant'], $line['qty']);
+            $unit = $this->unitPrice($line['product'], $line['variant'], $line['qty'], $line['has_customization']);
             $lineTotal = $unit * $line['qty'];
 
             if ($line['has_customization']) {
@@ -229,7 +236,7 @@ final class PricingService
         foreach ($lines as $line) {
             $product = $line['product'];
             $qty = $line['qty'];
-            $bd = $this->unitPriceBreakdown($product, $line['variant'], $qty);
+            $bd = $this->unitPriceBreakdown($product, $line['variant'], $qty, $line['has_customization']);
             $unitsTotal = round($bd['unit_price'] * $qty, 2);
 
             $flat = 0.0;

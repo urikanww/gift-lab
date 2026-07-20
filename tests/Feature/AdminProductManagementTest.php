@@ -315,7 +315,7 @@ it('lets a superadmin set a price override, reflected in selling_price and audit
         'price_override' => 3.5,
     ])->assertOk();
 
-    // 3.50 flat instead of the dynamic 16.50.
+    // 3.50 flat instead of the dynamic 15.00.
     expect($response->json('data.price_override'))->toBe('3.50')
         ->and((float) $response->json('data.selling_price'))->toBe(3.5);
 
@@ -335,8 +335,10 @@ it('lets a superadmin clear a price override back to dynamic pricing', function 
     ])->assertOk();
 
     expect($response->json('data.price_override'))->toBeNull()
-        // dynamic price restored: 10 +50% +1.50 UV = 16.50.
-        ->and((float) $response->json('data.selling_price'))->toBe(16.5);
+        // Dynamic price restored: 10 + 50% = 15.00. The admin selling price is
+        // the blank figure - the UV print pass is billed per customized line,
+        // not baked into the product's own price.
+        ->and((float) $response->json('data.selling_price'))->toBe(15.0);
 
     $product->refresh();
     expect($product->price_override)->toBeNull();

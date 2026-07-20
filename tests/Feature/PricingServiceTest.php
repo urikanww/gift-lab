@@ -11,17 +11,38 @@ beforeEach(function (): void {
     $this->pricing = app(PricingService::class);
 });
 
-it('prices a unit as marged blank cost plus per-method print cost', function (): void {
+it('prices a customized unit as marged blank cost plus per-method print cost', function (): void {
     // base 10 + 50% margin = 15.00; + UV print 1.50 = 16.50 (below bulk qty).
     $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
 
-    expect($this->pricing->unitPrice($product, null, 1))->toBe(16.50);
+    expect($this->pricing->unitPrice($product, null, 1, hasCustomization: true))->toBe(16.50);
+});
+
+// The per-unit print cost pays for decorating the blank. A buyer ordering the
+// blank as-is never triggers a print pass, so charging it inflates the
+// storefront `from_price` and every uncustomized quote line.
+it('excludes the per-method print cost from a blank (uncustomized) unit', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+
+    expect($this->pricing->unitPrice($product, null, 1))->toBe(15.00);
+});
+
+it('zeroes print_per_unit in the breakdown of a blank unit', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+
+    $blank = $this->pricing->unitPriceBreakdown($product, null, 1);
+    $printed = $this->pricing->unitPriceBreakdown($product, null, 1, hasCustomization: true);
+
+    expect($blank['print_per_unit'])->toBe(0.0)
+        ->and($blank['unit_price'])->toBe(15.00)
+        ->and($printed['print_per_unit'])->toBe(1.50)
+        ->and($printed['unit_price'])->toBe(16.50);
 });
 
 it('applies the bulk discount at or above the configured threshold', function (): void {
     $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
 
-    $unit = $this->pricing->unitPrice($product, null, 50); // bulk_qty default 50
+    $unit = $this->pricing->unitPrice($product, null, 50, hasCustomization: true); // bulk_qty default 50
     // 16.50 * (1 - 10%) = 14.85
     expect($unit)->toBe(14.85);
 });
@@ -106,8 +127,8 @@ it('never surcharges a blank (uncustomized) line even with a size present', func
         'has_customization' => false, 'logo_size' => 'L',
     ]]);
 
-    // 14.85 × 50 = 742.50, no fees at all.
-    expect($totals['lines'][0]['line_total'])->toBe(742.50);
+    // Blank unit 15.00 → bulk 13.50 × 50 = 675.00: no print pass, no fees at all.
+    expect($totals['lines'][0]['line_total'])->toBe(675.00);
 });
 
 // Superadmin price override: a fixed per-unit price replaces the whole dynamic
