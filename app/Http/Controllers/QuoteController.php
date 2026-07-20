@@ -59,6 +59,15 @@ class QuoteController extends Controller
                     // security boundary - the term is a bound parameter and the
                     // company scope already bounds what can match - but the app's
                     // two search endpoints should agree on what a % in the box means.
+                    //
+                    // The backslash only escapes on a connection whose default LIKE
+                    // escape is backslash - true on MySQL, NOT on SQLite (which the
+                    // test suite uses). That divergence is inert here because a
+                    // reference is generated from an alphabet with no %, _ or \, so
+                    // both engines match nothing either way. It stops being inert the
+                    // moment this searches a free-text column (notes, company name):
+                    // the SQLite suite would stay green while MySQL behaved
+                    // differently. Add an explicit ESCAPE clause before that happens.
                     $w->where('reference', 'like', '%'.addcslashes($term, '%_\\').'%');
                     // Exact, and only for all-digit input: LIKE on an integer key
                     // matches 1 against 10/21/100 and forfeits the index.

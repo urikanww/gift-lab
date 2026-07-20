@@ -109,8 +109,11 @@ it('treats a LIKE wildcard as a literal character', function (): void {
 });
 
 it('never returns another company’s order when a buyer searches its reference', function (): void {
-    // Mirror of the id guard below: both branches live in the same closure, so
-    // this catches anyone later un-nesting only half the condition.
+    // Not a mirror of the id guard below - the two branches differ in risk.
+    // `reference` is a plain where(), so un-nesting alone cannot leak through it;
+    // only the orWhere on id can escape the scope. What this guards is a future
+    // change that PROMOTES reference to an orWhere, which is what happens when a
+    // third searchable column lands.
     $other = Company::factory()->create();
     $theirs = Quote::factory()->create(['company_id' => $other->id, 'reference' => 'SECRETREF1']);
     Sanctum::actingAs($this->buyer);
