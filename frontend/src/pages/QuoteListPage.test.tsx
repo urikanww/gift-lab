@@ -180,6 +180,39 @@ it('does not re-fetch when an edit leaves the trimmed term unchanged', async () 
   expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC');
 });
 
+// A filtered miss must not claim the order history is empty: a buyer with a
+// dozen orders who mistypes a reference would otherwise read "No quotes yet -
+// Once you request a quote from your cart, it will appear here."
+it('shows search-specific empty copy when a term matches nothing', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ quotes: [], fetchQuotes } as any);
+  renderPage();
+
+  fireEvent.change(searchBox(), { target: { value: 'ZZZNOPE' } });
+  await tick(300);
+
+  expect(screen.getByText(/no orders match that search/i)).toBeInTheDocument();
+  expect(screen.getByText(/ZZZNOPE/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /clear search/i })).toBeInTheDocument();
+  // The no-orders-at-all copy must NOT appear - that is the false, alarming one.
+  expect(screen.queryByText(/no quotes yet/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /browse catalogue/i })).not.toBeInTheDocument();
+});
+
+// Inverse, guarding against the condition being flipped: with no term, a
+// genuinely empty list keeps the original onboarding copy.
+it('keeps the no-orders-yet copy when the list is empty with no search term', () => {
+  seedQuotes();
+  useQuoteStore.setState({ quotes: [] } as any);
+  renderPage();
+
+  expect(screen.getByText(/no quotes yet/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /browse catalogue/i })).toBeInTheDocument();
+  expect(screen.queryByText(/match that search/i)).not.toBeInTheDocument();
+});
+
 // Paging must re-send the term. fetchQuotes writes its `term` argument to the
 // store unconditionally, so paging without it does not merely show unfiltered
 // rows - it wipes the stored term while the text is still in the input.

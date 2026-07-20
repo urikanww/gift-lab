@@ -97,21 +97,36 @@ export default function QuoteListPage() {
       ) : error ? (
         <ErrorState message={error} onRetry={() => fetchQuotes(page, activeTerm)} />
       ) : quotes.length === 0 ? (
-        <EmptyState
-          title="No quotes yet"
-          description={
-            staff
-              ? 'Customer quote requests will appear here as they come in.'
-              : 'Once you request a quote from your cart, it will appear here.'
-          }
-          action={
-            staff ? undefined : (
-              <Button variant="primary" onClick={() => navigate('/products')}>
-                Browse catalogue
+        // A search that matches nothing is NOT an empty order history. Telling a
+        // buyer with twelve orders that theirs is empty is both false and
+        // alarming, so the filtered miss gets its own copy and a way back out.
+        activeTerm ? (
+          <EmptyState
+            title={staff ? 'No quotes match that search' : 'No orders match that search'}
+            description={`Nothing matches "${activeTerm}". Check the reference, or clear the search to see everything.`}
+            action={
+              <Button variant="outline" onClick={() => setTerm('')}>
+                Clear search
               </Button>
-            )
-          }
-        />
+            }
+          />
+        ) : (
+          <EmptyState
+            title="No quotes yet"
+            description={
+              staff
+                ? 'Customer quote requests will appear here as they come in.'
+                : 'Once you request a quote from your cart, it will appear here.'
+            }
+            action={
+              staff ? undefined : (
+                <Button variant="primary" onClick={() => navigate('/products')}>
+                  Browse catalogue
+                </Button>
+              )
+            }
+          />
+        )
       ) : (
         <>
           {/* Desktop: table. Mobile: stacked cards. */}
