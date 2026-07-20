@@ -71,7 +71,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col gap-8 sm:gap-10">
+    <div className="flex flex-col gap-6 sm:gap-8">
       {/* The shelf opens on merchandising, not navigation - a marketplace, not a
           pitch page - so nothing here is a visible headline. The outline still
           needs a root, and the h2s below need something to hang under.
@@ -91,17 +91,20 @@ export default function HomePage() {
       {(loading || fresh.length > 0) && (
         <section aria-labelledby="home-new">
           <div className="flex items-end justify-between gap-4">
-            <h2 id="home-new" className="font-display text-xl text-fg sm:text-2xl">
+            <h2 id="home-new" className="font-display text-lg text-fg sm:text-xl">
               New arrivals
             </h2>
+            {/* 44px tap target on touch, 24px on pointer (WCAG 2.5.8 AA). The
+                flat 44px inflated this row 14px above the heading's own height
+                on desktop, where a mouse does not need the padding. */}
             <Link
               to="/products?sort=newest"
-              className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[24px]"
             >
               View all
             </Link>
           </div>
-          <div className="mt-4">
+          <div className="mt-3">
             {loading ? (
               <div className="flex gap-4 overflow-hidden" aria-hidden="true">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -118,10 +121,10 @@ export default function HomePage() {
       )}
 
       <section aria-labelledby="home-browse">
-        <h2 id="home-browse" className="font-display text-xl text-fg sm:text-2xl">
+        <h2 id="home-browse" className="font-display text-lg text-fg sm:text-xl">
           Browse the catalogue
         </h2>
-        <div className="mt-4">
+        <div className="mt-3">
           {loading ? (
             <>
               <span className="sr-only" role="status" aria-live="polite">

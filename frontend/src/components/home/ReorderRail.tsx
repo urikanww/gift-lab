@@ -34,12 +34,14 @@ export default function ReorderRail() {
   return (
     <section aria-labelledby="home-reorder">
       <div className="flex items-end justify-between gap-4">
-        <h2 id="home-reorder" className="font-display text-xl text-fg sm:text-2xl">
+        <h2 id="home-reorder" className="font-display text-lg text-fg sm:text-xl">
           Reorder from a past quote
         </h2>
+        {/* 44px tap target on touch, 24px on pointer (WCAG 2.5.8 AA) - see the
+            same trade-off on HomePage's rail headers. */}
         <Link
           to="/quotes"
-          className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[24px]"
         >
           View all
         </Link>
@@ -47,7 +49,7 @@ export default function ReorderRail() {
       {/* A rail, not a grid: with up to MAX_QUOTES cards a 3-column track leaves
           a lone quote stranded beside two empty columns. Fixed-width cards that
           overflow into a scroll read as deliberate at any count. */}
-      <ul className="mt-4 flex gap-3 overflow-x-auto pb-1">
+      <ul className="mt-3 flex gap-3 overflow-x-auto pb-1">
         {quotes.map((q) => (
           <li key={q.id} className="w-56 shrink-0">
             <Link

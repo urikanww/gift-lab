@@ -25,7 +25,7 @@ export default function Layout() {
       <main
         id="main-content"
         className={cn(
-          'mx-auto px-4 py-8 sm:px-6 sm:py-10',
+          'mx-auto px-4 py-6 sm:px-6 sm:py-8',
           isStudio ? 'max-w-[1600px]' : 'max-w-content',
         )}
       >
