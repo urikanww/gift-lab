@@ -9,7 +9,9 @@ use App\Http\Requests\CancelQuoteRequest;
 use App\Http\Requests\IssueInvoiceRequest;
 use App\Http\Requests\SendQuoteRequest;
 use App\Http\Requests\StoreQuoteRequest;
+use App\Http\Resources\QuoteHistoryResource;
 use App\Http\Resources\QuoteResource;
+use App\Models\AuditLog;
 use App\Models\Quote;
 use App\Services\QuoteService;
 use Illuminate\Http\JsonResponse;
@@ -162,6 +164,35 @@ class QuoteController extends Controller
         $this->authorize('view', $quote);
 
         return new QuoteResource($quote->load(['lineItems.product', 'proofs']));
+    }
+
+    /**
+     * The quote's state trail, oldest first, for the buyer-facing order
+     * timeline. Reads the audit rows Quote::transitionTo() writes.
+     */
+    public function history(Request $request, Quote $quote): AnonymousResourceCollection
+    {
+        // The policy, not an inline company_id compare: tenancy lives in one
+        // place and already covers staff-sees-everything. A bespoke check on a
+        // new route is how cross-tenant leaks get introduced.
+        $this->authorize('view', $quote);
+
+        $rows = AuditLog::query()
+            // Column-limited on purpose - the actor's email must never be
+            // loaded into a payload a buyer reads, let alone serialised.
+            ->with('user:id,name')
+            // Type AND id: auditable_id alone would match another model's row.
+            ->where('auditable_type', Quote::class)
+            ->where('auditable_id', $quote->id)
+            // cancel() writes a quote.cancelled row alongside the state change;
+            // without this filter a cancelled order renders the cancel twice.
+            ->where('event', 'quote.state_changed')
+            // id breaks the tie: several hops can share a created_at second.
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        return QuoteHistoryResource::collection($rows);
     }
 
     public function amend(AmendQuoteRequest $request, Quote $quote): QuoteResource
