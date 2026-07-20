@@ -168,6 +168,12 @@ plainly above so it can be challenged.
 from the promo strip is an estimate from the target height and should be
 confirmed after implementation, not quoted as fact beforehand.
 
+> **Measured after implementation (2026-07-20).** Both estimates were low. The
+> shelf gap is 40px at desktop width, not 32px, so the category band cost
+> 155px. The promo went 127px → **50px**, not the projected 60px. Total chrome
+> above the first section: 322px → 90px, a **232px** saving against the ~210px
+> predicted.
+
 ## Testing
 
 Existing tests that must keep passing:
