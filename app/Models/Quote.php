@@ -229,7 +229,12 @@ class Quote extends Model
         $from = $this->state;
 
         $this->state = $target;
-        $this->save();
+
+        // A `saving`/`updating` hook returning false aborts the write without
+        // throwing; bail so no phantom history entry is logged for it.
+        if (! $this->save()) {
+            return;
+        }
 
         // After save(): a failed write must not leave a phantom history entry.
         app(AuditLogger::class)->log(

@@ -498,10 +498,16 @@ final class QuoteService
      */
     public function procure(Quote $quote): Quote
     {
+        // transitionTo does two writes (the state save and the audit insert), so
+        // it needs a transaction to stay atomic. Every sibling call site already
+        // has one; this was the sole exception, and the one path where a failed
+        // audit insert would commit the state while the caller saw an exception.
         if ($quote->state === QuoteState::Confirmed) {
-            $previous = $quote->state->value;
-            $quote->transitionTo(QuoteState::Procuring);
-            Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous));
+            DB::transaction(function () use ($quote): void {
+                $previous = $quote->state->value;
+                $quote->transitionTo(QuoteState::Procuring);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            });
         }
 
         if ($quote->state !== QuoteState::Procuring) {

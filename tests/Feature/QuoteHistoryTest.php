@@ -6,6 +6,7 @@ use App\Enums\QuoteState;
 use App\Exceptions\InvalidStateTransitionException;
 use App\Models\AuditLog;
 use App\Models\Quote;
+use App\Services\QuoteService;
 
 /**
  * Every quote state transition must leave a trail. The log lives inside
@@ -39,6 +40,24 @@ it('writes nothing when a transition is rejected', function (): void {
     // The log sits AFTER the guard, so a refused move leaves no trace.
     expect(AuditLog::query()->where('event', 'quote.state_changed')->count())->toBe(0);
     expect($quote->refresh()->state)->toBe(QuoteState::Draft);
+});
+
+it('rolls the state back when the audit insert fails during procure', function (): void {
+    $quote = Quote::factory()->create(['state' => 'CONFIRMED']);
+
+    // Fail the audit insert itself - the real AuditLogger and the real create()
+    // path still run, a `creating` hook just makes the write throw. That is the
+    // SECOND write in transitionTo, after the state save has already happened.
+    AuditLog::creating(function (): void {
+        throw new RuntimeException('audit insert failed');
+    });
+
+    expect(fn () => app(QuoteService::class)->procure($quote))
+        ->toThrow(RuntimeException::class);
+
+    // Without the transaction the state would have committed as PROCURING while
+    // the caller saw an exception - a transition that happened but was never logged.
+    expect(Quote::query()->find($quote->id)->state)->toBe(QuoteState::Confirmed);
 });
 
 it('records each hop of a multi-step journey in order', function (): void {
