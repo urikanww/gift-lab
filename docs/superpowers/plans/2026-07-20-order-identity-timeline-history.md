@@ -1047,6 +1047,26 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
+## Standing verification debt
+
+**Nothing in this branch has been exercised against a running app.** Every task
+so far is proven by unit and feature tests only. That leaves a specific,
+known class of defect uncaught:
+
+- Frontend tests mock `api.get`. If the `q` query parameter were named
+  differently from what `QuoteController::index` reads, or the response shape
+  differed, the tests would still pass. The client/server contract is
+  transcribed from reading the controller, not observed.
+- Backend feature tests run on SQLite (`phpunit.xml`), production runs MySQL
+  (`.env`). Already bitten once: the `addcslashes` LIKE escape is inert on
+  SQLite and functional on MySQL, so the test passes for the wrong reason.
+- Realtime behaviour (Echo/Pusher) is tested by capturing handler closures with
+  the transport mocked. That proves the store's logic, never the socket.
+
+This is not a reason to stop, but it must not be reported as "verified". The
+browser pass below is the only thing that closes it, and it needs a signed-in
+session the agents doing this work do not have.
+
 ## Verification beyond the suites
 
 - [ ] **Browser pass, signed in as a buyer**
