@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import api from './api';
-import { fetchRecentQuotes } from './quotes';
+import { fetchQuoteHistory, fetchRecentQuotes } from './quotes';
 import type { Quote } from '../types';
 
 const quote = (id: number): Quote =>
@@ -33,5 +33,24 @@ describe('fetchRecentQuotes', () => {
     vi.spyOn(api, 'get').mockRejectedValue(new Error('401'));
 
     await expect(fetchRecentQuotes(3)).resolves.toEqual([]);
+  });
+});
+
+describe('fetchQuoteHistory', () => {
+  it('returns the recorded transitions', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { data: [{ from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00Z' }] },
+    } as any);
+
+    await expect(fetchQuoteHistory('ORD-123')).resolves.toHaveLength(1);
+  });
+
+  it('rejects rather than masking a failure as an empty history', async () => {
+    // Resolving [] here is what let the UI tell a buyer whose request 500'd
+    // that their order predates status tracking. The caller needs to be able
+    // to tell "no history" apart from "no answer".
+    vi.spyOn(api, 'get').mockRejectedValue(new Error('500'));
+
+    await expect(fetchQuoteHistory('ORD-123')).rejects.toThrow('500');
   });
 });

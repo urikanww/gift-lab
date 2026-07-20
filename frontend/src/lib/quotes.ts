@@ -24,13 +24,16 @@ export interface QuoteHistoryEntry {
 
 /**
  * Append-only state trail for an order, oldest first as the API returns it.
- * Best-effort: a failure yields an empty list, never a rejection - the history
- * is supplementary and must never take the order page down or push an error
- * into the space where the order details belong.
+ *
+ * REJECTS on failure, deliberately. This used to swallow errors to `[]`, which
+ * made "the request failed" indistinguishable from "this order has no recorded
+ * history" - and the only caller renders very different copy for the two. The
+ * best-effort behaviour still holds, it just lives in the caller: StatusHistory
+ * catches this and stays quiet, so a failed history never takes the order page
+ * down or pushes an error into the space where the order details belong.
  */
 export function fetchQuoteHistory(reference: string): Promise<QuoteHistoryEntry[]> {
   return api
     .get<{ data: QuoteHistoryEntry[] }>(`/quotes/${encodeURIComponent(reference)}/history`)
-    .then((r) => r.data.data ?? [])
-    .catch(() => []);
+    .then((r) => r.data.data ?? []);
 }

@@ -1,7 +1,16 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+
+// StatusHistory renders inside this page and fetches on mount. Stub the network
+// so every test here is offline, and so the refetch test below can count calls.
+const fetchQuoteHistory = vi.fn(async (_reference: string) => [] as unknown[]);
+vi.mock('../lib/quotes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/quotes')>()),
+  fetchQuoteHistory: (reference: string) => fetchQuoteHistory(reference),
+}));
+
 import { ThemeProvider, ToastProvider } from '../ui';
 import QuoteDetailPage from './QuoteDetailPage';
 import { useAuthStore } from '../stores/authStore';
@@ -18,6 +27,7 @@ afterEach(() => {
   cleanup();
   useQuoteStore.setState(initialQuoteStore, true);
   useAuthStore.setState(initialAuthStore, true);
+  fetchQuoteHistory.mockClear();
 });
 
 function seedQuote(state: QuoteState) {
@@ -434,4 +444,80 @@ it('identifies the order by reference, never by the sequential id', async () => 
   expect(screen.getAllByText(/9BWVKWCDXH/).length).toBeGreaterThan(0);
   // A stray "#42" anywhere means a surface was missed.
   expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
+});
+
+/** The status-history card only, so the timeline's own labels can't be mistaken for it. */
+function historyCard(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[aria-labelledby="history-heading"]');
+  if (!el) throw new Error('status history card is not rendered');
+  return el;
+}
+
+// Regression: the history is fetched once per `reference`, which never changes
+// for the life of the page - so a buyer who clicked Accept watched the badge and
+// timeline advance to Accepted while the "authoritative record" directly beneath
+// them still ended at Sent. Two components disagreeing on screen, with the stale
+// one claiming to be the record.
+it('refreshes the status history when the buyer accepts and the order moves', async () => {
+  fetchQuoteHistory.mockResolvedValueOnce([
+    { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00+00:00', actor_name: 'Bo Staff' },
+  ]);
+
+  seedQuote('SENT');
+  // Stand in for the store's accept(): it POSTs, then fetchQuote() writes the
+  // new state onto `current`. That write is the thing this page re-renders on.
+  useQuoteStore.setState({
+    accept: async () => {
+      useQuoteStore.setState((s) => ({ current: { ...s.current!, state: 'ACCEPTED' } }) as any);
+    },
+  } as any);
+  asBuyer();
+  renderPage();
+
+  // Positive control: the pre-accept history is genuinely on the page.
+  expect(await within(historyCard()).findByText('Sent')).toBeInTheDocument();
+  expect(within(historyCard()).queryByText('Accepted')).not.toBeInTheDocument();
+  expect(fetchQuoteHistory).toHaveBeenCalledTimes(1);
+
+  fetchQuoteHistory.mockResolvedValueOnce([
+    { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00+00:00', actor_name: 'Bo Staff' },
+    { from: 'SENT', to: 'ACCEPTED', changed_at: '2026-07-21T10:00:00+00:00', actor_name: 'Ada' },
+  ]);
+
+  await userEvent.click(screen.getByRole('button', { name: /accept quote/i }));
+
+  // The record now agrees with the badge: newest entry is Accepted.
+  expect(await within(historyCard()).findByText('Accepted')).toBeInTheDocument();
+  expect(within(historyCard()).getByText('Ada')).toBeInTheDocument();
+  expect(fetchQuoteHistory).toHaveBeenCalledTimes(2);
+});
+
+// The other route a state change arrives by: the `.quote.state-changed`
+// broadcast, which mutates current.state in place without any refetch. Mirrors
+// quoteStore's listener exactly - no action handler is involved.
+it('refreshes the status history when a broadcast moves the order underneath it', async () => {
+  fetchQuoteHistory.mockResolvedValueOnce([
+    { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00+00:00', actor_name: 'Bo Staff' },
+  ]);
+
+  seedQuote('SENT');
+  asBuyer();
+  renderPage();
+
+  expect(await within(historyCard()).findByText('Sent')).toBeInTheDocument();
+  expect(fetchQuoteHistory).toHaveBeenCalledTimes(1);
+
+  fetchQuoteHistory.mockResolvedValueOnce([
+    { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00+00:00', actor_name: 'Bo Staff' },
+    { from: 'SENT', to: 'CANCELLED', changed_at: '2026-07-21T10:00:00+00:00', actor_name: null },
+  ]);
+
+  await act(async () => {
+    useQuoteStore.setState((s) => ({
+      current: s.current ? { ...s.current, state: 'CANCELLED', total: '105.00' } : s.current,
+    }) as any);
+  });
+
+  expect(await within(historyCard()).findByText('Cancelled')).toBeInTheDocument();
+  expect(fetchQuoteHistory).toHaveBeenCalledTimes(2);
 });

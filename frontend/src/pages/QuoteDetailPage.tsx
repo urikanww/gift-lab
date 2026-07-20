@@ -182,7 +182,10 @@ export default function QuoteDetailPage() {
 
         {/* Recorded state changes - how the order got where it is. */}
         <Motion variants={staggerItem}>
-          <StatusHistory reference={quote.reference} />
+          {/* `state` is not rendered by StatusHistory - it is what makes the
+              history refetch when the order moves under it, so the trail can
+              never contradict the badge and timeline above. */}
+          <StatusHistory reference={quote.reference} state={quote.state} />
         </Motion>
 
         {/* Login-free tracking link + QR - share with the recipient. */}

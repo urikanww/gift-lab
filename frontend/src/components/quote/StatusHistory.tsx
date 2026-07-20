@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card } from '../../ui';
 import { humanizeState } from '../../lib/quoteStatus';
 import { fetchQuoteHistory, type QuoteHistoryEntry } from '../../lib/quotes';
+import type { QuoteState } from '../../types';
 
 /**
  * The day transition logging shipped. Every order created before this has no
@@ -33,24 +34,46 @@ function formatChangedAt(changedAt: string | null): string | null {
  * other fields on the order, because a timeline showing two entries and looking
  * complete is worse than one that admits it is empty.
  */
-export default function StatusHistory({ reference }: { reference: string }) {
+export default function StatusHistory({
+  reference,
+  state,
+}: {
+  reference: string;
+  /**
+   * The order's current state. Not rendered - it exists so this component
+   * refetches when the order moves. `reference` is fixed for the page's whole
+   * lifetime, so keying the fetch on it alone left the buyer reading a history
+   * whose newest entry contradicted the status badge directly above it.
+   * Required, not optional: a call site that forgets it reintroduces exactly
+   * that bug, silently.
+   */
+  state: QuoteState;
+}) {
   const [entries, setEntries] = useState<QuoteHistoryEntry[]>([]);
+  // Distinct from "resolved empty". Both render no list, but only one of them
+  // justifies claiming the order predates tracking.
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
-    // The fetcher already swallows failures, but catch here too: this component
-    // must never throw an unhandled rejection into the order page.
+    // The fetcher rejects on failure; swallowing it here is what keeps the
+    // history best-effort. This component must never throw an unhandled
+    // rejection into the order page.
     fetchQuoteHistory(reference)
       .then((rows) => {
-        if (active) setEntries(Array.isArray(rows) ? rows : []);
+        if (!active) return;
+        setEntries(Array.isArray(rows) ? rows : []);
+        setFailed(false);
       })
       .catch(() => {
-        if (active) setEntries([]);
+        if (!active) return;
+        setEntries([]);
+        setFailed(true);
       });
     return () => {
       active = false;
     };
-  }, [reference]);
+  }, [reference, state]);
 
   // API order is oldest first; the most recent change is what a buyer wants.
   const newestFirst = [...entries].reverse();
@@ -81,6 +104,11 @@ export default function StatusHistory({ reference }: { reference: string }) {
             );
           })}
         </ul>
+      ) : failed ? (
+        // Stays quiet and supplementary - never an error banner competing with
+        // the order details. It says only what we know: we don't have it. The
+        // tracking-started copy would assert a CAUSE we cannot know here.
+        <p className="mt-3 text-sm text-fg-muted">Couldn’t load the status history.</p>
       ) : (
         <p className="mt-3 text-sm text-fg-muted">
           Status tracking started on {TRACKING_STARTED}. Changes before then were not recorded.

@@ -20,7 +20,7 @@ it('lists each transition newest first', async () => {
     { from: 'SENT', to: 'ACCEPTED', changed_at: '2026-07-21T10:00:00+00:00', actor_name: 'Bo Staff' },
   ]);
 
-  render(<StatusHistory reference="ORD-123" />);
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
 
   // Positive control: the entries are genuinely on the page, so the ordering
   // assertion below is reading real rendered content and not an empty list.
@@ -38,7 +38,7 @@ it('lists each transition newest first', async () => {
 it('renders the tracking-started note when there is no history', async () => {
   fetchQuoteHistory.mockResolvedValue([]);
 
-  render(<StatusHistory reference="ORD-123" />);
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
 
   // An order that predates transition logging has no history and never will -
   // say when tracking began rather than implying it never moved.
@@ -52,29 +52,48 @@ it('names a system transition rather than leaving the actor blank', async () => 
     { from: 'PROCURING', to: 'READY', changed_at: '2026-07-22T10:00:00+00:00', actor_name: null },
   ]);
 
-  render(<StatusHistory reference="ORD-123" />);
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
 
   expect(await screen.findByText('Ready')).toBeInTheDocument();
   expect(screen.getByText('System')).toBeInTheDocument();
   expect(screen.queryByText('null')).not.toBeInTheDocument();
 });
 
-it('falls back to the empty state when the fetch fails, never an error', async () => {
+it('says it could not load - never that the order predates tracking - when the fetch fails', async () => {
   fetchQuoteHistory.mockRejectedValue(new Error('network down'));
 
-  render(<StatusHistory reference="ORD-123" />);
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
 
-  // History is supplementary: a failure must not surface where the order
-  // details are, and must not take the page down.
-  expect(await screen.findByText(/status tracking started on 20 july 2026/i)).toBeInTheDocument();
+  // Positive control: something IS rendered, so the not.toBeInTheDocument
+  // assertions below are not passing against a blank component.
+  expect(await screen.findByText(/couldn’t load the status history/i)).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /status history/i })).toBeInTheDocument();
+
+  // The old copy asserted a CAUSE the component cannot know. A buyer whose
+  // request 500s has not been told, falsely, that their order is too old.
+  expect(screen.queryByText(/status tracking started/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/were not recorded/i)).not.toBeInTheDocument();
+
+  // Still supplementary: no error banner, no leaked technical detail.
   expect(screen.queryByText(/something went wrong/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/network down/i)).not.toBeInTheDocument();
+});
+
+it('does NOT show the load-failure copy for a genuinely empty history', async () => {
+  fetchQuoteHistory.mockResolvedValue([]);
+
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
+
+  // The mirror of the test above: resolving empty is a different fact from
+  // failing, and must keep the tracking-boundary explanation.
+  expect(await screen.findByText(/status tracking started on 20 july 2026/i)).toBeInTheDocument();
+  expect(screen.queryByText(/couldn’t load/i)).not.toBeInTheDocument();
 });
 
 it('passes the order reference, not an id, to the fetcher', async () => {
   fetchQuoteHistory.mockResolvedValue([]);
 
-  render(<StatusHistory reference="ORD-123" />);
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
 
   await screen.findByText(/status tracking started/i);
   expect(fetchQuoteHistory).toHaveBeenCalledWith('ORD-123');
