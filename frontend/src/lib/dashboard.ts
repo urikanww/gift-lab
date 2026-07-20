@@ -12,6 +12,13 @@ export interface DashboardActivity {
 export interface DashboardAtRisk {
   jobId: number;
   quoteId: number;
+  /**
+   * Display identity. camelCase here (not the Resources' snake_case
+   * quote_reference) because this feed is a hand-built projection in
+   * DashboardMetrics::atRisk, keyed like its jobId/quoteId neighbours.
+   * quoteId remains the join key.
+   */
+  quoteReference?: string | null;
   track: string;
   state: string;
   readyAt: string | null;

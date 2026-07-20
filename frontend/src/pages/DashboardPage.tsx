@@ -89,7 +89,7 @@ export default function DashboardPage() {
           <Card padding="none" className="divide-y divide-border">
             {data.atRisk.map((j) => (
               <Link key={j.jobId} to="/production-queue" className="flex items-center justify-between gap-3 p-3 text-sm hover:bg-surface-2">
-                <span className="text-fg">Job #{j.jobId} · Quote #{j.quoteId}</span>
+                <span className="text-fg">Job #{j.jobId} · Order {j.quoteReference}</span>
                 <span className="text-fg-muted">{j.track} · {j.state}</span>
               </Link>
             ))}
