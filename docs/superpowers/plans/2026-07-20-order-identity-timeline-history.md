@@ -224,14 +224,16 @@ Verified: `quoteStore.ts:41` declares `fetchQuotes: (page?: number) => Promise<v
 and `:77` implements `async (page = 1)`. A second optional parameter is
 additive and breaks no call site.
 
-**But `:252` calls `get().fetchQuotes(get().page)`** — an internal refresh
-after a mutation. If the search term lives only in the component's `useState`,
+**But `:252` calls `get().fetchQuotes(get().page)`** — the `onEchoReconnect`
+handler inside `subscribeCompany`, so it fires on socket reconnect. (An earlier
+draft of this plan called it a post-mutation refresh. That was wrong; the line
+is the same, the trigger is not.) If the search term lives only in the component's `useState`,
 that refresh re-fetches without it and silently wipes the user's search.
 
 So the term must live **in the store**, not only in the component:
 
 ```ts
-  // Held in the store because the post-mutation refresh at :252 re-fetches
+  // Held in the store because the reconnect refresh at :252 re-fetches
   // from store state - a term kept only in the component would be dropped
   // there, silently clearing the user's search.
   searchTerm: string | undefined,
@@ -276,7 +278,7 @@ no filter.
 Add a test that the refresh preserves the term:
 
 ```ts
-it('keeps the search term across a post-mutation refresh', async () => {
+it('keeps the search term across a reconnect refresh', async () => {
   await useQuoteStore.getState().fetchQuotes(1, 'ABC123');
   expect(useQuoteStore.getState().searchTerm).toBe('ABC123');
 });
