@@ -184,6 +184,46 @@ using the date the migration ran, held as a config value.
 A `Status history` card on `QuoteDetailPage`, below the timeline: a vertical
 list of `{state} · {date} · {actor}`, newest first, empty state as above.
 
+## Part D — quote search
+
+`QuoteController::index` has no filtering at all. It gains one `q` parameter.
+
+```php
+->when($request->filled('q'), function ($query) use ($request) {
+    $term = trim((string) $request->string('q'));
+    $query->where(function ($w) use ($term) {
+        $w->where('reference', 'like', "%{$term}%");
+        if (ctype_digit($term)) {
+            $w->orWhere('id', (int) $term);
+        }
+    });
+})
+```
+
+Three things this shape is doing deliberately:
+
+- **The id match is exact, not `like`.** `id LIKE '%1%'` matches 1, 10, 21,
+  100 — useless for finding one order, and it forfeits the primary key index.
+- **The id branch only runs for all-digit input**, so a reference containing
+  digits never gets compared against the id column.
+- **The `orWhere` is nested inside a closure.** Written flat it would escape
+  the `company_id` scope above and let a buyer read another company's order by
+  guessing an id. This is the one line in Part D that has a security
+  consequence, and it needs a test that a buyer searching a foreign id gets
+  nothing.
+
+Buyers get the same parameter. `index` already scopes non-staff to their own
+company, so search composes with tenancy rather than bypassing it.
+
+A leading `#` is stripped before matching, since that is how the id has been
+written everywhere until now and buyers will paste it verbatim.
+
+UI: a search input on `QuoteListPage`, wired to the existing pagination.
+Placeholder `Search by order reference or id`.
+
+Not included: fuzzy matching, searching by company or product, date ranges.
+Those are a filtering feature; this is a lookup for a specific known order.
+
 ## Risks
 
 **Old ids become unlookupable — OPEN QUESTION.** A buyer or staff member
@@ -195,18 +235,9 @@ the id.
 not by id. So there is no lookup to widen; there is nowhere to type either
 identifier. Anyone holding an old `#1` is left scanning the list by date.
 
-Three ways out, none of them chosen yet:
-
-1. **Staff-only secondary line.** `Order 9BWVKWCDXH` as the heading with a
-   muted `internal #1` beneath it on `QuoteDetailPage`, staff only. Cheapest,
-   but partially reintroduces the second identifier this change exists to
-   remove.
-2. **Add quote search accepting both.** Solves it properly and is useful
-   regardless, but it is a new feature and grows this change.
-3. **Accept the gap.** Defensible only if old ids are not circulating outside
-   the system — you would know that better than I do.
-
-This needs a decision before Part A ships, not after.
+**Resolved:** Part D adds quote search accepting either identifier. The id
+stops being *displayed* but remains *findable*, which is what the transition
+actually needs.
 
 **Widening eight payloads risks an N+1.** See the eager-loading note in Part A.
 The queue page renders many jobs at once and is the likeliest place to regress.
@@ -232,6 +263,12 @@ no "next"; `aria-expanded` tracks state.
 Part C: `transitionTo` writes exactly one audit row with correct from/to; a
 rejected transition writes none; the endpoint refuses another company's quote
 (403); the page renders the empty-state note when there are no rows.
+
+Part D: an exact id and a partial reference both find the order; `#1` finds
+quote 1; a digit string does not match a reference containing those digits;
+and — the important one — **a buyer searching another company's id gets an
+empty result, not that order.** That test is what proves the `orWhere` stayed
+inside its closure.
 
 ## Rollback
 
