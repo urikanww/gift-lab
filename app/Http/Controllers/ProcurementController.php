@@ -31,6 +31,7 @@ class ProcurementController extends Controller
 
         $lineItem = $this->quotes->reconfirmLine($lineItem, $decision);
 
-        return new LineItemResource($lineItem->load('product'));
+        // quote: the resource exposes quote_reference off this relation.
+        return new LineItemResource($lineItem->load(['product', 'quote']));
     }
 }

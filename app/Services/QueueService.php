@@ -197,11 +197,14 @@ final class QueueService
     {
         // Eager-load the line items + their product so the floor can see each
         // saved customization and render the decorated 3D model (final-product
-        // visualization) without an N+1 per card. The quote relation stays
-        // unloaded - the resource only needs the quote_id FK on the job row.
+        // visualization) without an N+1 per card. The quote comes along too:
+        // ProductionJobResource reads quote.reference (the identifier the floor
+        // and the buyer both name an order by), so leaving the relation lazy
+        // would cost one query per card - invisible on screen, only a query
+        // count catches it. See QuoteReferenceExposureTest's N+1 guard.
         return ProductionJob::query()
             ->queueOrder()
-            ->with(['lineItems.product.modelParts'])
+            ->with(['quote', 'lineItems.product.modelParts'])
             ->get();
     }
 

@@ -51,6 +51,8 @@ class LineItemAwaitingReconfirm implements ShouldBroadcast
         return [
             'line_item_id' => $this->lineItem->id,
             'quote_id' => $this->lineItem->quote_id,
+            // Displayed identifier; quote_id stays as the store's join key.
+            'quote_reference' => $this->lineItem->quote?->reference,
             'reason' => $this->reason,
             'ordered_qty' => $this->lineItem->qty,
             'procured_qty' => $this->lineItem->procured_qty,

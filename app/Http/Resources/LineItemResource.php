@@ -21,6 +21,9 @@ class LineItemResource extends JsonResource
         return [
             'id' => $this->id,
             'quote_id' => $this->quote_id,
+            // The displayed order identifier. quote_id stays because the realtime
+            // stores join incoming broadcasts against on-screen rows by it.
+            'quote_reference' => $this->quote?->reference,
             'job_id' => $this->job_id,
             'product_id' => $this->product_id,
             'variant_id' => $this->variant_id,

@@ -47,6 +47,8 @@ class QuoteStateChanged implements ShouldBroadcast
     {
         return [
             'quote_id' => $this->quote->id,
+            // Displayed identifier; quote_id stays as the store's join key.
+            'quote_reference' => $this->quote->reference,
             'state' => $this->quote->state->value,
             'previous_state' => $this->previousState,
             'total' => $this->quote->total,

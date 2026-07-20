@@ -48,6 +48,8 @@ class ProofStatusChanged implements ShouldBroadcast
         return [
             'proof_id' => $this->proof->id,
             'quote_id' => $this->proof->quote_id,
+            // Displayed identifier; quote_id stays as the store's join key.
+            'quote_reference' => $this->proof->quote?->reference,
             'version' => $this->proof->version,
             'state' => $this->proof->state->value,
             'artwork_version_ref' => $this->proof->artwork_version_ref,

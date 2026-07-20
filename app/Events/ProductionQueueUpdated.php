@@ -51,6 +51,8 @@ class ProductionQueueUpdated implements ShouldBroadcast
         return [
             'job_id' => $this->job->id,
             'quote_id' => $this->job->quote_id,
+            // Displayed identifier; quote_id stays as the store's join key.
+            'quote_reference' => $this->job->quote?->reference,
             'track' => $this->job->track->value,
             'state' => $this->job->state->value,
             'ready_at' => $this->job->ready_at?->toIso8601String(),

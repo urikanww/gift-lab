@@ -75,7 +75,7 @@
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #ece5d6; border-bottom:1px solid #ece5d6;">
                                         <tr>
                                             <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a7f6a; border-bottom:1px solid #f1ebdd;">Quote ref</td>
-                                            <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#2b2620; border-bottom:1px solid #f1ebdd; font-weight:600;">{{ $quote->tracking_code ?? $quote->id }}</td>
+                                            <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#2b2620; border-bottom:1px solid #f1ebdd; font-weight:600;">{{ $quote->tracking_code ?? $quote->reference }}</td>
                                         </tr>
                                         <tr>
                                             <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a7f6a; border-bottom:1px solid #f1ebdd;">Items</td>

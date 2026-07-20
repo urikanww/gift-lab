@@ -39,8 +39,21 @@ class QuoteResource extends JsonResource
             'notes' => $this->notes,
             // Buyer's requested delivery deadline (Y-m-d); null when unset.
             'needed_by' => $this->needed_by?->toDateString(),
-            'line_items' => LineItemResource::collection($this->whenLoaded('lineItems')),
-            'proofs' => ProofResource::collection($this->whenLoaded('proofs')),
+            // Both child resources expose quote_reference, reached through their
+            // own quote relation. Hand them this quote rather than letting each
+            // row lazy-load it - the parent IS their quote, so an eager-load
+            // would only re-fetch the row we already hold, and no eager-load at
+            // all would be one query per line/proof.
+            'line_items' => LineItemResource::collection(
+                $this->whenLoaded('lineItems', fn () => $this->lineItems->each(
+                    fn ($item) => $item->setRelation('quote', $this->resource)
+                ))
+            ),
+            'proofs' => ProofResource::collection(
+                $this->whenLoaded('proofs', fn () => $this->proofs->each(
+                    fn ($proof) => $proof->setRelation('quote', $this->resource)
+                ))
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

@@ -21,6 +21,9 @@ class ProductionJobResource extends JsonResource
         return [
             'id' => $this->id,
             'quote_id' => $this->quote_id,
+            // The displayed order identifier. quote_id stays because the realtime
+            // stores join incoming broadcasts against on-screen rows by it.
+            'quote_reference' => $this->quote?->reference,
             'track' => $this->track->value,
             'state' => $this->state->value,
             'ready_at' => $this->ready_at?->toIso8601String(),

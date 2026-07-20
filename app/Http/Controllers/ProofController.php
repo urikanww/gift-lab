@@ -31,6 +31,10 @@ class ProofController extends Controller
             $request->input('notes'),
         );
 
+        // The resource exposes quote_reference off the quote relation; we already
+        // hold the quote, so hand it over rather than re-fetching the same row.
+        $proof->setRelation('quote', $quote);
+
         return (new ProofResource($proof))->response()->setStatusCode(201);
     }
 
@@ -40,6 +44,6 @@ class ProofController extends Controller
             ? $this->quotes->approveProof($proof)
             : $this->quotes->requestProofChanges($proof, $request->input('notes'));
 
-        return new ProofResource($proof);
+        return new ProofResource($proof->loadMissing('quote'));
     }
 }
