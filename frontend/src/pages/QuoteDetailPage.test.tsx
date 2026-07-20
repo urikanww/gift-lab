@@ -290,6 +290,56 @@ it('surfaces the buyer-uploaded finished-look callout on a line so staff proof b
   expect(screen.getAllByText(/2 reference image\(s\) attached/i).length).toBeGreaterThan(0);
 });
 
+// Regression: a designer line's saved artwork never reached this page, so a
+// buyer who customised in the designer saw their work in the cart and then
+// nothing on the order. Mirrors a real line from order 9BWVKWCDXH - note it
+// carries NO `mode` key at all, which is why a mode-keyed check missed it.
+it('shows the product image and the saved design on a customised line', async () => {
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        {
+          id: 5,
+          quote_id: 42,
+          job_id: null,
+          product_id: 6,
+          variant_id: null,
+          qty: 10,
+          unit_price: '10.00',
+          currency: 'SGD',
+          line_total: '100.00',
+          line_state: 'PENDING',
+          procured_qty: null,
+          procured_price: null,
+          lead_time_days: null,
+          customization: {
+            logo_size: 'S',
+            artwork_ref: 'https://cdn.test/artwork/design.png',
+          },
+          product: {
+            id: 6,
+            name: 'FL Cap Baseball',
+            image_url: 'https://cdn.test/product/cap.jpg',
+          },
+        },
+      ],
+    },
+  } as any);
+  asBuyer();
+  renderPage();
+
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('button', { name: /preview your design for FL Cap Baseball/i }).length,
+    ).toBeGreaterThan(0),
+  );
+  expect(
+    document.querySelectorAll('img[src="https://cdn.test/product/cap.jpg"]').length,
+  ).toBeGreaterThan(0);
+});
+
 it('shows a "what happens next" note for a buyer in CHANGES_REQUESTED', () => {
   seedQuote('CHANGES_REQUESTED');
   asBuyer();

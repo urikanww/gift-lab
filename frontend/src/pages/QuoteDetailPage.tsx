@@ -9,6 +9,9 @@ import { safeHref } from '../lib/safeHref';
 import { isStaffRole } from '../lib/roles';
 import { humanizeState, lineStateTone, proofStateTone, quoteStateTone } from '../lib/quoteStatus';
 import TrackingQr from '../components/TrackingQr';
+import Breadcrumb from '../components/Breadcrumb';
+import CustomizationPreview from '../components/CustomizationPreview';
+import ProductThumb from '../components/product/ProductThumb';
 import type { LineItem, Proof, Quote, QuoteState } from '../types';
 
 /** Ordered happy-path lifecycle used to render the status timeline. */
@@ -139,6 +142,20 @@ export default function QuoteDetailPage() {
   return (
     <Motion variants={staggerContainer} initial="hidden" animate="visible">
       <section className="flex flex-col gap-6" aria-labelledby="quote-heading">
+        {/* Buyers-only: staff arrive from the console, not from an account area. */}
+        {!isStaff && (
+          <Motion variants={staggerItem}>
+            <Breadcrumb
+              items={[
+                { label: 'Home', to: '/' },
+                { label: 'My account', to: '/account' },
+                { label: 'My Orders', to: '/quotes' },
+                { label: `Quote #${quote.id}` },
+              ]}
+            />
+          </Motion>
+        )}
+
         {/* Header */}
         <Motion variants={staggerItem}>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -719,7 +736,21 @@ function LineItemList({ items }: { items: LineItem[] | undefined }) {
                   (li.customization?.mode === 'buyer_uploaded' ? '' : 'last:border-0')
                 }
               >
-                <td className="px-5 py-4 text-fg">{li.product?.name ?? `Product #${li.product_id}`}</td>
+                <td className="px-5 py-4 text-fg">
+                  <div className="flex items-start gap-3">
+                    <ProductThumb product={li.product} className="h-12 w-12" />
+                    <div className="min-w-0">
+                      <span className="block">{li.product?.name ?? `Product #${li.product_id}`}</span>
+                      {/* The buyer's design follows the line it belongs to - seeing
+                          it here is the assurance that their work made the order. */}
+                      <CustomizationPreview
+                        customization={li.customization}
+                        productName={li.product?.name ?? `Product #${li.product_id}`}
+                        productImageUrl={li.product?.image_url}
+                      />
+                    </div>
+                  </div>
+                </td>
                 <td className="px-5 py-4 text-right tabular-nums text-fg">{li.qty}</td>
                 <td className="px-5 py-4 text-right tabular-nums text-fg-muted">
                   {li.currency} {li.unit_price}
@@ -750,7 +781,19 @@ function LineItemList({ items }: { items: LineItem[] | undefined }) {
         {items.map((li) => (
           <li key={li.id} className="flex flex-col gap-2 px-5 py-4">
             <div className="flex items-start justify-between gap-3">
-              <span className="font-medium text-fg">{li.product?.name ?? `Product #${li.product_id}`}</span>
+              <div className="flex min-w-0 items-start gap-3">
+                <ProductThumb product={li.product} className="h-12 w-12" />
+                <div className="min-w-0">
+                  <span className="font-medium text-fg">
+                    {li.product?.name ?? `Product #${li.product_id}`}
+                  </span>
+                  <CustomizationPreview
+                    customization={li.customization}
+                    productName={li.product?.name ?? `Product #${li.product_id}`}
+                    productImageUrl={li.product?.image_url}
+                  />
+                </div>
+              </div>
               <Badge tone={lineStateTone(li.line_state)} size="sm">
                 {humanizeState(li.line_state)}
               </Badge>
