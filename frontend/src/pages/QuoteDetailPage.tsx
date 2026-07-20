@@ -120,6 +120,135 @@ export default function QuoteDetailPage() {
   const quote = current;
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
 
+  /**
+   * The Proofs card, rendered in a DIFFERENT position per role - see the two
+   * guarded slots below.
+   *
+   * For a buyer this card is not reference material: it carries their proof
+   * sign-off (approve / request changes), which is the primary call to action
+   * on the whole page. It stays high, above the pricing and the "Next step"
+   * card, so their action is never buried.
+   *
+   * Staff never see that sign-off. For them the proof list is a record to read
+   * while working the controls, so it belongs after the Staff actions card
+   * rather than pushing those controls down the page.
+   *
+   * Defined once and rendered in one of two slots rather than duplicated:
+   * two copies of ~110 lines of JSX would drift. Do NOT "simplify" this back
+   * to a single slot - the position is deliberately role-dependent.
+   */
+  const proofsCard = (
+    <Motion variants={staggerItem}>
+      <Card padding="lg" aria-labelledby="proofs-heading">
+        <h2 id="proofs-heading" className="font-display text-xl text-fg">
+          Proofs
+        </h2>
+        {quote.proofs && quote.proofs.length > 0 ? (
+          <ul className="mt-4 flex flex-col divide-y divide-border">
+            {quote.proofs.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+                <span className="flex items-center gap-3">
+                  <span className="font-medium text-fg">v{p.version}</span>
+                  <Badge tone={proofStateTone(p.state)} size="sm">
+                    {humanizeState(p.state)}
+                  </Badge>
+                </span>
+                {safeHref(p.artwork_version_ref) ? (
+                  <a
+                    href={safeHref(p.artwork_version_ref)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                  >
+                    View artwork
+                  </a>
+                ) : (
+                  <span className="text-sm text-fg-subtle">{p.artwork_version_ref}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-fg-muted">No proofs issued yet.</p>
+        )}
+
+        {/* Buyer sign-off on the open proof (gate 1). */}
+        {!isStaff && latestOpenProof(quote.proofs) && (
+          <div className="mt-5 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
+                    'Proof approved',
+                  )
+                }
+              >
+                Approve proof
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy || changesOpen}
+                onClick={() => setChangesOpen(true)}
+              >
+                Request changes
+              </Button>
+            </div>
+
+            {/* Inline reveal: capture WHAT to change before sending. */}
+            {changesOpen && (
+              <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3">
+                <label htmlFor="change-notes" className="text-sm font-medium text-fg">
+                  What should we change?{' '}
+                  <span className="font-normal text-fg-muted">(optional)</span>
+                </label>
+                <textarea
+                  id="change-notes"
+                  rows={3}
+                  maxLength={2000}
+                  value={changeNotes}
+                  onChange={(e) => setChangeNotes(e.target.value)}
+                  placeholder="e.g. Move the logo up and use the darker blue from our brand kit."
+                  className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-fg placeholder:text-fg-subtle transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+                />
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        // API requires a note with request_changes - fall
+                        // back to a generic one if the buyer left it blank.
+                        await decideProof(
+                          latestOpenProof(quote.proofs)!.id,
+                          'request_changes',
+                          changeNotes.trim() || 'Please revise.',
+                        );
+                        if (!useQuoteStore.getState().error) {
+                          setChangesOpen(false);
+                          setChangeNotes('');
+                        }
+                      }, 'Changes requested')
+                    }
+                  >
+                    Send request
+                  </Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => setChangesOpen(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+    </Motion>
+  );
+
   return (
     <Motion variants={staggerContainer} initial="hidden" animate="visible">
       <section className="flex flex-col gap-6" aria-labelledby="quote-heading">
@@ -227,116 +356,9 @@ export default function QuoteDetailPage() {
           </Card>
         </Motion>
 
-        {/* Proofs */}
-        <Motion variants={staggerItem}>
-          <Card padding="lg" aria-labelledby="proofs-heading">
-            <h2 id="proofs-heading" className="font-display text-xl text-fg">
-              Proofs
-            </h2>
-            {quote.proofs && quote.proofs.length > 0 ? (
-              <ul className="mt-4 flex flex-col divide-y divide-border">
-                {quote.proofs.map((p) => (
-                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
-                    <span className="flex items-center gap-3">
-                      <span className="font-medium text-fg">v{p.version}</span>
-                      <Badge tone={proofStateTone(p.state)} size="sm">
-                        {humanizeState(p.state)}
-                      </Badge>
-                    </span>
-                    {safeHref(p.artwork_version_ref) ? (
-                      <a
-                        href={safeHref(p.artwork_version_ref)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                      >
-                        View artwork
-                      </a>
-                    ) : (
-                      <span className="text-sm text-fg-subtle">{p.artwork_version_ref}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-sm text-fg-muted">No proofs issued yet.</p>
-            )}
-
-            {/* Buyer sign-off on the open proof (gate 1). */}
-            {!isStaff && latestOpenProof(quote.proofs) && (
-              <div className="mt-5 flex flex-col gap-3">
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() =>
-                      run(
-                        () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
-                        'Proof approved',
-                      )
-                    }
-                  >
-                    Approve proof
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={busy || changesOpen}
-                    onClick={() => setChangesOpen(true)}
-                  >
-                    Request changes
-                  </Button>
-                </div>
-
-                {/* Inline reveal: capture WHAT to change before sending. */}
-                {changesOpen && (
-                  <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3">
-                    <label htmlFor="change-notes" className="text-sm font-medium text-fg">
-                      What should we change?{' '}
-                      <span className="font-normal text-fg-muted">(optional)</span>
-                    </label>
-                    <textarea
-                      id="change-notes"
-                      rows={3}
-                      maxLength={2000}
-                      value={changeNotes}
-                      onChange={(e) => setChangeNotes(e.target.value)}
-                      placeholder="e.g. Move the logo up and use the darker blue from our brand kit."
-                      className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-fg placeholder:text-fg-subtle transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-                    />
-                    <div className="flex flex-wrap gap-3">
-                      <Button
-                        variant="primary"
-                        loading={busy}
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            // API requires a note with request_changes - fall
-                            // back to a generic one if the buyer left it blank.
-                            await decideProof(
-                              latestOpenProof(quote.proofs)!.id,
-                              'request_changes',
-                              changeNotes.trim() || 'Please revise.',
-                            );
-                            if (!useQuoteStore.getState().error) {
-                              setChangesOpen(false);
-                              setChangeNotes('');
-                            }
-                          }, 'Changes requested')
-                        }
-                      >
-                        Send request
-                      </Button>
-                      <Button variant="ghost" disabled={busy} onClick={() => setChangesOpen(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-        </Motion>
+        {/* Proofs (buyer slot) - carries the buyer's proof sign-off, so it sits
+            above the pricing and "Next step" cards. See `proofsCard` above. */}
+        {!isStaff && proofsCard}
 
         {/* Buyer actions */}
         {!isStaff && (quote.state === 'SENT' || quote.state === 'PROOF_APPROVED') && (
@@ -568,6 +590,11 @@ export default function QuoteDetailPage() {
             </Card>
           </Motion>
         )}
+
+        {/* Proofs (staff slot) - reference material for staff, so it follows the
+            controls they act with rather than pushing them down. See
+            `proofsCard` above. */}
+        {isStaff && proofsCard}
 
         {isStaff && isCancellable && (
           <Modal

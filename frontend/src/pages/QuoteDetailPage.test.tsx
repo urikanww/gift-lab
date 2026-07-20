@@ -446,6 +446,52 @@ it('identifies the order by reference, never by the sequential id', async () => 
   expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
 });
 
+/** Index of a section heading in document order, for asserting relative position. */
+function headingIndex(name: string): number {
+  const headings = screen.getAllByRole('heading');
+  const i = headings.findIndex((h) => h.textContent?.trim() === name);
+  if (i < 0) throw new Error(`heading "${name}" is not rendered`);
+  return i;
+}
+
+// The Proofs card is deliberately positioned per role. For staff it is
+// reference material, so it follows the controls they act with; for a buyer it
+// carries their proof sign-off, so it stays high on the page. These two tests
+// pin that difference - a "simplification" back to one slot breaks one of them.
+it('renders Proofs BELOW Staff actions for staff', () => {
+  seedQuote('ACCEPTED');
+  seedOpenProof();
+  asStaff();
+  renderPage();
+
+  expect(headingIndex('Proofs')).toBeGreaterThan(headingIndex('Staff actions'));
+
+  // Same assertion via the DOM directly, independent of heading enumeration.
+  const staffCard = screen.getByRole('heading', { name: 'Staff actions' });
+  const proofs = screen.getByRole('heading', { name: 'Proofs' });
+  expect(
+    staffCard.compareDocumentPosition(proofs) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+
+it('keeps Proofs ABOVE the buyer’s Next step card for a buyer', () => {
+  seedQuote('SENT');
+  seedOpenProof();
+  asBuyer();
+  renderPage();
+
+  // The buyer's sign-off controls live in the Proofs card, so it must not be
+  // demoted below the rest of the page the way it is for staff.
+  expect(headingIndex('Proofs')).toBeLessThan(headingIndex('Next step'));
+  expect(screen.queryByRole('heading', { name: 'Staff actions' })).not.toBeInTheDocument();
+
+  const proofs = screen.getByRole('heading', { name: 'Proofs' });
+  const nextStep = screen.getByRole('heading', { name: 'Next step' });
+  expect(
+    proofs.compareDocumentPosition(nextStep) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+
 /** The status-history card only, so the timeline's own labels can't be mistaken for it. */
 function historyCard(): HTMLElement {
   const el = document.querySelector<HTMLElement>('[aria-labelledby="history-heading"]');
