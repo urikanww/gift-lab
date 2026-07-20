@@ -21,11 +21,23 @@ function actorLabel(entry: QuoteHistoryEntry): string {
   return entry.actor_name?.trim() || 'System';
 }
 
+/**
+ * Date AND time. Orders routinely move through several states in one day - the
+ * endpoint orders by (created_at, id) precisely because transitions can share a
+ * second - so a date alone renders consecutive entries identically and tells the
+ * buyer nothing about how long anything took.
+ */
 function formatChangedAt(changedAt: string | null): string | null {
   if (!changedAt) return null;
   const at = new Date(changedAt);
   if (Number.isNaN(at.getTime())) return null;
-  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return at.toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 /**
@@ -115,7 +127,9 @@ export default function StatusHistory({
                   {entry.to ? humanizeState(entry.to) : 'Unknown status'}
                 </span>
                 <span className="flex flex-wrap items-baseline gap-x-3 text-sm text-fg-muted">
-                  {when && <span>{when}</span>}
+                  {/* The raw instant stays machine-readable; the visible text is
+                      formatted in the reader's own locale and timezone. */}
+                  {when && <time dateTime={entry.changed_at ?? undefined}>{when}</time>}
                   <span>{actorLabel(entry)}</span>
                 </span>
               </li>

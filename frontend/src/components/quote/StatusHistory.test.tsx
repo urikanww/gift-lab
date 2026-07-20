@@ -35,6 +35,30 @@ it('lists each transition newest first', async () => {
   expect(rows[1]).toHaveTextContent('Sent');
 });
 
+// Several transitions routinely land on the same day - the endpoint orders by
+// (created_at, id) precisely because they can share a second. A date alone
+// renders them identically, so the buyer cannot tell what happened when.
+it('timestamps each entry to the minute, not just the day', async () => {
+  fetchQuoteHistory.mockResolvedValue([
+    { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T09:15:00Z', actor_name: 'Ada Buyer' },
+    { from: 'SENT', to: 'ACCEPTED', changed_at: '2026-07-20T16:42:00Z', actor_name: 'Bo Staff' },
+  ]);
+
+  render(<StatusHistory reference="ORD-123" state="ACCEPTED" />);
+
+  await screen.findByText('Accepted');
+  const rows = screen.getAllByRole('listitem');
+
+  // Machine-readable instants survive intact for assistive tech and tooling.
+  expect(rows[0].querySelector('time')).toHaveAttribute('datetime', '2026-07-20T16:42:00Z');
+  expect(rows[1].querySelector('time')).toHaveAttribute('datetime', '2026-07-20T09:15:00Z');
+
+  // Same day, so a date-only format would make these two strings identical.
+  const shown = rows.map((r) => r.querySelector('time')?.textContent ?? '');
+  expect(shown[0]).not.toBe(shown[1]);
+  expect(shown[0]).toMatch(/\d/);
+});
+
 it('renders the tracking-started note when there is no history', async () => {
   fetchQuoteHistory.mockResolvedValue([]);
 
