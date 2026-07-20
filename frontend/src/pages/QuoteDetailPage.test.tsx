@@ -507,10 +507,9 @@ it('refreshes the status history when a broadcast moves the order underneath it'
   expect(await within(historyCard()).findByText('Sent')).toBeInTheDocument();
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(1);
 
-  fetchQuoteHistory.mockResolvedValueOnce([
-    { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00+00:00', actor_name: 'Bo Staff' },
-    { from: 'SENT', to: 'CANCELLED', changed_at: '2026-07-21T10:00:00+00:00', actor_name: null },
-  ]);
+  // Hold the refetch open so the in-between render is observable.
+  let resolve!: (rows: unknown[]) => void;
+  fetchQuoteHistory.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
 
   await act(async () => {
     useQuoteStore.setState((s) => ({
@@ -518,6 +517,20 @@ it('refreshes the status history when a broadcast moves the order underneath it'
     }) as any);
   });
 
-  expect(await within(historyCard()).findByText('Cancelled')).toBeInTheDocument();
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(2);
+  // Mid-refetch the card must go busy rather than keep showing the pre-change
+  // trail. Holding the old entries here would be the same staleness in
+  // miniature: a record that disagrees with the badge already above it.
+  expect(historyCard()).toHaveAttribute('aria-busy', 'true');
+  expect(within(historyCard()).queryByText('Sent')).not.toBeInTheDocument();
+
+  await act(async () => {
+    resolve([
+      { from: 'DRAFT', to: 'SENT', changed_at: '2026-07-20T10:00:00+00:00', actor_name: 'Bo Staff' },
+      { from: 'SENT', to: 'CANCELLED', changed_at: '2026-07-21T10:00:00+00:00', actor_name: null },
+    ]);
+  });
+
+  expect(await within(historyCard()).findByText('Cancelled')).toBeInTheDocument();
+  expect(within(historyCard()).getByText('Sent')).toBeInTheDocument();
 });

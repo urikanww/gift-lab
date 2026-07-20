@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card } from '../../ui';
+import { Card, SkeletonText } from '../../ui';
 import { humanizeState } from '../../lib/quoteStatus';
 import { fetchQuoteHistory, type QuoteHistoryEntry } from '../../lib/quotes';
 import type { QuoteState } from '../../types';
@@ -53,9 +53,18 @@ export default function StatusHistory({
   // Distinct from "resolved empty". Both render no list, but only one of them
   // justifies claiming the order predates tracking.
   const [failed, setFailed] = useState(false);
+  // Third distinct case: we haven't been told yet. Starts true so the first
+  // paint doesn't flash the tracking-boundary explanation before the fetch has
+  // answered - that copy asserts a fact about the ORDER, and mid-flight we have
+  // no facts about the order at all.
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
+    // Set INSIDE the effect, not just as the initial state: this effect re-runs
+    // on every state change, and a refetch that kept showing the pre-change
+    // trail would be a smaller replay of the staleness this key exists to fix.
+    setLoading(true);
     // The fetcher rejects on failure; swallowing it here is what keeps the
     // history best-effort. This component must never throw an unhandled
     // rejection into the order page.
@@ -64,13 +73,17 @@ export default function StatusHistory({
         if (!active) return;
         setEntries(Array.isArray(rows) ? rows : []);
         setFailed(false);
+        setLoading(false);
       })
       .catch(() => {
         if (!active) return;
         setEntries([]);
         setFailed(true);
+        setLoading(false);
       });
     return () => {
+      // Guards a late settle after unmount, and equally a stale in-flight
+      // request superseded by a newer state change - neither may write.
       active = false;
     };
   }, [reference, state]);
@@ -79,12 +92,17 @@ export default function StatusHistory({
   const newestFirst = [...entries].reverse();
 
   return (
-    <Card padding="lg" aria-labelledby="history-heading">
+    <Card padding="lg" aria-labelledby="history-heading" aria-busy={loading}>
       <h2 id="history-heading" className="font-display text-xl text-fg">
         Status history
       </h2>
 
-      {newestFirst.length > 0 ? (
+      {loading ? (
+        // Say nothing until the fetch answers. Skeleton lines match how the
+        // page's other sections wait (see QuoteDetailSkeleton); they are
+        // decorative, so the card carries aria-busy for assistive tech.
+        <SkeletonText lines={2} className="mt-4" />
+      ) : newestFirst.length > 0 ? (
         <ul className="mt-4 flex flex-col divide-y divide-border">
           {newestFirst.map((entry, i) => {
             const when = formatChangedAt(entry.changed_at);

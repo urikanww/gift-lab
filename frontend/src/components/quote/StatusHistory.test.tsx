@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 const fetchQuoteHistory = vi.fn();
 
@@ -77,6 +77,33 @@ it('says it could not load - never that the order predates tracking - when the f
   // Still supplementary: no error banner, no leaked technical detail.
   expect(screen.queryByText(/something went wrong/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/network down/i)).not.toBeInTheDocument();
+});
+
+it('says nothing about tracking until the fetch has actually answered', async () => {
+  // Hold the fetch open so the pending render is observable.
+  let resolve!: (rows: unknown[]) => void;
+  fetchQuoteHistory.mockReturnValue(new Promise((r) => { resolve = r; }));
+
+  render(<StatusHistory reference="ORD-123" state="SENT" />);
+
+  // Positive control: the card IS on screen and marked busy, so the absence
+  // below is a component that is waiting, not one that failed to render.
+  const card = screen.getByRole('heading', { name: /status history/i }).closest('[aria-busy]');
+  expect(card).toBeInTheDocument();
+  expect(card).toHaveAttribute('aria-busy', 'true');
+
+  // "Changes before then were not recorded" is a claim about THIS order. Before
+  // the fetch answers we know nothing about this order, so we must not make it.
+  expect(screen.queryByText(/status tracking started/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/were not recorded/i)).not.toBeInTheDocument();
+  // Nor may a pending fetch be mistaken for a failed one.
+  expect(screen.queryByText(/couldn’t load/i)).not.toBeInTheDocument();
+
+  await act(async () => { resolve([]); });
+
+  // Once it answers empty, the boundary explanation is earned.
+  expect(await screen.findByText(/status tracking started on 20 july 2026/i)).toBeInTheDocument();
+  expect(card).toHaveAttribute('aria-busy', 'false');
 });
 
 it('does NOT show the load-failure copy for a genuinely empty history', async () => {
