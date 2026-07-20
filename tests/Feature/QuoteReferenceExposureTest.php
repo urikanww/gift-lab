@@ -10,6 +10,7 @@ use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
@@ -96,6 +97,70 @@ it('keeps the quote-show query count flat as line items and proofs are added', f
     // child re-fetches it. Simplify that back to a plain whenLoaded and this
     // climbs by one query per line item AND one per proof - output stays
     // correct (lazy loading fills it in), only the query count regresses.
+    expect($large)->toBeLessThanOrEqual($small + 1);
+});
+
+/**
+ * An overdue job the staff dashboard will flag as at-risk (READY, past SLA).
+ */
+function atRiskJob(Quote $quote): ProductionJob
+{
+    return ProductionJob::factory()->create([
+        'quote_id' => $quote->id,
+        'state' => 'READY',
+        'ready_at' => now()->subDays(10),
+    ]);
+}
+
+/**
+ * Run the staff dashboard and return how many queries it took. The snapshot
+ * caches its count block, so the cache is cleared first to keep repeat
+ * measurements comparable.
+ */
+function dashboardQueryCount(): int
+{
+    Cache::flush();
+
+    $count = 0;
+    DB::listen(function () use (&$count): void {
+        $count++;
+    });
+
+    test()->getJson('/api/admin/dashboard')->assertOk();
+
+    return $count;
+}
+
+it('exposes quoteReference alongside quoteId on an at-risk dashboard row', function (): void {
+    $quote = Quote::factory()->create(['company_id' => $this->company->id]);
+    $job = atRiskJob($quote);
+
+    Sanctum::actingAs($this->staff);
+    $this->getJson('/api/admin/dashboard')
+        ->assertOk()
+        ->assertJsonPath('atRisk.0.jobId', $job->id)
+        // camelCase here, matching the hand-built projection's local convention
+        // rather than the snake_case the Resources use.
+        ->assertJsonPath('atRisk.0.quoteId', $quote->id)
+        ->assertJsonPath('atRisk.0.quoteReference', $quote->reference);
+});
+
+it('keeps the dashboard query count flat as at-risk jobs are added', function (): void {
+    Sanctum::actingAs($this->staff);
+
+    $first = Quote::factory()->create(['company_id' => $this->company->id]);
+    atRiskJob($first);
+    atRiskJob($first);
+    $small = dashboardQueryCount();
+
+    $second = Quote::factory()->create(['company_id' => $this->company->id]);
+    foreach (range(1, 8) as $ignored) {
+        atRiskJob($second);
+    }
+    $large = dashboardQueryCount();
+
+    // atRisk() projects quote.reference on a bounded slice; without the
+    // eager-load on atRiskQuery() this grows by one query per row.
     expect($large)->toBeLessThanOrEqual($small + 1);
 });
 

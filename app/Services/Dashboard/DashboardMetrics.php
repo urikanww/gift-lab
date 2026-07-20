@@ -111,6 +111,8 @@ class DashboardMetrics
             ->map(fn (ProductionJob $j): array => [
                 'jobId' => $j->id,
                 'quoteId' => $j->quote_id,
+                // The displayed order identifier. quoteId stays as the join key.
+                'quoteReference' => $j->quote?->reference,
                 'track' => $j->track->value,
                 'state' => $j->state->value,
                 'readyAt' => $j->ready_at?->toIso8601String(),
@@ -145,9 +147,16 @@ class DashboardMetrics
         return ['currency' => 'SGD', 'amount' => (float) $amount];
     }
 
+    /**
+     * The quote rides along because atRisk() projects quote.reference; without
+     * it this bounded slice would cost one query per row. production() reuses
+     * this builder for a bare count(), where the eager-load is a no-op - the
+     * relation is only resolved once rows are hydrated.
+     */
     private function atRiskQuery(): Builder
     {
         return ProductionJob::query()
+            ->with('quote')
             ->whereIn('state', ['READY', 'IN_PRODUCTION'])
             ->where('ready_at', '<', now()->subHours(self::AT_RISK_SLA_HOURS));
     }
