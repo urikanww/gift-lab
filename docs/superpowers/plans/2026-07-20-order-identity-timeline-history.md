@@ -35,6 +35,7 @@ independent.
 | `app/Http/Resources/LineItemResource.php` | Add `quote_reference` (`:23`) | A |
 | `app/Http/Resources/ProofResource.php` | Add `quote_reference` (`:23`) | A |
 | `app/Services/QueueService.php` | Eager-load `quote` in `queue()` (`:196`) | A |
+| `app/Services/Dashboard/DashboardMetrics.php` | `quoteReference` in `atRisk()` + eager-load | A |
 | `app/Events/{LineItemAwaitingReconfirm,ProductionQueueUpdated,ProofStatusChanged,QuoteStateChanged}.php` | Add `quote_reference` | A |
 | `resources/views/mail/quote-ready.blade.php` | id fallback → reference (`:78`) | A |
 | `frontend/src/pages/{QuoteDetailPage,DashboardPage,ProductionQueuePage,ProcurementPage,BuyerDashboardPage,CheckoutPage}.tsx` | Display reference | A |
@@ -1045,6 +1046,29 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
+
+## Where this plan was wrong
+
+Three line-level errors, all caught by implementers or reviewers following the
+intent rather than the letter. Recorded because the pattern is more useful than
+the individual fixes:
+
+1. **`quoteStore.ts:252` described as a "post-mutation refresh".** It is the
+   `onEchoReconnect` handler. The line was right, the trigger wasn't — and the
+   wrong framing propagated into implementation comments and a test name before
+   review caught it.
+2. **`QueueService.php:86` listed as a payload needing `quote_reference`.** It
+   is a `ProductionJob::create([...])` attribute array; there is no such column,
+   so following the instruction literally would have thrown.
+3. **`DashboardMetrics::atRisk()` missed entirely.** Part A was scoped by
+   enumerating Resources and Events. This projection hand-builds its rows
+   inline, so no amount of following that list would have surfaced it. The
+   frontend task found it only by hitting a payload with nothing to display.
+
+The common thread: enumerating *types of file* (Resources, Events) missed a
+payload that was neither. A grep for the field being replaced would have found
+all three. Prefer "find every site that emits X" over "here is the list of
+files".
 
 ## Standing verification debt
 
