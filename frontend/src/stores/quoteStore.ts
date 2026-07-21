@@ -60,7 +60,21 @@ interface QuoteStoreState {
   quotes: Quote[];
   current: Quote | null;
   loading: boolean;
+  /**
+   * FETCH failures only. QuoteDetailPage and QuoteListPage render a full-page
+   * ErrorState from this, which is right when there is no order to show.
+   */
   error: string | null;
+  /**
+   * WRITE failures - a rejected send, proof, invoice, payment or cancel.
+   * Deliberately separate from `error`: routing these through it replaced the
+   * whole order with an error card, so a staffer who mistyped a PO reference
+   * lost the page they were working on and had to navigate back to find out
+   * what was wrong. Rendered as an inline alert beside the controls instead.
+   */
+  actionError: string | null;
+  /** Clear the inline write error (on dismiss, or when starting a new action). */
+  clearActionError: () => void;
   page: number;
   lastPage: number;
   subscribedCompany: number | null;
@@ -90,11 +104,10 @@ interface QuoteStoreState {
   /**
    * Staff amendment of a DRAFT's lines, delivery and notes.
    *
-   * Unlike every other write action this does NOT set the store's `error`:
-   * QuoteDetailPage renders a full-page ErrorState whenever `error` is set, so
-   * a rejected amendment would replace the order the staffer is editing and
-   * lose their unsaved work. Field errors are returned for the form to render
-   * beside the offending input instead. An empty object means success.
+   * Returns per-field errors rather than setting `actionError` like its
+   * siblings: the editor is a form, so a rejected unit price belongs against
+   * that input, not in a banner at the top of the page. An empty object means
+   * success. Failures with no field to attach to come back under `_form`.
    */
   amend: (id: number, payload: AmendPayload) => Promise<Record<string, string>>;
   send: (id: number, proof?: { artwork_version_ref: string; notes?: string }) => Promise<void>;
@@ -116,11 +129,14 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   current: null,
   loading: false,
   error: null,
+  actionError: null,
   page: 1,
   lastPage: 1,
   subscribedCompany: null,
   summary: null,
   searchTerm: undefined,
+
+  clearActionError: () => set({ actionError: null }),
 
   fetchQuotes: async (page = 1, term) => {
     const seq = ++fetchQuotesSeq;
@@ -167,7 +183,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   },
 
   createQuote: async (companyId, lines, notes, neededBy = null, idempotencyKey = null, shippingAddress = null) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       const { data } = await api.post<{ data: Quote }>('/quotes', {
@@ -189,7 +205,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       });
       return data.data;
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
       return null;
     }
   },
@@ -214,74 +230,74 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   },
 
   send: async (id, proof) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/send`, proof ?? {});
       await get().fetchQuote(id);
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
   },
 
   accept: async (id) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/accept`);
       await get().fetchQuote(id);
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
   },
 
   procure: async (id) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/procure`);
       await get().fetchQuote(id);
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
   },
 
   issueProof: async (id, artworkRef, notes) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/proofs`, { artwork_version_ref: artworkRef, notes });
       await get().fetchQuote(id);
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
   },
 
   decideProof: async (proofId, decision, notes) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/proofs/${proofId}/decide`, { decision, notes });
       const current = get().current;
       if (current) await get().fetchQuote(current.id);
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
   },
 
   issueInvoice: async (id, poRef, terms) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/invoice`, { po_ref: poRef, terms });
       await get().fetchQuote(id);
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
   },
 
   payNow: async (id) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       const { data } = await api.post<{ checkout_url: string; paid: boolean }>(`/quotes/${id}/pay`);
@@ -296,20 +312,20 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     } catch (err) {
       // Payment provider / gateway failure: surface friendly copy so the pay
       // button never freezes on an unhandled rejection.
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
     }
     return false;
   },
 
   cancelQuote: async (id, reason) => {
-    set({ error: null });
+    set({ actionError: null });
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/cancel`, { reason });
       await get().fetchQuote(id);
       return true;
     } catch (err) {
-      set({ error: apiError(err) });
+      set({ actionError: apiError(err) });
       return false;
     }
   },

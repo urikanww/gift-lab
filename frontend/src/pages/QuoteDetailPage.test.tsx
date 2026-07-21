@@ -580,3 +580,58 @@ it('refreshes the status history when a broadcast moves the order underneath it'
   expect(await within(historyCard()).findByText('Cancelled')).toBeInTheDocument();
   expect(within(historyCard()).getByText('Sent')).toBeInTheDocument();
 });
+
+// A rejected write used to route through the store's `error`, which this page
+// renders as a full-page ErrorState. The staffer lost the order, the controls
+// and their typed input, and had to navigate back to find out what was wrong.
+// Write failures now land in `actionError` and render inline.
+it('keeps the order on screen when a write is rejected, and explains why', async () => {
+  asStaff();
+  seedQuote('PROOF_APPROVED');
+  useQuoteStore.setState({
+    issueInvoice: async () => {
+      useQuoteStore.setState({ actionError: 'PO reference has already been used.' } as any);
+    },
+  } as any);
+  renderPage();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText(/PO reference/i), 'PO-1');
+  await user.click(screen.getByRole('button', { name: /Issue invoice/i }));
+
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('PO reference has already been used.');
+
+  // The order itself is still there - the whole point of the change.
+  expect(screen.getByRole('heading', { name: /Order 9BWVKWCDXH/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Issue invoice/i })).toBeInTheDocument();
+});
+
+it('dismisses the inline write error without touching the order', async () => {
+  asStaff();
+  seedQuote('PROOF_APPROVED');
+  renderPage();
+
+  // Set after mount: the page clears actionError on navigation, so a value
+  // seeded before render is correctly wiped by that effect.
+  await act(async () => {
+    useQuoteStore.setState({ actionError: 'Something went wrong.' } as any);
+  });
+
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Dismiss' }));
+
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Order 9BWVKWCDXH/i })).toBeInTheDocument();
+});
+
+// A load failure is different in kind: there is no order to show, so the
+// full-page error is correct and must survive the split.
+it('still shows a full-page error when the order itself fails to load', () => {
+  asStaff();
+  useQuoteStore.setState({ current: null, loading: false, error: 'Network unreachable.' } as any);
+  renderPage();
+
+  expect(screen.getByText('Network unreachable.')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: /Order 9BWVKWCDXH/i })).not.toBeInTheDocument();
+});

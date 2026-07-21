@@ -43,6 +43,8 @@ export default function QuoteDetailPage() {
     current,
     loading,
     error,
+    actionError,
+    clearActionError,
     fetchQuote,
     amend,
     send,
@@ -83,14 +85,17 @@ export default function QuoteDetailPage() {
   const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
+    // Clear on navigation: the store outlives the page, so without this a
+    // failure on one order greets you on the next one you open.
+    clearActionError();
     if (reference) void fetchQuote(reference);
-  }, [reference, fetchQuote]);
+  }, [reference, fetchQuote, clearActionError]);
 
   const run = async (fn: () => Promise<void>, successMsg?: string) => {
     setBusy(true);
     try {
       await fn();
-      if (successMsg && !useQuoteStore.getState().error) {
+      if (successMsg && !useQuoteStore.getState().actionError) {
         toast({ title: successMsg, tone: 'success' });
       }
     } finally {
@@ -234,7 +239,7 @@ export default function QuoteDetailPage() {
                           'request_changes',
                           changeNotes.trim() || 'Please revise.',
                         );
-                        if (!useQuoteStore.getState().error) {
+                        if (!useQuoteStore.getState().actionError) {
                           setChangesOpen(false);
                           setChangeNotes('');
                         }
@@ -309,6 +314,27 @@ export default function QuoteDetailPage() {
             </Badge>
           </div>
         </Motion>
+
+        {/* Rejected write. Sits below the header so it is the first thing read
+            after the order identity, and crucially LEAVES THE ORDER ON SCREEN -
+            these used to replace the whole page, so a mistyped PO reference
+            took the controls away along with the explanation. */}
+        {actionError && (
+          <Motion variants={staggerItem}>
+            <div
+              role="alert"
+              className="flex items-start justify-between gap-3 rounded-md border border-danger/30 bg-danger-bg p-4"
+            >
+              <div>
+                <p className="font-medium text-fg">That didn’t go through</p>
+                <p className="mt-1 text-sm text-fg-muted">{actionError}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={clearActionError}>
+                Dismiss
+              </Button>
+            </div>
+          </Motion>
+        )}
 
         {/* Status timeline */}
         <Motion variants={staggerItem}>
@@ -422,7 +448,7 @@ export default function QuoteDetailPage() {
                         // Only toast on immediate capture - the Stripe path
                         // redirects away, so feedback there would be lost.
                         const paid = await payNow(quote.id);
-                        if (paid && !useQuoteStore.getState().error) {
+                        if (paid && !useQuoteStore.getState().actionError) {
                           toast({ title: 'Payment received', tone: 'success' });
                         }
                       })
@@ -498,7 +524,7 @@ export default function QuoteDetailPage() {
                           await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
                           // send() swallows errors into store.error and never
                           // rejects, so only clear the field on a clean send.
-                          if (!useQuoteStore.getState().error) setSendProofRef('');
+                          if (!useQuoteStore.getState().actionError) setSendProofRef('');
                         }, 'Sent to buyer with proof');
                       }}
                     >
