@@ -174,8 +174,8 @@ is captured (`QuoteService.php:453`) but filtered out of the history endpoint
 
 ## Status
 
-**Waves 1-3 are complete** (branch `feat/order-workflow-wave-1`). Suites at
-**624 backend / 292 frontend**, up from the 584/267 baseline.
+**Waves 1-4 are complete** (branch `feat/order-workflow-wave-1`). Suites at
+**655 backend / 298 frontend**, up from the 584/267 baseline.
 
 Decisions taken during the build, beyond those in the table above:
 
@@ -186,7 +186,15 @@ Decisions taken during the build, beyond those in the table above:
 | 14 | Does B2C payment bypass the production gate? | **No.** Paying carries an order to PROCURING; it waits for the stock confirmation like any other. |
 | 15 | Does paying count as agreeing the price? | **Yes.** B2C buyers never pass through accept, and paying is stronger evidence than clicking a button. |
 
-Wave 4 (notifications) and Wave 5 (activity timeline) are not started.
+| 16 | Who may change notification settings? | **Staff**, not superadmin. Operational, not financial. |
+| 17 | Reminder cadence | **Configurable**, capped at five rungs. The ladder must end. |
+
+Wave 5 (the activity timeline) is not started.
+
+**Before Wave 4 goes anywhere near production:** set `MAIL_SUPPORT_ADDRESS`
+(it falls back to the from-address), review the milestone switches, and look at
+the rendered emails. This is the first change here with an outward-facing blast
+radius — it writes to real clients the moment it deploys.
 
 **Not verified in a browser.** Every change is covered by tests and typecheck,
 but no one has clicked through the running app — the staff area needs a login.
