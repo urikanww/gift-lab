@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Events\LineItemAwaitingReconfirm;
 use App\Models\Company;
 use App\Models\LineItem;
+use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\Proof;
 use App\Models\Invoice;
@@ -12,6 +13,7 @@ use App\Models\Quote;
 use App\Models\SupplierReorder;
 use App\Models\User;
 use App\Models\Variant;
+use App\Services\Procurement\FixtureMarketplaceRechecker;
 use App\Services\Procurement\ProcurementManager;
 use App\Services\QuoteService;
 use Illuminate\Support\Facades\Event;
@@ -49,14 +51,59 @@ it('procures a CORE line, decrements stock, and marks it ready', function (): vo
         ->and($line->variant->fresh()->stock_on_hand)->toBe(95);
 });
 
-it('flags a shortfall as awaiting reconfirm and broadcasts', function (): void {
+// Wave 3: a quantity shortfall is measured against stock figures nobody
+// maintains, so it records a note and carries on rather than halting the order
+// and paging staff to the procurement desk.
+it('records a shortfall as advisory without blocking or paging staff', function (): void {
     Event::fake([LineItemAwaitingReconfirm::class]);
     $line = makeLine(stock: 2, qty: 5);
 
     $this->manager->procureLine($line->load('product', 'variant'));
 
-    expect($line->fresh()->line_state->value)->toBe('AWAITING_RECONFIRM')
-        ->and($line->fresh()->procured_qty)->toBe(2);
+    $fresh = $line->fresh();
+    expect($fresh->line_state->value)->toBe('READY')
+        ->and($fresh->procurement_note)->toContain('Only 2 of 5')
+        // Proceeding at the ordered quantity: what is actually made is settled
+        // by a person at the production gate, not by this figure.
+        ->and($fresh->procured_qty)->toBe(5);
+    Event::assertNotDispatched(LineItemAwaitingReconfirm::class);
+});
+
+// The escape hatch, so a tenant that does maintain its stock can have the old
+// behaviour back without a deploy.
+it('blocks on a shortfall again when block_on_qty_short is set', function (): void {
+    Event::fake([LineItemAwaitingReconfirm::class]);
+    PricingConfig::updateOrCreate(
+        ['group' => 'procurement', 'key' => 'block_on_qty_short'],
+        ['value' => 1],
+    );
+    $line = makeLine(stock: 2, qty: 5);
+
+    $this->manager->procureLine($line->load('product', 'variant'));
+
+    expect($line->fresh()->line_state->value)->toBe('AWAITING_RECONFIRM');
+    Event::assertDispatched(LineItemAwaitingReconfirm::class);
+});
+
+// Price is a live marketplace read - real, current, and about money - so it
+// still stops the order and asks a human.
+it('still blocks and pages staff on a price jump', function (): void {
+    Event::fake([LineItemAwaitingReconfirm::class]);
+    $product = Product::factory()->create(['class' => 'SCRAPED_UV', 'print_method' => 'UV']);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'qty' => 5,
+        'unit_price' => 5.00,
+        'line_state' => 'PENDING',
+    ]);
+    app(FixtureMarketplaceRechecker::class)->for($product->id, availableQty: 50, unitPrice: 9.00);
+
+    $this->manager->procureLine($line->load('product'));
+
+    expect($line->fresh()->line_state->value)->toBe('AWAITING_RECONFIRM');
     Event::assertDispatched(LineItemAwaitingReconfirm::class);
 });
 

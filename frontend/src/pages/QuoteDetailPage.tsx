@@ -661,6 +661,15 @@ export default function QuoteDetailPage() {
                             .map((li) => (
                               <li key={li.id} className="tabular-nums">
                                 {li.qty} × {li.product?.name ?? `Product #${li.product_id}`}
+                                {/* Advisory finding from procurement. It did not
+                                    stop the order — this is the moment someone
+                                    is looking at the goods, so it is the moment
+                                    worth showing it. */}
+                                {li.procurement_note && (
+                                  <span className="ml-2 text-xs text-warning">
+                                    ⚠ {li.procurement_note}
+                                  </span>
+                                )}
                               </li>
                             ))}
                         </ul>

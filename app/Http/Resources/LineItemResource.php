@@ -35,6 +35,9 @@ class LineItemResource extends JsonResource
             'line_state' => $this->line_state->value,
             'procured_qty' => $this->procured_qty,
             'procured_price' => $this->procured_price,
+            // Advisory finding from procurement - a shortfall that no longer
+            // blocks the order. Staff check it at the production gate.
+            'procurement_note' => $this->procurement_note,
             'lead_time_days' => $this->lead_time_days,
             'product' => new ProductResource($this->whenLoaded('product')),
         ];

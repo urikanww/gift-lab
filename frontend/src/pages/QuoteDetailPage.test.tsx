@@ -669,7 +669,7 @@ it('offers staff the issue-proof control on a changes-requested order', () => {
 // Wave 3: the production gate. Jobs used to be built the moment the system
 // believed every line was resolved — a belief resting on stock figures nobody
 // maintains, since most goods are bought in after the order is placed.
-function seedProcuringQuote(lineState: string) {
+function seedProcuringQuote(lineState: string, procurementNote: string | null = null) {
   useQuoteStore.setState({
     current: {
       ...useQuoteStore.getState().current!,
@@ -680,6 +680,7 @@ function seedProcuringQuote(lineState: string) {
           product_id: 10,
           qty: 5,
           line_state: lineState,
+          procurement_note: procurementNote,
           product: { name: 'Enamel Mug' },
         },
       ],
@@ -718,4 +719,19 @@ it('withholds the production gate while a line still needs a decision', () => {
     screen.queryByRole('button', { name: /Confirm stock and start production/i }),
   ).not.toBeInTheDocument();
   expect(screen.getByText(/need a stock or price decision/i)).toBeInTheDocument();
+});
+
+// A quantity shortfall no longer stops the order, so the gate is the moment it
+// gets seen — someone is looking at the goods right then.
+it('shows the advisory shortfall against the line at the gate', () => {
+  asStaff();
+  seedQuote('PROCURING');
+  seedProcuringQuote('READY', 'Only 2 of 5 on hand.');
+  renderPage();
+
+  expect(screen.getByText(/Only 2 of 5 on hand/i)).toBeInTheDocument();
+  // Advisory, not blocking: the gate is still offered.
+  expect(
+    screen.getByRole('button', { name: /Confirm stock and start production/i }),
+  ).toBeInTheDocument();
 });

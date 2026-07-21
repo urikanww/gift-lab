@@ -52,14 +52,20 @@ it('prints a 3D line by consuming filament', function (): void {
     expect((float) Filament::first()->qty_on_hand)->toBe(800.0);
 });
 
-it('flags QTY_SHORT when filament cannot cover the run', function (): void {
+// The strategy still reports the shortfall honestly - it is the manager that
+// decides a quantity finding no longer blocks. Filament is not tracked at all
+// here, so blocking on it would hold up orders over a number nobody maintains.
+it('reports QTY_SHORT for filament but does not block the order', function (): void {
     $line = model3dLine(qty: 10, estGrams: 40, filamentGrams: 100); // covers only 2
 
     $result = $this->manager->procureLine($line->load('product'));
 
     expect($result->outcome->value)->toBe('QTY_SHORT')
-        ->and($result->procuredQty)->toBe(2)
-        ->and($line->fresh()->line_state->value)->toBe('AWAITING_RECONFIRM');
+        ->and($result->procuredQty)->toBe(2);
+
+    $fresh = $line->fresh();
+    expect($fresh->line_state->value)->toBe('READY')
+        ->and($fresh->procurement_note)->toContain('covers 2 of 10');
 });
 
 it('drafts a filament reorder when the spool drops below threshold', function (): void {

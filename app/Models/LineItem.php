@@ -39,6 +39,7 @@ class LineItem extends Model
         'line_state',
         'procured_qty',
         'procured_price',
+        'procurement_note',
         'frozen_snapshot',
         'lead_time_days',
     ];

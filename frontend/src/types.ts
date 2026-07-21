@@ -271,6 +271,12 @@ export interface LineItem {
   line_state: LineItemState;
   procured_qty: number | null;
   procured_price: string | null;
+  /**
+   * Advisory finding from procurement — a shortfall that no longer blocks the
+   * order, since it is measured against stock figures nobody maintains. Staff
+   * check it at the production gate.
+   */
+  procurement_note?: string | null;
   lead_time_days: number | null;
   product?: Product;
 }
