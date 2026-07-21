@@ -5,7 +5,7 @@ import { Badge, Button, Card, EmptyState, Input, useToast } from '../ui';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
 
 export default function ProcurementPage() {
-  const { alerts, error, subscribe, unsubscribe, reconfirm } = useProcurementStore();
+  const { alerts, error, fetchAlerts, subscribe, unsubscribe, reconfirm } = useProcurementStore();
   const [amend, setAmend] = useState<Record<number, { qty: number; unit_price: number }>>({});
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [pendingAction, setPendingAction] = useState<'amend' | 'approve' | 'drop' | null>(null);
@@ -13,9 +13,12 @@ export default function ProcurementPage() {
   const animate = useReducedMotionSafe();
 
   useEffect(() => {
+    // Fetch AND subscribe. The subscription alone only ever showed lines that
+    // broke while this page happened to be open.
+    void fetchAlerts();
     subscribe(); // live awaiting-reconfirm alerts via Reverb
     return () => unsubscribe();
-  }, [subscribe, unsubscribe]);
+  }, [fetchAlerts, subscribe, unsubscribe]);
 
   const setAmendField = (id: number, field: 'qty' | 'unit_price', value: number) =>
     setAmend((s) => {

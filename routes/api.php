@@ -153,6 +153,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/proofs/{proof}/decide', [ProofController::class, 'decide']);
 
     // Procurement reconfirmation
+    Route::get('/procurement/awaiting-reconfirm', [ProcurementController::class, 'index']);
     Route::post('/line-items/{lineItem}/reconfirm', [ProcurementController::class, 'reconfirm']);
 
     // Shared production queue

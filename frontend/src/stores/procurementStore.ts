@@ -5,6 +5,17 @@ import { joinSharedPrivate, leaveSharedPrivate } from '../lib/echo';
 let procurementChannel: ReturnType<typeof joinSharedPrivate> | null = null;
 let reconfirmListener: ((e: ReconfirmAlert) => void) | null = null;
 
+/** A row as the index endpoint returns it (LineItemResource). */
+interface AwaitingReconfirmLine {
+  id: number;
+  quote_id: number;
+  quote_reference?: string | null;
+  qty: number;
+  unit_price: string;
+  procured_qty: number | null;
+  procured_price: string | null;
+}
+
 export interface ReconfirmAlert {
   line_item_id: number;
   quote_id: number;
@@ -20,7 +31,16 @@ export interface ReconfirmAlert {
 interface ProcurementStoreState {
   alerts: ReconfirmAlert[];
   subscribed: boolean;
+  loading: boolean;
   error: string | null;
+  /**
+   * Load the lines currently awaiting a decision.
+   *
+   * The desk used to have no data source at all - only the live broadcast - so
+   * a blocked line was visible solely to whoever had the page open at the
+   * moment it broke. Everyone else saw "nothing to do" while orders sat stuck.
+   */
+  fetchAlerts: () => Promise<void>;
   subscribe: () => void;
   unsubscribe: () => void;
   reconfirm: (
@@ -33,7 +53,34 @@ interface ProcurementStoreState {
 export const useProcurementStore = create<ProcurementStoreState>((set, get) => ({
   alerts: [],
   subscribed: false,
+  loading: false,
   error: null,
+
+  fetchAlerts: async () => {
+    set({ loading: true, error: null });
+    try {
+      const { data } = await api.get<{ data: AwaitingReconfirmLine[] }>(
+        '/procurement/awaiting-reconfirm',
+      );
+      // The broadcast payload and the row shape differ; map once here so the
+      // page renders one type whichever way a line arrived.
+      set({
+        alerts: data.data.map((line) => ({
+          line_item_id: line.id,
+          quote_id: line.quote_id,
+          quote_reference: line.quote_reference,
+          reason: (line.procured_qty ?? 0) < line.qty ? 'qty_short' : 'price_jumped',
+          ordered_qty: line.qty,
+          procured_qty: line.procured_qty,
+          unit_price: line.unit_price,
+          procured_price: line.procured_price,
+        })),
+        loading: false,
+      });
+    } catch (err) {
+      set({ loading: false, error: apiError(err) });
+    }
+  },
 
   subscribe: () => {
     if (get().subscribed) return;
