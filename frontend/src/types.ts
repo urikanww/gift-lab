@@ -10,6 +10,7 @@ export type QuoteState =
   | 'CHANGES_REQUESTED'
   | 'ACCEPTED'
   | 'PROOFING'
+  | 'ARTWORK_APPROVED'
   | 'PROOF_APPROVED'
   | 'INVOICED'
   | 'CONFIRMED'

@@ -417,7 +417,10 @@ export default function QuoteDetailPage() {
         {!isStaff && proofsCard}
 
         {/* Buyer actions */}
-        {!isStaff && (quote.state === 'SENT' || quote.state === 'PROOF_APPROVED') && (
+        {!isStaff &&
+          (quote.state === 'SENT' ||
+            quote.state === 'ARTWORK_APPROVED' ||
+            quote.state === 'PROOF_APPROVED') && (
           <Motion variants={staggerItem}>
             <Card padding="lg">
               <h2 className="font-display text-xl text-fg">Next step</h2>
@@ -425,6 +428,25 @@ export default function QuoteDetailPage() {
                 <div className="mt-4">
                   <p className="mb-3 text-sm text-fg-muted">
                     Review the pricing above, then accept to move into proofing.
+                  </p>
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() => run(() => accept(quote.id), 'Quote accepted')}
+                  >
+                    Accept quote
+                  </Button>
+                </div>
+              )}
+              {/* Artwork-first route: artwork is signed off, the price is not.
+                  Approving artwork no longer implies agreeing the price, so
+                  this is the second of the two approvals. */}
+              {quote.state === 'ARTWORK_APPROVED' && (
+                <div className="mt-4">
+                  <p className="mb-3 text-sm text-fg-muted">
+                    Your artwork is approved. Review the pricing above and accept it to confirm your
+                    order.
                   </p>
                   <Button
                     variant="primary"
@@ -533,7 +555,13 @@ export default function QuoteDetailPage() {
                   </div>
                 )}
 
-                {(quote.state === 'ACCEPTED' || quote.state === 'PROOFING') && (
+                {/* CHANGES_REQUESTED included deliberately: issuing a revised
+                    proof is how an order gets out of that state. Without this
+                    control the state is a dead end and the order has to be
+                    cancelled and rebuilt. */}
+                {(quote.state === 'ACCEPTED' ||
+                  quote.state === 'PROOFING' ||
+                  quote.state === 'CHANGES_REQUESTED') && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="flex-1">
                       <Input
@@ -630,9 +658,28 @@ export default function QuoteDetailPage() {
                   </div>
                 )}
 
-                {!['DRAFT', 'ACCEPTED', 'PROOFING', 'PROOF_APPROVED', 'CONFIRMED', 'PROCURING'].includes(
-                  quote.state,
-                ) && <p className="text-sm text-fg-muted">No staff action available for this state.</p>}
+                {/* Waiting on the buyer, not on staff - say which, rather than
+                    the bare "no action available" that leaves staff wondering
+                    whether something is stuck. */}
+                {quote.state === 'ARTWORK_APPROVED' && (
+                  <p className="text-sm text-fg-muted">
+                    Artwork approved. Waiting for the buyer to accept the price — nothing to do here
+                    until they do.
+                  </p>
+                )}
+
+                {![
+                  'DRAFT',
+                  'ACCEPTED',
+                  'PROOFING',
+                  'CHANGES_REQUESTED',
+                  'ARTWORK_APPROVED',
+                  'PROOF_APPROVED',
+                  'CONFIRMED',
+                  'PROCURING',
+                ].includes(quote.state) && (
+                  <p className="text-sm text-fg-muted">No staff action available for this state.</p>
+                )}
               </div>
 
               {/* Cancel: staff-only, available from every pre-production state. */}

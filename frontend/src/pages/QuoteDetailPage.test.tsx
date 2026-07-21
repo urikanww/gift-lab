@@ -635,3 +635,42 @@ it('still shows a full-page error when the order itself fails to load', () => {
   expect(screen.getByText('Network unreachable.')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /Order 9BWVKWCDXH/i })).not.toBeInTheDocument();
 });
+
+// Two approvals, neither standing in for the other. On the artwork-first route
+// the buyer signs off artwork first and must still be shown the price; the old
+// behaviour back-filled acceptance silently, committing them to a figure they
+// had never seen.
+it('asks the buyer to agree the price after they approve artwork', async () => {
+  asBuyer();
+  seedQuote('ARTWORK_APPROVED');
+  const accept = vi.fn();
+  useQuoteStore.setState({ accept } as any);
+  renderPage();
+
+  expect(screen.getByText(/Your artwork is approved/i)).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Accept quote' }));
+
+  expect(accept).toHaveBeenCalledWith(42);
+});
+
+// Staff must not read "artwork approved" as "ready to invoice" - the order is
+// waiting on the buyer, and PROOF_APPROVED is the state that means both are in.
+it('tells staff an artwork-approved order is waiting on the buyer', () => {
+  asStaff();
+  seedQuote('ARTWORK_APPROVED');
+  renderPage();
+
+  expect(screen.getByText(/Waiting for the buyer to accept the price/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Issue invoice/i })).not.toBeInTheDocument();
+});
+
+// CHANGES_REQUESTED was unrecoverable: no control performed a way out, so the
+// order had to be cancelled and rebuilt. Issuing a revised proof is that way.
+it('offers staff the issue-proof control on a changes-requested order', () => {
+  asStaff();
+  seedQuote('CHANGES_REQUESTED');
+  renderPage();
+
+  expect(screen.getByLabelText(/Artwork reference/i)).toBeInTheDocument();
+  expect(screen.queryByText(/No staff action available/i)).not.toBeInTheDocument();
+});

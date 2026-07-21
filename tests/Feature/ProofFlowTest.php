@@ -32,7 +32,16 @@ it('issues a proof and moves the quote into proofing', function (): void {
 
 it('records an immutable approval and advances the quote', function (): void {
     Sanctum::actingAs($this->buyer);
-    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
+    // Price-first route: the buyer agreed the price before proofing began, so
+    // approving the artwork completes both approvals. accepted_at is what marks
+    // this as that route - without it the order is artwork-first and artwork
+    // approval alone must NOT carry it to PROOF_APPROVED.
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOFING',
+        'accepted_at' => now(),
+        'accepted_by' => $this->buyer->id,
+    ]);
     $proof = Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT']);
 
     $this->postJson("/api/proofs/{$proof->id}/decide", ['decision' => 'approve'])->assertOk();

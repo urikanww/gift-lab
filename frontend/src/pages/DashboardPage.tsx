@@ -5,7 +5,7 @@ import { ErrorState } from '../components/ui/States';
 import { humanizeState } from '../lib/quoteStatus';
 
 const PIPELINE_ORDER = [
-  'DRAFT', 'SENT', 'CHANGES_REQUESTED', 'ACCEPTED', 'PROOFING', 'PROOF_APPROVED',
+  'DRAFT', 'SENT', 'CHANGES_REQUESTED', 'ACCEPTED', 'PROOFING', 'ARTWORK_APPROVED', 'PROOF_APPROVED',
   'INVOICED', 'CONFIRMED', 'PROCURING', 'READY', 'CLOSED', 'CANCELLED',
 ] as const;
 

@@ -83,6 +83,17 @@ final class PaymentService
                 return $existing ?? $locked->purchaseOrders()->firstOrFail();
             }
 
+            // Paying IS agreeing the price - stronger evidence of it than
+            // clicking Accept. B2C buyers reach here by paying rather than by
+            // going through the accept step, so stamp the agreement from the
+            // payment or issueInvoice() will (correctly) refuse to bill an order
+            // with no recorded price agreement.
+            if ($locked->accepted_at === null) {
+                $locked->accepted_at = now();
+                $locked->accepted_by = $locked->created_by;
+                $locked->save();
+            }
+
             try {
                 $po = $this->quotes->issueInvoice($locked, 'B2C-'.$locked->id, $reference, 'PREPAID');
             } catch (QueryException $e) {

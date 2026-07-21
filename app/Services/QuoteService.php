@@ -390,6 +390,12 @@ final class QuoteService
         });
     }
 
+    /**
+     * Buyer agrees the price. Where that lands depends on which approval came
+     * first: from SENT the artwork is still to come (-> ACCEPTED), while from
+     * ARTWORK_APPROVED this is the second of the two approvals and the order is
+     * ready to invoice (-> PROOF_APPROVED).
+     */
     public function accept(Quote $quote): Quote
     {
         return DB::transaction(function () use ($quote): Quote {
@@ -397,7 +403,11 @@ final class QuoteService
             $quote->accepted_at = now();
             $quote->accepted_by = Auth::id();
             $quote->save();
-            $quote->transitionTo(QuoteState::Accepted);
+            $quote->transitionTo(
+                $quote->state === QuoteState::ArtworkApproved
+                    ? QuoteState::ProofApproved
+                    : QuoteState::Accepted,
+            );
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $quote;
@@ -412,7 +422,11 @@ final class QuoteService
     {
         return DB::transaction(function () use ($quote, $artworkRef, $notes): Proof {
             $enteredProofing = false;
-            if ($quote->state === QuoteState::Accepted) {
+            // CHANGES_REQUESTED is included because issuing a revised proof is
+            // the way out of it. Without this edge the state was a dead end -
+            // its only exits were DRAFT and CANCELLED and no code performed the
+            // DRAFT one, so an order that landed here had to be rebuilt.
+            if ($quote->state === QuoteState::Accepted || $quote->state === QuoteState::ChangesRequested) {
                 $previous = $quote->state->value;
                 $quote->transitionTo(QuoteState::Proofing);
                 DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
@@ -420,7 +434,7 @@ final class QuoteService
             }
 
             if ($quote->state !== QuoteState::Proofing) {
-                throw new DomainRuleException('Quote must be ACCEPTED or PROOFING to issue a proof.');
+                throw new DomainRuleException('Quote must be ACCEPTED, PROOFING or CHANGES_REQUESTED to issue a proof.');
             }
 
             $proof = $this->createProofVersion($quote, $artworkRef, $notes);
@@ -469,13 +483,18 @@ final class QuoteService
             ]);
 
             $quote = $proof->quote;
-            if ($quote->accepted_at === null) {
-                $quote->accepted_at = now();
-                $quote->accepted_by = Auth::id();
-                $quote->save();
-            }
             $previous = $quote->state->value;
-            $quote->transitionTo(QuoteState::ProofApproved);
+
+            // Approving artwork is NOT agreeing a price. On the artwork-first
+            // route this used to back-fill acceptance silently, so a buyer could
+            // be committed to a figure they were never shown - and there would
+            // be no record of them having seen it. They now go on to accept the
+            // price as a separate act; accept() completes the pair.
+            $quote->transitionTo(
+                $quote->accepted_at === null
+                    ? QuoteState::ArtworkApproved
+                    : QuoteState::ProofApproved,
+            );
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
@@ -519,6 +538,14 @@ final class QuoteService
      */
     public function issueInvoice(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): Invoice
     {
+        // Both routes are meant to guarantee this by the time PROOF_APPROVED is
+        // reached, so it should be unreachable - which is exactly why it is
+        // worth asserting. Invoicing an order the buyer never priced is the
+        // failure this whole two-approval split exists to prevent.
+        if ($quote->accepted_at === null) {
+            throw new DomainRuleException('Quote cannot be invoiced before the buyer has agreed the price.');
+        }
+
         return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): Invoice {
             $invoice = Invoice::create([
                 'quote_id' => $quote->id,
