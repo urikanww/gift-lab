@@ -8,6 +8,7 @@ use App\Enums\JobState;
 use App\Enums\QuoteState;
 use App\Exceptions\InvalidStateTransitionException;
 use App\Services\AuditLogger;
+use App\Services\OrderNotifier;
 use Database\Factories\QuoteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -246,6 +247,12 @@ class Quote extends Model
             ['state' => $from->value],
             ['state' => $target->value],
         );
+
+        // Buyer notification lives here rather than at the twelve call sites, so
+        // a milestone cannot be missed because a new code path forgot to
+        // announce itself. Deferred to after commit: a rolled-back transition
+        // must never email a buyer about something that did not happen.
+        app(OrderNotifier::class)->stateChangedAfterCommit($this, $target);
     }
 
     /**

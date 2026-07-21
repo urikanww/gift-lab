@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\LineItemState;
+use App\Enums\OrderMilestone;
 use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
@@ -44,6 +45,7 @@ final class QuoteService
         private readonly QueueService $queue,
         private readonly AuditLogger $audit,
         private readonly StockLedger $ledger,
+        private readonly OrderNotifier $notifier,
     ) {}
 
     /**
@@ -440,7 +442,15 @@ final class QuoteService
             $proof = $this->createProofVersion($quote, $artworkRef, $notes);
 
             if ($enteredProofing) {
+                // First proof: the richer quote-and-proof email, which carries a
+                // thumbnail of the artwork.
                 $this->emailQuoteReady($quote, true);
+            } else {
+                // Revisions used to notify nobody at all - the buyer was left
+                // waiting on a proof that was already sitting there, and staff
+                // had to phone every time. The state does not change on a
+                // revision, so this cannot ride on transitionTo().
+                DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::ProofIssued));
             }
 
             return $proof;

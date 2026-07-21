@@ -110,6 +110,19 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Support Address
+    |--------------------------------------------------------------------------
+    |
+    | Reply-to for buyer-facing order emails. Deliberately NOT a no-reply
+    | address: buyers reply to these, especially to a chase, and a reply that
+    | vanishes is worse than never having sent the chase.
+    |
+    */
+
+    'support_address' => env('MAIL_SUPPORT_ADDRESS', env('MAIL_FROM_ADDRESS')),
+
     'from' => [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),

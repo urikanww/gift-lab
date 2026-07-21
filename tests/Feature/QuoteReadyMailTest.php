@@ -134,14 +134,22 @@ it('emails the company buyer contact for a staff-created quote', function (): vo
     Mail::assertQueuedCount(1);
 });
 
-it('does not re-email on a v2 proof (already in proofing)', function (): void {
+// Was: 'does not re-email on a v2 proof (already in proofing)'. That silence
+// was the defect, not the design — the buyer waited on a proof already sitting
+// in front of them and staff phoned every time. A revision still sends no
+// QuoteReadyMail (that one carries the quote itself, and the quote has not
+// changed); it sends the lighter milestone email instead.
+it('sends the revision notice, not the quote email, on a v2 proof', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'PROOFING', 'accepted_at' => now(), 'accepted_by' => $buyer->id, 'created_by' => $buyer->id]);
     Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
-    // already PROOFING → issuing a proof does NOT transition, so no email fires
     $this->postJson("/api/quotes/{$quote->id}/proofs", ['artwork_version_ref' => 'a/v2.png'])->assertCreated();
 
-    Mail::assertNothingQueued();
+    Mail::assertNotQueued(App\Mail\QuoteReadyMail::class);
+    Mail::assertQueued(
+        App\Mail\OrderMilestoneMail::class,
+        fn ($mail): bool => $mail->milestone === App\Enums\OrderMilestone::ProofIssued,
+    );
 });
