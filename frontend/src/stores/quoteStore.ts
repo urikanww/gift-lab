@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api, { apiError, ensureCsrf } from '../lib/api';
+import api, { apiError, apiFieldErrors, ensureCsrf } from '../lib/api';
 import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/echo';
 import type {
   CartLine,
@@ -36,6 +36,26 @@ interface ProofStatusChangedPayload {
   state: Proof['state'];
 }
 
+/**
+ * A line with no `id` is being added; `product_id` is then required. Existing
+ * lines omitted from `lines` are left untouched, so removal is explicit via
+ * `removed_line_ids` and can never be an accident of omission.
+ */
+export interface AmendLineInput {
+  id?: number;
+  product_id?: number;
+  variant_id?: number | null;
+  qty: number;
+  unit_price: number;
+}
+
+export interface AmendPayload {
+  lines: AmendLineInput[];
+  delivery?: number | null;
+  notes?: string | null;
+  removed_line_ids?: number[];
+}
+
 interface QuoteStoreState {
   quotes: Quote[];
   current: Quote | null;
@@ -67,6 +87,16 @@ interface QuoteStoreState {
     idempotencyKey?: string | null,
     shippingAddress?: ShippingAddressInput | null,
   ) => Promise<Quote | null>;
+  /**
+   * Staff amendment of a DRAFT's lines, delivery and notes.
+   *
+   * Unlike every other write action this does NOT set the store's `error`:
+   * QuoteDetailPage renders a full-page ErrorState whenever `error` is set, so
+   * a rejected amendment would replace the order the staffer is editing and
+   * lose their unsaved work. Field errors are returned for the form to render
+   * beside the offending input instead. An empty object means success.
+   */
+  amend: (id: number, payload: AmendPayload) => Promise<Record<string, string>>;
   send: (id: number, proof?: { artwork_version_ref: string; notes?: string }) => Promise<void>;
   accept: (id: number) => Promise<void>;
   procure: (id: number) => Promise<void>;
@@ -168,6 +198,21 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   // unhandled promise rejection (the page awaits these in a try/finally with no
   // catch). On success the affected quote is refetched so state stays truthful
   // even if the Reverb broadcast is missed.
+  amend: async (id, payload) => {
+    try {
+      await ensureCsrf();
+      await api.patch(`/quotes/${id}/amend`, payload);
+      await get().fetchQuote(id);
+      return {};
+    } catch (err) {
+      const fields = apiFieldErrors(err);
+      // A non-validation failure (network, 500, state guard) has no field to
+      // attach to, so surface it under a reserved key the form shows at the
+      // top of the editor rather than blanking the page.
+      return Object.keys(fields).length > 0 ? fields : { _form: apiError(err) };
+    }
+  },
+
   send: async (id, proof) => {
     set({ error: null });
     try {

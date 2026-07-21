@@ -333,6 +333,22 @@ it('enforces the margin floor on an added line', function (): void {
     ])->assertStatus(422)->assertJsonValidationErrors('lines.1.unit_price');
 });
 
+it('amends delivery alone, with no lines in the payload', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    [$quote] = draftQuoteForAmend($product);
+
+    // The goods fold and stack, so delivery drops. Nothing about the lines
+    // changes - and the untouched lines must not be re-checked against the
+    // margin floor just because delivery moved.
+    $this->patchJson("/api/quotes/{$quote->id}/amend", ['delivery' => 12.00])->assertOk();
+
+    $quote->refresh();
+    expect((float) $quote->delivery)->toBe(12.00)
+        ->and((float) $quote->subtotal)->toBe(50.00)
+        ->and((float) $quote->total)->toBe(62.00);
+});
+
 it('refuses to remove a line belonging to another quote', function (): void {
     Sanctum::actingAs($this->staff);
     $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);

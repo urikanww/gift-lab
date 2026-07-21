@@ -31,7 +31,13 @@ class AmendQuoteRequest extends FormRequest
         return [
             'delivery' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:2000'],
-            'lines' => ['required', 'array', 'min:1'],
+            // Optional: the editor submits only the lines it actually changed
+            // (the service merges over the rest), so reducing delivery because
+            // the goods stack, or removing a line, is a valid amendment with no
+            // `lines` at all. Requiring min:1 here also forced every untouched
+            // line back through the margin floor, which would make an order
+            // quoted under an older floor permanently unsaveable.
+            'lines' => ['nullable', 'array'],
             // Absent id = a line being added. Present id = an existing line
             // being re-priced or re-quantified.
             'lines.*.id' => ['nullable', 'integer', 'exists:line_items,id'],
