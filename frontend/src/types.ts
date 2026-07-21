@@ -282,6 +282,12 @@ export interface Proof {
   quote_reference?: string | null;
   version: number;
   artwork_version_ref: string;
+  /**
+   * Server-resolved viewing link: a short-lived signed URL for an uploaded
+   * file, the value itself when staff pasted a real URL, null when it is
+   * neither (legacy rows hold arbitrary strings).
+   */
+  artwork_url?: string | null;
   state: ProofState;
   approved_by: number | null;
   approved_at: string | null;

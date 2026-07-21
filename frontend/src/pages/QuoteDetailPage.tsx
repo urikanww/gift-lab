@@ -14,6 +14,7 @@ import QuoteTimeline from '../components/quote/QuoteTimeline';
 import StatusHistory from '../components/quote/StatusHistory';
 import QuoteLineItems, { PricingSummary } from '../components/quote/QuoteLineItems';
 import QuoteLineEditor from '../components/quote/QuoteLineEditor';
+import ProofFileInput from '../components/quote/ProofFileInput';
 import type { Proof, QuoteState } from '../types';
 
 /**
@@ -106,17 +107,6 @@ export default function QuoteDetailPage() {
   const latestOpenProof = (proofs: Proof[] | undefined): Proof | null =>
     proofs?.find((p) => p.state === 'SENT') ?? null;
 
-  // Light client-side validation for the staff free-text refs - catches the
-  // obvious mistakes (blank, spaces in a storage key, runaway length) before a
-  // round-trip; the backend remains the authority.
-  const validateArtworkRef = (value: string): string | undefined => {
-    const v = value.trim();
-    if (!v) return 'Enter the object-store key for the artwork.';
-    if (/\s/.test(v)) return 'Storage keys cannot contain spaces.';
-    if (v.length > 1024) return 'Storage key is too long (max 1024 characters).';
-    return undefined;
-  };
-
   const validatePoRef = (value: string): string | undefined => {
     const v = value.trim();
     if (!v) return 'Enter the PO number.';
@@ -164,9 +154,12 @@ export default function QuoteDetailPage() {
                     {humanizeState(p.state)}
                   </Badge>
                 </span>
-                {safeHref(p.artwork_version_ref) ? (
+                {/* artwork_url is resolved server-side so the client never has
+                    to know whether the proof was uploaded or pasted. Falls back
+                    to the raw ref for legacy rows that are neither. */}
+                {p.artwork_url ?? safeHref(p.artwork_version_ref) ? (
                   <a
-                    href={safeHref(p.artwork_version_ref)}
+                    href={p.artwork_url ?? safeHref(p.artwork_version_ref)}
                     target="_blank"
                     rel="noreferrer"
                     className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
@@ -512,14 +505,14 @@ export default function QuoteDetailPage() {
                 {quote.state === 'DRAFT' && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="flex-1">
-                      <Input
+                      <ProofFileInput
                         label="Attach proof (optional)"
-                        hint="Leave blank to send a plain quote, or add an artwork reference to send it straight into proofing."
-                        placeholder="object-store key"
+                        hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
                         value={sendProofRef}
                         error={sendProofRefError}
-                        onChange={(e) => {
-                          setSendProofRef(e.target.value);
+                        disabled={busy}
+                        onChange={(ref) => {
+                          setSendProofRef(ref);
                           setSendProofRefError(undefined);
                         }}
                       />
@@ -533,13 +526,6 @@ export default function QuoteDetailPage() {
                         // no validation and nothing to reset.
                         if (!sendProofRef.trim()) {
                           void run(() => send(quote.id), 'Sent to buyer');
-                          return;
-                        }
-                        // Validate BEFORE run() so a bad ref never triggers run's
-                        // success toast (it toasts whenever store.error is unset).
-                        const err = validateArtworkRef(sendProofRef);
-                        if (err) {
-                          setSendProofRefError(err);
                           return;
                         }
                         void run(async () => {
@@ -564,13 +550,14 @@ export default function QuoteDetailPage() {
                   quote.state === 'CHANGES_REQUESTED') && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="flex-1">
-                      <Input
-                        label="Artwork reference"
-                        placeholder="object-store key"
+                      <ProofFileInput
+                        label="Proof artwork"
+                        hint="PDF or image, up to 3 MB."
                         value={artworkRef}
                         error={artworkRefError}
-                        onChange={(e) => {
-                          setArtworkRef(e.target.value);
+                        disabled={busy}
+                        onChange={(ref) => {
+                          setArtworkRef(ref);
                           setArtworkRefError(undefined);
                         }}
                       />
@@ -580,11 +567,6 @@ export default function QuoteDetailPage() {
                       loading={busy}
                       disabled={busy || !artworkRef}
                       onClick={() => {
-                        const err = validateArtworkRef(artworkRef);
-                        if (err) {
-                          setArtworkRefError(err);
-                          return;
-                        }
                         void run(async () => {
                           await issueProof(quote.id, artworkRef.trim(), null);
                           setArtworkRef('');

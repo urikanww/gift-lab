@@ -11,6 +11,23 @@ vi.mock('../lib/quotes', async (importOriginal) => ({
   fetchQuoteHistory: (reference: string) => fetchQuoteHistory(reference),
 }));
 
+// The proof uploader has its own test; here it is stubbed so these tests stay
+// about the page's own logic. Attaching yields the ref the server would return.
+vi.mock('../components/quote/ProofFileInput', () => ({
+  default: ({ label, value, onChange }: {
+    label: string;
+    value: string;
+    onChange: (ref: string, name: string | null) => void;
+  }) => (
+    <div>
+      <button type="button" onClick={() => onChange('proofs/v1.pdf', 'v1.pdf')}>
+        {`attach:${label}`}
+      </button>
+      <span data-testid={`ref:${label}`}>{value}</span>
+    </div>
+  ),
+}));
+
 import { ThemeProvider, ToastProvider } from '../ui';
 import QuoteDetailPage from './QuoteDetailPage';
 import { useAuthStore } from '../stores/authStore';
@@ -145,19 +162,6 @@ it('toasts "Payment received" when payment captures immediately', async () => {
   expect(await screen.findByText('Payment received')).toBeInTheDocument();
 });
 
-it('rejects an artwork storage key containing spaces without calling the API', async () => {
-  const issueProof = vi.fn(async () => {});
-  seedQuote('ACCEPTED');
-  useQuoteStore.setState({ issueProof } as any);
-  asStaff();
-  renderPage();
-
-  await userEvent.type(screen.getByLabelText(/artwork reference/i), 'proofs/my file.pdf');
-  await userEvent.click(screen.getByRole('button', { name: /issue proof/i }));
-
-  expect(issueProof).not.toHaveBeenCalled();
-  expect(screen.getByText(/cannot contain spaces/i)).toBeInTheDocument();
-});
 
 it('rejects a whitespace-only PO reference without calling the API', async () => {
   const issueInvoice = vi.fn(async () => {});
@@ -192,7 +196,7 @@ it('posts the artwork ref when sending with a proof from DRAFT', async () => {
   asStaff();
   renderPage();
 
-  await userEvent.type(screen.getByLabelText(/attach proof/i), 'proofs/v1.pdf');
+  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach proof (optional)' }));
   await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
 
   expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'proofs/v1.pdf' });
@@ -205,45 +209,32 @@ it('clears the DRAFT proof field after a successful send-with-proof', async () =
   asStaff();
   renderPage();
 
-  const field = screen.getByLabelText(/attach proof/i);
-  await userEvent.type(field, 'proofs/v1.pdf');
+  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach proof (optional)' }));
   await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
 
-  await waitFor(() => expect(field).toHaveValue(''));
+  await waitFor(() =>
+    expect(screen.getByTestId('ref:Attach proof (optional)')).toHaveTextContent(''),
+  );
 });
 
-it('keeps the DRAFT proof field when the send-with-proof fails', async () => {
-  // send() swallows errors into store.error and never rejects; the field must
-  // survive so the user can retry without re-typing.
+it('keeps the attached proof when the send-with-proof fails', async () => {
+  // send() swallows failures into actionError and never rejects. The attached
+  // ref must survive so the staffer can retry without uploading the file again.
   const send = vi.fn(async () => {
-    useQuoteStore.setState({ error: 'nope' } as any);
+    useQuoteStore.setState({ actionError: 'nope' } as any);
   });
   seedQuote('DRAFT');
   useQuoteStore.setState({ send } as any);
   asStaff();
   renderPage();
 
-  const field = screen.getByLabelText(/attach proof/i);
-  await userEvent.type(field, 'proofs/v1.pdf');
+  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach proof (optional)' }));
   await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
 
   expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'proofs/v1.pdf' });
-  expect(field).toHaveValue('proofs/v1.pdf');
+  expect(screen.getByTestId('ref:Attach proof (optional)')).toHaveTextContent('proofs/v1.pdf');
 });
 
-it('rejects a DRAFT artwork reference containing spaces without calling send', async () => {
-  const send = vi.fn(async () => {});
-  seedQuote('DRAFT');
-  useQuoteStore.setState({ send } as any);
-  asStaff();
-  renderPage();
-
-  await userEvent.type(screen.getByLabelText(/attach proof/i), 'proofs/my file.pdf');
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
-
-  expect(send).not.toHaveBeenCalled();
-  expect(screen.getByText(/cannot contain spaces/i)).toBeInTheDocument();
-});
 
 it('hides the "proof being prepared" note for a buyer once a proof is open in PROOFING', () => {
   seedQuote('PROOFING');
@@ -671,6 +662,6 @@ it('offers staff the issue-proof control on a changes-requested order', () => {
   seedQuote('CHANGES_REQUESTED');
   renderPage();
 
-  expect(screen.getByLabelText(/Artwork reference/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'attach:Proof artwork' })).toBeInTheDocument();
   expect(screen.queryByText(/No staff action available/i)).not.toBeInTheDocument();
 });
