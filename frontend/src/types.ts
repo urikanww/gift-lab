@@ -311,6 +311,9 @@ export interface Quote {
   delivery: string;
   total: string;
   price_snapshot_at: string | null;
+  /** The production gate: null until a person confirms the goods are in hand. */
+  stock_confirmed_at?: string | null;
+  stock_confirmed_by?: number | null;
   notes: string | null;
   /** Buyer's requested delivery deadline (Y-m-d); null when unset. */
   needed_by: string | null;

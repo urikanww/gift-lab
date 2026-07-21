@@ -54,6 +54,7 @@ export default function QuoteDetailPage() {
     issueProof,
     decideProof,
     issueInvoice,
+    confirmStock,
     payNow,
     cancelQuote,
   } = useQuoteStore();
@@ -120,6 +121,10 @@ export default function QuoteDetailPage() {
 
   const quote = current;
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
+  // A line still needing a staff decision blocks the production gate: the gate
+  // is a confirmation that everything is in hand, which is not yet true.
+  const awaitingDecision =
+    quote.line_items?.some((li) => li.line_state === 'AWAITING_RECONFIRM') ?? false;
 
   /**
    * The Proofs card, rendered in a DIFFERENT position per role - see the two
@@ -626,17 +631,56 @@ export default function QuoteDetailPage() {
 
                 {quote.state === 'PROCURING' && (
                   <div className="flex flex-col gap-2">
-                    <p className="text-sm text-fg-muted">
-                      {quote.line_items?.some((li) => li.line_state === 'AWAITING_RECONFIRM')
-                        ? 'One or more lines need a stock/price decision before this order can be queued.'
-                        : 'Procurement is running. Any line flagged during the re-check is resolved at the procurement desk.'}
-                    </p>
-                    <Link
-                      to="/procurement"
-                      className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                    >
-                      Go to procurement desk →
-                    </Link>
+                    {awaitingDecision ? (
+                      <>
+                        <p className="text-sm text-fg-muted">
+                          One or more lines need a stock or price decision before this order can go to
+                          production.
+                        </p>
+                        <Link
+                          to="/procurement"
+                          className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                        >
+                          Go to procurement desk →
+                        </Link>
+                      </>
+                    ) : (
+                      /* The production gate. Nothing reaches the floor on the
+                         strength of a stock figure alone - most goods are bought
+                         in after the order, so a person confirming they are here
+                         is the only reliable check. Attributed, because with the
+                         automatic checks advisory this is the last one left. */
+                      <>
+                        <p className="text-sm text-fg-muted">
+                          Every line is resolved. Check the items above against what has actually
+                          arrived, then release the order to production.
+                        </p>
+                        <ul className="my-1 flex flex-col gap-1 text-sm text-fg">
+                          {quote.line_items
+                            ?.filter((li) => li.line_state === 'READY')
+                            .map((li) => (
+                              <li key={li.id} className="tabular-nums">
+                                {li.qty} × {li.product?.name ?? `Product #${li.product_id}`}
+                              </li>
+                            ))}
+                        </ul>
+                        <div>
+                          <Button
+                            variant="primary"
+                            loading={busy}
+                            disabled={busy}
+                            onClick={() =>
+                              run(() => confirmStock(quote.id), 'Stock confirmed — sent to production')
+                            }
+                          >
+                            Confirm stock and start production
+                          </Button>
+                        </div>
+                        <p className="text-xs text-fg-subtle">
+                          Your name and the time are recorded against this confirmation.
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
 

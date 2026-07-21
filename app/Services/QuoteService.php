@@ -780,23 +780,69 @@ final class QuoteService
     }
 
     /**
-     * Queue the quote's jobs once every line is resolved (READY or DROPPED),
-     * provided at least one line is READY. A wholly-dropped quote is not queued.
+     * True once every line is resolved (READY or DROPPED) and at least one is
+     * READY - i.e. there is something to make and nothing still undecided. A
+     * wholly-dropped quote is never queued.
      */
-    private function tryQueue(Quote $quote): void
+    public function isReadyForProduction(Quote $quote): bool
     {
         $quote->loadMissing('lineItems');
 
-        $allResolved = $quote->lineItems->every(
-            fn ($line): bool => $line->line_state->isResolvedForQueue()
-        );
-        $anyReady = $quote->lineItems->contains(
-            fn ($line): bool => $line->line_state === LineItemState::Ready
-        );
+        return $quote->state === QuoteState::Procuring
+            && $quote->lineItems->every(fn ($line): bool => $line->line_state->isResolvedForQueue())
+            && $quote->lineItems->contains(fn ($line): bool => $line->line_state === LineItemState::Ready);
+    }
 
-        if ($allResolved && $anyReady && $quote->state === QuoteState::Procuring) {
+    /**
+     * Queue the quote's jobs, but only once a person has confirmed the goods are
+     * actually in hand.
+     *
+     * This used to fire automatically the moment the system believed every line
+     * was resolved. Since most goods are bought in after the order is placed,
+     * that belief rests on stock figures nobody maintains - so the floor could
+     * be handed work for goods that had not arrived. The confirmation is now the
+     * gate; see confirmStock().
+     */
+    private function tryQueue(Quote $quote): void
+    {
+        if ($this->isReadyForProduction($quote) && $quote->stock_confirmed_at !== null) {
             $this->queue->buildJobsForQuote($quote);
         }
+    }
+
+    /**
+     * Staff confirm the goods are in hand and release the order to the floor.
+     *
+     * Attributed deliberately. With the automatic checks advisory, this is the
+     * only remaining safety net before production starts, so it records who
+     * looked rather than being an anonymous button press.
+     */
+    public function confirmStock(Quote $quote): Quote
+    {
+        if (! $this->isReadyForProduction($quote)) {
+            throw new DomainRuleException(
+                'Every line must be resolved, with at least one to produce, before stock can be confirmed.'
+            );
+        }
+
+        if ($quote->stock_confirmed_at !== null) {
+            throw new DomainRuleException('Stock has already been confirmed for this order.');
+        }
+
+        return DB::transaction(function () use ($quote): Quote {
+            $quote->stock_confirmed_at = now();
+            $quote->stock_confirmed_by = Auth::id();
+            $quote->save();
+
+            $this->audit->log($quote, 'quote.stock_confirmed', null, [
+                'confirmed_by' => $quote->stock_confirmed_by,
+                'confirmed_at' => $quote->stock_confirmed_at?->toIso8601String(),
+            ]);
+
+            $this->tryQueue($quote->fresh(['lineItems']));
+
+            return $quote->fresh(['lineItems', 'jobs']);
+        });
     }
 
     /**

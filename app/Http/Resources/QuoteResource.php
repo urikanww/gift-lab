@@ -36,6 +36,10 @@ class QuoteResource extends JsonResource
             'delivery' => $this->delivery,
             'total' => $this->total,
             'price_snapshot_at' => $this->price_snapshot_at?->toIso8601String(),
+            // The production gate. Null while the order is still waiting for a
+            // person to confirm the goods are in hand.
+            'stock_confirmed_at' => $this->stock_confirmed_at?->toIso8601String(),
+            'stock_confirmed_by' => $this->stock_confirmed_by,
             'notes' => $this->notes,
             // Buyer's requested delivery deadline (Y-m-d); null when unset.
             'needed_by' => $this->needed_by?->toDateString(),

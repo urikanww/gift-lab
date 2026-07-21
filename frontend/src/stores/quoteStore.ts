@@ -116,6 +116,11 @@ interface QuoteStoreState {
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
   decideProof: (proofId: number, decision: 'approve' | 'request_changes', notes: string | null) => Promise<void>;
   issueInvoice: (id: number, poRef: string, terms: string | null) => Promise<void>;
+  /**
+   * Staff confirm the goods are in hand, releasing the order to the floor.
+   * Production no longer starts on the system's own say-so.
+   */
+  confirmStock: (id: number) => Promise<void>;
   /** Resolves true when payment was captured immediately (no redirect). */
   payNow: (id: number) => Promise<boolean>;
   /** Resolves true on success so the confirm modal only closes when the cancel actually landed. */
@@ -290,6 +295,17 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     try {
       await ensureCsrf();
       await api.post(`/quotes/${id}/invoice`, { po_ref: poRef, terms });
+      await get().fetchQuote(id);
+    } catch (err) {
+      set({ actionError: apiError(err) });
+    }
+  },
+
+  confirmStock: async (id) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/confirm-stock`);
       await get().fetchQuote(id);
     } catch (err) {
       set({ actionError: apiError(err) });

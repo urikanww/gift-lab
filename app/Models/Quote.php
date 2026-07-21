@@ -55,6 +55,8 @@ class Quote extends Model
         'price_snapshot_at',
         'accepted_at',
         'accepted_by',
+        'stock_confirmed_at',
+        'stock_confirmed_by',
         'amendment_log',
         'notes',
         'needed_by',
@@ -71,6 +73,7 @@ class Quote extends Model
             'total' => 'decimal:2',
             'price_snapshot_at' => 'datetime',
             'accepted_at' => 'datetime',
+            'stock_confirmed_at' => 'datetime',
             'amendment_log' => 'array',
             'needed_by' => 'immutable_date',
         ];

@@ -133,6 +133,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
     Route::post('/quotes/{quote}/invoice', [QuoteController::class, 'issueInvoice']);
     Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure']);
+    // The production gate: a person confirming the goods are in hand.
+    Route::post('/quotes/{quote}/confirm-stock', [QuoteController::class, 'confirmStock']);
     Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel']);
     Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);
 

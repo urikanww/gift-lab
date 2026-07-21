@@ -665,3 +665,57 @@ it('offers staff the issue-proof control on a changes-requested order', () => {
   expect(screen.getByRole('button', { name: 'attach:Proof artwork' })).toBeInTheDocument();
   expect(screen.queryByText(/No staff action available/i)).not.toBeInTheDocument();
 });
+
+// Wave 3: the production gate. Jobs used to be built the moment the system
+// believed every line was resolved — a belief resting on stock figures nobody
+// maintains, since most goods are bought in after the order is placed.
+function seedProcuringQuote(lineState: string) {
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      state: 'PROCURING',
+      line_items: [
+        {
+          id: 1,
+          product_id: 10,
+          qty: 5,
+          line_state: lineState,
+          product: { name: 'Enamel Mug' },
+        },
+      ],
+    },
+  } as any);
+}
+
+it('offers the production gate once every line is resolved', async () => {
+  asStaff();
+  seedQuote('PROCURING');
+  seedProcuringQuote('READY');
+  const confirmStock = vi.fn(async () => {});
+  useQuoteStore.setState({ confirmStock } as any);
+  renderPage();
+
+  // The lines are listed to be checked off against what actually arrived.
+  expect(screen.getByText('5 × Enamel Mug')).toBeInTheDocument();
+  expect(screen.getByText(/Your name and the time are recorded/i)).toBeInTheDocument();
+
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: /Confirm stock and start production/i }));
+
+  expect(confirmStock).toHaveBeenCalledWith(42);
+});
+
+// The gate asserts everything is in hand, which is not yet true while a line is
+// still awaiting a decision.
+it('withholds the production gate while a line still needs a decision', () => {
+  asStaff();
+  seedQuote('PROCURING');
+  seedProcuringQuote('AWAITING_RECONFIRM');
+  renderPage();
+
+  expect(
+    screen.queryByRole('button', { name: /Confirm stock and start production/i }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/need a stock or price decision/i)).toBeInTheDocument();
+});

@@ -545,3 +545,101 @@ it('leaves the totals alone when an accepted shortfall is only a price jump', fu
         ->and((float) $quote->subtotal)->toBe(150.00)
         ->and((float) $quote->total)->toBe(170.00);
 });
+
+// Wave 3: the production gate. Jobs used to be built the moment the system
+// believed every line was resolved - a belief resting on stock figures nobody
+// maintains, since most goods are bought in after the order is placed. A person
+// confirming the goods are in hand is now what releases the order to the floor.
+
+/** A PROCURING quote whose single line has resolved to READY. */
+function quoteAwaitingStockConfirmation(): Quote
+{
+    $product = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 500]);
+    $quote = Quote::factory()->create(['company_id' => test()->company->id, 'state' => 'PROCURING']);
+    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 5,
+        'unit_price' => 15.00,
+        'line_state' => 'READY',
+    ]);
+
+    return $quote;
+}
+
+it('holds a fully-procured order at PROCURING until stock is confirmed', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = quoteAwaitingStockConfirmation();
+
+    // Running procurement resolves the lines but must not release the order.
+    $this->postJson("/api/quotes/{$quote->id}/procure")->assertOk();
+
+    $quote->refresh();
+    expect($quote->state->value)->toBe('PROCURING')
+        ->and($quote->jobs()->count())->toBe(0);
+});
+
+it('releases the order to the floor when staff confirm the stock', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = quoteAwaitingStockConfirmation();
+
+    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertOk();
+
+    $quote->refresh();
+    expect($quote->state->value)->toBe('READY')
+        ->and($quote->jobs()->count())->toBeGreaterThan(0)
+        ->and($quote->stock_confirmed_by)->toBe($this->staff->id)
+        ->and($quote->stock_confirmed_at)->not->toBeNull();
+});
+
+// The gate is the last safety net before production, so it records who looked.
+it('writes an audit row naming who confirmed the stock', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = quoteAwaitingStockConfirmation();
+
+    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertOk();
+
+    $this->assertDatabaseHas('audit_logs', [
+        'event' => 'quote.stock_confirmed',
+        'auditable_id' => $quote->id,
+        'user_id' => $this->staff->id,
+    ]);
+});
+
+it('refuses to confirm stock while a line is still awaiting a decision', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = quoteAwaitingStockConfirmation();
+    LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $this->product->id,
+        'variant_id' => null,
+        'qty' => 3,
+        'unit_price' => 15.00,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertStatus(422);
+
+    expect($quote->fresh()->state->value)->toBe('PROCURING');
+});
+
+it('refuses to confirm stock twice', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = quoteAwaitingStockConfirmation();
+
+    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertOk();
+    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertStatus(422);
+});
+
+it('refuses to let a buyer confirm stock', function (): void {
+    $buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
+    $quote = quoteAwaitingStockConfirmation();
+    Sanctum::actingAs($buyer);
+
+    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertForbidden();
+
+    expect($quote->fresh()->state->value)->toBe('PROCURING');
+});
