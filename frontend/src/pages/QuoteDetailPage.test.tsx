@@ -153,7 +153,12 @@ it('falls back to a generic note when the change reason is left blank', async ()
 
 it('toasts "Payment received" when payment captures immediately', async () => {
   seedQuote('PROOF_APPROVED');
-  useQuoteStore.setState({ payNow: async () => true } as any);
+  // Pay now only renders where buyer payment is actually available; it used to
+  // render for everyone and always failed on a B2B tenant.
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, pay_now_enabled: true },
+    payNow: async () => true,
+  } as any);
   asBuyer();
   renderPage();
 
@@ -171,7 +176,7 @@ it('rejects a whitespace-only PO reference without calling the API', async () =>
   renderPage();
 
   await userEvent.type(screen.getByLabelText(/po reference/i), '   ');
-  await userEvent.click(screen.getByRole('button', { name: /issue invoice/i }));
+  await userEvent.click(screen.getByRole('button', { name: 'Commit order' }));
 
   expect(issueInvoice).not.toHaveBeenCalled();
   expect(screen.getByText(/enter the po number/i)).toBeInTheDocument();
@@ -588,14 +593,16 @@ it('keeps the order on screen when a write is rejected, and explains why', async
 
   const user = userEvent.setup();
   await user.type(screen.getByLabelText(/PO reference/i), 'PO-1');
-  await user.click(screen.getByRole('button', { name: /Issue invoice/i }));
+  await user.click(screen.getByRole('button', { name: 'Commit order' }));
+  // Confirmation first: committing opens production and cannot be walked back.
+  await user.click(screen.getAllByRole('button', { name: 'Commit order' })[1]);
 
   const alert = await screen.findByRole('alert');
   expect(alert).toHaveTextContent('PO reference has already been used.');
 
   // The order itself is still there - the whole point of the change.
   expect(screen.getByRole('heading', { name: /Order 9BWVKWCDXH/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Issue invoice/i })).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Commit order' })[0]).toBeInTheDocument();
 });
 
 it('dismisses the inline write error without touching the order', async () => {
@@ -734,4 +741,35 @@ it('shows the advisory shortfall against the line at the gate', () => {
   expect(
     screen.getByRole('button', { name: /Confirm stock and start production/i }),
   ).toBeInTheDocument();
+});
+
+// Issuing the invoice also drives the order to CONFIRMED, the production gate.
+// The button said "Issue invoice" and gave no hint of that, so staff committed
+// orders without being told they had.
+it('confirms before committing an order to production', async () => {
+  asStaff();
+  seedQuote('PROOF_APPROVED');
+  const issueInvoice = vi.fn(async () => {});
+  useQuoteStore.setState({ issueInvoice } as any);
+  renderPage();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText(/PO reference/i), 'PO-9');
+  await user.click(screen.getByRole('button', { name: 'Commit order' }));
+
+  // Nothing has happened yet - the confirmation explains what is about to.
+  expect(issueInvoice).not.toHaveBeenCalled();
+  expect(screen.getByText(/Production can begin/i)).toBeInTheDocument();
+
+  await user.click(screen.getAllByRole('button', { name: 'Commit order' })[1]);
+  expect(issueInvoice).toHaveBeenCalledWith(42, 'PO-9', null);
+});
+
+it('hides Pay now where buyer payment is not available', () => {
+  asBuyer();
+  seedQuote('PROOF_APPROVED');
+  renderPage();
+
+  expect(screen.queryByRole('button', { name: /pay now/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/We’ll send your invoice/i)).toBeInTheDocument();
 });

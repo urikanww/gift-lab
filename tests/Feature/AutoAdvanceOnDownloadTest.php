@@ -27,7 +27,11 @@ function ready3dJob(string $ref): App\Models\ProductionJob
     return app(QueueService::class)->buildJobsForQuote($quote->load('lineItems.product'))->first();
 }
 
-it('advances a READY job to IN_PRODUCTION when its print file is downloaded', function (): void {
+// Was: 'advances a READY job to IN_PRODUCTION when its print file is
+// downloaded'. The download WAS the start button, and nothing on screen said
+// so, meaning opening a file to check it silently put the job into production.
+// Starting is now the explicit "Start production" control on the queue.
+it('does not start a job just because its print file was downloaded', function (): void {
     $disk = (string) config('filesystems.artwork_disk');
     Storage::fake($disk);
     Storage::disk($disk)->put('artwork/decal.png', 'PNGBYTES');
@@ -36,6 +40,19 @@ it('advances a READY job to IN_PRODUCTION when its print file is downloaded', fu
 
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
     $this->get("/api/production-jobs/{$job->id}/print-file")->assertOk();
+
+    expect($job->fresh()->state->value)->toBe('READY');
+});
+
+it('starts the job only when staff explicitly advance it', function (): void {
+    $disk = (string) config('filesystems.artwork_disk');
+    Storage::fake($disk);
+    Storage::disk($disk)->put('artwork/decal.png', 'PNGBYTES');
+    $job = ready3dJob('artwork/decal.png');
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->get("/api/production-jobs/{$job->id}/print-file")->assertOk();
+    $this->postJson("/api/production-jobs/{$job->id}/advance", ['state' => 'IN_PRODUCTION'])->assertOk();
 
     expect($job->fresh()->state->value)->toBe('IN_PRODUCTION');
 });

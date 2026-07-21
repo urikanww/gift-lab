@@ -83,6 +83,9 @@ export default function QuoteDetailPage() {
   const [changesOpen, setChangesOpen] = useState(false);
   const [changeNotes, setChangeNotes] = useState('');
   // Staff-only cancel confirm modal.
+  // Committing is irreversible in practice (it opens production), so it is
+  // confirmed rather than fired straight from the button.
+  const [commitOpen, setCommitOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
 
@@ -456,7 +459,15 @@ export default function QuoteDetailPage() {
                   </Button>
                 </div>
               )}
-              {quote.state === 'PROOF_APPROVED' && (
+              {/* Payment is off for this tenant: say what happens instead,
+                  rather than offering a button that always fails. */}
+              {quote.state === 'PROOF_APPROVED' && !quote.pay_now_enabled && (
+                <p className="mt-4 text-sm text-fg-muted">
+                  Your proof is approved. We’ll send your invoice and confirm your order for
+                  production.
+                </p>
+              )}
+              {quote.state === 'PROOF_APPROVED' && quote.pay_now_enabled && (
                 <div className="mt-4">
                   <p className="mb-3 text-sm text-fg-muted">Your proof is approved. Pay now to confirm production.</p>
                   <Button
@@ -583,12 +594,18 @@ export default function QuoteDetailPage() {
                   </div>
                 )}
 
+                {/* This button was labelled "Issue invoice" and gave no hint
+                    that the same transaction drives the quote through INVOICED
+                    to CONFIRMED - the production gate. Staff were committing
+                    the order without being told they were. Renamed to say so,
+                    and confirmed before it fires. */}
                 {quote.state === 'PROOF_APPROVED' && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="flex-1">
                       <Input
                         label="PO reference"
                         placeholder="PO number"
+                        hint="Raises the invoice and commits the order to production."
                         value={poRef}
                         error={poRefError}
                         onChange={(e) => {
@@ -607,13 +624,10 @@ export default function QuoteDetailPage() {
                           setPoRefError(err);
                           return;
                         }
-                        void run(async () => {
-                          await issueInvoice(quote.id, poRef.trim(), null);
-                          setPoRef('');
-                        }, 'Invoice issued');
+                        setCommitOpen(true);
                       }}
                     >
-                      Issue invoice
+                      Commit order
                     </Button>
                   </div>
                 )}
@@ -733,6 +747,41 @@ export default function QuoteDetailPage() {
             controls they act with rather than pushing them down. See
             `proofsCard` above. */}
         {isStaff && proofsCard}
+
+        {/* The commitment step. Issuing the invoice also drives the order to
+            CONFIRMED, which opens production - previously with no indication
+            that pressing the button did anything beyond raising an invoice. */}
+        {isStaff && (
+          <Modal
+            open={commitOpen}
+            onClose={() => setCommitOpen(false)}
+            title="Commit this order to production?"
+            description="This raises the invoice and confirms the order. Production can begin and the order can no longer be edited."
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setCommitOpen(false)} disabled={busy}>
+                  Back
+                </Button>
+                <Button
+                  variant="primary"
+                  loading={busy}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await issueInvoice(quote.id, poRef.trim(), null);
+                      if (!useQuoteStore.getState().actionError) {
+                        setPoRef('');
+                        setCommitOpen(false);
+                      }
+                    }, 'Order committed to production')
+                  }
+                >
+                  Commit order
+                </Button>
+              </>
+            }
+          />
+        )}
 
         {isStaff && isCancellable && (
           <Modal

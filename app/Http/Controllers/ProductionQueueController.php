@@ -93,13 +93,10 @@ class ProductionQueueController extends Controller
             abort(404);
         }
 
-        // Downloading the print-ready file IS the "started" signal - collapse the
-        // separate advance click into the download. Idempotent: only fires from
-        // READY, so a re-download at a later state is a no-op.
-        if ($job->state === JobState::Ready) {
-            $this->queue->advance($job, JobState::InProduction);
-        }
-
+        // Downloading no longer starts the job. It used to: the download WAS
+        // the start signal, with nothing on screen saying so, which meant
+        // opening a file to check it silently put the job into production.
+        // Starting is now an explicit action - see advance().
         return $disk->download($ref, basename($ref));
     }
 

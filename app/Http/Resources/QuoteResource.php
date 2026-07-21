@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Models\PricingConfig;
 use App\Models\Quote;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -40,6 +41,13 @@ class QuoteResource extends JsonResource
             // person to confirm the goods are in hand.
             'stock_confirmed_at' => $this->stock_confirmed_at?->toIso8601String(),
             'stock_confirmed_by' => $this->stock_confirmed_by,
+            // Whether buyer self-service payment is actually available. The Pay
+            // now button used to render for every buyer regardless: on a B2B
+            // tenant, where it is off by default, it always failed - and the
+            // failure used to blank the whole order page.
+            'pay_now_enabled' => (bool) (
+                ((array) PricingConfig::value('config', 'pay_now_cutoff', ['b2c_enabled' => false]))['b2c_enabled'] ?? false
+            ),
             'notes' => $this->notes,
             // Buyer's requested delivery deadline (Y-m-d); null when unset.
             'needed_by' => $this->needed_by?->toDateString(),

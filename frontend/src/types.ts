@@ -320,6 +320,11 @@ export interface Quote {
   /** The production gate: null until a person confirms the goods are in hand. */
   stock_confirmed_at?: string | null;
   stock_confirmed_by?: number | null;
+  /**
+   * Whether buyer self-service payment is actually available. The Pay now
+   * button used to render regardless and always failed on a B2B tenant.
+   */
+  pay_now_enabled?: boolean;
   notes: string | null;
   /** Buyer's requested delivery deadline (Y-m-d); null when unset. */
   needed_by: string | null;

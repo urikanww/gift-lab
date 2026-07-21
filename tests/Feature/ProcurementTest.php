@@ -690,3 +690,53 @@ it('refuses to let a buyer confirm stock', function (): void {
 
     expect($quote->fresh()->state->value)->toBe('PROCURING');
 });
+
+// P2-4: dropping every line left the order in PROCURING forever - jobs are
+// never built for a wholly-dropped quote, and nothing then closed or cancelled
+// it. Finished from the staffer's point of view, invisible to everyone else.
+it('cancels an order once every line has been dropped', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'subtotal' => 150.00,
+        'delivery' => 20.00,
+        'total' => 170.00,
+    ]);
+    $first = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $this->product->id, 'variant_id' => null,
+        'qty' => 5, 'unit_price' => 15.00, 'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+    $second = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $this->product->id, 'variant_id' => null,
+        'qty' => 5, 'unit_price' => 15.00, 'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$first->id}/reconfirm", ['action' => 'drop'])->assertOk();
+    // Still something to make, so the order carries on.
+    expect($quote->fresh()->state->value)->toBe('PROCURING');
+
+    $this->postJson("/api/line-items/{$second->id}/reconfirm", ['action' => 'drop'])->assertOk();
+
+    expect($quote->fresh()->state->value)->toBe('CANCELLED');
+});
+
+it('leaves an order alone while at least one line survives', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
+    $dropped = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $this->product->id, 'variant_id' => null,
+        'qty' => 5, 'unit_price' => 15.00, 'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+    LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $this->product->id, 'variant_id' => null,
+        'qty' => 5, 'unit_price' => 15.00, 'line_state' => 'READY',
+    ]);
+
+    $this->postJson("/api/line-items/{$dropped->id}/reconfirm", ['action' => 'drop'])->assertOk();
+
+    // Not cancelled, and not queued either - it waits at the production gate.
+    $quote->refresh();
+    expect($quote->state->value)->toBe('PROCURING')
+        ->and($quote->jobs()->count())->toBe(0);
+});

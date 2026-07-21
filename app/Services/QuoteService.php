@@ -807,7 +807,42 @@ final class QuoteService
     {
         if ($this->isReadyForProduction($quote) && $quote->stock_confirmed_at !== null) {
             $this->queue->buildJobsForQuote($quote);
+
+            return;
         }
+
+        $this->cancelIfNothingLeftToProduce($quote);
+    }
+
+    /**
+     * An order whose every line was dropped has nothing to make and no way
+     * forward: jobs are never built, so it sat in PROCURING for good - finished
+     * from the staff member's point of view, invisible to everyone else, and
+     * never closed or cancelled. Cancel it explicitly instead.
+     */
+    private function cancelIfNothingLeftToProduce(Quote $quote): void
+    {
+        $quote->loadMissing('lineItems');
+
+        if ($quote->state !== QuoteState::Procuring || $quote->lineItems->isEmpty()) {
+            return;
+        }
+
+        $allDropped = $quote->lineItems->every(
+            fn ($line): bool => $line->line_state === LineItemState::Dropped
+        );
+
+        if (! $allDropped) {
+            return;
+        }
+
+        $previous = $quote->state->value;
+        $quote->transitionTo(QuoteState::Cancelled);
+        $this->audit->log($quote, 'quote.cancelled', null, [
+            'reason' => 'Every line was dropped during procurement, leaving nothing to produce.',
+        ]);
+
+        DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
     }
 
     /**
