@@ -221,6 +221,7 @@ class QuoteController extends Controller
             $request->array('lines'),
             $request->input('delivery') !== null ? (float) $request->input('delivery') : null,
             $request->input('notes'),
+            $request->array('removed_line_ids'),
         );
 
         return new QuoteResource($quote->load('lineItems'));

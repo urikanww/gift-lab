@@ -200,15 +200,21 @@ final class QuoteService
      * enforced in the Form Request; here we re-total, log the amendment, and
      * record who/what/when.
      *
-     * @param  array<int, array{id: int, unit_price: float, qty: int}>  $lineAmendments
+     * @param  array<int, array{id?: int|null, product_id?: int, variant_id?: int|null, unit_price: float, qty: int}>  $lineAmendments
+     * @param  array<int, int>  $removedLineIds
      */
-    public function amend(Quote $quote, array $lineAmendments, ?float $delivery, ?string $notes): Quote
-    {
+    public function amend(
+        Quote $quote,
+        array $lineAmendments,
+        ?float $delivery,
+        ?string $notes,
+        array $removedLineIds = [],
+    ): Quote {
         if ($quote->state !== QuoteState::Draft) {
             throw new DomainRuleException('Only DRAFT quotes can be amended.');
         }
 
-        return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes): Quote {
+        return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes, $removedLineIds): Quote {
             $before = ['subtotal' => $quote->subtotal, 'delivery' => $quote->delivery, 'total' => $quote->total];
             $log = $quote->amendment_log ?? [];
             $subtotal = 0.0;
@@ -220,7 +226,14 @@ final class QuoteService
             // shipped. Reject unknown ids first so a typo'd id is an error rather
             // than a silent no-op.
             $amendmentsByLineId = [];
+            $additions = [];
             foreach ($lineAmendments as $amendment) {
+                if (($amendment['id'] ?? null) === null) {
+                    $additions[] = $amendment;
+
+                    continue;
+                }
+
                 $amendmentsByLineId[(int) $amendment['id']] = $amendment;
             }
 
@@ -233,7 +246,31 @@ final class QuoteService
                 throw (new ModelNotFoundException)->setModel(LineItem::class, array_values($unknown));
             }
 
+            $removedIds = array_map('intval', $removedLineIds);
+            $foreign = array_diff($removedIds, $lines->pluck('id')->all());
+            if ($foreign !== []) {
+                throw (new ModelNotFoundException)->setModel(LineItem::class, array_values($foreign));
+            }
+
             foreach ($lines as $line) {
+                // Removal wins over an amendment for the same line, and a removed
+                // line contributes nothing to the subtotal. Soft-deleted so the
+                // order's history survives - see LineItem's SoftDeletes.
+                if (in_array($line->id, $removedIds, true)) {
+                    $log[] = [
+                        'line_item_id' => $line->id,
+                        'from' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
+                        'to' => null,
+                        'action' => 'removed',
+                        'by' => Auth::id(),
+                        'at' => now()->toIso8601String(),
+                    ];
+
+                    $line->delete();
+
+                    continue;
+                }
+
                 $amendment = $amendmentsByLineId[$line->id] ?? null;
 
                 if ($amendment !== null) {
@@ -249,6 +286,21 @@ final class QuoteService
                     $line->qty = $amendment['qty'];
                     $line->save();
                 }
+
+                $subtotal += (float) $line->lineTotal();
+            }
+
+            foreach ($additions as $addition) {
+                $line = $this->addAmendedLine($quote, $addition);
+
+                $log[] = [
+                    'line_item_id' => $line->id,
+                    'from' => null,
+                    'to' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
+                    'action' => 'added',
+                    'by' => Auth::id(),
+                    'at' => now()->toIso8601String(),
+                ];
 
                 $subtotal += (float) $line->lineTotal();
             }
@@ -271,6 +323,42 @@ final class QuoteService
 
             return $quote->fresh(['lineItems']);
         });
+    }
+
+    /**
+     * Create a line added through the amend screen. Mirrors the shape create()
+     * writes, including the frozen snapshot, so an added line is indistinguishable
+     * downstream from one that arrived with the original order. The unit price is
+     * the staff figure (already margin-floor checked in AmendQuoteRequest), not a
+     * recomputed catalogue price - staff amend precisely because the catalogue
+     * price is not what the supplier is charging today.
+     *
+     * @param  array{product_id: int, variant_id?: int|null, unit_price: float, qty: int}  $addition
+     */
+    private function addAmendedLine(Quote $quote, array $addition): LineItem
+    {
+        $product = Product::findOrFail($addition['product_id']);
+        $variant = ($addition['variant_id'] ?? null) !== null
+            ? Variant::findOrFail($addition['variant_id'])
+            : null;
+
+        return LineItem::create([
+            'quote_id' => $quote->id,
+            'product_id' => $product->id,
+            'variant_id' => $variant?->id,
+            'qty' => $addition['qty'],
+            'unit_price' => $addition['unit_price'],
+            'currency' => $quote->currency,
+            'customization' => null,
+            'line_state' => LineItemState::Pending->value,
+            'frozen_snapshot' => [
+                'product_name' => $product->name,
+                'base_cost' => $product->base_cost,
+                'price_delta' => $variant?->price_delta,
+                'unit_price' => $addition['unit_price'],
+                'frozen_at' => now()->toIso8601String(),
+            ],
+        ]);
     }
 
     /**

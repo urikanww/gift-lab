@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests;
 
 use App\Models\LineItem;
+use App\Models\Product;
+use App\Models\Variant;
 use App\Services\PricingService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -30,9 +32,17 @@ class AmendQuoteRequest extends FormRequest
             'delivery' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.id' => ['required', 'integer', 'exists:line_items,id'],
+            // Absent id = a line being added. Present id = an existing line
+            // being re-priced or re-quantified.
+            'lines.*.id' => ['nullable', 'integer', 'exists:line_items,id'],
+            'lines.*.product_id' => ['required_without:lines.*.id', 'nullable', 'integer', 'exists:products,id'],
+            'lines.*.variant_id' => ['nullable', 'integer', 'exists:variants,id'],
             'lines.*.unit_price' => ['required', 'numeric', 'min:0'],
             'lines.*.qty' => ['required', 'integer', 'min:1', 'max:100000'],
+            // Removal is explicit: omitting a line from `lines` means "leave it
+            // alone", so it can never be the way an order loses a line.
+            'removed_line_ids' => ['nullable', 'array'],
+            'removed_line_ids.*' => ['integer', 'exists:line_items,id'],
         ];
     }
 
@@ -44,22 +54,46 @@ class AmendQuoteRequest extends FormRequest
             $quoteId = (int) $this->route('quote')?->id;
 
             foreach ((array) $this->input('lines', []) as $index => $lineInput) {
-                $line = LineItem::with('product', 'variant')->find($lineInput['id'] ?? null);
+                if (($lineInput['id'] ?? null) !== null) {
+                    $line = LineItem::with('product', 'variant')->find($lineInput['id']);
 
-                if ($line === null) {
-                    continue;
-                }
+                    if ($line === null) {
+                        continue;
+                    }
 
-                // Amended lines must belong to the quote being amended.
-                if ($line->quote_id !== $quoteId) {
-                    $validator->errors()->add("lines.{$index}.id", 'Line item does not belong to this quote.');
+                    // Amended lines must belong to the quote being amended.
+                    if ($line->quote_id !== $quoteId) {
+                        $validator->errors()->add("lines.{$index}.id", 'Line item does not belong to this quote.');
 
-                    continue;
+                        continue;
+                    }
+
+                    $product = $line->product;
+                    $variant = $line->variant;
+                } else {
+                    // Added line: product and variant come from the payload, so
+                    // the margin floor is checked against what is being added
+                    // rather than an existing row.
+                    $product = Product::find($lineInput['product_id'] ?? null);
+                    $variant = Variant::find($lineInput['variant_id'] ?? null);
+
+                    if ($product === null) {
+                        continue;
+                    }
+
+                    if ($variant !== null && $variant->product_id !== $product->id) {
+                        $validator->errors()->add(
+                            "lines.{$index}.variant_id",
+                            'Variant does not belong to the selected product.'
+                        );
+
+                        continue;
+                    }
                 }
 
                 // Class-aware landed cost - MODEL_3D has no blank; its cost is
                 // filament + machine time (PricingService::landedCost).
-                $landedCost = $pricing->landedCost($line->product, $line->variant);
+                $landedCost = $pricing->landedCost($product, $variant);
 
                 if (! $pricing->isAboveMarginFloor((float) $lineInput['unit_price'], $landedCost)) {
                     $validator->errors()->add(
@@ -68,6 +102,46 @@ class AmendQuoteRequest extends FormRequest
                     );
                 }
             }
+
+            $this->validateRemovals($validator, $quoteId);
         });
+    }
+
+    /**
+     * Removals must belong to this quote, and must not empty it. An order with
+     * no lines cannot be produced or priced, and nothing downstream closes it -
+     * a wholly-emptied quote would simply sit there.
+     */
+    private function validateRemovals(Validator $validator, int $quoteId): void
+    {
+        $removedIds = array_map('intval', (array) $this->input('removed_line_ids', []));
+
+        if ($removedIds === []) {
+            return;
+        }
+
+        $ownedIds = LineItem::query()
+            ->where('quote_id', $quoteId)
+            ->pluck('id')
+            ->all();
+
+        $foreign = array_diff($removedIds, $ownedIds);
+        if ($foreign !== []) {
+            $validator->errors()->add('removed_line_ids', 'One or more line items do not belong to this quote.');
+
+            return;
+        }
+
+        $addedCount = 0;
+        foreach ((array) $this->input('lines', []) as $lineInput) {
+            if (($lineInput['id'] ?? null) === null) {
+                $addedCount++;
+            }
+        }
+
+        $survivors = count(array_diff($ownedIds, $removedIds)) + $addedCount;
+        if ($survivors < 1) {
+            $validator->errors()->add('removed_line_ids', 'A quote must keep at least one line item.');
+        }
     }
 }

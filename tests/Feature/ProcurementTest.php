@@ -233,6 +233,125 @@ it('keeps untouched lines in the subtotal when only some lines are amended', fun
         ->and((float) $untouched->unit_price)->toBe(20.00);
 });
 
+// Wave 1: staff confirm stock at source and swap products a supplier no longer
+// carries, so the amend screen has to add and remove lines, not just re-price
+// them. Removal is explicit (removed_line_ids) rather than implied by omission -
+// omission means "unchanged", per the merge behaviour above.
+
+/** Two-line DRAFT quote: 2 x 15.00 + 1 x 20.00, delivery 30.00. */
+function draftQuoteForAmend(Product $product): array
+{
+    $quote = Quote::factory()->create([
+        'company_id' => test()->company->id,
+        'state' => 'DRAFT',
+        'subtotal' => 50.00,
+        'delivery' => 30.00,
+        'total' => 80.00,
+    ]);
+
+    $first = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $product->id, 'variant_id' => null,
+        'qty' => 2, 'unit_price' => 15.00,
+    ]);
+    $second = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $product->id, 'variant_id' => null,
+        'qty' => 1, 'unit_price' => 20.00,
+    ]);
+
+    return [$quote, $first, $second];
+}
+
+it('adds a new line and counts it toward the subtotal', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    [$quote, $first, $second] = draftQuoteForAmend($product);
+    $added = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+
+    $this->patchJson("/api/quotes/{$quote->id}/amend", [
+        'lines' => [
+            ['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2],
+            ['id' => $second->id, 'unit_price' => 20.00, 'qty' => 1],
+            ['product_id' => $added->id, 'unit_price' => 12.00, 'qty' => 3],
+        ],
+    ])->assertOk();
+
+    $quote->refresh();
+    // 30.00 + 20.00 + 36.00 = 86.00, plus 30.00 delivery.
+    expect($quote->lineItems()->count())->toBe(3)
+        ->and((float) $quote->subtotal)->toBe(86.00)
+        ->and((float) $quote->total)->toBe(116.00);
+
+    $new = $quote->lineItems()->where('product_id', $added->id)->sole();
+    expect($new->line_state->value)->toBe('PENDING')
+        ->and($new->frozen_snapshot['product_name'])->toBe($added->name);
+});
+
+it('removes a line and drops it from the subtotal', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    [$quote, $first, $second] = draftQuoteForAmend($product);
+
+    $this->patchJson("/api/quotes/{$quote->id}/amend", [
+        'lines' => [['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
+        'removed_line_ids' => [$second->id],
+    ])->assertOk();
+
+    $quote->refresh();
+    expect($quote->lineItems()->count())->toBe(1)
+        ->and((float) $quote->subtotal)->toBe(30.00)
+        ->and((float) $quote->total)->toBe(60.00);
+
+    // Soft-deleted, so the order's history survives the removal.
+    $this->assertSoftDeleted('line_items', ['id' => $second->id]);
+});
+
+it('rejects an amendment that would remove every line', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    [$quote, $first, $second] = draftQuoteForAmend($product);
+
+    $this->patchJson("/api/quotes/{$quote->id}/amend", [
+        'lines' => [['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
+        'removed_line_ids' => [$first->id, $second->id],
+    ])->assertStatus(422)->assertJsonValidationErrors('removed_line_ids');
+
+    expect($quote->fresh()->lineItems()->count())->toBe(2);
+});
+
+it('enforces the margin floor on an added line', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    [$quote, $first] = draftQuoteForAmend($product);
+    $added = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+
+    // Floor 12% over landed 10.00 => min 11.20; propose 9.00 => rejected.
+    $this->patchJson("/api/quotes/{$quote->id}/amend", [
+        'lines' => [
+            ['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2],
+            ['product_id' => $added->id, 'unit_price' => 9.00, 'qty' => 3],
+        ],
+    ])->assertStatus(422)->assertJsonValidationErrors('lines.1.unit_price');
+});
+
+it('refuses to remove a line belonging to another quote', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    [$quote, $first] = draftQuoteForAmend($product);
+
+    $otherQuote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT']);
+    $foreign = LineItem::factory()->create([
+        'quote_id' => $otherQuote->id, 'product_id' => $product->id,
+        'variant_id' => null, 'qty' => 1, 'unit_price' => 20.00,
+    ]);
+
+    $this->patchJson("/api/quotes/{$quote->id}/amend", [
+        'lines' => [['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
+        'removed_line_ids' => [$foreign->id],
+    ])->assertStatus(422);
+
+    expect($foreign->fresh())->not->toBeNull();
+});
+
 // Stock ledger integration: procurement consumes through the append-only ledger,
 // backorder lets on-demand products sell at 0, and cancellation returns stock.
 
