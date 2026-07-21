@@ -42,6 +42,7 @@ const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
 const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage'));
 const ProductAdminDetailPage = lazy(() => import('./pages/ProductAdminDetailPage'));
 const PricingAdminPage = lazy(() => import('./pages/PricingAdminPage'));
+const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
 const UserAdminPage = lazy(() => import('./pages/UserAdminPage'));
 const UserAdminCreatePage = lazy(() => import('./pages/UserAdminCreatePage'));
 const UserAdminDetailPage = lazy(() => import('./pages/UserAdminDetailPage'));
@@ -184,6 +185,9 @@ export default function App() {
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
               <Route path="pricing-admin" element={<ProtectedRoute superadminOnly><PricingAdminPage /></ProtectedRoute>} />
+              {/* Staff-level, unlike Pricing: this is an operational setting about
+                  what clients hear, not a financial constant. */}
+              <Route path="notification-settings" element={<ProtectedRoute staffOnly><NotificationSettingsPage /></ProtectedRoute>} />
               {/* Superadmin-only, mirroring the backend: every /admin/users and
                   /admin/companies endpoint behind these pages gates on
                   isSuperadmin(), so a staff_admin who reached them would only

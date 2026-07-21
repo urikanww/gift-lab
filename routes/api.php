@@ -14,6 +14,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LeadTimeEstimateController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
+use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PricingConfigController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
@@ -228,6 +229,13 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
 
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.
+    // Which emails buyers receive, and how hard they are chased. Separate from
+    // the pricing editor: operational rather than financial, and the switches do
+    // not exist as rows until one is changed.
+    Route::get('/admin/notification-settings', [NotificationSettingsController::class, 'index']);
+    Route::patch('/admin/notification-settings', [NotificationSettingsController::class, 'update']);
+    Route::patch('/admin/notification-settings/cadence', [NotificationSettingsController::class, 'updateCadence']);
+
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
     Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update']);
     // Staff "test a quote" full breakdown (exposes internal cost/margin).

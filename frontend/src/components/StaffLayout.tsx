@@ -24,6 +24,7 @@ function useStaffNav(): NavItem[] {
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
     { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen },
     { to: '/product-admin', label: 'Products' },
+    { to: '/notification-settings', label: 'Notifications' },
     // Pricing and Users are superadmin-only (the pages also guard themselves).
     ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
     ...(isSuperadmin ? [{ to: '/user-admin', label: 'Users' }] : []),

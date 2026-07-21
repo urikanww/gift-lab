@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Enums\OrderMilestone;
 use App\Enums\QuoteState;
+use App\Models\PricingConfig;
 use App\Models\Quote;
 use App\Services\AuditLogger;
 use App\Services\OrderNotifier;
@@ -34,10 +35,26 @@ class ChaseUnansweredOrders extends Command
 
     protected $description = 'Remind buyers about unanswered quotes and proofs, then flag them for staff.';
 
-    /** Days after the wait began at which to send each reminder. */
-    private const QUOTE_LADDER = [3, 7, 12];
+    /** Fallback ladders, used until staff set their own on the settings screen. */
+    private const DEFAULT_QUOTE_LADDER = [3, 7, 12];
 
-    private const PROOF_LADDER = [2, 5, 9];
+    private const DEFAULT_PROOF_LADDER = [2, 5, 9];
+
+    /**
+     * Days after the wait began at which to send each reminder. Configurable,
+     * because the right cadence is a judgement about a particular clientele and
+     * not something to redeploy for.
+     *
+     * @return array<int, int>
+     */
+    private function ladder(string $key, array $default): array
+    {
+        $configured = PricingConfig::value('notifications_cadence', $key, $default);
+
+        return is_array($configured) && $configured !== []
+            ? array_map('intval', array_values($configured))
+            : $default;
+    }
 
     public function handle(OrderNotifier $notifier, AuditLogger $audit): int
     {
@@ -48,7 +65,7 @@ class ChaseUnansweredOrders extends Command
         // ARTWORK_APPROVED where the artwork is signed off but the price is not.
         foreach ($this->waitingOnPrice() as $quote) {
             $since = $quote->price_snapshot_at ?? $quote->updated_at;
-            [$didSend, $didFlag] = $this->chase($quote, $since, self::QUOTE_LADDER, $notifier, $audit, 'price');
+            [$didSend, $didFlag] = $this->chase($quote, $since, $this->ladder('quote_days', self::DEFAULT_QUOTE_LADDER), $notifier, $audit, 'price');
             $sent += (int) $didSend;
             $flagged += (int) $didFlag;
         }
@@ -56,7 +73,7 @@ class ChaseUnansweredOrders extends Command
         // Waiting on the buyer to sign off artwork.
         foreach ($this->waitingOnProof() as $quote) {
             $since = $quote->proofs->max('created_at') ?? $quote->updated_at;
-            [$didSend, $didFlag] = $this->chase($quote, $since, self::PROOF_LADDER, $notifier, $audit, 'proof');
+            [$didSend, $didFlag] = $this->chase($quote, $since, $this->ladder('proof_days', self::DEFAULT_PROOF_LADDER), $notifier, $audit, 'proof');
             $sent += (int) $didSend;
             $flagged += (int) $didFlag;
         }
