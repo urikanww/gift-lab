@@ -26,6 +26,11 @@ class ProofResource extends JsonResource
             'quote_reference' => $this->quote?->reference,
             'version' => $this->version,
             'artwork_version_ref' => $this->artwork_version_ref,
+            // Resolved viewing link for the artwork, so the client never has to
+            // know whether the ref is a stored key or a pasted URL. Null when it
+            // is neither (legacy rows hold arbitrary strings), and the UI then
+            // shows the raw value as it always did.
+            'artwork_url' => $this->artworkUrl(),
             'state' => $this->state->value,
             'approved_by' => $this->approved_by,
             'approved_at' => $this->approved_at?->toIso8601String(),

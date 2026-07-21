@@ -81,6 +81,12 @@ Route::post('/uploads/artwork', [UploadController::class, 'artwork'])
 Route::get('/uploads/artwork/preview', [UploadController::class, 'artworkPreview'])
     ->middleware('throttle:artwork-preview');
 
+// Staff proof upload (Wave 2). Separate from the designer upload above: this
+// one is staff-only, accepts PDF as well as images, and is capped at 3 MB, so
+// tightening it never shrinks what buyers may upload through the designer.
+Route::post('/uploads/proof', [UploadController::class, 'proof'])
+    ->middleware(['auth:sanctum', 'throttle:artwork-uploads']);
+
 // Login-free order tracking - opaque code + email-prefix check. Throttled
 // hard (anti-enumeration; the controller also returns a single generic error).
 Route::post('/track', TrackingController::class)->middleware('throttle:10,1');

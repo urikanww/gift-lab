@@ -24,16 +24,12 @@ class ProofImageController extends Controller
 
         // artwork_version_ref is a free-form staff-supplied string, so guard the
         // prefix and reject path traversal BEFORE the disk read (a `..` would
-        // otherwise throw PathTraversalDetected and 500). Real refs always come
-        // from UploadController under `artwork/`; anything else 404s and the
-        // email template falls back to its placeholder tile.
-        abort_if(
-            $ref === ''
-            || ! str_starts_with($ref, 'artwork/')
-            || str_contains($ref, '..')
-            || ! Storage::disk($disk)->exists($ref),
-            404,
-        );
+        // otherwise throw PathTraversalDetected and 500). Real refs come from
+        // UploadController under `artwork/` or `proofs/`; anything else 404s and
+        // the email template falls back to its placeholder tile. The prefix and
+        // traversal rules live on the model so this controller and the resource
+        // that mints these URLs can never disagree about what is readable.
+        abort_unless($proof->hasStoredArtwork() && Storage::disk($disk)->exists($ref), 404);
 
         return Storage::disk($disk)->response($ref, null, [
             'X-Content-Type-Options' => 'nosniff',

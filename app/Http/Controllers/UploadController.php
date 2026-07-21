@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ArtworkUploadRequest;
+use App\Http\Requests\ProofUploadRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -38,6 +39,33 @@ class UploadController extends Controller
         // Explicit 'private' visibility: even if the disk's default ever flips
         // to public, an anon upload never becomes world-readable.
         $path = $request->file('artwork')->store('artwork', [
+            'disk' => $diskName,
+            'visibility' => 'private',
+        ]);
+
+        return response()->json([
+            'ref' => $path,
+            'url' => $disk->temporaryUrl($path, now()->addMinutes(self::PREVIEW_URL_TTL_MINUTES)),
+        ], 201);
+    }
+
+    /**
+     * Staff proof upload. Stores alongside designer artwork on the same private
+     * disk and returns the same {ref, url} shape, so the proof endpoints keep
+     * taking an opaque string and nothing downstream needs to know whether that
+     * string came from a file picker or was pasted in.
+     *
+     * Kept under its own key prefix ('proofs/') so the two upload surfaces stay
+     * distinguishable in storage: one is public and account-free, the other is
+     * staff-only, and a future retention or access rule will almost certainly
+     * want to treat them differently.
+     */
+    public function proof(ProofUploadRequest $request): JsonResponse
+    {
+        $diskName = (string) config('filesystems.artwork_disk');
+        $disk = Storage::disk($diskName);
+
+        $path = $request->file('proof')->store('proofs', [
             'disk' => $diskName,
             'visibility' => 'private',
         ]);
