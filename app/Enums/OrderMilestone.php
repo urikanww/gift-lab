@@ -48,6 +48,28 @@ enum OrderMilestone: string
         };
     }
 
+    /**
+     * Headline inside the email. Shorter than the subject and without the
+     * reference: the subject needs it to be findable in an inbox, the headline
+     * does not, and the reference already has its own row below.
+     */
+    public function heading(): string
+    {
+        return match ($this) {
+            self::Accepted => 'We’ve received your acceptance',
+            self::ArtworkApproved => 'Artwork approved — one step left',
+            self::ProofIssued => 'Your proof is ready to review',
+            self::Committed => 'Your order is confirmed',
+            self::InProduction => 'Your order is now in production',
+            self::Shipped => 'Your order is on its way',
+            self::Delivered => 'Your order has been delivered',
+            self::Cancelled => 'Your order has been cancelled',
+            self::LineChanged => 'A change to your order',
+            self::ReminderPrice => 'A reminder about your quote',
+            self::ReminderProof => 'Your proof is still waiting',
+        };
+    }
+
     /** The body copy. Plain, and honest about what the buyer must do next. */
     public function body(): string
     {
@@ -63,6 +85,19 @@ enum OrderMilestone: string
             self::LineChanged => 'One or more items on your order have changed. The updated details are on your order page.',
             self::ReminderPrice => 'We haven’t heard back on your quote yet. Have a look when you get a moment — just reply to this email if anything needs changing.',
             self::ReminderProof => 'Your artwork proof is still waiting for approval. Nothing goes into production until you’ve signed it off, so do let us know either way.',
+        };
+    }
+
+    /**
+     * Button copy. A chase and a status note want different words: one is asking
+     * for an action, the other is telling you something has happened.
+     */
+    public function ctaLabel(): string
+    {
+        return match ($this) {
+            self::ProofIssued, self::ReminderProof => 'Review & approve',
+            self::ArtworkApproved, self::ReminderPrice => 'Review pricing',
+            default => 'View your order',
         };
     }
 

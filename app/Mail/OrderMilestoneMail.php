@@ -48,8 +48,9 @@ class OrderMilestoneMail extends Mailable implements ShouldQueue
             view: 'mail.order-milestone',
             with: [
                 'quote' => $this->quote,
-                'heading' => $this->milestone->subject($this->quote->reference),
+                'heading' => $this->milestone->heading(),
                 'body' => $this->milestone->body(),
+                'ctaLabel' => $this->milestone->ctaLabel(),
                 // /orders/{reference}, not /quotes/{id}: the SPA only routes an
                 // order detail by opaque reference.
                 'quoteUrl' => rtrim((string) config('app.frontend_url', config('app.url')), '/')
