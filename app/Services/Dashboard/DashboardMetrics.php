@@ -12,6 +12,7 @@ use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\SupplierReorder;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -123,19 +124,72 @@ class DashboardMetrics
     /** @return array<int,array<string,mixed>> */
     public function activity(): array
     {
-        return AuditLog::query()
+        $rows = AuditLog::query()
             ->with('user:id,name')
             ->latest()
             ->limit(self::ACTIVITY_LIMIT)
-            ->get(['id', 'user_id', 'auditable_type', 'auditable_id', 'event', 'created_at'])
-            ->map(fn (AuditLog $a): array => [
-                'id' => $a->id,
-                'actor' => $a->user?->name,
-                'event' => $a->event,
-                'auditableType' => class_basename($a->auditable_type),
-                'auditableId' => $a->auditable_id,
-                'at' => $a->created_at?->toIso8601String(),
-            ])
+            ->get(['id', 'user_id', 'auditable_type', 'auditable_id', 'event', 'created_at']);
+
+        $references = $this->quoteReferences($rows);
+
+        return $rows
+            ->map(function (AuditLog $a) use ($references): array {
+                $type = class_basename($a->auditable_type);
+                $reference = $a->auditable_type === Quote::class
+                    ? ($references[$a->auditable_id] ?? null)
+                    : null;
+
+                return [
+                    'id' => $a->id,
+                    'actor' => $a->user?->name,
+                    'event' => $a->event,
+                    'auditableType' => $type,
+                    'auditableId' => $a->auditable_id,
+                    // Composed here, not client-side: only the server knows a Quote
+                    // is called an "Order" to humans. The feed is a generic renderer
+                    // over any audited type, so it gets one ready-to-print string
+                    // rather than a growing table of per-type naming rules.
+                    'auditableLabel' => $reference !== null
+                        ? "Order {$reference}"
+                        : "{$type} #{$a->auditable_id}",
+                    'at' => $a->created_at?->toIso8601String(),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * Resolve display references for the Quote rows of an activity slice in ONE
+     * query, keyed by id. Deliberately not the `auditable` morph relation: that
+     * would fan out to one query per distinct type (or per row), and this class
+     * promises no N+1. Rows of other types resolve to nothing and keep the
+     * generic "Type #id" shape.
+     *
+     * withTrashed() on purpose - Quote soft-deletes, and an append-only audit
+     * row outlives its quote. A cancelled order is still that order to support,
+     * so it keeps its reference instead of degrading to a bare number.
+     *
+     * @param  Collection<int,AuditLog>  $rows
+     * @return array<int,string>
+     */
+    private function quoteReferences(Collection $rows): array
+    {
+        $ids = $rows
+            ->where('auditable_type', Quote::class)
+            ->pluck('auditable_id')
+            ->unique()
+            ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return Quote::withTrashed()
+            ->whereIn('id', $ids)
+            ->pluck('reference', 'id')
+            // A hard-deleted quote yields no row at all; a blank reference would
+            // render "Order " with nothing after it. Both fall back to "Quote #id".
+            ->filter(fn ($reference): bool => is_string($reference) && $reference !== '')
             ->all();
     }
 

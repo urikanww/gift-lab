@@ -5,7 +5,14 @@ export interface DashboardActivity {
   actor: string | null;
   event: string;
   auditableType: string;
+  /** Join key. Kept alongside the label - other callers may key off it. */
   auditableId: number;
+  /**
+   * Ready-to-print identity for the row, composed server-side: "Order 9BWVKWCDXH"
+   * for a Quote, "Product #12" for every other audited type. The feed is generic
+   * over auditableType, so it must not carry per-type naming rules of its own.
+   */
+  auditableLabel: string;
   at: string | null;
 }
 

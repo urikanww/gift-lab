@@ -107,7 +107,7 @@ export default function DashboardPage() {
               <div key={a.id} className="flex items-center justify-between gap-3 p-3 text-sm">
                 <span className="text-fg">
                   <span className="font-medium">{a.actor ?? 'System'}</span> · {a.event}
-                  <span className="text-fg-muted"> ({a.auditableType} #{a.auditableId})</span>
+                  <span className="text-fg-muted"> ({a.auditableLabel})</span>
                 </span>
                 <span className="shrink-0 text-fg-subtle">{a.at ? new Date(a.at).toLocaleString() : ''}</span>
               </div>

@@ -11,7 +11,10 @@ const base = {
     { jobId: 5, quoteId: 9, quoteReference: '9BWVKWCDXH', track: 'UV', state: 'READY', readyAt: null },
   ],
   queues: { proofsPending: 4, procurementToReconfirm: 2, cataloguePending: 6, reordersOpen: 3 },
-  activity: [{ id: 1, actor: 'Ops', event: 'quote.amended', auditableType: 'Quote', auditableId: 9, at: null }],
+  activity: [
+    { id: 1, actor: 'Ops', event: 'quote.amended', auditableType: 'Quote', auditableId: 9, auditableLabel: 'Order 9BWVKWCDXH', at: null },
+    { id: 2, actor: 'Ops', event: 'product.updated', auditableType: 'Product', auditableId: 12, auditableLabel: 'Product #12', at: null },
+  ],
   valueBooked: null,
 };
 
@@ -41,13 +44,23 @@ describe('DashboardPage', () => {
     renderPage();
 
     // Scoped to the at-risk row on purpose: the job id is a genuine ordinal
-    // and stays, and the activity feed below renders its own "(Quote #9)" from
-    // a generic auditable projection that carries no reference.
+    // and stays.
     const row = screen.getByRole('link', { name: /Job #5/ });
     // Positive control: the reference IS rendered, so dropping the identifier
     // outright could not pass the negative assertion below.
     expect(row).toHaveTextContent('Order 9BWVKWCDXH');
     expect(row).not.toHaveTextContent(/Quote #\d+/);
+  });
+
+  it('names an activity row by its server-composed label, never the sequential id', () => {
+    renderPage();
+
+    // Quote row: the opaque reference, not "(Quote #9)".
+    expect(screen.getByText(/quote\.amended/)).toHaveTextContent('(Order 9BWVKWCDXH)');
+    // Every other audited type keeps the id shape it always had.
+    expect(screen.getByText(/product\.updated/)).toHaveTextContent('(Product #12)');
+    // The whole feed is free of the numeric quote id.
+    expect(screen.queryByText(/Quote #\d+/)).not.toBeInTheDocument();
   });
 
   it('shows an error state', () => {
