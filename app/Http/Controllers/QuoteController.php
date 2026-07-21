@@ -214,6 +214,8 @@ class QuoteController extends Controller
 
     public function amend(AmendQuoteRequest $request, Quote $quote): QuoteResource
     {
+        $this->authorize('amend', $quote);
+
         $quote = $this->quotes->amend(
             $quote,
             $request->array('lines'),
@@ -244,6 +246,8 @@ class QuoteController extends Controller
 
     public function issueInvoice(IssueInvoiceRequest $request, Quote $quote): JsonResponse
     {
+        $this->authorize('manageProduction', $quote);
+
         $invoice = $this->quotes->issueInvoice(
             $quote,
             $request->string('po_ref')->toString(),
