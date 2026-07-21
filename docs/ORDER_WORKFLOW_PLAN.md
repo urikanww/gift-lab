@@ -172,6 +172,28 @@ is captured (`QuoteService.php:453`) but filtered out of the history endpoint
 
 ---
 
+## Status
+
+**Waves 1-3 are complete** (branch `feat/order-workflow-wave-1`). Suites at
+**624 backend / 292 frontend**, up from the 584/267 baseline.
+
+Decisions taken during the build, beyond those in the table above:
+
+| # | Question | Decision |
+|---|---|---|
+| 12 | Does a quantity shortfall block? | **No — advisory.** It is measured against stock figures nobody maintains, so blocking means orders held up by shortages that do not exist. `procurement.block_on_qty_short` restores the old behaviour per-tenant. |
+| 13 | Does a price jump block? | **Yes.** A live marketplace read is real, current and about money. |
+| 14 | Does B2C payment bypass the production gate? | **No.** Paying carries an order to PROCURING; it waits for the stock confirmation like any other. |
+| 15 | Does paying count as agreeing the price? | **Yes.** B2C buyers never pass through accept, and paying is stronger evidence than clicking a button. |
+
+Wave 4 (notifications) and Wave 5 (activity timeline) are not started.
+
+**Not verified in a browser.** Every change is covered by tests and typecheck,
+but no one has clicked through the running app — the staff area needs a login.
+Wave 3 changed when orders reach the floor, so this is worth doing before Wave 4.
+
+---
+
 ## Delivery waves
 
 Five waves. Each ends with both suites green and is independently shippable.
