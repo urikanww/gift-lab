@@ -213,19 +213,42 @@ final class QuoteService
             $log = $quote->amendment_log ?? [];
             $subtotal = 0.0;
 
+            // Amendments are merged over the quote's full line set, never used to
+            // rebuild it. Validation requires only min:1 lines, so summing the
+            // payload alone let a partial submission drop the untouched lines out
+            // of the money while leaving them on the order to be produced and
+            // shipped. Reject unknown ids first so a typo'd id is an error rather
+            // than a silent no-op.
+            $amendmentsByLineId = [];
             foreach ($lineAmendments as $amendment) {
-                $line = $quote->lineItems()->findOrFail($amendment['id']);
-                $log[] = [
-                    'line_item_id' => $line->id,
-                    'from' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
-                    'to' => ['unit_price' => $amendment['unit_price'], 'qty' => $amendment['qty']],
-                    'by' => Auth::id(),
-                    'at' => now()->toIso8601String(),
-                ];
+                $amendmentsByLineId[(int) $amendment['id']] = $amendment;
+            }
 
-                $line->unit_price = $amendment['unit_price'];
-                $line->qty = $amendment['qty'];
-                $line->save();
+            // Read the lines fresh rather than through a possibly-stale loaded
+            // relation - the subtotal is rebuilt from these rows.
+            $lines = $quote->lineItems()->get();
+
+            $unknown = array_diff(array_keys($amendmentsByLineId), $lines->pluck('id')->all());
+            if ($unknown !== []) {
+                throw (new ModelNotFoundException)->setModel(LineItem::class, array_values($unknown));
+            }
+
+            foreach ($lines as $line) {
+                $amendment = $amendmentsByLineId[$line->id] ?? null;
+
+                if ($amendment !== null) {
+                    $log[] = [
+                        'line_item_id' => $line->id,
+                        'from' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
+                        'to' => ['unit_price' => $amendment['unit_price'], 'qty' => $amendment['qty']],
+                        'by' => Auth::id(),
+                        'at' => now()->toIso8601String(),
+                    ];
+
+                    $line->unit_price = $amendment['unit_price'];
+                    $line->qty = $amendment['qty'];
+                    $line->save();
+                }
 
                 $subtotal += (float) $line->lineTotal();
             }

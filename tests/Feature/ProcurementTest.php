@@ -188,6 +188,51 @@ it('rejects a quote amendment that breaks the margin floor', function (): void {
     ])->assertStatus(422);
 });
 
+// Wave 1: amend() rebuilt the subtotal from only the lines in the payload while
+// validation required just min:1 of them, so a partial submission silently
+// dropped the untouched lines from the money while leaving them on the order -
+// ship five, charge for one. Amendments now merge over the full line set.
+it('keeps untouched lines in the subtotal when only some lines are amended', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV']);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'DRAFT',
+        'subtotal' => 50.00,
+        'delivery' => 30.00,
+        'total' => 80.00,
+    ]);
+    $amended = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'qty' => 2,
+        'unit_price' => 15.00,
+    ]);
+    $untouched = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'qty' => 1,
+        'unit_price' => 20.00,
+    ]);
+
+    // Only the first line is submitted: 2 x 16.00 = 32.00. The untouched line
+    // (1 x 20.00) must still count toward the subtotal.
+    $this->patchJson("/api/quotes/{$quote->id}/amend", [
+        'lines' => [['id' => $amended->id, 'unit_price' => 16.00, 'qty' => 2]],
+    ])->assertOk();
+
+    $quote->refresh();
+    expect((float) $quote->subtotal)->toBe(52.00)
+        ->and((float) $quote->total)->toBe(82.00);
+
+    // The omitted line is untouched, not silently zeroed or removed.
+    $untouched->refresh();
+    expect($untouched->qty)->toBe(1)
+        ->and((float) $untouched->unit_price)->toBe(20.00);
+});
+
 // Stock ledger integration: procurement consumes through the append-only ledger,
 // backorder lets on-demand products sell at 0, and cancellation returns stock.
 
