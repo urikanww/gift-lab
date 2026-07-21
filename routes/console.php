@@ -65,3 +65,12 @@ Schedule::command('quotes:expire-drafts')
     ->dailyAt('02:00')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Chase buyers who have gone quiet - unanswered quotes and unapproved proofs.
+// Nothing chased anything before this: a SENT quote sat forever with no nudge
+// to either side, and staff carried it by memory. Runs after the draft sweep so
+// a quote expired overnight is never also chased the same morning.
+Schedule::command('quotes:chase')
+    ->dailyAt('09:00')
+    ->onOneServer()
+    ->withoutOverlapping();

@@ -26,6 +26,9 @@ enum OrderMilestone: string
     case Delivered = 'delivered';
     case Cancelled = 'cancelled';
     case LineChanged = 'line_changed';
+    /** Chasers for a buyer who has gone quiet. See ChaseUnansweredOrders. */
+    case ReminderPrice = 'reminder_price';
+    case ReminderProof = 'reminder_proof';
 
     /** Subject line for the buyer's email. */
     public function subject(string $reference): string
@@ -40,6 +43,8 @@ enum OrderMilestone: string
             self::Delivered => "Your order has been delivered — {$reference}",
             self::Cancelled => "Your order has been cancelled — {$reference}",
             self::LineChanged => "A change to your order — {$reference}",
+            self::ReminderPrice => "A reminder about your quote — {$reference}",
+            self::ReminderProof => "Your proof is still waiting for you — {$reference}",
         };
     }
 
@@ -56,6 +61,8 @@ enum OrderMilestone: string
             self::Delivered => 'Your order has been delivered. Thanks for working with us.',
             self::Cancelled => 'Your order has been cancelled. If that’s unexpected, please get in touch and we’ll sort it out.',
             self::LineChanged => 'One or more items on your order have changed. The updated details are on your order page.',
+            self::ReminderPrice => 'We haven’t heard back on your quote yet. Have a look when you get a moment — just reply to this email if anything needs changing.',
+            self::ReminderProof => 'Your artwork proof is still waiting for approval. Nothing goes into production until you’ve signed it off, so do let us know either way.',
         };
     }
 

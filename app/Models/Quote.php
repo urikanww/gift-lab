@@ -58,6 +58,8 @@ class Quote extends Model
         'accepted_by',
         'stock_confirmed_at',
         'stock_confirmed_by',
+        'reminders_sent',
+        'last_reminded_at',
         'amendment_log',
         'notes',
         'needed_by',
@@ -75,6 +77,7 @@ class Quote extends Model
             'price_snapshot_at' => 'datetime',
             'accepted_at' => 'datetime',
             'stock_confirmed_at' => 'datetime',
+            'last_reminded_at' => 'datetime',
             'amendment_log' => 'array',
             'needed_by' => 'immutable_date',
         ];
