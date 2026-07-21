@@ -441,3 +441,107 @@ it('returns consumed stock as a RETURN movement when a quote is cancelled', func
         'reason' => 'RETURN',
     ]);
 });
+
+// Wave 3 / P0-3: "Accept as-is" moved the line to READY without re-totalling
+// anything, so the client was invoiced for the quantity ordered while the floor
+// only ever produced what could be sourced. The amend and drop branches both
+// re-totalled; this one silently did not.
+it('retotals the quote and invoice when a shortfall is accepted as-is', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 60]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'subtotal' => 1500.00,
+        'delivery' => 50.00,
+        'total' => 1550.00,
+    ]);
+    $invoice = Invoice::create([
+        'quote_id' => $quote->id,
+        'po_ref' => 'PO-ASIS',
+        'payment_state' => 'UNPAID',
+        'amount' => 1550.00,
+        'currency' => 'SGD',
+        'issued_at' => now(),
+    ]);
+    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    // Ordered 100, only 60 available.
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 100,
+        'unit_price' => 15.00,
+        'procured_qty' => 60,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'approve'])->assertOk();
+
+    // Bill follows the goods: 60 x 15.00 = 900.00, against an original line of
+    // 1500.00. The line is what will actually be produced, too.
+    $quote->refresh();
+    expect($line->fresh()->qty)->toBe(60)
+        ->and($line->fresh()->line_state->value)->toBe('READY')
+        ->and((float) $quote->subtotal)->toBe(900.00)
+        ->and((float) $quote->total)->toBe(950.00)
+        ->and((float) $invoice->fresh()->amount)->toBe(950.00);
+});
+
+// procured_qty 0 means nothing could be sourced at all - no variant, no
+// filament, no weight estimate. Accepting that builds a job for zero units and
+// a line worth nothing; dropping the line is what staff actually mean.
+it('refuses to accept a shortfall as-is when nothing could be sourced', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'class' => 'CORE', 'print_method' => 'UV']);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => null,
+        'qty' => 10,
+        'unit_price' => 15.00,
+        'procured_qty' => 0,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'approve'])
+        ->assertStatus(422);
+
+    expect($line->fresh()->line_state->value)->toBe('AWAITING_RECONFIRM');
+});
+
+// A price jump accepted as-is is the other direction: the buyer keeps the
+// quoted price and the margin is absorbed. Quantity is unchanged, so no money
+// moves and the totals must stay exactly as they were.
+it('leaves the totals alone when an accepted shortfall is only a price jump', function (): void {
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 10, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 100]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'subtotal' => 150.00,
+        'delivery' => 20.00,
+        'total' => 170.00,
+    ]);
+    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10,
+        'unit_price' => 15.00,
+        'procured_qty' => 10,
+        'procured_price' => 19.00,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'approve'])->assertOk();
+
+    $quote->refresh();
+    expect($line->fresh()->qty)->toBe(10)
+        ->and((float) $quote->subtotal)->toBe(150.00)
+        ->and((float) $quote->total)->toBe(170.00);
+});

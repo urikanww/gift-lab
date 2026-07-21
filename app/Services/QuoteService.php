@@ -678,6 +678,15 @@ final class QuoteService
             throw new DomainRuleException('Line item is not awaiting reconfirmation.');
         }
 
+        // Nothing could be sourced at all - no variant, no filament, no weight
+        // estimate. Accepting that would bill zero and build a job for zero
+        // units; dropping the line is what staff actually mean here.
+        if ($decision['action'] === 'approve' && (int) $line->procured_qty < 1) {
+            throw new DomainRuleException(
+                'Nothing could be sourced for this line, so there is nothing to accept. Drop the line instead.'
+            );
+        }
+
         DB::transaction(function () use ($line, $decision): void {
             // Money delta this decision introduces against the quote's frozen
             // totals. Tracked as a delta (not a full re-price) so the setup /
@@ -696,11 +705,24 @@ final class QuoteService
                     break;
 
                 case 'approve':
-                    // Accept the jumped price / short qty as-is and complete.
+                    // Accept what could actually be sourced. This branch used to
+                    // complete the line without touching the money, so the buyer
+                    // was invoiced for the quantity ordered while the floor only
+                    // ever made the quantity available - the one decision of the
+                    // three that did not re-total.
+                    //
+                    // A price jump leaves procured_qty at the ordered figure, so
+                    // the delta is zero and the quoted price stands: accepting a
+                    // price rise means absorbing it, not passing it on.
+                    $before = (float) $line->lineTotal();
+                    $line->qty = $line->procured_qty;
+                    $line->save();
+
                     $line->transitionTo(LineItemState::Purchased);
                     $line->transitionTo(LineItemState::Inbound);
                     $line->transitionTo(LineItemState::Received);
                     $line->transitionTo(LineItemState::Ready);
+                    $totalDelta = (float) $line->lineTotal() - $before;
                     break;
 
                 case 'drop':
