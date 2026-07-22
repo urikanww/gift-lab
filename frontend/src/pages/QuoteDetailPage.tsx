@@ -10,8 +10,7 @@ import { isStaffRole } from '../lib/roles';
 import { humanizeState, proofStateTone, quoteStateTone } from '../lib/quoteStatus';
 import TrackingQr from '../components/TrackingQr';
 import Breadcrumb from '../components/Breadcrumb';
-import QuoteTimeline from '../components/quote/QuoteTimeline';
-import StatusHistory from '../components/quote/StatusHistory';
+import OrderStatus from '../components/quote/OrderStatus';
 import { useQuoteHistory } from '../lib/useQuoteHistory';
 import QuoteLineItems, { PricingSummary } from '../components/quote/QuoteLineItems';
 import QuoteLineEditor from '../components/quote/QuoteLineEditor';
@@ -55,6 +54,7 @@ export default function QuoteDetailPage() {
     procure,
     issueProof,
     decideProof,
+    resendProof,
     issueInvoice,
     confirmStock,
     payNow,
@@ -133,17 +133,6 @@ export default function QuoteDetailPage() {
   if (!current) return <LegacyEmpty title="Quote not found." />;
 
   const quote = current;
-
-  // When the order reached each lifecycle step, for the timeline's dated
-  // stepper. Built from the same recorded trail the history card renders - one
-  // entry per transition, keyed by the state it moved TO. DRAFT rarely has a
-  // logged transition (orders are created in it), so it falls back to the
-  // order's creation time. A step with no recorded instant simply shows no date.
-  const stepTimes: Partial<Record<QuoteState, string>> = {};
-  for (const entry of history.entries) {
-    if (entry.to && entry.changed_at) stepTimes[entry.to as QuoteState] = entry.changed_at;
-  }
-  if (quote.created_at && !stepTimes.DRAFT) stepTimes.DRAFT = quote.created_at;
 
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
   // Staff edit a DRAFT; a superadmin may edit an order's lines at any stage.
@@ -361,17 +350,11 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
-        {/* Status timeline - the expanded stepper dates each reached step from
-            the shared history trail. */}
+        {/* Order status - the glance (current/next/step) with the recorded
+            who/when trail folded in behind a disclosure. One card in place of
+            the old stepper + separate status-history pair. */}
         <Motion variants={staggerItem}>
-          <QuoteTimeline state={quote.state} timestamps={stepTimes} />
-        </Motion>
-
-        {/* Recorded state changes - how the order got where it is. Fed from the
-            same `useQuoteHistory` fetch as the timeline's timestamps, so the two
-            can never disagree. */}
-        <Motion variants={staggerItem}>
-          <StatusHistory entries={history.entries} loading={history.loading} failed={history.failed} />
+          <OrderStatus state={quote.state} history={history} />
         </Motion>
 
         {/* Login-free tracking link + QR - share with the recipient. Buyer-only:
@@ -790,6 +773,48 @@ export default function QuoteDetailPage() {
                   <p className="text-sm text-fg-muted">No staff action available for this state.</p>
                 )}
               </div>
+
+              {/* Superadmin-only, and only while a proof is open (awaiting the
+                  buyer): nudge them by resending the review email, or sign the
+                  proof off on their behalf. The approval is recorded against the
+                  superadmin, not the buyer - see approveProof's approved_by. */}
+              {isSuperadmin && latestOpenProof(quote.proofs) && (
+                <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
+                  <span className="text-sm font-medium text-fg">On the buyer’s behalf</span>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      variant="secondary"
+                      loading={busy}
+                      disabled={busy}
+                      onClick={() =>
+                        run(async () => {
+                          const ok = await resendProof(latestOpenProof(quote.proofs)!.id);
+                          if (ok) toast({ title: 'Proof email resent', tone: 'success' });
+                        })
+                      }
+                    >
+                      Resend proof email
+                    </Button>
+                    <Button
+                      variant="primary"
+                      loading={busy}
+                      disabled={busy}
+                      onClick={() =>
+                        run(
+                          () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
+                          'Proof approved on the buyer’s behalf',
+                        )
+                      }
+                    >
+                      Approve on behalf
+                    </Button>
+                  </div>
+                  <p className="text-xs text-fg-subtle">
+                    Resend the review email, or approve the proof yourself — the approval is
+                    recorded against your name, not the buyer’s.
+                  </p>
+                </div>
+              )}
 
               {/* Cancel: staff-only, available from every pre-production state. */}
               {isCancellable && (

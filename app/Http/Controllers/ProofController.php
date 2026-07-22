@@ -11,6 +11,7 @@ use App\Models\Proof;
 use App\Models\Quote;
 use App\Services\QuoteService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Proof issuance + immutable buyer sign-off (gate 1). Staff issues; buyer
@@ -45,5 +46,20 @@ class ProofController extends Controller
             : $this->quotes->requestProofChanges($proof, $request->input('notes'));
 
         return new ProofResource($proof->loadMissing('quote'));
+    }
+
+    /**
+     * Re-send the buyer's proof-review email for an open proof. Staff-only - a
+     * buyer never resends their own. The route also carries permission:quotes.edit,
+     * which refines WHICH staff_admin may; this floor stops a buyer, whom that
+     * middleware lets through.
+     */
+    public function resend(Request $request, Proof $proof): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $this->quotes->resendProof($proof);
+
+        return response()->json(['message' => 'Proof email resent.']);
     }
 }

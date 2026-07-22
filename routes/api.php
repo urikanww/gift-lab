@@ -154,6 +154,9 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Proofs
     Route::post('/quotes/{quote}/proofs', [ProofController::class, 'store']);
     Route::post('/proofs/{proof}/decide', [ProofController::class, 'decide']);
+    // Staff re-send the buyer's proof-review email (quotes.edit; buyers blocked
+    // by the controller floor).
+    Route::post('/proofs/{proof}/resend', [ProofController::class, 'resend'])->middleware('permission:quotes.edit');
 
     // Procurement reconfirmation
     Route::get('/procurement/awaiting-reconfirm', [ProcurementController::class, 'index'])->middleware('permission:procurement.view');

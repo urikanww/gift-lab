@@ -122,6 +122,8 @@ interface QuoteStoreState {
   procure: (id: number) => Promise<void>;
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
   decideProof: (proofId: number, decision: 'approve' | 'request_changes', notes: string | null) => Promise<void>;
+  /** Staff re-send the buyer's proof-review email. Resolves true on success. */
+  resendProof: (proofId: number) => Promise<boolean>;
   issueInvoice: (id: number, poRef: string, terms: string | null) => Promise<void>;
   /**
    * Staff confirm the goods are in hand, releasing the order to the floor.
@@ -294,6 +296,18 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       if (current) await get().fetchQuote(current.id);
     } catch (err) {
       set({ actionError: apiError(err) });
+    }
+  },
+
+  resendProof: async (proofId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/proofs/${proofId}/resend`);
+      return true;
+    } catch (err) {
+      set({ actionError: apiError(err) });
+      return false;
     }
   },
 

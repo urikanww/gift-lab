@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Card } from '../../ui';
 import type { AmendmentLogEntry } from '../../types';
 
@@ -99,22 +100,39 @@ export default function AmendmentHistory({
   entries: AmendmentLogEntry[];
   currency: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
   // An order that was never amended has nothing to show. Render nothing rather
   // than an empty card competing for space in the staff column.
   if (!entries || entries.length === 0) return null;
 
   const batches = groupByBatch(entries);
+  const listId = 'edit-history-list';
 
   return (
     <Card padding="lg" aria-labelledby="edits-heading">
-      <h2 id="edits-heading" className="font-display text-xl text-fg">
-        Edit history
-      </h2>
+      {/* Collapsed by default - it is reference material staff open when they
+          need it, not something to scroll past on every order. The count tells
+          them whether it is worth opening without doing so. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id="edits-heading" className="font-display text-xl text-fg">
+          Edit history
+        </h2>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={listId}
+          onClick={() => setExpanded((v) => !v)}
+          className="rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+        >
+          {expanded ? 'Hide' : `Show ${batches.length} ${batches.length === 1 ? 'edit' : 'edits'}`}
+        </button>
+      </div>
       <p className="mt-1 text-sm text-fg-muted">
         Changes made to this order while it was a draft. Staff-only.
       </p>
 
-      <ul className="mt-4 flex flex-col divide-y divide-border">
+      {expanded && (
+      <ul id={listId} className="mt-4 flex flex-col divide-y divide-border">
         {batches.map((batch) => {
           const when = formatAt(batch.at);
           return (
@@ -141,6 +159,7 @@ export default function AmendmentHistory({
           );
         })}
       </ul>
+      )}
     </Card>
   );
 }
