@@ -84,6 +84,14 @@ function asStaff() {
   } as any);
 }
 
+function asSuperadmin() {
+  useAuthStore.setState({
+    user: { id: 1, company_id: null, name: 'Root', email: 'root@x.test', role: 'superadmin' },
+    status: 'ready',
+    error: null,
+  } as any);
+}
+
 function renderPage() {
   return render(
     <ThemeProvider>
@@ -801,6 +809,31 @@ it('never renders the Edit history for a buyer', () => {
   renderPage();
 
   expect(screen.queryByRole('heading', { name: /edit history/i })).not.toBeInTheDocument();
+});
+
+it('lets a superadmin edit items on a non-draft order', () => {
+  asSuperadmin();
+  seedQuote('CONFIRMED');
+  renderPage();
+
+  // The superadmin override: line editing is offered past DRAFT.
+  expect(screen.getByRole('button', { name: /edit items/i })).toBeInTheDocument();
+});
+
+it('does not offer a plain staff_admin the editor past draft', () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  renderPage();
+
+  expect(screen.queryByRole('button', { name: /edit items/i })).not.toBeInTheDocument();
+});
+
+it('still offers a staff_admin the editor on a draft', () => {
+  asStaff();
+  seedQuote('DRAFT');
+  renderPage();
+
+  expect(screen.getByRole('button', { name: /edit items/i })).toBeInTheDocument();
 });
 
 it('hides Pay now where buyer payment is not available', () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
+import { hasPermission } from '../lib/roles';
 import { Badge, Button, Logo, cn, useTheme } from '../ui';
 
 const FOCUSABLE =
@@ -11,30 +12,37 @@ interface NavItem {
   to: string;
   label: string;
   badge?: number;
+  /** Granular permission required to see this section (its `.view`). */
+  permission?: string;
 }
 
 function useStaffNav(): NavItem[] {
   const q = useDashboardStore((s) => s.data?.queues);
   const pipeline = useDashboardStore((s) => s.data?.pipeline);
   const overdue = useDashboardStore((s) => s.data?.production.overdue ?? 0);
-  const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
+  const user = useAuthStore((s) => s.user);
+  const isSuperadmin = user?.role === 'superadmin';
   // Each order-related menu carries a count of items sitting in ITS court -
   // work staff still has to action, not things merely waiting on a buyer. Zero
   // renders no badge (see NavList), so a clear queue reads as clear.
-  return [
+  const items: NavItem[] = [
+    // Dashboard is the console home - every staff member keeps it.
     { to: '/dashboard', label: 'Dashboard' },
     // Drafts are quotes not yet sent to the buyer - the staff action here.
-    { to: '/quotes', label: 'Quotes', badge: pipeline?.DRAFT },
-    { to: '/production-queue', label: 'Production', badge: overdue || undefined },
-    { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
-    { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen },
+    { to: '/quotes', label: 'Quotes', badge: pipeline?.DRAFT, permission: 'quotes.view' },
+    { to: '/production-queue', label: 'Production', badge: overdue || undefined, permission: 'production.view' },
+    { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm, permission: 'procurement.view' },
+    { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen, permission: 'reorders.view' },
     // Products awaiting catalogue approval before they can go live.
-    { to: '/product-admin', label: 'Products', badge: q?.cataloguePending },
-    { to: '/notification-settings', label: 'Notifications' },
+    { to: '/product-admin', label: 'Products', badge: q?.cataloguePending, permission: 'products.view' },
+    { to: '/notification-settings', label: 'Notifications', permission: 'notifications.view' },
     // Pricing and Users are superadmin-only (the pages also guard themselves).
     ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
     ...(isSuperadmin ? [{ to: '/user-admin', label: 'Users' }] : []),
   ];
+  // Hide a section a restricted staff_admin has not been granted. Superadmin and
+  // grandfathered staff pass every check (see hasPermission).
+  return items.filter((it) => !it.permission || hasPermission(user, it.permission));
 }
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>

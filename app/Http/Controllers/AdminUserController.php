@@ -8,6 +8,7 @@ use App\Enums\UserRole;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\Permissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -121,6 +122,10 @@ class AdminUserController extends Controller
             'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => ['sometimes', 'string', Rule::in(['buyer', 'staff_admin', 'superadmin'])],
             'company_id' => ['nullable', 'exists:companies,id'],
+            // Granular access allowlist. Every entry must be a known permission
+            // key; unknown keys are rejected rather than silently stored.
+            'permissions' => ['sometimes', 'array'],
+            'permissions.*' => ['string', Rule::in(Permissions::all())],
         ]);
 
         if (array_key_exists('role', $validated) && $this->isSelf($request, $user)) {
@@ -145,11 +150,31 @@ class AdminUserController extends Controller
             $validated['company_id'] = null;
         }
 
-        $before = ['role' => $user->role->value, 'email' => $user->email];
+        // Granular access only means anything for a staff_admin. If permissions
+        // were sent, store them (deduped) only when the resulting role is
+        // staff_admin; a superadmin/buyer always resolves to null (full/none by
+        // role). And a role moving OFF staff_admin drops any stale allowlist.
+        if (array_key_exists('permissions', $validated)) {
+            $validated['permissions'] = $resultingRole === 'staff_admin'
+                ? array_values(array_unique($validated['permissions']))
+                : null;
+        } elseif ($resultingRole !== 'staff_admin') {
+            $validated['permissions'] = null;
+        }
+
+        $before = [
+            'role' => $user->role->value,
+            'email' => $user->email,
+            'permissions' => $user->permissions,
+        ];
         $user->fill($validated);
         $user->save();
 
-        $this->audit->log($user, 'user.updated', $before, ['role' => $user->role->value, 'email' => $user->email]);
+        $this->audit->log($user, 'user.updated', $before, [
+            'role' => $user->role->value,
+            'email' => $user->email,
+            'permissions' => $user->permissions,
+        ]);
 
         return response()->json(['data' => $this->serialize($user->fresh('company'))]);
     }
@@ -238,6 +263,23 @@ class AdminUserController extends Controller
                 : null,
             'active' => ! $user->trashed(),
             'created_at' => $user->created_at?->toIso8601String(),
+            // Effective access. For a staff_admin this is the granted allowlist
+            // (or everything, if never restricted); superadmin is everything,
+            // buyers nothing. The access table checks these boxes.
+            'permissions' => $user->effectivePermissions(),
+            // Whether the granular allowlist even applies to this user - only
+            // staff_admin can be restricted, so only they get an editable table.
+            'permissions_editable' => $user->role === UserRole::StaffAdmin,
         ];
+    }
+
+    /**
+     * The catalogue of grantable permissions, grouped for the access table.
+     */
+    public function permissionCatalog(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isSuperadmin(), 403);
+
+        return response()->json(['data' => Permissions::CATALOG]);
     }
 }

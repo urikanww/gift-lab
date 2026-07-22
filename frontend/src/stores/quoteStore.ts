@@ -54,6 +54,13 @@ export interface AmendPayload {
   delivery?: number | null;
   notes?: string | null;
   removed_line_ids?: number[];
+  /**
+   * Free-form adjustments (discount/tax/fee). Omit to leave the set untouched;
+   * send an array (including empty, to clear) to replace it wholesale.
+   */
+  adjustments?: { label: string; amount: number }[];
+  /** Mandatory reason for the edit (>10 chars). Recorded in the edit trail. */
+  remark?: string;
 }
 
 interface QuoteStoreState {

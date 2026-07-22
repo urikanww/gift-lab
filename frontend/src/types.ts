@@ -183,6 +183,14 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  /**
+   * Effective granular access ("section.action"). Superadmin resolves to every
+   * key, a grandfathered staff_admin likewise; a restricted staff_admin to their
+   * allowlist; a buyer to none. Drives what the console shows. Optional so an
+   * older payload without it degrades gracefully (treated as no restriction for
+   * staff by the isStaffRole fallback path).
+   */
+  permissions?: string[];
   /** The buyer's company - reused as the read-only shipping address at checkout. */
   company?: CompanySummary | null;
 }
@@ -315,6 +323,12 @@ export interface Quote {
   currency: string;
   subtotal: string;
   delivery: string;
+  /**
+   * Free-form staff adjustments applied after delivery (discount/tax/fee).
+   * Signed: negative pulls the total down, positive pushes it up. Buyer-visible
+   * - always an array, possibly empty.
+   */
+  adjustments?: Adjustment[];
   total: string;
   price_snapshot_at: string | null;
   /** The production gate: null until a person confirms the goods are in hand. */
@@ -339,15 +353,24 @@ export interface Quote {
   amendment_log?: AmendmentLogEntry[];
 }
 
+/** A free-form money adjustment after delivery. Signed amount (see Quote). */
+export interface Adjustment {
+  label: string;
+  /** Number over the wire; a string while being typed in the editor. */
+  amount: number | string;
+}
+
 /** One recorded change from a staff DRAFT amendment. See QuoteService::amend. */
 export interface AmendmentLogEntry {
   /** Shared across every entry produced by a single save, for grouping. */
   batch?: string;
   /** What changed. `edited`/`added`/`removed` are line changes. */
-  action?: 'edited' | 'added' | 'removed' | 'delivery' | 'notes';
+  action?: 'edited' | 'added' | 'removed' | 'delivery' | 'notes' | 'adjustments';
   /** Editor's user id, and their name snapshotted at edit time. */
   by?: number | null;
   by_name?: string | null;
+  /** Staff's mandatory reason for the save, shared across the batch. */
+  remark?: string | null;
   /** ISO-8601 instant of the save. */
   at?: string | null;
   /** Line changes only: the affected line and its product name at the time. */
@@ -594,4 +617,18 @@ export interface AdminUser {
   company: { id: number; name: string } | null;
   active: boolean;
   created_at: string;
+  /** Effective granted access; the access table checks these boxes. */
+  permissions?: string[];
+  /** Only a staff_admin can be restricted, so only they get an editable table. */
+  permissions_editable?: boolean;
 }
+
+/** One section of grantable permissions, from /admin/permissions/catalog. */
+export interface PermissionSection {
+  label: string;
+  /** action key -> human description, e.g. { view: 'View orders', edit: '...' }. */
+  actions: Record<string, string>;
+}
+
+/** section key -> section, e.g. { quotes: {...}, production: {...} }. */
+export type PermissionCatalog = Record<string, PermissionSection>;

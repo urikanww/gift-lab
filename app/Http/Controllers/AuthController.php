@@ -114,6 +114,10 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role->value,
+            // Effective granular access, so the console can hide sections a
+            // staff_admin has not been granted. Superadmin resolves to all;
+            // buyers to none. See App\Support\Permissions.
+            'permissions' => $user->effectivePermissions(),
             'company' => $user->company === null ? null : [
                 'id' => $user->company->id,
                 'name' => $user->company->name,
