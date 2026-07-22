@@ -1,21 +1,26 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { hasPermission } from '../lib/roles';
 import { Spinner } from '../ui';
 import { Motion, fadeIn } from '../motion';
 
 /**
  * Gates authenticated routes. `staffOnly` additionally requires an internal
  * staff role, mirroring the backend policy + broadcast channel auth.
+ * `permission` requires a granular "section.action" - superadmin always passes,
+ * a staff_admin needs it granted; mirrors the backend route middleware.
  */
 export default function ProtectedRoute({
   children,
   staffOnly = false,
   superadminOnly = false,
+  permission,
 }: {
   children: ReactNode;
   staffOnly?: boolean;
   superadminOnly?: boolean;
+  permission?: string;
 }) {
   const { user, status } = useAuthStore();
   const location = useLocation();
@@ -43,9 +48,14 @@ export default function ProtectedRoute({
   if (staffOnly && user.role !== 'staff_admin' && user.role !== 'superadmin') {
     return <Navigate to="/" replace />;
   }
-  // Superadmin-only routes (e.g. pricing) redirect a staff_admin instead of
-  // showing a dead "restricted" wall - mirrors the backend isSuperadmin gate.
+  // Superadmin-only routes redirect a staff_admin instead of showing a dead
+  // "restricted" wall - mirrors the backend isSuperadmin gate.
   if (superadminOnly && user.role !== 'superadmin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  // Granular permission gate (Pricing/Users when delegated). Redirect rather
+  // than wall; the backend still enforces the same permission.
+  if (permission && !hasPermission(user, permission)) {
     return <Navigate to="/dashboard" replace />;
   }
 

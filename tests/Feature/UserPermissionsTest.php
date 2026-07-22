@@ -30,10 +30,20 @@ it('gives a superadmin every permission and never restricts them', function (): 
         ->and($this->superadmin->hasPermission('quotes.edit'))->toBeTrue();
 });
 
-it('grandfathers a staff_admin with no explicit set to full access', function (): void {
+it('grandfathers a staff_admin to the operational default, not the sensitive sections', function (): void {
     expect($this->staff->permissions)->toBeNull()
         ->and($this->staff->hasPermission('production.manage'))->toBeTrue()
-        ->and($this->staff->effectivePermissions())->toBe(Permissions::all());
+        // Sensitive Pricing/Users are NOT part of the grandfather default.
+        ->and($this->staff->hasPermission('pricing.view'))->toBeFalse()
+        ->and($this->staff->hasPermission('users.manage'))->toBeFalse()
+        ->and($this->staff->effectivePermissions())->toBe(Permissions::defaults());
+});
+
+it('keeps the sensitive sections out of the default but in the full set', function (): void {
+    expect(Permissions::defaults())->not->toContain('pricing.view')->not->toContain('users.manage')
+        ->and(Permissions::all())->toContain('pricing.view')->toContain('users.manage')
+        ->and(Permissions::isSensitive('pricing.manage'))->toBeTrue()
+        ->and(Permissions::isSensitive('quotes.edit'))->toBeFalse();
 });
 
 it('restricts a staff_admin to exactly their granted set', function (): void {
@@ -208,4 +218,87 @@ it('keeps a grandfathered staff_admin able to reach product sub-routes', functio
     Sanctum::actingAs($this->staff); // null permissions = unrestricted
 
     postJson("/api/admin/products/{$product->id}/variants", [])->assertStatus(422);
+});
+
+// ---- sensitive sections: Pricing & Users -------------------------------
+
+it('lets a staff_admin granted pricing.view read pricing but not edit it', function (): void {
+    $this->staff->update(['permissions' => ['pricing.view']]);
+    $config = App\Models\PricingConfig::query()->first()
+        ?? App\Models\PricingConfig::create(['group' => 'g', 'key' => 'k', 'value' => 1, 'label' => 'L', 'is_money' => false]);
+    Sanctum::actingAs($this->staff);
+
+    getJson('/api/admin/pricing-configs')->assertOk();
+    patchJson("/api/admin/pricing-configs/{$config->id}", ['value' => 2])->assertStatus(403);
+});
+
+it('blocks a grandfathered staff_admin from pricing entirely', function (): void {
+    Sanctum::actingAs($this->staff);
+    getJson('/api/admin/pricing-configs')->assertStatus(403);
+});
+
+it('lets a staff_admin granted users.view read users but not manage them', function (): void {
+    $this->staff->update(['permissions' => ['users.view']]);
+    Sanctum::actingAs($this->staff);
+
+    getJson('/api/admin/users')->assertOk();
+    postJson('/api/admin/users', [])->assertStatus(403);
+});
+
+it('blocks a grandfathered staff_admin from the users module', function (): void {
+    Sanctum::actingAs($this->staff);
+    getJson('/api/admin/users')->assertStatus(403);
+});
+
+// ---- escalation guards on a delegated Users manager ---------------------
+
+it('stops a delegated users manager from promoting anyone to superadmin', function (): void {
+    $this->staff->update(['permissions' => ['users.view', 'users.manage']]);
+    $target = User::factory()->staffAdmin()->create();
+    Sanctum::actingAs($this->staff);
+
+    patchJson("/api/admin/users/{$target->id}", ['role' => 'superadmin'])
+        ->assertStatus(422)->assertJsonFragment(['message' => 'Only a superadmin can grant the superadmin role.']);
+});
+
+it('stops a delegated users manager from creating a superadmin', function (): void {
+    $this->staff->update(['permissions' => ['users.view', 'users.manage']]);
+    Sanctum::actingAs($this->staff);
+
+    postJson('/api/admin/users', [
+        'name' => 'X', 'email' => 'x@y.test', 'password' => 'password123', 'role' => 'superadmin',
+    ])->assertStatus(422);
+});
+
+it('stops a delegated users manager from editing their own access', function (): void {
+    $this->staff->update(['permissions' => ['users.view', 'users.manage']]);
+    Sanctum::actingAs($this->staff);
+
+    patchJson("/api/admin/users/{$this->staff->id}", ['permissions' => ['users.view', 'users.manage', 'quotes.edit']])
+        ->assertStatus(422)->assertJsonFragment(['message' => 'You cannot change your own access.']);
+});
+
+it('stops a delegated users manager from handing out sensitive access', function (): void {
+    $this->staff->update(['permissions' => ['users.view', 'users.manage']]);
+    $target = User::factory()->staffAdmin()->create();
+    Sanctum::actingAs($this->staff);
+
+    patchJson("/api/admin/users/{$target->id}", ['permissions' => ['quotes.view', 'pricing.manage']])
+        ->assertStatus(422)->assertJsonFragment(['message' => 'Only a superadmin can grant Pricing or Users access.']);
+});
+
+it('still lets a delegated users manager grant operational access to others', function (): void {
+    $this->staff->update(['permissions' => ['users.view', 'users.manage']]);
+    $target = User::factory()->staffAdmin()->create();
+    Sanctum::actingAs($this->staff);
+
+    patchJson("/api/admin/users/{$target->id}", ['permissions' => ['quotes.view', 'production.manage']])->assertOk();
+    expect($target->fresh()->permissions)->toBe(['quotes.view', 'production.manage']);
+});
+
+it('lets a superadmin grant the sensitive sections', function (): void {
+    Sanctum::actingAs($this->superadmin);
+
+    patchJson("/api/admin/users/{$this->staff->id}", ['permissions' => ['pricing.view', 'users.view']])
+        ->assertOk()->assertJsonPath('data.permissions', ['pricing.view', 'users.view']);
 });

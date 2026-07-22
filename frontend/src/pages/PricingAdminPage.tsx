@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
+import { hasPermission } from '../lib/roles';
 import { AsyncBoundary } from '../components/ui/States';
 import { Button, Card, cn, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
@@ -33,7 +34,9 @@ function orderedGroups(fields: Field[]): [string, Field[]][] {
 }
 
 export default function PricingAdminPage() {
-  const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
+  const user = useAuthStore((s) => s.user);
+  const canView = hasPermission(user, 'pricing.view');
+  const canManage = hasPermission(user, 'pricing.manage');
   const { toast } = useToast();
   const [rows, setRows] = useState<ConfigRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,8 +70,8 @@ export default function PricingAdminPage() {
   }, []);
 
   useEffect(() => {
-    if (isSuperadmin) void load();
-  }, [isSuperadmin, load]);
+    if (canView) void load();
+  }, [canView, load]);
 
   const { everyday, advanced } = useMemo(() => {
     const fields: Field[] = rows.map((row) => ({ row, meta: metaFor(row.group, row.key, row.value) }));
@@ -79,6 +82,12 @@ export default function PricingAdminPage() {
   }, [rows]);
 
   const save = async (row: ConfigRow, value: unknown) => {
+    // View-only grant: editing is blocked here (and on the server via
+    // pricing.manage), so say so rather than fire a request that 403s.
+    if (!canManage) {
+      toast({ title: 'Read-only', description: 'You do not have access to edit pricing.', tone: 'danger' });
+      return false;
+    }
     try {
       await ensureCsrf();
       const { data } = await api.patch<{ data: ConfigRow }>(`/admin/pricing-configs/${row.id}`, { value });
@@ -92,10 +101,10 @@ export default function PricingAdminPage() {
     }
   };
 
-  if (!isSuperadmin) {
+  if (!canView) {
     return (
       <Card padding="lg">
-        <p className="text-sm text-fg-muted">Pricing configuration is restricted to the superadmin.</p>
+        <p className="text-sm text-fg-muted">You do not have access to pricing configuration.</p>
       </Card>
     );
   }

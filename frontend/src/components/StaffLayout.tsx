@@ -21,7 +21,6 @@ function useStaffNav(): NavItem[] {
   const pipeline = useDashboardStore((s) => s.data?.pipeline);
   const overdue = useDashboardStore((s) => s.data?.production.overdue ?? 0);
   const user = useAuthStore((s) => s.user);
-  const isSuperadmin = user?.role === 'superadmin';
   // Each order-related menu carries a count of items sitting in ITS court -
   // work staff still has to action, not things merely waiting on a buyer. Zero
   // renders no badge (see NavList), so a clear queue reads as clear.
@@ -36,9 +35,10 @@ function useStaffNav(): NavItem[] {
     // Products awaiting catalogue approval before they can go live.
     { to: '/product-admin', label: 'Products', badge: q?.cataloguePending, permission: 'products.view' },
     { to: '/notification-settings', label: 'Notifications', permission: 'notifications.view' },
-    // Pricing and Users are superadmin-only (the pages also guard themselves).
-    ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
-    ...(isSuperadmin ? [{ to: '/user-admin', label: 'Users' }] : []),
+    // Pricing and Users are sensitive: superadmin always, or a staff_admin a
+    // superadmin has explicitly granted. Not part of the grandfather default.
+    { to: '/pricing-admin', label: 'Pricing', permission: 'pricing.view' },
+    { to: '/user-admin', label: 'Users', permission: 'users.view' },
   ];
   // Hide a section a restricted staff_admin has not been granted. Superadmin and
   // grandfathered staff pass every check (see hasPermission).

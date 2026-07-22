@@ -240,23 +240,25 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::patch('/admin/notification-settings', [NotificationSettingsController::class, 'update'])->middleware('permission:notifications.manage');
     Route::patch('/admin/notification-settings/cadence', [NotificationSettingsController::class, 'updateCadence'])->middleware('permission:notifications.manage');
 
-    Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
-    Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update']);
+    Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index'])->middleware('permission:pricing.view');
+    Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update'])->middleware('permission:pricing.manage');
     // Staff "test a quote" full breakdown (exposes internal cost/margin).
-    Route::post('/admin/price-breakdown', AdminPriceBreakdownController::class);
+    // A quoting aid (test-a-quote breakdown), not the pricing editor - gate it
+    // with quotes, so staff who build orders can use it without Pricing access.
+    Route::post('/admin/price-breakdown', AdminPriceBreakdownController::class)->middleware('permission:quotes.view');
 
     // Staff console overview (read-only aggregate snapshot).
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
 
     // Superadmin user management (stricter than isStaff() - superadmin-only).
-    Route::get('/admin/companies', [AdminUserController::class, 'companies']);
+    Route::get('/admin/companies', [AdminUserController::class, 'companies'])->middleware('permission:users.view');
     // Grantable-permission catalogue for the access table.
-    Route::get('/admin/permissions/catalog', [AdminUserController::class, 'permissionCatalog']);
-    Route::get('/admin/users', [AdminUserController::class, 'index']);
-    Route::post('/admin/users', [AdminUserController::class, 'store']);
-    Route::get('/admin/users/{user}', [AdminUserController::class, 'show'])->withTrashed();
-    Route::patch('/admin/users/{user}', [AdminUserController::class, 'update'])->withTrashed();
-    Route::delete('/admin/users/{user}', [AdminUserController::class, 'deactivate']);
-    Route::post('/admin/users/{user}/reactivate', [AdminUserController::class, 'reactivate'])->withTrashed();
-    Route::post('/admin/users/{user}/password', [AdminUserController::class, 'resetPassword'])->withTrashed();
+    Route::get('/admin/permissions/catalog', [AdminUserController::class, 'permissionCatalog'])->middleware('permission:users.view');
+    Route::get('/admin/users', [AdminUserController::class, 'index'])->middleware('permission:users.view');
+    Route::post('/admin/users', [AdminUserController::class, 'store'])->middleware('permission:users.manage');
+    Route::get('/admin/users/{user}', [AdminUserController::class, 'show'])->withTrashed()->middleware('permission:users.view');
+    Route::patch('/admin/users/{user}', [AdminUserController::class, 'update'])->withTrashed()->middleware('permission:users.manage');
+    Route::delete('/admin/users/{user}', [AdminUserController::class, 'deactivate'])->middleware('permission:users.manage');
+    Route::post('/admin/users/{user}/reactivate', [AdminUserController::class, 'reactivate'])->withTrashed()->middleware('permission:users.manage');
+    Route::post('/admin/users/{user}/password', [AdminUserController::class, 'resetPassword'])->withTrashed()->middleware('permission:users.manage');
 });

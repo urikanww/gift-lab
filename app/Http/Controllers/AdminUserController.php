@@ -15,10 +15,13 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 /**
- * Superadmin-only user management (stricter than the isStaff() gate used
- * elsewhere): create/edit/deactivate/reactivate accounts and reset passwords.
- * Guards protect against locking yourself out (self role-change) and against
- * leaving the platform without any active superadmin.
+ * User management. Reachable by a superadmin, or a staff_admin explicitly
+ * granted the Users section (read on users.view, write on users.manage, gated by
+ * route middleware). Because Users is delegable, sensitive actions carry extra
+ * guards so a non-superadmin manager cannot escalate: they may not mint or
+ * promote to superadmin, edit their OWN role or access, or hand out the
+ * sensitive Pricing/Users permissions. Existing guards still hold - no self
+ * lock-out, and never zero active superadmins.
  */
 class AdminUserController extends Controller
 {
@@ -26,7 +29,10 @@ class AdminUserController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         $perPage = max(1, min((int) $request->integer('per_page', 15), 100));
 
@@ -65,7 +71,10 @@ class AdminUserController extends Controller
 
     public function companies(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         return response()->json([
             'data' => Company::orderBy('name')->get(['id', 'name']),
@@ -74,7 +83,10 @@ class AdminUserController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -87,6 +99,12 @@ class AdminUserController extends Controller
                 'exists:companies,id',
             ],
         ]);
+
+        // Only a superadmin may mint another superadmin - a delegated Users
+        // manager must not be able to create an account above their own level.
+        if ($validated['role'] === 'superadmin' && ! $request->user()->isSuperadmin()) {
+            return response()->json(['message' => 'Only a superadmin can create a superadmin.'], 422);
+        }
 
         // Buyers keep their company_id; staff/superadmin are always company-less.
         $companyId = $validated['role'] === 'buyer' ? ($validated['company_id'] ?? null) : null;
@@ -106,7 +124,10 @@ class AdminUserController extends Controller
 
     public function show(Request $request, User $user): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         $user->load('company:id,name');
 
@@ -115,7 +136,10 @@ class AdminUserController extends Controller
 
     public function update(Request $request, User $user): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
@@ -134,6 +158,30 @@ class AdminUserController extends Controller
 
         if (array_key_exists('role', $validated) && $this->isLastSuperadmin($user) && $validated['role'] !== UserRole::Superadmin->value) {
             return response()->json(['message' => 'Cannot change the role of the last active superadmin.'], 422);
+        }
+
+        // Escalation guards for a delegated (non-superadmin) Users manager.
+        $actorIsSuperadmin = $request->user()->isSuperadmin();
+        if (! $actorIsSuperadmin) {
+            // May not promote anyone to superadmin.
+            if (($validated['role'] ?? null) === UserRole::Superadmin->value) {
+                return response()->json(['message' => 'Only a superadmin can grant the superadmin role.'], 422);
+            }
+            // May not edit their OWN access (no self-granting more permissions).
+            if ($this->isSelf($request, $user) && array_key_exists('permissions', $validated)) {
+                return response()->json(['message' => 'You cannot change your own access.'], 422);
+            }
+            // May not hand out the sensitive Pricing/Users permissions - only a
+            // superadmin delegates those.
+            if (array_key_exists('permissions', $validated)) {
+                foreach ($validated['permissions'] as $key) {
+                    if (Permissions::isSensitive((string) $key)) {
+                        return response()->json([
+                            'message' => 'Only a superadmin can grant Pricing or Users access.',
+                        ], 422);
+                    }
+                }
+            }
         }
 
         $resultingRole = $validated['role'] ?? $user->role->value;
@@ -181,7 +229,10 @@ class AdminUserController extends Controller
 
     public function deactivate(Request $request, User $user): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         if ($this->isSelf($request, $user)) {
             return response()->json(['message' => 'You cannot deactivate your own account.'], 422);
@@ -201,7 +252,10 @@ class AdminUserController extends Controller
 
     public function reactivate(Request $request, User $user): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         if (! $user->trashed()) {
             return response()->json(['message' => 'User is not deactivated.'], 422);
@@ -216,7 +270,10 @@ class AdminUserController extends Controller
 
     public function resetPassword(Request $request, User $user): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         $validated = $request->validate([
             'password' => ['required', 'string', 'min:8'],
@@ -278,7 +335,10 @@ class AdminUserController extends Controller
      */
     public function permissionCatalog(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the users.view / users.manage route middleware
+        // refines which staff_admin may reach each method (superadmin always
+        // passes). Sensitive writes carry extra guards below.
+        abort_unless($request->user()->isStaff(), 403);
 
         return response()->json(['data' => Permissions::CATALOG]);
     }
