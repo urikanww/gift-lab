@@ -35,6 +35,10 @@ class ProofResource extends JsonResource
             'approved_by' => $this->approved_by,
             'approved_at' => $this->approved_at?->toIso8601String(),
             'notes' => $this->notes,
+            // Buyer's "request changes" reference images, each with a resolved
+            // viewing link (null url on a non-presigning local disk). Empty when
+            // the buyer attached none.
+            'change_attachments' => $this->changeAttachments(),
         ];
     }
 }

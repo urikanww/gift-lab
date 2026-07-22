@@ -306,6 +306,11 @@ export interface Proof {
   approved_by: number | null;
   approved_at: string | null;
   notes: string | null;
+  /**
+   * Buyer's "request changes" reference images, each with a resolved viewing
+   * link (url null on a non-presigning local disk). Empty when none attached.
+   */
+  change_attachments?: { ref: string; url: string | null }[];
 }
 
 export interface Quote {

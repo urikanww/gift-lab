@@ -43,7 +43,11 @@ class ProofController extends Controller
     {
         $proof = $request->string('decision')->toString() === 'approve'
             ? $this->quotes->approveProof($proof)
-            : $this->quotes->requestProofChanges($proof, $request->input('notes'));
+            : $this->quotes->requestProofChanges(
+                $proof,
+                $request->input('notes'),
+                $request->input('attachments', []),
+            );
 
         return new ProofResource($proof->loadMissing('quote'));
     }

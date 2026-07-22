@@ -141,10 +141,10 @@ it('lets the buyer say what to change when requesting proof changes', async () =
   await userEvent.type(screen.getByLabelText(/what should we change/i), 'Use the darker blue.');
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
 
-  expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Use the darker blue.');
+  expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Use the darker blue.', undefined);
 });
 
-it('falls back to a generic note when the change reason is left blank', async () => {
+it('requires a reason before a buyer can send a change request', async () => {
   const decideProof = vi.fn(async () => {});
   seedQuote('PROOFING');
   seedOpenProof();
@@ -153,10 +153,33 @@ it('falls back to a generic note when the change reason is left blank', async ()
   renderPage();
 
   await userEvent.click(screen.getByRole('button', { name: /request changes/i }));
+
+  // Send stays disabled with no reason - the API rejects an empty note and
+  // staff need to know what to revise.
+  expect(screen.getByRole('button', { name: /send request/i })).toBeDisabled();
+
+  await userEvent.type(screen.getByLabelText(/what should we change/i), 'Fix the logo.');
+  expect(screen.getByRole('button', { name: /send request/i })).toBeEnabled();
+
+  await userEvent.click(screen.getByRole('button', { name: /send request/i }));
+  expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Fix the logo.', undefined);
+});
+
+it('sends an attached reference image with the change request', async () => {
+  const decideProof = vi.fn(async () => {});
+  seedQuote('PROOFING');
+  seedOpenProof();
+  useQuoteStore.setState({ decideProof } as any);
+  asBuyer();
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /request changes/i }));
+  await userEvent.type(screen.getByLabelText(/what should we change/i), 'Match this.');
+  // The stubbed uploader yields a ref on "attach".
+  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach a reference (optional)' }));
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
 
-  // API requires a note with request_changes - the UI supplies one.
-  expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Please revise.');
+  expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Match this.', ['proofs/v1.pdf']);
 });
 
 it('toasts "Payment received" when payment captures immediately', async () => {
@@ -248,6 +271,46 @@ it('keeps the attached proof when the send-with-proof fails', async () => {
   expect(screen.getByTestId('ref:Attach proof (optional)')).toHaveTextContent('proofs/v1.pdf');
 });
 
+
+it('lets staff issue the proof from the buyer’s designer artwork on DRAFT', async () => {
+  const send = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', customization: { mode: 'designer', artwork_ref: 'artwork/buyer.png' } },
+      ],
+    },
+    send,
+  } as any);
+  asStaff();
+  renderPage();
+
+  // One click reuses the buyer's design instead of re-uploading a file.
+  await userEvent.click(screen.getByRole('button', { name: /use buyer.s design/i }));
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'artwork/buyer.png' });
+});
+
+it('offers no design-reuse shortcut for a buyer_uploaded reference line', () => {
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      // A finished-look reference photo is not print-ready, so it must be
+      // proofed from scratch - no reuse shortcut.
+      line_items: [
+        { id: 1, product_id: 5, qty: 1, line_state: 'PENDING', customization: { mode: 'buyer_uploaded', reference_refs: ['artwork/ref.png'] } },
+      ],
+    },
+  } as any);
+  asStaff();
+  renderPage();
+
+  expect(screen.queryByRole('button', { name: /use buyer.s design/i })).not.toBeInTheDocument();
+});
 
 it('hides the "proof being prepared" note for a buyer once a proof is open in PROOFING', () => {
   seedQuote('PROOFING');
@@ -478,21 +541,23 @@ it('renders Proofs BELOW Staff actions for staff', () => {
   ).toBeTruthy();
 });
 
-it('keeps Proofs ABOVE the buyer’s Next step card for a buyer', () => {
+it('keeps the buyer’s proof review ABOVE the Next step card', () => {
   seedQuote('SENT');
   seedOpenProof();
   asBuyer();
   renderPage();
 
-  // The buyer's sign-off controls live in the Proofs card, so it must not be
-  // demoted below the rest of the page the way it is for staff.
-  expect(headingIndex('Proofs')).toBeLessThan(headingIndex('Next step'));
+  // The buyer's sign-off is the primary action, so its review card sits high on
+  // the page - never demoted below the rest the way the staff proof list is.
+  expect(headingIndex('Review your proof')).toBeLessThan(headingIndex('Next step'));
   expect(screen.queryByRole('heading', { name: 'Staff actions' })).not.toBeInTheDocument();
+  // The read-only "Proofs" history is suppressed while a proof is open for review.
+  expect(screen.queryByRole('heading', { name: 'Proofs' })).not.toBeInTheDocument();
 
-  const proofs = screen.getByRole('heading', { name: 'Proofs' });
+  const review = screen.getByRole('heading', { name: 'Review your proof' });
   const nextStep = screen.getByRole('heading', { name: 'Next step' });
   expect(
-    proofs.compareDocumentPosition(nextStep) & Node.DOCUMENT_POSITION_FOLLOWING,
+    review.compareDocumentPosition(nextStep) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
 });
 

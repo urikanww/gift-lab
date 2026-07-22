@@ -38,6 +38,11 @@ class DecideProofRequest extends FormRequest
         return [
             'decision' => ['required', 'string', 'in:approve,request_changes'],
             'notes' => ['nullable', 'string', 'max:2000', 'required_if:decision,request_changes'],
+            // Optional reference images the buyer attaches to a change request.
+            // Storage keys from /uploads/artwork (never raw files here); capped so
+            // a request can't smuggle an unbounded list. Ignored on approve.
+            'attachments' => ['nullable', 'array', 'max:5'],
+            'attachments.*' => ['string', 'max:2048', 'regex:#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#'],
         ];
     }
 }

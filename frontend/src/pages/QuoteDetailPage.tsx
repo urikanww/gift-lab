@@ -92,12 +92,19 @@ export default function QuoteDetailPage() {
   // of firing a canned note.
   const [changesOpen, setChangesOpen] = useState(false);
   const [changeNotes, setChangeNotes] = useState('');
+  // Optional reference image the buyer attaches to a change request. Held as the
+  // uploaded storage ref; passed to decideProof and cleared once sent.
+  const [changeAttachment, setChangeAttachment] = useState('');
   // Staff-only cancel confirm modal.
   // Committing is irreversible in practice (it opens production), so it is
   // confirmed rather than fired straight from the button.
   const [commitOpen, setCommitOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  // Tracking link/QR moved out of a full-width card into a header button that
+  // opens this modal, keeping the sharing affordance without the page real
+  // estate.
+  const [trackOpen, setTrackOpen] = useState(false);
 
   useEffect(() => {
     // Clear on navigation: the store outlives the page, so without this a
@@ -137,27 +144,154 @@ export default function QuoteDetailPage() {
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
   // Staff edit a DRAFT; a superadmin may edit an order's lines at any stage.
   const canEditLines = (isStaff && quote.state === 'DRAFT') || isSuperadmin;
+  // The proof the buyer is being asked to sign off right now, if any. Drives
+  // the prominent review card (buyer) and the superadmin on-behalf controls.
+  const openProof = latestOpenProof(quote.proofs);
+
+  // A buyer's in-app DESIGNER artwork (a print-usable PNG), if any line carries
+  // one. Lets staff issue the proof straight from it instead of re-uploading the
+  // same file. Deliberately excludes `buyer_uploaded` reference photos: those
+  // are a finished-look intent, not print-ready, and must be proofed from scratch.
+  const buyerDesignRef =
+    quote.line_items?.find(
+      (li) => li.customization?.mode !== 'buyer_uploaded' && li.customization?.artwork_ref,
+    )?.customization?.artwork_ref ?? null;
   // A line still needing a staff decision blocks the production gate: the gate
   // is a confirmation that everything is in hand, which is not yet true.
   const awaitingDecision =
     quote.line_items?.some((li) => li.line_state === 'AWAITING_RECONFIRM') ?? false;
 
   /**
-   * The Proofs card, rendered in a DIFFERENT position per role - see the two
-   * guarded slots below.
+   * Buyer proof sign-off - the primary call to action on the whole page when a
+   * proof is open. Shows the artwork INLINE (no click-through to see what you're
+   * approving) and the approve / request-changes controls right under it. Sits
+   * high on the page (rendered straight after the status card) so the decision
+   * is the first thing the buyer meets, never buried below pricing.
    *
-   * For a buyer this card is not reference material: it carries their proof
-   * sign-off (approve / request changes), which is the primary call to action
-   * on the whole page. It stays high, above the pricing and the "Next step"
-   * card, so their action is never buried.
-   *
-   * Staff never see that sign-off. For them the proof list is a record to read
-   * while working the controls, so it belongs after the Staff actions card
-   * rather than pushing those controls down the page.
-   *
-   * Defined once and rendered in one of two slots rather than duplicated:
-   * two copies of ~110 lines of JSX would drift. Do NOT "simplify" this back
-   * to a single slot - the position is deliberately role-dependent.
+   * Only rendered for a buyer with an open proof; staff and the read-only
+   * history use `proofsCard` below.
+   */
+  const buyerProofReview = !isStaff && openProof && (
+    <Motion variants={staggerItem}>
+      <Card padding="lg" aria-labelledby="proof-review-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="proof-review-heading" className="font-display text-xl text-fg">
+            Review your proof
+          </h2>
+          <span className="flex items-center gap-2">
+            <span className="text-sm font-medium text-fg">v{openProof.version}</span>
+            <Badge tone={proofStateTone(openProof.state)} size="sm">
+              {humanizeState(openProof.state)}
+            </Badge>
+          </span>
+        </div>
+        <p className="mt-1 text-sm text-fg-muted">
+          Check the artwork below. Approve it to move ahead, or request changes.
+        </p>
+
+        {/* The artwork itself, shown in place. artwork_url is resolved
+            server-side; safeHref covers legacy rows holding a pasted URL. */}
+        <div className="mt-4">
+          <ArtworkPreview url={openProof.artwork_url ?? safeHref(openProof.artwork_version_ref)} />
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy}
+              onClick={() => run(() => decideProof(openProof.id, 'approve', null), 'Proof approved')}
+            >
+              Approve proof
+            </Button>
+            <Button
+              variant="outline"
+              disabled={busy || changesOpen}
+              onClick={() => setChangesOpen(true)}
+            >
+              Request changes
+            </Button>
+          </div>
+
+          {/* Inline reveal: capture WHAT to change before sending. */}
+          {changesOpen && (
+            <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3">
+              <label htmlFor="change-notes" className="text-sm font-medium text-fg">
+                What should we change?{' '}
+                <span className="font-normal text-danger">(required)</span>
+              </label>
+              <textarea
+                id="change-notes"
+                rows={3}
+                maxLength={2000}
+                value={changeNotes}
+                onChange={(e) => setChangeNotes(e.target.value)}
+                placeholder="e.g. Move the logo up and use the darker blue from our brand kit."
+                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-fg placeholder:text-fg-subtle transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+              />
+              <p className="text-xs text-fg-subtle">
+                Tell us what to fix so we can turn around a revised proof — this note goes to our team.
+              </p>
+
+              {/* Optional reference image: a mock-up, a photo, a sketch of what
+                  they want. Uploads to the buyer artwork endpoint and travels to
+                  staff on the change request. */}
+              <ProofFileInput
+                label="Attach a reference (optional)"
+                hint="An image showing what you'd like — PNG, JPG or WEBP, up to 10 MB."
+                value={changeAttachment}
+                error={undefined}
+                disabled={busy}
+                endpoint="/uploads/artwork"
+                field="artwork"
+                accept="image/png,image/jpeg,image/webp"
+                maxBytes={10 * 1024 * 1024}
+                onChange={(ref) => setChangeAttachment(ref)}
+              />
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="primary"
+                  loading={busy}
+                  // A reason is mandatory: staff need to know WHAT to revise, and
+                  // the API rejects request_changes without a note anyway.
+                  disabled={busy || changeNotes.trim().length === 0}
+                  onClick={() =>
+                    run(async () => {
+                      await decideProof(
+                        openProof.id,
+                        'request_changes',
+                        changeNotes.trim(),
+                        changeAttachment ? [changeAttachment] : undefined,
+                      );
+                      if (!useQuoteStore.getState().actionError) {
+                        setChangesOpen(false);
+                        setChangeNotes('');
+                        setChangeAttachment('');
+                      }
+                    }, 'Changes requested')
+                  }
+                >
+                  Send request
+                </Button>
+                <Button variant="ghost" disabled={busy} onClick={() => setChangesOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+    </Motion>
+  );
+
+  /**
+   * Read-only proof history: the list of every version and its state. For a
+   * buyer this is reference only - their sign-off lives in `buyerProofReview`
+   * above - so it is shown only once there is no open proof to act on. For
+   * staff it is the record they read while working the controls, so it follows
+   * the Staff actions card.
    */
   const proofsCard = (
     <Motion variants={staggerItem}>
@@ -168,107 +302,73 @@ export default function QuoteDetailPage() {
         {quote.proofs && quote.proofs.length > 0 ? (
           <ul className="mt-4 flex flex-col divide-y divide-border">
             {quote.proofs.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
-                <span className="flex items-center gap-3">
-                  <span className="font-medium text-fg">v{p.version}</span>
-                  <Badge tone={proofStateTone(p.state)} size="sm">
-                    {humanizeState(p.state)}
-                  </Badge>
-                </span>
-                {/* artwork_url is resolved server-side so the client never has
-                    to know whether the proof was uploaded or pasted. Falls back
-                    to the raw ref for legacy rows that are neither. */}
-                {p.artwork_url ?? safeHref(p.artwork_version_ref) ? (
-                  <a
-                    href={p.artwork_url ?? safeHref(p.artwork_version_ref)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                  >
-                    View artwork
-                  </a>
-                ) : (
-                  <span className="text-sm text-fg-subtle">{p.artwork_version_ref}</span>
+              <li key={p.id} className="flex flex-col gap-2 py-3 first:pt-0">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="flex items-center gap-3">
+                    <span className="font-medium text-fg">v{p.version}</span>
+                    <Badge tone={proofStateTone(p.state)} size="sm">
+                      {humanizeState(p.state)}
+                    </Badge>
+                  </span>
+                  {/* artwork_url is resolved server-side so the client never has
+                      to know whether the proof was uploaded or pasted. Falls back
+                      to the raw ref for legacy rows that are neither. */}
+                  {p.artwork_url ?? safeHref(p.artwork_version_ref) ? (
+                    <a
+                      href={p.artwork_url ?? safeHref(p.artwork_version_ref)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                    >
+                      View artwork
+                    </a>
+                  ) : (
+                    <span className="text-sm text-fg-subtle">{p.artwork_version_ref}</span>
+                  )}
+                </div>
+
+                {/* The buyer's change request: their note + any reference images
+                    they attached, so staff see WHAT to revise on this version. */}
+                {(p.notes || (p.change_attachments && p.change_attachments.length > 0)) && (
+                  <div className="rounded-md border border-border bg-surface-2/50 p-3">
+                    {p.notes && (
+                      <p className="text-sm text-fg-muted">
+                        <span className="font-medium text-fg">Requested changes: </span>
+                        {p.notes}
+                      </p>
+                    )}
+                    {p.change_attachments && p.change_attachments.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {p.change_attachments.map((a) =>
+                          a.url ? (
+                            <a
+                              key={a.ref}
+                              href={a.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block h-16 w-16 overflow-hidden rounded-md border border-border bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              title="Open reference"
+                            >
+                              <img src={a.url} alt="Buyer reference" className="h-full w-full object-cover" />
+                            </a>
+                          ) : (
+                            <span
+                              key={a.ref}
+                              className="inline-flex items-center rounded-md border border-border bg-surface px-2 py-1 text-xs text-fg-subtle"
+                            >
+                              Reference attached
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-fg-muted">No proofs issued yet.</p>
-        )}
-
-        {/* Buyer sign-off on the open proof (gate 1). */}
-        {!isStaff && latestOpenProof(quote.proofs) && (
-          <div className="mt-5 flex flex-col gap-3">
-            <div className="flex flex-wrap gap-3">
-              <Button
-                variant="primary"
-                loading={busy}
-                disabled={busy}
-                onClick={() =>
-                  run(
-                    () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
-                    'Proof approved',
-                  )
-                }
-              >
-                Approve proof
-              </Button>
-              <Button
-                variant="outline"
-                disabled={busy || changesOpen}
-                onClick={() => setChangesOpen(true)}
-              >
-                Request changes
-              </Button>
-            </div>
-
-            {/* Inline reveal: capture WHAT to change before sending. */}
-            {changesOpen && (
-              <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3">
-                <label htmlFor="change-notes" className="text-sm font-medium text-fg">
-                  What should we change?{' '}
-                  <span className="font-normal text-fg-muted">(optional)</span>
-                </label>
-                <textarea
-                  id="change-notes"
-                  rows={3}
-                  maxLength={2000}
-                  value={changeNotes}
-                  onChange={(e) => setChangeNotes(e.target.value)}
-                  placeholder="e.g. Move the logo up and use the darker blue from our brand kit."
-                  className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-fg placeholder:text-fg-subtle transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-                />
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() =>
-                      run(async () => {
-                        // API requires a note with request_changes - fall
-                        // back to a generic one if the buyer left it blank.
-                        await decideProof(
-                          latestOpenProof(quote.proofs)!.id,
-                          'request_changes',
-                          changeNotes.trim() || 'Please revise.',
-                        );
-                        if (!useQuoteStore.getState().actionError) {
-                          setChangesOpen(false);
-                          setChangeNotes('');
-                        }
-                      }, 'Changes requested')
-                    }
-                  >
-                    Send request
-                  </Button>
-                  <Button variant="ghost" disabled={busy} onClick={() => setChangesOpen(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
         )}
       </Card>
     </Motion>
@@ -323,9 +423,18 @@ export default function QuoteDetailPage() {
                 </p>
               )}
             </div>
-            <Badge tone={quoteStateTone(quote.state)} size="md" dot>
-              {humanizeState(quote.state)}
-            </Badge>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Buyer-only tracking entry point, aligned with the order title.
+                  Replaces the old full-width "Track this order" card. */}
+              {!isStaff && quote.tracking_link && (
+                <Button variant="secondary" size="sm" onClick={() => setTrackOpen(true)}>
+                  Track order
+                </Button>
+              )}
+              <Badge tone={quoteStateTone(quote.state)} size="md" dot>
+                {humanizeState(quote.state)}
+              </Badge>
+            </div>
           </div>
         </Motion>
 
@@ -357,30 +466,24 @@ export default function QuoteDetailPage() {
           <OrderStatus state={quote.state} history={history} />
         </Motion>
 
-        {/* Login-free tracking link + QR - share with the recipient. Buyer-only:
-            the whole card is a sharing affordance (scan/bookmark to follow
-            without an account), which is meaningless to staff, who reach this
-            order through the console and already see its live state above. The
-            tracking CODE stays in the header for everyone - staff need to read
-            it back to a buyer who calls in. */}
-        {!isStaff && quote.tracking_link && (
+        {/* Buyer proof sign-off - the page's primary action when a proof is
+            open, so it sits right under the status glance with the artwork shown
+            inline. See `buyerProofReview` above. */}
+        {buyerProofReview}
+
+        {/* Buyer status note - passive "what happens next", sitting right under
+            the status glance so the ball is never silently in our court. Only
+            for buyer-facing states with no buyer action (states WITH an action
+            surface it through their own card). */}
+        {!isStaff &&
+          BUYER_STATUS_NOTE[quote.state] &&
+          // PROOFING's "being prepared" copy is contradictory once a proof is
+          // actually open for review - the sign-off card above covers that case.
+          !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs)) && (
           <Motion variants={staggerItem}>
-            <Card padding="lg" aria-labelledby="track-heading">
-              <h2 id="track-heading" className="font-display text-xl text-fg">
-                Track this order
-              </h2>
-              <div className="mt-4 flex flex-col items-center gap-3">
-                <a
-                  href={quote.tracking_link}
-                  className="text-sm font-medium text-primary underline"
-                >
-                  Track your order
-                </a>
-                <TrackingQr link={quote.tracking_link} />
-                <p className="text-xs text-fg-subtle">
-                  Scan or bookmark to follow this order — no login needed.
-                </p>
-              </div>
+            <Card padding="lg">
+              <h2 className="font-display text-xl text-fg">What happens next</h2>
+              <p className="mt-3 text-sm text-fg-muted">{BUYER_STATUS_NOTE[quote.state]}</p>
             </Card>
           </Motion>
         )}
@@ -432,9 +535,10 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
-        {/* Proofs (buyer slot) - carries the buyer's proof sign-off, so it sits
-            above the pricing and "Next step" cards. See `proofsCard` above. */}
-        {!isStaff && proofsCard}
+        {/* Proofs history (buyer slot) - reference only, shown once there's no
+            open proof to act on; the open-proof sign-off lives in the review
+            card near the top of the page. See `proofsCard`/`buyerProofReview`. */}
+        {!isStaff && !openProof && quote.proofs && quote.proofs.length > 0 && proofsCard}
 
         {/* Buyer actions */}
         {!isStaff &&
@@ -512,22 +616,6 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
-        {/* Buyer status note - passive "what happens next" for every
-            buyer-facing state with no buyer action, so the ball is never
-            silently in our court. Mirrors the staff fallback line. */}
-        {!isStaff &&
-          BUYER_STATUS_NOTE[quote.state] &&
-          // PROOFING's "being prepared" copy is contradictory once a proof is
-          // actually open for review - the sign-off card above covers that case.
-          !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs)) && (
-          <Motion variants={staggerItem}>
-            <Card padding="lg">
-              <h2 className="font-display text-xl text-fg">What happens next</h2>
-              <p className="mt-3 text-sm text-fg-muted">{BUYER_STATUS_NOTE[quote.state]}</p>
-            </Card>
-          </Motion>
-        )}
-
         {/* Staff workflow controls */}
         {isStaff && (
           <Motion variants={staggerItem}>
@@ -545,6 +633,7 @@ export default function QuoteDetailPage() {
                           label="Attach proof (optional)"
                           hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
                           value={sendProofRef}
+                          valueLabel={sendProofRef === buyerDesignRef ? 'Buyer’s design' : undefined}
                           error={sendProofRefError}
                           disabled={busy}
                           onChange={(ref) => {
@@ -552,6 +641,23 @@ export default function QuoteDetailPage() {
                             setSendProofRefError(undefined);
                           }}
                         />
+                        {/* One-click reuse: the buyer already supplied a
+                            print-usable designer artwork, so offer it as the
+                            proof instead of re-uploading the same file. */}
+                        {buyerDesignRef && !sendProofRef && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy}
+                            className="mt-2"
+                            onClick={() => {
+                              setSendProofRef(buyerDesignRef);
+                              setSendProofRefError(undefined);
+                            }}
+                          >
+                            Use buyer’s design as the proof
+                          </Button>
+                        )}
                       </div>
                       <Button
                         variant="primary"
@@ -596,6 +702,7 @@ export default function QuoteDetailPage() {
                           label="Proof artwork"
                           hint="PDF or image, up to 3 MB."
                           value={artworkRef}
+                          valueLabel={artworkRef === buyerDesignRef ? 'Buyer’s design' : undefined}
                           error={artworkRefError}
                           disabled={busy}
                           onChange={(ref) => {
@@ -603,6 +710,24 @@ export default function QuoteDetailPage() {
                             setArtworkRefError(undefined);
                           }}
                         />
+                        {/* Reuse the buyer's designer artwork instead of
+                            re-uploading it. Reference-photo uploads are excluded
+                            upstream (buyerDesignRef), so this only appears when a
+                            print-usable design exists. */}
+                        {buyerDesignRef && !artworkRef && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busy}
+                            className="mt-2"
+                            onClick={() => {
+                              setArtworkRef(buyerDesignRef);
+                              setArtworkRefError(undefined);
+                            }}
+                          >
+                            Use buyer’s design as the proof
+                          </Button>
+                        )}
                       </div>
                       <Button
                         variant="primary"
@@ -918,8 +1043,72 @@ export default function QuoteDetailPage() {
             />
           </Modal>
         )}
+
+        {/* Login-free tracking link + QR - opened from the header "Track order"
+            button. Buyer-only sharing affordance (scan/bookmark to follow with no
+            account); staff reach the order through the console. */}
+        {!isStaff && quote.tracking_link && (
+          <Modal
+            open={trackOpen}
+            onClose={() => setTrackOpen(false)}
+            title="Track this order"
+            description="Scan or share this link to follow the order — no login needed."
+          >
+            <div className="flex flex-col items-center gap-3">
+              <a href={quote.tracking_link} className="text-sm font-medium text-primary underline">
+                Track your order
+              </a>
+              <TrackingQr link={quote.tracking_link} />
+            </div>
+          </Modal>
+        )}
       </section>
     </Motion>
+  );
+}
+
+/**
+ * Renders proof artwork in place so the buyer sees what they're approving
+ * without a click-through. The signed URL carries no reliable extension, so we
+ * try to render it as an image and fall back to an open-in-new-tab link when it
+ * isn't one (e.g. a PDF proof) or fails to load. Clicking the image still opens
+ * the full-size artwork in a new tab.
+ */
+function ArtworkPreview({ url }: { url: string | null | undefined }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!url) {
+    return <p className="text-sm text-fg-muted">Artwork preview isn’t available — please contact us.</p>;
+  }
+
+  if (failed) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+      >
+        Open artwork ↗
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="block overflow-hidden rounded-md border border-border bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+      title="Open full-size artwork"
+    >
+      <img
+        src={url}
+        alt="Proof artwork"
+        onError={() => setFailed(true)}
+        className="mx-auto max-h-[28rem] w-full object-contain"
+      />
+    </a>
   );
 }
 

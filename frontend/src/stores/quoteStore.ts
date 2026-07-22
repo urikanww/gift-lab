@@ -121,7 +121,12 @@ interface QuoteStoreState {
   accept: (id: number) => Promise<void>;
   procure: (id: number) => Promise<void>;
   issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
-  decideProof: (proofId: number, decision: 'approve' | 'request_changes', notes: string | null) => Promise<void>;
+  decideProof: (
+    proofId: number,
+    decision: 'approve' | 'request_changes',
+    notes: string | null,
+    attachments?: string[],
+  ) => Promise<void>;
   /** Staff re-send the buyer's proof-review email. Resolves true on success. */
   resendProof: (proofId: number) => Promise<boolean>;
   issueInvoice: (id: number, poRef: string, terms: string | null) => Promise<void>;
@@ -287,11 +292,11 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  decideProof: async (proofId, decision, notes) => {
+  decideProof: async (proofId, decision, notes, attachments) => {
     set({ actionError: null });
     try {
       await ensureCsrf();
-      await api.post(`/proofs/${proofId}/decide`, { decision, notes });
+      await api.post(`/proofs/${proofId}/decide`, { decision, notes, attachments });
       const current = get().current;
       if (current) await get().fetchQuote(current.id);
     } catch (err) {

@@ -42,7 +42,7 @@ it('reports pipeline, production, and queue counts', function (): void {
     expect($res->json('pipeline.SENT'))->toBe(2);
     expect($res->json('pipeline.ACCEPTED'))->toBe(1);
     expect($res->json('production'))->toHaveKeys(['byState', 'wip', 'overdue']);
-    expect($res->json('queues'))->toHaveKeys(['proofsPending', 'procurementToReconfirm', 'cataloguePending', 'reordersOpen']);
+    expect($res->json('queues'))->toHaveKeys(['proofsPending', 'changesRequested', 'procurementToReconfirm', 'cataloguePending', 'reordersOpen']);
 });
 
 it('includes value-booked only for superadmin', function (): void {
@@ -98,10 +98,10 @@ it('runs a bounded number of queries regardless of data volume', function (): vo
     $count = count(DB::getQueryLog());
     DB::disableQueryLog();
 
-    // pipeline + production(byState + overdue) + 4 queues + atRisk
-    // + activity(+eager user + quote references) ≈ 11; the eager-loads make actor
+    // pipeline + production(byState + overdue) + 5 queues + atRisk
+    // + activity(+eager user + quote references) ≈ 12; the eager-loads make actor
     // and reference lookup ONE query each, not 30. Guard against N+1.
-    expect($count)->toBeLessThanOrEqual(13);
+    expect($count)->toBeLessThanOrEqual(14);
 });
 
 it('names a Quote activity row by reference and leaves other types on the id shape', function (): void {

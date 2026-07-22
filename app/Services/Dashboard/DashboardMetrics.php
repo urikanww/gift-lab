@@ -42,7 +42,7 @@ class DashboardMetrics
         // queues twice). Only valueBooked differs, so it gets its own key and is
         // computed/cached solely for superadmins.
         $counts = Cache::remember(
-            'dashboard.metrics.v2',
+            'dashboard.metrics.v3',
             45,
             fn (): array => [
                 'pipeline' => $this->pipeline(),
@@ -96,6 +96,11 @@ class DashboardMetrics
     {
         return [
             'proofsPending' => Proof::query()->where('state', 'SENT')->count(),
+            // Buyer sent a proof back for changes: staff must issue a revised
+            // version. Keyed on the PROOF state so it catches both paths - the
+            // accepted-price order that stays PROOFING and the slim order that
+            // moves to CHANGES_REQUESTED - which a quote-state count would miss.
+            'changesRequested' => Proof::query()->where('state', 'CHANGES_REQUESTED')->count(),
             'procurementToReconfirm' => LineItem::query()->where('line_state', 'AWAITING_RECONFIRM')->count(),
             'cataloguePending' => Product::query()->where('publish_state', 'READY_TO_APPROVE')->count(),
             'reordersOpen' => SupplierReorder::query()->where('state', '!=', 'RECEIVED')->count(),
