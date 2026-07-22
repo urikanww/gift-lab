@@ -222,6 +222,10 @@ class QuoteController extends Controller
             $request->input('delivery') !== null ? (float) $request->input('delivery') : null,
             $request->input('notes'),
             $request->array('removed_line_ids'),
+            // Presence, not value: only replace the set when the key is sent, so
+            // an edit that never touched adjustments leaves them alone.
+            $request->has('adjustments') ? $request->array('adjustments') : null,
+            $request->input('remark'),
         );
 
         return new QuoteResource($quote->load('lineItems'));

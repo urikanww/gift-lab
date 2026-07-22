@@ -129,14 +129,16 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // pass through the reference it loaded the order with. Tenancy is the view
     // policy's call - see QuoteController::history.
     Route::get('/quotes/{ref}/history', [QuoteController::class, 'history']);
-    Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend']);
-    Route::post('/quotes/{quote}/send', [QuoteController::class, 'send']);
+    // Staff order-editing actions gate on quotes.edit (buyers reach none of
+    // these - accept/pay below are the buyer's, and are not gated).
+    Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend'])->middleware('permission:quotes.edit');
+    Route::post('/quotes/{quote}/send', [QuoteController::class, 'send'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
-    Route::post('/quotes/{quote}/invoice', [QuoteController::class, 'issueInvoice']);
-    Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure']);
+    Route::post('/quotes/{quote}/invoice', [QuoteController::class, 'issueInvoice'])->middleware('permission:quotes.edit');
+    Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure'])->middleware('permission:quotes.edit');
     // The production gate: a person confirming the goods are in hand.
-    Route::post('/quotes/{quote}/confirm-stock', [QuoteController::class, 'confirmStock']);
-    Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel']);
+    Route::post('/quotes/{quote}/confirm-stock', [QuoteController::class, 'confirmStock'])->middleware('permission:quotes.edit');
+    Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);
 
     // Per-quote shipping address (staff read/upsert; buyers are 403).
@@ -154,26 +156,26 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/proofs/{proof}/decide', [ProofController::class, 'decide']);
 
     // Procurement reconfirmation
-    Route::get('/procurement/awaiting-reconfirm', [ProcurementController::class, 'index']);
-    Route::post('/line-items/{lineItem}/reconfirm', [ProcurementController::class, 'reconfirm']);
+    Route::get('/procurement/awaiting-reconfirm', [ProcurementController::class, 'index'])->middleware('permission:procurement.view');
+    Route::post('/line-items/{lineItem}/reconfirm', [ProcurementController::class, 'reconfirm'])->middleware('permission:procurement.manage');
 
     // Shared production queue
-    Route::get('/production-queue', [ProductionQueueController::class, 'index']);
-    Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance']);
-    Route::post('/production-jobs/advance-batch', [ProductionQueueController::class, 'advanceBatch']);
-    Route::post('/production-jobs/{job}/advance-next', [ProductionQueueController::class, 'advanceNext']);
+    Route::get('/production-queue', [ProductionQueueController::class, 'index'])->middleware('permission:production.view');
+    Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance'])->middleware('permission:production.manage');
+    Route::post('/production-jobs/advance-batch', [ProductionQueueController::class, 'advanceBatch'])->middleware('permission:production.manage');
+    Route::post('/production-jobs/{job}/advance-next', [ProductionQueueController::class, 'advanceNext'])->middleware('permission:production.manage');
     // Streams the job's print-ready file (3D UV decal or approved proof
     // artwork) off the private disk so the floor can print it. Staff-gated.
-    Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile']);
-    Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment']);
+    Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile'])->middleware('permission:production.view');
+    Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment'])->middleware('permission:production.manage');
 
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
-    Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index']);
-    Route::post('/admin/products/{product}/publish', [AdminCatalogueController::class, 'publish']);
+    Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index'])->middleware('permission:products.view');
+    Route::post('/admin/products/{product}/publish', [AdminCatalogueController::class, 'publish'])->middleware('permission:products.approve');
     // Staff fix the self-fixable SCRAPED_UV blockers inline (dims/weight, print
     // method, price), then re-gate + publish in one call.
     Route::post('/admin/products/{product}/resolve-blockers', [AdminCatalogueController::class, 'resolveBlockers']);
-    Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish']);
+    Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish'])->middleware('permission:products.approve');
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
     Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone']);
@@ -193,17 +195,17 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
 
     // CORE product/variant management (staff; audit E4) - ops add a blank or
     // fix stock/price without seeders or DB access.
-    Route::get('/admin/products', [AdminProductController::class, 'index']);
-    Route::post('/admin/products', [AdminProductController::class, 'store']);
+    Route::get('/admin/products', [AdminProductController::class, 'index'])->middleware('permission:products.view');
+    Route::post('/admin/products', [AdminProductController::class, 'store'])->middleware('permission:products.edit');
     // Must be registered before the /{product} wildcard routes below, or
     // "bulk-publish" would be captured as a {product} id.
-    Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish']);
-    Route::post('/admin/products/import', [AdminProductController::class, 'import']);
+    Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish'])->middleware('permission:products.approve');
+    Route::post('/admin/products/import', [AdminProductController::class, 'import'])->middleware('permission:products.edit');
     // Detail/edit fetch - withTrashed so the editor can open an archived row.
-    Route::get('/admin/products/{product}', [AdminProductController::class, 'show'])->withTrashed();
-    Route::get('/admin/products/{product}/history', [AdminProductController::class, 'history'])->withTrashed();
-    Route::patch('/admin/products/{product}', [AdminProductController::class, 'update']);
-    Route::delete('/admin/products/{product}', [AdminProductController::class, 'destroy']);
+    Route::get('/admin/products/{product}', [AdminProductController::class, 'show'])->withTrashed()->middleware('permission:products.view');
+    Route::get('/admin/products/{product}/history', [AdminProductController::class, 'history'])->withTrashed()->middleware('permission:products.view');
+    Route::patch('/admin/products/{product}', [AdminProductController::class, 'update'])->middleware('permission:products.edit');
+    Route::delete('/admin/products/{product}', [AdminProductController::class, 'destroy'])->middleware('permission:products.edit');
     // Archived rows are soft-deleted, so bind withTrashed to resolve them.
     Route::post('/admin/products/{product}/restore', [AdminProductController::class, 'restore'])->withTrashed();
     Route::post('/admin/products/{product}/image', [AdminProductController::class, 'uploadImage']);
@@ -214,8 +216,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Supplier reorder buy-list (staff): open reorder drafts raised by
     // below-threshold / backorder procurement, and marking them received
     // (which restocks the variant through the ledger).
-    Route::get('/admin/supplier-reorders', [AdminReorderController::class, 'index']);
-    Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive']);
+    Route::get('/admin/supplier-reorders', [AdminReorderController::class, 'index'])->middleware('permission:reorders.view');
+    Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive'])->middleware('permission:reorders.manage');
 
     // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
     Route::post('/admin/blank-candidates/capture', [\App\Http\Controllers\AdminBlankCaptureController::class, 'store']);
@@ -232,9 +234,9 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Which emails buyers receive, and how hard they are chased. Separate from
     // the pricing editor: operational rather than financial, and the switches do
     // not exist as rows until one is changed.
-    Route::get('/admin/notification-settings', [NotificationSettingsController::class, 'index']);
-    Route::patch('/admin/notification-settings', [NotificationSettingsController::class, 'update']);
-    Route::patch('/admin/notification-settings/cadence', [NotificationSettingsController::class, 'updateCadence']);
+    Route::get('/admin/notification-settings', [NotificationSettingsController::class, 'index'])->middleware('permission:notifications.view');
+    Route::patch('/admin/notification-settings', [NotificationSettingsController::class, 'update'])->middleware('permission:notifications.manage');
+    Route::patch('/admin/notification-settings/cadence', [NotificationSettingsController::class, 'updateCadence'])->middleware('permission:notifications.manage');
 
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index']);
     Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update']);
@@ -246,6 +248,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
 
     // Superadmin user management (stricter than isStaff() - superadmin-only).
     Route::get('/admin/companies', [AdminUserController::class, 'companies']);
+    // Grantable-permission catalogue for the access table.
+    Route::get('/admin/permissions/catalog', [AdminUserController::class, 'permissionCatalog']);
     Route::get('/admin/users', [AdminUserController::class, 'index']);
     Route::post('/admin/users', [AdminUserController::class, 'store']);
     Route::get('/admin/users/{user}', [AdminUserController::class, 'show'])->withTrashed();

@@ -52,6 +52,7 @@ class Quote extends Model
         'currency',
         'subtotal',
         'delivery',
+        'adjustments',
         'total',
         'price_snapshot_at',
         'accepted_at',
@@ -73,6 +74,7 @@ class Quote extends Model
             'state' => QuoteState::class,
             'subtotal' => 'decimal:2',
             'delivery' => 'decimal:2',
+            'adjustments' => 'array',
             'total' => 'decimal:2',
             'price_snapshot_at' => 'datetime',
             'accepted_at' => 'datetime',
@@ -81,6 +83,25 @@ class Quote extends Model
             'amendment_log' => 'array',
             'needed_by' => 'immutable_date',
         ];
+    }
+
+    /**
+     * Signed sum of the free-form adjustments (discounts negative, charges
+     * positive). The single source of truth for how adjustments hit the total,
+     * so every re-total site folds them in the same way. Non-numeric amounts
+     * are ignored rather than poisoning the sum with NaN.
+     */
+    public function adjustmentsTotal(): float
+    {
+        $sum = 0.0;
+        foreach ((array) ($this->adjustments ?? []) as $adjustment) {
+            $amount = $adjustment['amount'] ?? null;
+            if (is_numeric($amount)) {
+                $sum += (float) $amount;
+            }
+        }
+
+        return round($sum, 2);
     }
 
     protected static function booted(): void

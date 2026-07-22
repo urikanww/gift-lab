@@ -35,6 +35,11 @@ class QuoteResource extends JsonResource
             'currency' => $this->currency,
             'subtotal' => $this->subtotal,
             'delivery' => $this->delivery,
+            // Free-form staff adjustments after delivery (discount/tax/fee).
+            // Buyer-visible on purpose: they move what is owed and appear on the
+            // invoice, so hiding them would leave an unexplained total. Always an
+            // array (never null) so the client renders it without a guard.
+            'adjustments' => $this->adjustments ?? [],
             'total' => $this->total,
             'price_snapshot_at' => $this->price_snapshot_at?->toIso8601String(),
             // The production gate. Null while the order is still waiting for a

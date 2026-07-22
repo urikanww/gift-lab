@@ -49,6 +49,27 @@ class AmendQuoteRequest extends FormRequest
             // alone", so it can never be the way an order loses a line.
             'removed_line_ids' => ['nullable', 'array'],
             'removed_line_ids.*' => ['integer', 'exists:line_items,id'],
+            // Free-form money adjustments after delivery (discount/tax/fee).
+            // Optional and replace-the-whole-set: absent leaves them untouched,
+            // an empty array clears them. Amount is a SIGNED number - negative
+            // discounts, positive charges - hence no min.
+            'adjustments' => ['nullable', 'array'],
+            'adjustments.*.label' => ['required', 'string', 'max:120'],
+            'adjustments.*.amount' => ['required', 'numeric', 'between:-1000000,1000000'],
+            // A mandatory reason for the edit - more than 10 characters, so it
+            // is a real note and not a keystroke. Recorded in the edit trail.
+            'remark' => ['required', 'string', 'min:11', 'max:2000'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'remark.required' => 'Add a remark explaining this edit (more than 10 characters).',
+            'remark.min' => 'The remark must be more than 10 characters.',
         ];
     }
 

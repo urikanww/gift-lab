@@ -59,6 +59,7 @@ it('submits only the lines that actually changed', async () => {
   const qtyInputs = screen.getAllByLabelText('Qty');
   await user.clear(qtyInputs[0]);
   await user.type(qtyInputs[0], '5');
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -72,6 +73,7 @@ it('sends a removal in removed_line_ids rather than by omitting the line', async
   const user = userEvent.setup();
 
   await user.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -102,6 +104,7 @@ it('adds a line with product_id and no id', async () => {
   const priceInputs = screen.getAllByLabelText('Unit price');
   await user.clear(priceInputs[2]);
   await user.type(priceInputs[2], '12');
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -119,6 +122,7 @@ it('submits a delivery-only change with no lines', async () => {
   const deliveryInput = screen.getByLabelText('Delivery');
   await user.clear(deliveryInput);
   await user.type(deliveryInput, '12');
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -152,6 +156,7 @@ it('shows a rejected unit price against the field and keeps the edits', async ()
   const priceInputs = screen.getAllByLabelText('Unit price');
   await user.clear(priceInputs[0]);
   await user.type(priceInputs[0], '1');
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
   await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
   expect(await screen.findByRole('alert')).toHaveTextContent('below the configured margin floor');
@@ -168,4 +173,105 @@ it('refuses to save when every line has been removed', async () => {
   }
 
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+});
+
+it('adds an adjustment and folds a signed amount into the total', async () => {
+  const onSave = renderEditor();
+  const user = userEvent.setup();
+
+  await user.click(screen.getByRole('button', { name: 'Add adjustment' }));
+  await user.type(screen.getByLabelText('Label'), 'Loyalty discount');
+  await user.type(screen.getByLabelText('Amount'), '-10');
+
+  // subtotal 50 + delivery 30 - 10 = 70
+  expect(screen.getByText('SGD 70.00')).toBeInTheDocument();
+
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
+  await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ adjustments: [{ label: 'Loyalty discount', amount: -10 }] }),
+    ),
+  );
+});
+
+it('seeds existing adjustments and clears them when all are removed', async () => {
+  const withAdj = {
+    ...quote,
+    adjustments: [{ label: 'GST', amount: 4.5 }],
+  } as unknown as Quote;
+  const onSave = vi.fn().mockResolvedValue({});
+  render(<QuoteLineEditor quote={withAdj} onCancel={vi.fn()} onSave={onSave} />);
+  const user = userEvent.setup();
+
+  expect((screen.getByLabelText('Label') as HTMLInputElement).value).toBe('GST');
+
+  // Line rows also have Remove buttons; the adjustment's is the last one.
+  const removes = screen.getAllByRole('button', { name: 'Remove' });
+  await user.click(removes[removes.length - 1]);
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
+  await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+  // Empty array replaces the set -> clears it.
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ adjustments: [] })),
+  );
+});
+
+it('omits adjustments from the payload when they are untouched', async () => {
+  const onSave = renderEditor();
+  const user = userEvent.setup();
+
+  // Change only a line; adjustments were never touched.
+  const qtyInputs = screen.getAllByLabelText('Qty');
+  await user.clear(qtyInputs[0]);
+  await user.type(qtyInputs[0], '3');
+  await user.type(screen.getByLabelText('Remark'), 'Adjusting per supplier update.');
+  await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  expect(onSave.mock.calls[0][0].adjustments).toBeUndefined();
+});
+
+it('keeps Save disabled until a remark of more than 10 characters is entered', async () => {
+  renderEditor();
+  const user = userEvent.setup();
+
+  const qtyInputs = screen.getAllByLabelText('Qty');
+  await user.clear(qtyInputs[0]);
+  await user.type(qtyInputs[0], '5');
+
+  const saveBtn = screen.getByRole('button', { name: 'Save changes' });
+  expect(saveBtn).toBeDisabled();
+
+  // Exactly 10 characters is still not enough (must be MORE than 10).
+  await user.type(screen.getByLabelText('Remark'), '1234567890');
+  expect(saveBtn).toBeDisabled();
+
+  // The 11th character unlocks it.
+  await user.type(screen.getByLabelText('Remark'), '1');
+  expect(saveBtn).toBeEnabled();
+});
+
+it('does not enable Save on a remark alone, with nothing changed', async () => {
+  renderEditor();
+  const user = userEvent.setup();
+
+  await user.type(screen.getByLabelText('Remark'), 'A remark but no actual change.');
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+});
+
+it('sends the trimmed remark in the payload', async () => {
+  const onSave = renderEditor();
+  const user = userEvent.setup();
+
+  const qtyInputs = screen.getAllByLabelText('Qty');
+  await user.clear(qtyInputs[0]);
+  await user.type(qtyInputs[0], '5');
+  await user.type(screen.getByLabelText('Remark'), '  Repriced after supplier update.  ');
+  await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+  await waitFor(() => expect(onSave).toHaveBeenCalled());
+  expect(onSave.mock.calls[0][0].remark).toBe('Repriced after supplier update.');
 });

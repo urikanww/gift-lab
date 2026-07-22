@@ -16,6 +16,8 @@ interface Batch {
   key: string;
   by: string;
   at: string | null;
+  /** Staff's reason for the save, shared across the batch's entries. */
+  remark: string | null;
   items: AmendmentLogEntry[];
 }
 
@@ -29,7 +31,13 @@ function groupByBatch(entries: AmendmentLogEntry[]): Batch[] {
     const key = e.batch ?? `${e.at ?? 'unknown'}-${e.by ?? 'unknown'}-${groups.length}`;
     let group = byKey.get(key);
     if (!group) {
-      group = { key, by: e.by_name?.trim() || 'System', at: e.at ?? null, items: [] };
+      group = {
+        key,
+        by: e.by_name?.trim() || 'System',
+        at: e.at ?? null,
+        remark: e.remark?.trim() || null,
+        items: [],
+      };
       byKey.set(key, group);
       groups.push(group);
     }
@@ -76,6 +84,8 @@ function describe(entry: AmendmentLogEntry, currency: string): string {
       return `Delivery: ${money(from.delivery, currency)} → ${money(to.delivery, currency)}`;
     case 'notes':
       return 'Notes updated';
+    case 'adjustments':
+      return `Adjustments: ${money(from.total, currency)} → ${money(to.total, currency)}`;
     case 'edited':
     default:
       return `${name}: ${num(from.qty)} × ${money(from.unit_price, currency)} → ${num(to.qty)} × ${money(to.unit_price, currency)}`;
@@ -117,6 +127,9 @@ export default function AmendmentHistory({
                   </time>
                 )}
               </div>
+              {batch.remark && (
+                <p className="text-sm italic text-fg-muted">“{batch.remark}”</p>
+              )}
               <ul className="flex flex-col gap-1">
                 {batch.items.map((item, i) => (
                   <li key={`${batch.key}-${i}`} className="text-sm text-fg-muted">

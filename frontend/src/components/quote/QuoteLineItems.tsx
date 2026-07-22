@@ -165,6 +165,16 @@ export function PricingSummary({ quote }: { quote: Quote }) {
             {quote.currency} {quote.delivery}
           </dd>
         </div>
+        {/* Staff adjustments after delivery (discount/tax/fee). Buyer-visible -
+            they move what is owed, so the total is never unexplained. */}
+        {(quote.adjustments ?? []).map((adj, i) => (
+          <div key={`${adj.label}-${i}`} className="flex justify-between gap-3 text-sm">
+            <dt className="min-w-0 truncate text-fg-muted">{adj.label || 'Adjustment'}</dt>
+            <dd className="tabular-nums text-fg">
+              {quote.currency} {Number(adj.amount).toFixed(2)}
+            </dd>
+          </div>
+        ))}
         <div className="mt-1 flex items-baseline justify-between border-t border-border pt-2">
           <dt className="font-medium text-fg">Total</dt>
           <dd className="font-display text-xl text-fg">

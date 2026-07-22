@@ -205,6 +205,12 @@ final class QuoteService
      *
      * @param  array<int, array{id?: int|null, product_id?: int, variant_id?: int|null, unit_price: float, qty: int}>  $lineAmendments
      * @param  array<int, int>  $removedLineIds
+     * @param  array<int, array{label?: string, amount?: float}>|null  $adjustments  Null leaves the
+     *         existing set untouched; an array (including empty) REPLACES it. Signed amounts:
+     *         negative discounts, positive charges. Folded into the total after delivery.
+     * @param  string|null  $remark  Staff's reason for this edit, stamped onto every entry of the
+     *         save's batch. Required by the endpoint (AmendQuoteRequest); optional here so
+     *         internal callers and older tests can amend without one.
      */
     public function amend(
         Quote $quote,
@@ -212,12 +218,19 @@ final class QuoteService
         ?float $delivery,
         ?string $notes,
         array $removedLineIds = [],
+        ?array $adjustments = null,
+        ?string $remark = null,
     ): Quote {
-        if ($quote->state !== QuoteState::Draft) {
+        // DRAFT-only for staff, with a deliberate superadmin override: a
+        // superadmin can correct an order's lines at any stage (a wrong price
+        // caught after invoicing, a late line swap). The mandatory remark and
+        // the edit trail capture who did it and why, and an already-issued
+        // invoice is re-anchored to the new total below.
+        if ($quote->state !== QuoteState::Draft && ! (Auth::user()?->isSuperadmin() ?? false)) {
             throw new DomainRuleException('Only DRAFT quotes can be amended.');
         }
 
-        return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes, $removedLineIds): Quote {
+        return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes, $removedLineIds, $adjustments, $remark): Quote {
             $before = ['subtotal' => $quote->subtotal, 'delivery' => $quote->delivery, 'total' => $quote->total];
             $log = $quote->amendment_log ?? [];
             $subtotal = 0.0;
@@ -237,6 +250,10 @@ final class QuoteService
                 'by' => $actorId,
                 'by_name' => $actorName,
                 'at' => $now,
+                // The staff reason for this save, carried on every entry so the
+                // trail can show it once per batch regardless of which entries
+                // the save produced.
+                'remark' => $remark,
             ], $extra);
 
             // Capture the editable scalars BEFORE the loops below mutate them, so
@@ -351,9 +368,38 @@ final class QuoteService
                 ]);
             }
 
+            // Free-form adjustments (discount/tax/surcharge). Null = the editor
+            // did not touch them, so leave the set as-is; an array replaces it
+            // wholesale. Normalised to {label, amount} with a signed 2dp amount.
+            $oldAdjustments = $quote->adjustments ?? [];
+            $newAdjustments = $adjustments === null
+                ? $oldAdjustments
+                : array_values(array_map(
+                    fn (array $a): array => [
+                        'label' => trim((string) ($a['label'] ?? '')),
+                        'amount' => round((float) ($a['amount'] ?? 0), 2),
+                    ],
+                    $adjustments,
+                ));
+
+            if ($adjustments !== null && $newAdjustments !== $oldAdjustments) {
+                $log[] = $entry([
+                    'action' => 'adjustments',
+                    'from' => ['total' => $this->sumAdjustments($oldAdjustments)],
+                    'to' => ['total' => $this->sumAdjustments($newAdjustments)],
+                ]);
+            }
+
+            $quote->adjustments = $newAdjustments;
+
             $quote->subtotal = round($subtotal, 2);
             $quote->delivery = $newDelivery;
-            $quote->total = round((float) $quote->subtotal + (float) $quote->delivery, 2);
+            // Adjustments land after delivery, and can pull the total down (a
+            // discount) as well as up (a tax/fee) - see Quote::adjustmentsTotal.
+            $quote->total = round(
+                (float) $quote->subtotal + (float) $quote->delivery + $quote->adjustmentsTotal(),
+                2,
+            );
             $quote->amendment_log = $log;
             $quote->amended_by = $actorId;
             if ($notes !== null) {
@@ -366,6 +412,20 @@ final class QuoteService
                 'delivery' => $quote->delivery,
                 'total' => $quote->total,
             ]);
+
+            // A superadmin edit can land on an already-invoiced order. Keep the
+            // authoritative invoice amount in step with the new total, exactly as
+            // a post-procurement reconfirmation does, so the buyer is never
+            // invoiced for a superseded figure. No-op on a DRAFT (no invoice yet).
+            if ($quote->state !== QuoteState::Draft) {
+                $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
+                if ($invoice !== null) {
+                    $invoiceBefore = ['amount' => $invoice->amount];
+                    $invoice->amount = $quote->total;
+                    $invoice->save();
+                    $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, ['amount' => $invoice->amount]);
+                }
+            }
 
             return $quote->fresh(['lineItems']);
         });
@@ -381,6 +441,25 @@ final class QuoteService
      *
      * @param  array{product_id: int, variant_id?: int|null, unit_price: float, qty: int}  $addition
      */
+    /**
+     * Signed sum of an adjustment set, matching Quote::adjustmentsTotal but
+     * usable on a raw array (the pre-save snapshot) for logging the delta.
+     *
+     * @param  array<int, array{label?: string, amount?: mixed}>  $adjustments
+     */
+    private function sumAdjustments(array $adjustments): float
+    {
+        $sum = 0.0;
+        foreach ($adjustments as $adjustment) {
+            $amount = $adjustment['amount'] ?? null;
+            if (is_numeric($amount)) {
+                $sum += (float) $amount;
+            }
+        }
+
+        return round($sum, 2);
+    }
+
     private function addAmendedLine(Quote $quote, array $addition): LineItem
     {
         $product = Product::findOrFail($addition['product_id']);
@@ -813,7 +892,13 @@ final class QuoteService
         ];
 
         $quote->subtotal = round((float) $quote->subtotal + $totalDelta, 2);
-        $quote->total = round((float) $quote->subtotal + (float) $quote->delivery, 2);
+        // Keep the staff adjustments (discount/tax/fee) in the re-anchored total,
+        // exactly as the amend path does - otherwise a reconfirmation would
+        // quietly wipe them from what the buyer is invoiced.
+        $quote->total = round(
+            (float) $quote->subtotal + (float) $quote->delivery + $quote->adjustmentsTotal(),
+            2,
+        );
         $quote->save();
 
         // The invoice amount was frozen at issue time; keep the authoritative

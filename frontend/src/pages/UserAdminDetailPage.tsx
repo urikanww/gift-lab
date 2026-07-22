@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import { Button, Card, Input, Select, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { useAuthStore } from '../stores/authStore';
-import type { AdminCompany, AdminUser, UserRole } from '../types';
+import type { AdminCompany, AdminUser, PermissionCatalog, UserRole } from '../types';
 import { ActiveBadge, RoleBadge } from './adminUserBadges';
 
 export default function UserAdminDetailPage() {
@@ -135,6 +135,12 @@ function DetailBody({ user, onChanged }: { user: AdminUser; onChanged: () => voi
 
       {!deactivated && <EditForm user={user} isSelf={isSelf} onChanged={onChanged} />}
 
+      {/* Granular access - only a staff_admin can be restricted. Superadmin
+          (all) and buyers (none) get no table. */}
+      {!deactivated && user.permissions_editable && (
+        <AccessSection user={user} onChanged={onChanged} />
+      )}
+
       {!deactivated && <PasswordResetSection user={user} />}
     </div>
   );
@@ -237,6 +243,151 @@ function EditForm({
           </Button>
         </div>
       </form>
+    </Card>
+  );
+}
+
+/**
+ * The access table: a superadmin grants a staff_admin exactly the sections and
+ * actions they may use. Boxes start from the user's current effective set (a
+ * grandfathered staff has everything checked); unchecking and saving stores an
+ * explicit allowlist, which the middleware then enforces per action.
+ */
+function AccessSection({ user, onChanged }: { user: AdminUser; onChanged: () => void }) {
+  const { toast } = useToast();
+  const [catalog, setCatalog] = useState<PermissionCatalog | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set(user.permissions ?? []));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ data: PermissionCatalog }>('/admin/permissions/catalog')
+      .then(({ data }) => {
+        if (!cancelled) setCatalog(data.data);
+      })
+      .catch(() => {
+        // Non-critical: without the catalogue the table just doesn't render.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Re-seed if the user reloads (e.g. after a save elsewhere).
+  useEffect(() => {
+    setSelected(new Set(user.permissions ?? []));
+  }, [user.permissions]);
+
+  const allKeys = catalog
+    ? Object.entries(catalog).flatMap(([section, meta]) =>
+        Object.keys(meta.actions).map((action) => `${section}.${action}`),
+      )
+    : [];
+
+  const toggle = (key: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const setAll = (on: boolean) => setSelected(new Set(on ? allKeys : []));
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await ensureCsrf();
+      // Preserve catalogue order in the stored list for stable diffs/reads.
+      await api.patch(`/admin/users/${user.id}`, {
+        permissions: allKeys.filter((k) => selected.has(k)),
+      });
+      toast({ title: 'Access updated', description: user.name, tone: 'success' });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Not saved', description: apiError(err), tone: 'danger' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!catalog) return null;
+
+  return (
+    <Card padding="lg">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-xl text-fg">Access</h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            Choose exactly which sections and actions this staff member can use.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" disabled={saving} onClick={() => setAll(true)}>
+            Select all
+          </Button>
+          <Button variant="ghost" size="sm" disabled={saving} onClick={() => setAll(false)}>
+            Clear all
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[28rem] text-left text-sm">
+          <thead>
+            <tr className="border-b border-border text-xs uppercase tracking-wide text-fg-subtle">
+              <th scope="col" className="py-2 font-medium">
+                Access
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Allowed
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(catalog).map(([section, meta]) => (
+              <Fragment key={section}>
+                <tr className="border-b border-border bg-surface-2/40">
+                  <td colSpan={2} className="px-1 py-2 font-medium text-fg">
+                    {meta.label}
+                  </td>
+                </tr>
+                {Object.entries(meta.actions).map(([action, description]) => {
+                  const key = `${section}.${action}`;
+                  const inputId = `perm-${key}`;
+                  return (
+                    <tr key={key} className="border-b border-border last:border-0">
+                      <td className="py-2 pl-3 pr-2">
+                        <label htmlFor={inputId} className="cursor-pointer text-fg-muted">
+                          {description}
+                        </label>
+                      </td>
+                      <td className="py-2 text-right">
+                        <input
+                          id={inputId}
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer accent-primary"
+                          checked={selected.has(key)}
+                          disabled={saving}
+                          onChange={() => toggle(key)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4">
+        <Button size="sm" loading={saving} onClick={() => void save()}>
+          Save access
+        </Button>
+      </div>
     </Card>
   );
 }

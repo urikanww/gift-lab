@@ -62,6 +62,7 @@ export default function QuoteDetailPage() {
   } = useQuoteStore();
   const user = useAuthStore((s) => s.user);
   const isStaff = isStaffRole(user?.role);
+  const isSuperadmin = user?.role === 'superadmin';
   const { toast } = useToast();
 
   // The order's recorded state trail, fetched ONCE here and shared by both the
@@ -145,6 +146,8 @@ export default function QuoteDetailPage() {
   if (quote.created_at && !stepTimes.DRAFT) stepTimes.DRAFT = quote.created_at;
 
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
+  // Staff edit a DRAFT; a superadmin may edit an order's lines at any stage.
+  const canEditLines = (isStaff && quote.state === 'DRAFT') || isSuperadmin;
   // A line still needing a staff decision blocks the production gate: the gate
   // is a confirmation that everything is in hand, which is not yet true.
   const awaitingDecision =
@@ -404,15 +407,17 @@ export default function QuoteDetailPage() {
           <Card padding="none" className="overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <h2 className="font-display text-xl text-fg">Items</h2>
-              {/* DRAFT-only, staff-only: the service refuses to amend anything
-                  further along, and past SENT the buyer has seen the figures. */}
-              {isStaff && quote.state === 'DRAFT' && !editingLines && (
+              {/* Staff edit DRAFT only; a superadmin can edit at any stage (the
+                  service enforces the same rule, and re-anchors an issued
+                  invoice). Past SENT the buyer has seen the figures, so the
+                  superadmin override is deliberately narrow to that role. */}
+              {canEditLines && !editingLines && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingLines(true)}>
                   Edit items
                 </Button>
               )}
             </div>
-            {isStaff && quote.state === 'DRAFT' && editingLines ? (
+            {canEditLines && editingLines ? (
               <QuoteLineEditor
                 quote={quote}
                 onCancel={() => setEditingLines(false)}
