@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 /**
  * Orchestrates the quote spine end to end. Controllers stay thin; every state
@@ -221,6 +222,28 @@ final class QuoteService
             $log = $quote->amendment_log ?? [];
             $subtotal = 0.0;
 
+            // One Save can touch several lines plus delivery and notes. Stamp
+            // every entry it produces with a shared batch id, one timestamp and
+            // one actor, so the trail can be grouped as "3 changes by Ada at
+            // 14:02" rather than a scatter of loose rows. The actor NAME is
+            // snapshotted here, not just the id, so the history still reads
+            // correctly after a staff account is deleted.
+            $now = now()->toIso8601String();
+            $batch = (string) Str::uuid();
+            $actorId = Auth::id();
+            $actorName = Auth::user()?->name;
+            $entry = fn (array $extra): array => array_merge([
+                'batch' => $batch,
+                'by' => $actorId,
+                'by_name' => $actorName,
+                'at' => $now,
+            ], $extra);
+
+            // Capture the editable scalars BEFORE the loops below mutate them, so
+            // a delivery/notes change can be logged against its real prior value.
+            $oldDelivery = (float) $quote->delivery;
+            $oldNotes = $quote->notes;
+
             // Amendments are merged over the quote's full line set, never used to
             // rebuild it. Validation requires only min:1 lines, so summing the
             // payload alone let a partial submission drop the untouched lines out
@@ -240,8 +263,10 @@ final class QuoteService
             }
 
             // Read the lines fresh rather than through a possibly-stale loaded
-            // relation - the subtotal is rebuilt from these rows.
-            $lines = $quote->lineItems()->get();
+            // relation - the subtotal is rebuilt from these rows. Product name
+            // rides along so an edited/removed line reads as a name in the log,
+            // not "Product #12" once the id is all that survives.
+            $lines = $quote->lineItems()->with('product:id,name')->get();
 
             $unknown = array_diff(array_keys($amendmentsByLineId), $lines->pluck('id')->all());
             if ($unknown !== []) {
@@ -259,14 +284,13 @@ final class QuoteService
                 // line contributes nothing to the subtotal. Soft-deleted so the
                 // order's history survives - see LineItem's SoftDeletes.
                 if (in_array($line->id, $removedIds, true)) {
-                    $log[] = [
+                    $log[] = $entry([
+                        'action' => 'removed',
                         'line_item_id' => $line->id,
+                        'product_name' => $line->product?->name,
                         'from' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
                         'to' => null,
-                        'action' => 'removed',
-                        'by' => Auth::id(),
-                        'at' => now()->toIso8601String(),
-                    ];
+                    ]);
 
                     $line->delete();
 
@@ -276,13 +300,13 @@ final class QuoteService
                 $amendment = $amendmentsByLineId[$line->id] ?? null;
 
                 if ($amendment !== null) {
-                    $log[] = [
+                    $log[] = $entry([
+                        'action' => 'edited',
                         'line_item_id' => $line->id,
+                        'product_name' => $line->product?->name,
                         'from' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
                         'to' => ['unit_price' => $amendment['unit_price'], 'qty' => $amendment['qty']],
-                        'by' => Auth::id(),
-                        'at' => now()->toIso8601String(),
-                    ];
+                    ]);
 
                     $line->unit_price = $amendment['unit_price'];
                     $line->qty = $amendment['qty'];
@@ -295,23 +319,43 @@ final class QuoteService
             foreach ($additions as $addition) {
                 $line = $this->addAmendedLine($quote, $addition);
 
-                $log[] = [
+                $log[] = $entry([
+                    'action' => 'added',
                     'line_item_id' => $line->id,
+                    // Snapshotted onto the line at creation - no extra query.
+                    'product_name' => $line->frozen_snapshot['product_name'] ?? null,
                     'from' => null,
                     'to' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
-                    'action' => 'added',
-                    'by' => Auth::id(),
-                    'at' => now()->toIso8601String(),
-                ];
+                ]);
 
                 $subtotal += (float) $line->lineTotal();
             }
 
+            $newDelivery = $delivery ?? (float) $quote->delivery;
+            // Delivery is its own entry: it moves the order total without
+            // touching any line, so it would otherwise leave no trace.
+            if (round($newDelivery, 2) !== round($oldDelivery, 2)) {
+                $log[] = $entry([
+                    'action' => 'delivery',
+                    'from' => ['delivery' => round($oldDelivery, 2)],
+                    'to' => ['delivery' => round($newDelivery, 2)],
+                ]);
+            }
+
+            // Notes likewise - a staff note change is an edit worth attributing.
+            if ($notes !== null && $notes !== $oldNotes) {
+                $log[] = $entry([
+                    'action' => 'notes',
+                    'from' => ['notes' => $oldNotes],
+                    'to' => ['notes' => $notes],
+                ]);
+            }
+
             $quote->subtotal = round($subtotal, 2);
-            $quote->delivery = $delivery ?? (float) $quote->delivery;
+            $quote->delivery = $newDelivery;
             $quote->total = round((float) $quote->subtotal + (float) $quote->delivery, 2);
             $quote->amendment_log = $log;
-            $quote->amended_by = Auth::id();
+            $quote->amended_by = $actorId;
             if ($notes !== null) {
                 $quote->notes = $notes;
             }

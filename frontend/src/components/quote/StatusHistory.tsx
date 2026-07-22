@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
 import { Card, SkeletonText } from '../../ui';
 import { humanizeState } from '../../lib/quoteStatus';
-import { fetchQuoteHistory, type QuoteHistoryEntry } from '../../lib/quotes';
-import type { QuoteState } from '../../types';
+import type { QuoteHistoryEntry } from '../../lib/quotes';
+import type { QuoteHistory } from '../../lib/useQuoteHistory';
 
 /**
  * The day transition logging shipped. Every order created before this has no
@@ -45,61 +44,12 @@ function formatChangedAt(changedAt: string | null): string | null {
  * renders only what the API logged: no partial history is reconstructed from
  * other fields on the order, because a timeline showing two entries and looking
  * complete is worse than one that admits it is empty.
+ *
+ * Presentational: the fetch and its loading/failed bookkeeping live in
+ * `useQuoteHistory`, which the order page owns and shares with the timeline's
+ * per-step timestamps - one fetch, one source of truth for the trail.
  */
-export default function StatusHistory({
-  reference,
-  state,
-}: {
-  reference: string;
-  /**
-   * The order's current state. Not rendered - it exists so this component
-   * refetches when the order moves. `reference` is fixed for the page's whole
-   * lifetime, so keying the fetch on it alone left the buyer reading a history
-   * whose newest entry contradicted the status badge directly above it.
-   * Required, not optional: a call site that forgets it reintroduces exactly
-   * that bug, silently.
-   */
-  state: QuoteState;
-}) {
-  const [entries, setEntries] = useState<QuoteHistoryEntry[]>([]);
-  // Distinct from "resolved empty". Both render no list, but only one of them
-  // justifies claiming the order predates tracking.
-  const [failed, setFailed] = useState(false);
-  // Third distinct case: we haven't been told yet. Starts true so the first
-  // paint doesn't flash the tracking-boundary explanation before the fetch has
-  // answered - that copy asserts a fact about the ORDER, and mid-flight we have
-  // no facts about the order at all.
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    // Set INSIDE the effect, not just as the initial state: this effect re-runs
-    // on every state change, and a refetch that kept showing the pre-change
-    // trail would be a smaller replay of the staleness this key exists to fix.
-    setLoading(true);
-    // The fetcher rejects on failure; swallowing it here is what keeps the
-    // history best-effort. This component must never throw an unhandled
-    // rejection into the order page.
-    fetchQuoteHistory(reference)
-      .then((rows) => {
-        if (!active) return;
-        setEntries(Array.isArray(rows) ? rows : []);
-        setFailed(false);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (!active) return;
-        setEntries([]);
-        setFailed(true);
-        setLoading(false);
-      });
-    return () => {
-      // Guards a late settle after unmount, and equally a stale in-flight
-      // request superseded by a newer state change - neither may write.
-      active = false;
-    };
-  }, [reference, state]);
-
+export default function StatusHistory({ entries, loading, failed }: QuoteHistory) {
   // API order is oldest first; the most recent change is what a buyer wants.
   const newestFirst = [...entries].reverse();
 

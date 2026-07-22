@@ -32,11 +32,39 @@ function nextState(state: QuoteState): QuoteState | null {
 }
 
 /**
+ * Short date + time a step was reached, for the expanded stepper. Same
+ * date-AND-time reasoning as the status history: several steps can land on one
+ * day, so a bare date would render them identically.
+ */
+function formatStepTime(at: string | null | undefined): string | null {
+  if (!at) return null;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
  * Buyer-facing status timeline. Collapsed by default to current state, next
  * state and position - the full nine-step stepper wrapped to two rows at
  * desktop width and dwarfed the order it was describing.
+ *
+ * `timestamps` (optional) maps a state to the instant the order reached it, so
+ * the expanded stepper reads as a dated history rather than a bare checklist.
+ * A step with no recorded instant simply shows no date - future steps never
+ * have one, and older orders may predate transition logging entirely.
  */
-export default function QuoteTimeline({ state }: { state: QuoteState }) {
+export default function QuoteTimeline({
+  state,
+  timestamps,
+}: {
+  state: QuoteState;
+  timestamps?: Partial<Record<QuoteState, string>>;
+}) {
   const [expanded, setExpanded] = useState(false);
   // The component can render more than once on a page, so the disclosure
   // target needs a unique id rather than a hardcoded one.
@@ -118,6 +146,10 @@ export default function QuoteTimeline({ state }: { state: QuoteState }) {
             {TIMELINE.map((step, i) => {
               const done = i < doneCount;
               const active = i === activeIdx;
+              const rawWhen = timestamps?.[step];
+              // Only steps that have actually happened carry an instant. Never
+              // date an upcoming step, even if a timestamp somehow exists for it.
+              const when = done || active ? formatStepTime(rawWhen) : null;
               return (
                 <li key={step} className="flex items-center gap-2">
                   <span
@@ -133,13 +165,21 @@ export default function QuoteTimeline({ state }: { state: QuoteState }) {
                   >
                     {done ? '✓' : i + 1}
                   </span>
-                  <span
-                    className={
-                      'text-xs ' + (active ? 'font-semibold text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle')
-                    }
-                  >
-                    {humanizeState(step)}
-                    {active && <span className="sr-only"> (current status)</span>}
+                  <span className="flex flex-col leading-tight">
+                    <span
+                      className={
+                        'text-xs ' +
+                        (active ? 'font-semibold text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle')
+                      }
+                    >
+                      {humanizeState(step)}
+                      {active && <span className="sr-only"> (current status)</span>}
+                    </span>
+                    {when && (
+                      <time dateTime={rawWhen} className="text-2xs tabular-nums text-fg-subtle">
+                        {when}
+                      </time>
+                    )}
                   </span>
                   {i < TIMELINE.length - 1 && <span className="mx-1 h-px w-4 bg-border" aria-hidden="true" />}
                 </li>

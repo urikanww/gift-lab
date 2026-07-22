@@ -49,6 +49,15 @@ class QuoteResource extends JsonResource
                 ((array) PricingConfig::value('config', 'pay_now_cutoff', ['b2c_enabled' => false]))['b2c_enabled'] ?? false
             ),
             'notes' => $this->notes,
+            // Staff-only edit trail for DRAFT amendments: what changed, who
+            // changed it and when. Carries internal prices and margins, so it is
+            // gated on staff and never serialised into a buyer's payload. Empty
+            // array (not absent) for staff on an order that was never amended, so
+            // the client can render "no edits yet" without a null dance.
+            'amendment_log' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn (): array => $this->amendment_log ?? [],
+            ),
             // Buyer's requested delivery deadline (Y-m-d); null when unset.
             'needed_by' => $this->needed_by?->toDateString(),
             // Both child resources expose quote_reference, reached through their

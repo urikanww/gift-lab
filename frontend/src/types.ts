@@ -331,6 +331,31 @@ export interface Quote {
   line_items?: LineItem[];
   proofs?: Proof[];
   created_at: string | null;
+  /**
+   * Staff-only edit trail for DRAFT amendments. Absent from buyer payloads
+   * entirely (it carries internal prices/margins); present - possibly empty -
+   * only for staff. Entries from one save share a `batch`.
+   */
+  amendment_log?: AmendmentLogEntry[];
+}
+
+/** One recorded change from a staff DRAFT amendment. See QuoteService::amend. */
+export interface AmendmentLogEntry {
+  /** Shared across every entry produced by a single save, for grouping. */
+  batch?: string;
+  /** What changed. `edited`/`added`/`removed` are line changes. */
+  action?: 'edited' | 'added' | 'removed' | 'delivery' | 'notes';
+  /** Editor's user id, and their name snapshotted at edit time. */
+  by?: number | null;
+  by_name?: string | null;
+  /** ISO-8601 instant of the save. */
+  at?: string | null;
+  /** Line changes only: the affected line and its product name at the time. */
+  line_item_id?: number;
+  product_name?: string | null;
+  /** Prior/new values. Shape depends on `action` (line price+qty, delivery, notes). */
+  from?: Record<string, unknown> | null;
+  to?: Record<string, unknown> | null;
 }
 
 export interface ProductionJob {

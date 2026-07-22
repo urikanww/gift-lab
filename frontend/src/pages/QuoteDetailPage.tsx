@@ -12,8 +12,10 @@ import TrackingQr from '../components/TrackingQr';
 import Breadcrumb from '../components/Breadcrumb';
 import QuoteTimeline from '../components/quote/QuoteTimeline';
 import StatusHistory from '../components/quote/StatusHistory';
+import { useQuoteHistory } from '../lib/useQuoteHistory';
 import QuoteLineItems, { PricingSummary } from '../components/quote/QuoteLineItems';
 import QuoteLineEditor from '../components/quote/QuoteLineEditor';
+import AmendmentHistory from '../components/quote/AmendmentHistory';
 import ProofFileInput from '../components/quote/ProofFileInput';
 import type { Proof, QuoteState } from '../types';
 
@@ -61,6 +63,13 @@ export default function QuoteDetailPage() {
   const user = useAuthStore((s) => s.user);
   const isStaff = isStaffRole(user?.role);
   const { toast } = useToast();
+
+  // The order's recorded state trail, fetched ONCE here and shared by both the
+  // status-history card and the timeline's per-step timestamps below. Called at
+  // the top level (never after the early returns) so the hook order is stable;
+  // it no-ops until `current` gives us a reference. Keyed on state so it
+  // refetches when the order moves, keeping every dated surface in step.
+  const history = useQuoteHistory(current?.reference ?? '', current?.state ?? 'DRAFT');
 
   // Staff line editor. Closed on save so the read-only table reflects what the
   // server actually stored, rather than leaving the form's optimistic figures
@@ -123,6 +132,18 @@ export default function QuoteDetailPage() {
   if (!current) return <LegacyEmpty title="Quote not found." />;
 
   const quote = current;
+
+  // When the order reached each lifecycle step, for the timeline's dated
+  // stepper. Built from the same recorded trail the history card renders - one
+  // entry per transition, keyed by the state it moved TO. DRAFT rarely has a
+  // logged transition (orders are created in it), so it falls back to the
+  // order's creation time. A step with no recorded instant simply shows no date.
+  const stepTimes: Partial<Record<QuoteState, string>> = {};
+  for (const entry of history.entries) {
+    if (entry.to && entry.changed_at) stepTimes[entry.to as QuoteState] = entry.changed_at;
+  }
+  if (quote.created_at && !stepTimes.DRAFT) stepTimes.DRAFT = quote.created_at;
+
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
   // A line still needing a staff decision blocks the production gate: the gate
   // is a confirmation that everything is in hand, which is not yet true.
@@ -337,17 +358,17 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
-        {/* Status timeline */}
+        {/* Status timeline - the expanded stepper dates each reached step from
+            the shared history trail. */}
         <Motion variants={staggerItem}>
-          <QuoteTimeline state={quote.state} />
+          <QuoteTimeline state={quote.state} timestamps={stepTimes} />
         </Motion>
 
-        {/* Recorded state changes - how the order got where it is. */}
+        {/* Recorded state changes - how the order got where it is. Fed from the
+            same `useQuoteHistory` fetch as the timeline's timestamps, so the two
+            can never disagree. */}
         <Motion variants={staggerItem}>
-          {/* `state` is not rendered by StatusHistory - it is what makes the
-              history refetch when the order moves under it, so the trail can
-              never contradict the badge and timeline above. */}
-          <StatusHistory reference={quote.reference} state={quote.state} />
+          <StatusHistory entries={history.entries} loading={history.loading} failed={history.failed} />
         </Motion>
 
         {/* Login-free tracking link + QR - share with the recipient. Buyer-only:
@@ -412,6 +433,16 @@ export default function QuoteDetailPage() {
             )}
           </Card>
         </Motion>
+
+        {/* Staff-only edit trail for DRAFT amendments, sitting just under the
+            items it describes. The log is only present in staff payloads, so
+            this never renders for a buyer; the component itself hides when the
+            order was never amended. */}
+        {isStaff && quote.amendment_log && quote.amendment_log.length > 0 && (
+          <Motion variants={staggerItem}>
+            <AmendmentHistory entries={quote.amendment_log} currency={quote.currency} />
+          </Motion>
+        )}
 
         {/* Proofs (buyer slot) - carries the buyer's proof sign-off, so it sits
             above the pricing and "Next step" cards. See `proofsCard` above. */}
@@ -519,41 +550,47 @@ export default function QuoteDetailPage() {
 
               <div className="mt-4">
                 {quote.state === 'DRAFT' && (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <ProofFileInput
-                        label="Attach proof (optional)"
-                        hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
-                        value={sendProofRef}
-                        error={sendProofRefError}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="flex-1">
+                        <ProofFileInput
+                          label="Attach proof (optional)"
+                          hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
+                          value={sendProofRef}
+                          error={sendProofRefError}
+                          disabled={busy}
+                          onChange={(ref) => {
+                            setSendProofRef(ref);
+                            setSendProofRefError(undefined);
+                          }}
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        loading={busy}
                         disabled={busy}
-                        onChange={(ref) => {
-                          setSendProofRef(ref);
-                          setSendProofRefError(undefined);
+                        onClick={() => {
+                          // Empty field: frictionless plain send (DRAFT -> SENT),
+                          // no validation and nothing to reset.
+                          if (!sendProofRef.trim()) {
+                            void run(() => send(quote.id), 'Sent to buyer');
+                            return;
+                          }
+                          void run(async () => {
+                            await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
+                            // send() swallows errors into store.error and never
+                            // rejects, so only clear the field on a clean send.
+                            if (!useQuoteStore.getState().actionError) setSendProofRef('');
+                          }, 'Sent to buyer with proof');
                         }}
-                      />
+                      >
+                        Send to buyer
+                      </Button>
                     </div>
-                    <Button
-                      variant="primary"
-                      loading={busy}
-                      disabled={busy}
-                      onClick={() => {
-                        // Empty field: frictionless plain send (DRAFT -> SENT),
-                        // no validation and nothing to reset.
-                        if (!sendProofRef.trim()) {
-                          void run(() => send(quote.id), 'Sent to buyer');
-                          return;
-                        }
-                        void run(async () => {
-                          await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
-                          // send() swallows errors into store.error and never
-                          // rejects, so only clear the field on a clean send.
-                          if (!useQuoteStore.getState().actionError) setSendProofRef('');
-                        }, 'Sent to buyer with proof');
-                      }}
-                    >
-                      Send to buyer
-                    </Button>
+                    <p className="text-xs text-fg-subtle">
+                      Emails the quote to the buyer and moves it to Sent. They can then accept it or
+                      request changes.
+                    </p>
                   </div>
                 )}
 
@@ -564,33 +601,39 @@ export default function QuoteDetailPage() {
                 {(quote.state === 'ACCEPTED' ||
                   quote.state === 'PROOFING' ||
                   quote.state === 'CHANGES_REQUESTED') && (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <ProofFileInput
-                        label="Proof artwork"
-                        hint="PDF or image, up to 3 MB."
-                        value={artworkRef}
-                        error={artworkRefError}
-                        disabled={busy}
-                        onChange={(ref) => {
-                          setArtworkRef(ref);
-                          setArtworkRefError(undefined);
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="flex-1">
+                        <ProofFileInput
+                          label="Proof artwork"
+                          hint="PDF or image, up to 3 MB."
+                          value={artworkRef}
+                          error={artworkRefError}
+                          disabled={busy}
+                          onChange={(ref) => {
+                            setArtworkRef(ref);
+                            setArtworkRefError(undefined);
+                          }}
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        loading={busy}
+                        disabled={busy || !artworkRef}
+                        onClick={() => {
+                          void run(async () => {
+                            await issueProof(quote.id, artworkRef.trim(), null);
+                            setArtworkRef('');
+                          }, 'Proof issued');
                         }}
-                      />
+                      >
+                        Issue proof
+                      </Button>
                     </div>
-                    <Button
-                      variant="primary"
-                      loading={busy}
-                      disabled={busy || !artworkRef}
-                      onClick={() => {
-                        void run(async () => {
-                          await issueProof(quote.id, artworkRef.trim(), null);
-                          setArtworkRef('');
-                        }, 'Proof issued');
-                      }}
-                    >
-                      Issue proof
-                    </Button>
+                    <p className="text-xs text-fg-subtle">
+                      Sends this artwork to the buyer as a proof to review. They approve it or send it
+                      back with changes.
+                    </p>
                   </div>
                 )}
 
@@ -600,47 +643,59 @@ export default function QuoteDetailPage() {
                     the order without being told they were. Renamed to say so,
                     and confirmed before it fires. */}
                 {quote.state === 'PROOF_APPROVED' && (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex-1">
-                      <Input
-                        label="PO reference"
-                        placeholder="PO number"
-                        hint="Raises the invoice and commits the order to production."
-                        value={poRef}
-                        error={poRefError}
-                        onChange={(e) => {
-                          setPoRef(e.target.value);
-                          setPoRefError(undefined);
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="flex-1">
+                        <Input
+                          label="PO reference"
+                          placeholder="PO number"
+                          hint="Raises the invoice and commits the order to production."
+                          value={poRef}
+                          error={poRefError}
+                          onChange={(e) => {
+                            setPoRef(e.target.value);
+                            setPoRefError(undefined);
+                          }}
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        loading={busy}
+                        disabled={busy || !poRef}
+                        onClick={() => {
+                          const err = validatePoRef(poRef);
+                          if (err) {
+                            setPoRefError(err);
+                            return;
+                          }
+                          setCommitOpen(true);
                         }}
-                      />
+                      >
+                        Commit order
+                      </Button>
                     </div>
-                    <Button
-                      variant="primary"
-                      loading={busy}
-                      disabled={busy || !poRef}
-                      onClick={() => {
-                        const err = validatePoRef(poRef);
-                        if (err) {
-                          setPoRefError(err);
-                          return;
-                        }
-                        setCommitOpen(true);
-                      }}
-                    >
-                      Commit order
-                    </Button>
+                    <p className="text-xs text-fg-subtle">
+                      Raises the invoice and confirms the order for production. After this it can no
+                      longer be edited — you’ll be asked to confirm first.
+                    </p>
                   </div>
                 )}
 
                 {quote.state === 'CONFIRMED' && (
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() => run(() => procure(quote.id), 'Procurement started')}
-                  >
-                    Run procurement
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="primary"
+                      loading={busy}
+                      disabled={busy}
+                      onClick={() => run(() => procure(quote.id), 'Procurement started')}
+                    >
+                      Run procurement
+                    </Button>
+                    <p className="text-xs text-fg-subtle">
+                      Checks stock for every line and opens purchasing for anything short, moving the
+                      order into procurement.
+                    </p>
+                  </div>
                 )}
 
                 {quote.state === 'PROCURING' && (
@@ -733,10 +788,16 @@ export default function QuoteDetailPage() {
 
               {/* Cancel: staff-only, available from every pre-production state. */}
               {isCancellable && (
-                <div className="mt-6 border-t border-border pt-4">
-                  <Button variant="danger" disabled={busy} onClick={() => setCancelOpen(true)}>
-                    Cancel quote
-                  </Button>
+                <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
+                  <div>
+                    <Button variant="danger" disabled={busy} onClick={() => setCancelOpen(true)}>
+                      Cancel quote
+                    </Button>
+                  </div>
+                  <p className="text-xs text-fg-subtle">
+                    Stops this order for good. Any stock already reserved is returned. This can’t be
+                    undone.
+                  </p>
                 </div>
               )}
             </Card>
