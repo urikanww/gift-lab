@@ -37,6 +37,8 @@ export interface DashboardPayload {
   atRisk: DashboardAtRisk[];
   queues: {
     proofsPending: number;
+    /** Proofs a buyer sent back for changes - staff must issue a revision. */
+    changesRequested: number;
     procurementToReconfirm: number;
     cataloguePending: number;
     reordersOpen: number;

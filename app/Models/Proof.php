@@ -39,6 +39,7 @@ class Proof extends Model
         'approved_by',
         'approved_at',
         'notes',
+        'change_refs',
     ];
 
     /**
@@ -120,7 +121,47 @@ class Proof extends Model
             'version' => 'integer',
             'state' => ProofState::class,
             'approved_at' => 'datetime',
+            'change_refs' => 'array',
         ];
+    }
+
+    /**
+     * The buyer's "request changes" reference images as {ref, url} pairs, each
+     * with a short-lived viewing link. On an object store the URL presigns
+     * straight to the bucket; on a local disk (which can't presign an arbitrary
+     * key) the URL is null and the client falls back to showing the ref. Only
+     * stored keys resolve - anything else is dropped.
+     *
+     * @return array<int, array{ref: string, url: string|null}>
+     */
+    public function changeAttachments(): array
+    {
+        $disk = (string) config('filesystems.artwork_disk', 'local');
+        $isS3 = config("filesystems.disks.{$disk}.driver") === 's3';
+
+        return array_values(array_filter(array_map(function ($ref) use ($disk, $isS3): ?array {
+            $ref = (string) $ref;
+
+            if ($ref === '' || str_contains($ref, '..')) {
+                return null;
+            }
+
+            $stored = false;
+            foreach (self::STORED_REF_PREFIXES as $prefix) {
+                if (str_starts_with($ref, $prefix)) {
+                    $stored = true;
+                    break;
+                }
+            }
+            if (! $stored) {
+                return null;
+            }
+
+            return [
+                'ref' => $ref,
+                'url' => $isS3 ? Storage::disk($disk)->temporaryUrl($ref, now()->addMinutes(30)) : null,
+            ];
+        }, $this->change_refs ?? [])));
     }
 
     protected static function booted(): void

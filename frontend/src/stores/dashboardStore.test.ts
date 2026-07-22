@@ -6,7 +6,7 @@ const payload: dash.DashboardPayload = {
   pipeline: { SENT: 2 },
   production: { byState: { READY: 1 }, wip: 0, overdue: 0 },
   atRisk: [],
-  queues: { proofsPending: 3, procurementToReconfirm: 1, cataloguePending: 4, reordersOpen: 2 },
+  queues: { proofsPending: 3, changesRequested: 0, procurementToReconfirm: 1, cataloguePending: 4, reordersOpen: 2 },
   activity: [],
   valueBooked: null,
 };

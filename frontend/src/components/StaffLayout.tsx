@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { hasPermission } from '../lib/roles';
 import { Badge, Button, Logo, cn, useTheme } from '../ui';
+import StaffProofAlerts from './StaffProofAlerts';
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -24,11 +25,14 @@ function useStaffNav(): NavItem[] {
   // Each order-related menu carries a count of items sitting in ITS court -
   // work staff still has to action, not things merely waiting on a buyer. Zero
   // renders no badge (see NavList), so a clear queue reads as clear.
+  // Quotes needing a staff hand: unsent drafts + proofs a buyer sent back for
+  // changes (staff must issue a revision). Both land on the Quotes desk.
+  const quotesToAction = (pipeline?.DRAFT ?? 0) + (q?.changesRequested ?? 0);
   const items: NavItem[] = [
     // Dashboard is the console home - every staff member keeps it.
     { to: '/dashboard', label: 'Dashboard' },
-    // Drafts are quotes not yet sent to the buyer - the staff action here.
-    { to: '/quotes', label: 'Quotes', badge: pipeline?.DRAFT, permission: 'quotes.view' },
+    // Drafts not yet sent + proofs bounced back for changes - the staff action.
+    { to: '/quotes', label: 'Quotes', badge: quotesToAction || undefined, permission: 'quotes.view' },
     { to: '/production-queue', label: 'Production', badge: overdue || undefined, permission: 'production.view' },
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm, permission: 'procurement.view' },
     { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen, permission: 'reorders.view' },
@@ -126,6 +130,10 @@ export default function StaffLayout() {
             <ThemeToggle />
           </div>
         </header>
+
+        {/* Side-effect-only: live staff toasts (e.g. buyer requested changes).
+            Mounted once here so it survives page navigation within the console. */}
+        <StaffProofAlerts />
 
         <main id="main-content" className="mx-auto w-full max-w-content flex-1 px-4 py-6 sm:px-6">
           <Outlet />

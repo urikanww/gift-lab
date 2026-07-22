@@ -10,7 +10,7 @@ const base = {
   atRisk: [
     { jobId: 5, quoteId: 9, quoteReference: '9BWVKWCDXH', track: 'UV', state: 'READY', readyAt: null },
   ],
-  queues: { proofsPending: 4, procurementToReconfirm: 2, cataloguePending: 6, reordersOpen: 3 },
+  queues: { proofsPending: 4, changesRequested: 1, procurementToReconfirm: 2, cataloguePending: 6, reordersOpen: 3 },
   activity: [
     { id: 1, actor: 'Ops', event: 'quote.amended', auditableType: 'Quote', auditableId: 9, auditableLabel: 'Order 9BWVKWCDXH', at: null },
     { id: 2, actor: 'Ops', event: 'product.updated', auditableType: 'Product', auditableId: 12, auditableLabel: 'Product #12', at: null },

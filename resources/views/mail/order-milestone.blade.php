@@ -23,7 +23,7 @@
          repeating the whole order here would bury the one line that matters. --}}
     'rows' => '
         <tr>
-            <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a7f6a;">Order ref</td>
-            <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#2b2620; font-weight:600;">'.e($quote->reference).'</td>
+            <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a8a99;">Order ref</td>
+            <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#14141a; font-weight:600;">'.e($quote->reference).'</td>
         </tr>',
 ])

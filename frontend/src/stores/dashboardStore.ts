@@ -50,6 +50,9 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
 
     queueChannel = joinSharedPrivate('staff.queue');
     queueChannel.listen('.production-queue.updated', refresh);
+    // Buyer bounced a proof back for changes: refetch so the Quotes badge count
+    // reflects it. The toast for the same event lives in StaffProofAlerts.
+    queueChannel.listen('.proof.changes-requested', refresh);
     procurementChannel = joinSharedPrivate('staff.procurement');
     procurementChannel.listen('.line-item.awaiting-reconfirm', refresh);
   },
@@ -62,6 +65,7 @@ export const useDashboardStore = create<DashboardStoreState>((set, get) => ({
     offReconnect = null;
     if (refresh) {
       queueChannel?.stopListening('.production-queue.updated', refresh);
+      queueChannel?.stopListening('.proof.changes-requested', refresh);
       procurementChannel?.stopListening('.line-item.awaiting-reconfirm', refresh);
       refresh = null;
     }

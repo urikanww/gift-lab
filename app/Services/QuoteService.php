@@ -47,6 +47,7 @@ final class QuoteService
         private readonly AuditLogger $audit,
         private readonly StockLedger $ledger,
         private readonly OrderNotifier $notifier,
+        private readonly StaffNotifier $staffNotifier,
     ) {}
 
     /**
@@ -677,11 +678,18 @@ final class QuoteService
      * version. On the slim path (accepted_at null) the rejection may concern price or
      * artwork, so the quote advances to CHANGES_REQUESTED for staff triage.
      */
-    public function requestProofChanges(Proof $proof, ?string $notes): Proof
+    /**
+     * @param  array<int, string>  $attachments  Optional buyer reference-image
+     *                                            storage keys (artwork/…).
+     */
+    public function requestProofChanges(Proof $proof, ?string $notes, array $attachments = []): Proof
     {
-        return DB::transaction(function () use ($proof, $notes): Proof {
+        return DB::transaction(function () use ($proof, $notes, $attachments): Proof {
             if ($notes !== null) {
                 $proof->notes = $notes;
+            }
+            if ($attachments !== []) {
+                $proof->change_refs = array_values($attachments);
             }
             $proof->transitionTo(ProofState::ChangesRequested);
 
@@ -696,6 +704,11 @@ final class QuoteService
             }
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+
+            // Put the ball back in staff's court: email every operator and push
+            // a live nudge to the console. After commit, so a rolled-back
+            // request never notifies anyone about a change that didn't land.
+            DB::afterCommit(fn () => $this->staffNotifier->proofChangesRequested($proof));
 
             return $proof;
         });
