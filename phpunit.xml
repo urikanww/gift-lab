@@ -39,6 +39,7 @@
         <env name="LAZADA_AFFILIATE_APP_KEY" value=""/>
         <env name="LAZADA_AFFILIATE_SECRET" value=""/>
         <env name="FILESYSTEM_DISK" value="local"/>
+        <env name="ARTWORK_DISK" value="local"/>
         <env name="AWS_ACCESS_KEY_ID" value=""/>
         <env name="AWS_SECRET_ACCESS_KEY" value=""/>
     </php>

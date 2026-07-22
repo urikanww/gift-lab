@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Exceptions\DomainRuleException;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 /**
@@ -76,12 +77,41 @@ class Proof extends Model
     public function artworkUrl(): ?string
     {
         if ($this->hasStoredArtwork()) {
-            return URL::temporarySignedRoute('proofs.image', now()->addMinutes(30), ['proof' => $this->id]);
+            // In-app viewing link; short-lived, re-minted on each load.
+            return $this->signedArtworkUrl(now()->addMinutes(30));
         }
 
         $ref = (string) $this->artwork_version_ref;
 
         return str_starts_with($ref, 'http://') || str_starts_with($ref, 'https://') ? $ref : null;
+    }
+
+    /**
+     * A time-limited link to the stored artwork, or null when the ref isn't a
+     * stored file.
+     *
+     * On an object store (DigitalOcean Spaces / any S3 disk) this is a PRESIGNED
+     * URL straight to the bucket - reachable from anywhere (a buyer's email
+     * client included) and independent of APP_URL. On a local/dev disk, which
+     * cannot presign, it falls back to the signature-authenticated app route
+     * (proofs.image) served off this host. That fallback is why proofs on a
+     * `local` ARTWORK_DISK render as an APP_URL (e.g. localhost) link and break
+     * in email: set ARTWORK_DISK to a Spaces disk so this presigns instead.
+     */
+    public function signedArtworkUrl(\DateTimeInterface $expiry): ?string
+    {
+        if (! $this->hasStoredArtwork()) {
+            return null;
+        }
+
+        $disk = (string) config('filesystems.artwork_disk', 'local');
+        $ref = (string) $this->artwork_version_ref;
+
+        if (config("filesystems.disks.{$disk}.driver") === 's3') {
+            return Storage::disk($disk)->temporaryUrl($ref, $expiry);
+        }
+
+        return URL::temporarySignedRoute('proofs.image', $expiry, ['proof' => $this->id]);
     }
 
     protected function casts(): array

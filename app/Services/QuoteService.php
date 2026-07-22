@@ -566,9 +566,12 @@ final class QuoteService
             throw new DomainRuleException('Only a proof still awaiting the buyer can be resent.');
         }
 
+        // Recorded in the audit trail (actor + IP captured by AuditLogger), with
+        // the order it belongs to so a resend is traceable to its quote.
         $this->audit->log($proof, 'proof.resent', null, [
             'version' => $proof->version,
-            'by' => Auth::id(),
+            'quote_id' => $proof->quote_id,
+            'quote_reference' => $proof->quote?->reference,
         ]);
 
         // emailQuoteReady picks the latest proof version, which is this open one.
@@ -1065,7 +1068,11 @@ final class QuoteService
 
         $proofImageUrl = null;
         if ($hasProof && ($proof = $quote->proofs()->latest('version')->first()) !== null) {
-            $proofImageUrl = URL::temporarySignedRoute('proofs.image', now()->addDays(14), ['proof' => $proof->id]);
+            // 7 days: the presigned-URL ceiling on S3/Spaces. On a local dev disk
+            // this still resolves to the (host-served) app route. Either way the
+            // buyer opening the email within the week sees the artwork - and on
+            // Spaces the link is a direct, reachable bucket URL, not localhost.
+            $proofImageUrl = $proof->signedArtworkUrl(now()->addDays(7));
         }
 
         DB::afterCommit(fn () => Mail::to($recipient->email)->queue(
