@@ -174,23 +174,25 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/products/{product}/publish', [AdminCatalogueController::class, 'publish'])->middleware('permission:products.approve');
     // Staff fix the self-fixable SCRAPED_UV blockers inline (dims/weight, print
     // method, price), then re-gate + publish in one call.
-    Route::post('/admin/products/{product}/resolve-blockers', [AdminCatalogueController::class, 'resolveBlockers']);
+    Route::post('/admin/products/{product}/resolve-blockers', [AdminCatalogueController::class, 'resolveBlockers'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish'])->middleware('permission:products.approve');
-    Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates']);
-    Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile']);
-    Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone']);
-    Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel']);
+    Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates'])->middleware('permission:products.edit');
+    Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile'])->middleware('permission:products.edit');
+    Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone'])->middleware('permission:products.edit');
+    Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel'])->middleware('permission:products.view');
     // Print-floor production file (H2S .3mf); falls back to the model file.
-    Route::get('/admin/products/{product}/production-file', [AdminCatalogueController::class, 'productionFile']);
+    Route::get('/admin/products/{product}/production-file', [AdminCatalogueController::class, 'productionFile'])->middleware('permission:products.view');
     // Multi-part 3D models: stream, attach and remove individual parts (staff).
-    Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel']);
-    Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart']);
-    Route::post('/admin/products/{product}/parts/{part}/primary', [AdminCatalogueController::class, 'setPrimaryPart']);
-    Route::delete('/admin/products/{product}/parts/{part}', [AdminCatalogueController::class, 'deleteModelPart']);
-    // Download selected plates as a ZIP for the print floor's slicer.
-    Route::post('/admin/products/{product}/parts/export', [AdminCatalogueController::class, 'exportParts']);
+    Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel'])->middleware('permission:products.view');
+    Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart'])->middleware('permission:products.edit');
+    Route::post('/admin/products/{product}/parts/{part}/primary', [AdminCatalogueController::class, 'setPrimaryPart'])->middleware('permission:products.edit');
+    Route::delete('/admin/products/{product}/parts/{part}', [AdminCatalogueController::class, 'deleteModelPart'])->middleware('permission:products.edit');
+    // Download selected plates as a ZIP for the print floor's slicer (read-only).
+    Route::post('/admin/products/{product}/parts/export', [AdminCatalogueController::class, 'exportParts'])->middleware('permission:products.view');
     // Re-pull the latest geometry/parts/dimensions from the model's source (staff).
-    Route::post('/admin/products/{product}/pull-source', [AdminCatalogueController::class, 'pullFromSource']);
+    Route::post('/admin/products/{product}/pull-source', [AdminCatalogueController::class, 'pullFromSource'])->middleware('permission:products.edit');
+    // Auto-publish toggle stays superadmin-only (enforced in the controller); it
+    // is deliberately NOT a delegable products.* action.
     Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
 
     // CORE product/variant management (staff; audit E4) - ops add a blank or
@@ -207,11 +209,11 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::patch('/admin/products/{product}', [AdminProductController::class, 'update'])->middleware('permission:products.edit');
     Route::delete('/admin/products/{product}', [AdminProductController::class, 'destroy'])->middleware('permission:products.edit');
     // Archived rows are soft-deleted, so bind withTrashed to resolve them.
-    Route::post('/admin/products/{product}/restore', [AdminProductController::class, 'restore'])->withTrashed();
-    Route::post('/admin/products/{product}/image', [AdminProductController::class, 'uploadImage']);
-    Route::delete('/admin/products/{product}/image', [AdminProductController::class, 'removeImage']);
-    Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant']);
-    Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant']);
+    Route::post('/admin/products/{product}/restore', [AdminProductController::class, 'restore'])->withTrashed()->middleware('permission:products.edit');
+    Route::post('/admin/products/{product}/image', [AdminProductController::class, 'uploadImage'])->middleware('permission:products.edit');
+    Route::delete('/admin/products/{product}/image', [AdminProductController::class, 'removeImage'])->middleware('permission:products.edit');
+    Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant'])->middleware('permission:products.edit');
+    Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant'])->middleware('permission:products.edit');
 
     // Supplier reorder buy-list (staff): open reorder drafts raised by
     // below-threshold / backorder procurement, and marking them received
