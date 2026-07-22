@@ -14,6 +14,7 @@ use Laravel\Sanctum\Sanctum;
 
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\patchJson;
+use function Pest\Laravel\postJson;
 
 beforeEach(function (): void {
     $this->superadmin = User::factory()->create(['role' => 'superadmin']);
@@ -170,4 +171,41 @@ it('re-anchors an already-issued invoice to the new total on a superadmin edit',
 
     // Invoice follows the quote: 4 x 20 + 5 = 85.
     expect((float) $invoice->fresh()->amount)->toBe(85.0);
+});
+
+// The product sub-routes (model streams, parts, variants, images) are gated too,
+// not just the main list/detail - so a restricted staff_admin cannot reach them
+// directly even though the console nav hides the section.
+
+it('403s a restricted staff_admin on a product write sub-route', function (): void {
+    $this->staff->update(['permissions' => ['quotes.view']]); // no products.edit
+    $product = Product::factory()->create();
+    Sanctum::actingAs($this->staff);
+
+    postJson("/api/admin/products/{$product->id}/variants", [])->assertStatus(403);
+});
+
+it('403s a restricted staff_admin on a product read sub-route', function (): void {
+    $this->staff->update(['permissions' => ['quotes.view']]); // no products.view
+    $product = Product::factory()->create();
+    Sanctum::actingAs($this->staff);
+
+    getJson("/api/admin/products/{$product->id}/model")->assertStatus(403);
+});
+
+it('lets a staff_admin granted products.edit past the sub-route gate', function (): void {
+    // Granted the permission, so the 403 gate is cleared - whatever the endpoint
+    // does next (validation/404), it is no longer an access refusal.
+    $this->staff->update(['permissions' => ['products.edit']]);
+    $product = Product::factory()->create();
+    Sanctum::actingAs($this->staff);
+
+    postJson("/api/admin/products/{$product->id}/variants", [])->assertStatus(422);
+});
+
+it('keeps a grandfathered staff_admin able to reach product sub-routes', function (): void {
+    $product = Product::factory()->create();
+    Sanctum::actingAs($this->staff); // null permissions = unrestricted
+
+    postJson("/api/admin/products/{$product->id}/variants", [])->assertStatus(422);
 });
