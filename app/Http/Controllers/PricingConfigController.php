@@ -23,7 +23,9 @@ class PricingConfigController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the pricing.view route middleware refines
+        // which staff_admin may read it (superadmin always passes).
+        abort_unless($request->user()->isStaff(), 403);
 
         $configs = PricingConfig::query()
             ->orderBy('group')
@@ -45,7 +47,9 @@ class PricingConfigController extends Controller
 
     public function update(Request $request, PricingConfig $pricingConfig): JsonResponse
     {
-        abort_unless($request->user()->isSuperadmin(), 403);
+        // Floor keeps buyers out; the pricing.manage route middleware refines
+        // which staff_admin may edit it (superadmin always passes).
+        abort_unless($request->user()->isStaff(), 403);
 
         // `present` (not `required`) so falsy-but-valid values - 0, false, an
         // empty list - are accepted; group/key are immutable identifiers.

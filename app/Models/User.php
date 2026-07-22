@@ -83,8 +83,9 @@ class User extends Authenticatable
      * The access this user actually has, resolved from role + granted set.
      *
      *  - superadmin: everything, always. Never restricted.
-     *  - staff_admin: the explicit `permissions` allowlist; NULL means
-     *    unrestricted (grandfathered), so it resolves to everything too.
+     *  - staff_admin: the explicit `permissions` allowlist; NULL grandfathers
+     *    them to the OPERATIONAL default (Permissions::defaults()) - not the
+     *    sensitive Pricing/Users sections, which must be granted explicitly.
      *  - buyer: none - these permissions govern the staff console only.
      *
      * @return list<string>
@@ -99,14 +100,16 @@ class User extends Authenticatable
             return [];
         }
 
-        // NULL = never restricted; an array (even empty) is an explicit grant.
-        return $this->permissions === null ? Permissions::all() : array_values($this->permissions);
+        // NULL = grandfathered to the operational default; an array (even empty)
+        // is an explicit grant that stands exactly as given.
+        return $this->permissions === null ? Permissions::defaults() : array_values($this->permissions);
     }
 
     /**
      * Whether this user may perform a "section.action". Superadmin is always
-     * true; a staff_admin with no explicit set is grandfathered to true; anyone
-     * else is checked against their granted list.
+     * true; a staff_admin with no explicit set is grandfathered to the
+     * operational default (never the sensitive sections); anyone else is checked
+     * against their granted list.
      */
     public function hasPermission(string $permission): bool
     {
@@ -118,7 +121,9 @@ class User extends Authenticatable
             return false;
         }
 
-        return $this->permissions === null || in_array($permission, $this->permissions, true);
+        return $this->permissions === null
+            ? in_array($permission, Permissions::defaults(), true)
+            : in_array($permission, $this->permissions, true);
     }
 
     protected static function newFactory(): UserFactory

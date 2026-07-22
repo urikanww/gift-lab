@@ -184,17 +184,18 @@ export default function App() {
               <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
               <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
               <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
-              <Route path="pricing-admin" element={<ProtectedRoute superadminOnly><PricingAdminPage /></ProtectedRoute>} />
+              {/* Pricing is sensitive but delegable: superadmin, or a staff_admin
+                  granted pricing.view. The backend gates the same permission. */}
+              <Route path="pricing-admin" element={<ProtectedRoute permission="pricing.view"><PricingAdminPage /></ProtectedRoute>} />
               {/* Staff-level, unlike Pricing: this is an operational setting about
                   what clients hear, not a financial constant. */}
               <Route path="notification-settings" element={<ProtectedRoute staffOnly><NotificationSettingsPage /></ProtectedRoute>} />
-              {/* Superadmin-only, mirroring the backend: every /admin/users and
-                  /admin/companies endpoint behind these pages gates on
-                  isSuperadmin(), so a staff_admin who reached them would only
-                  collect 403s. StaffLayout already hides the nav link. */}
-              <Route path="user-admin" element={<ProtectedRoute superadminOnly><UserAdminPage /></ProtectedRoute>} />
-              <Route path="user-admin/new" element={<ProtectedRoute superadminOnly><UserAdminCreatePage /></ProtectedRoute>} />
-              <Route path="user-admin/:id" element={<ProtectedRoute superadminOnly><UserAdminDetailPage /></ProtectedRoute>} />
+              {/* Users is sensitive but delegable: superadmin, or a staff_admin
+                  granted users.view. Write actions behind these pages need
+                  users.manage, enforced by the backend route middleware. */}
+              <Route path="user-admin" element={<ProtectedRoute permission="users.view"><UserAdminPage /></ProtectedRoute>} />
+              <Route path="user-admin/new" element={<ProtectedRoute permission="users.manage"><UserAdminCreatePage /></ProtectedRoute>} />
+              <Route path="user-admin/:id" element={<ProtectedRoute permission="users.view"><UserAdminDetailPage /></ProtectedRoute>} />
             </Route>
           </Route>
         </Routes>
