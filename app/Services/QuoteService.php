@@ -155,6 +155,17 @@ final class QuoteService
                 'created_by' => Auth::id(),
             ]);
 
+            // Seed the status trail at creation, so the history reads from Draft
+            // (the moment the order was placed) rather than jumping in at its
+            // first later transition. Same shape transitionTo() logs, with a null
+            // "from" for the initial state; the actor is the creator.
+            $this->audit->log(
+                $quote,
+                'quote.state_changed',
+                ['state' => null],
+                ['state' => QuoteState::Draft->value],
+            );
+
             // Snapshot the buyer's ship-to as its own row on the quote. Text is
             // copied here, not referenced - a later edit to a saved address must
             // never mutate this placed order. Staff may omit it, in which case
@@ -543,6 +554,27 @@ final class QuoteService
      * Staff issues a proof. First proof moves ACCEPTED -> PROOFING; subsequent
      * proofs (after a change request) increment the version on the same quote.
      */
+    /**
+     * Re-send the buyer's proof-review email for an open (SENT) proof, without
+     * issuing a new version. For staff chasing a buyer who lost or never saw the
+     * first mail. Reuses the same rich review email (proof thumbnail + sign-off
+     * link) so the buyer gets exactly what they got the first time.
+     */
+    public function resendProof(Proof $proof): void
+    {
+        if ($proof->state !== ProofState::Sent) {
+            throw new DomainRuleException('Only a proof still awaiting the buyer can be resent.');
+        }
+
+        $this->audit->log($proof, 'proof.resent', null, [
+            'version' => $proof->version,
+            'by' => Auth::id(),
+        ]);
+
+        // emailQuoteReady picks the latest proof version, which is this open one.
+        $this->emailQuoteReady($proof->quote, true);
+    }
+
     public function issueProof(Quote $quote, string $artworkRef, ?string $notes): Proof
     {
         return DB::transaction(function () use ($quote, $artworkRef, $notes): Proof {

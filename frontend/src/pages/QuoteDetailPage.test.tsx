@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
@@ -496,11 +496,20 @@ it('keeps Proofs ABOVE the buyer’s Next step card for a buyer', () => {
   ).toBeTruthy();
 });
 
-/** The status-history card only, so the timeline's own labels can't be mistaken for it. */
-function historyCard(): HTMLElement {
-  const el = document.querySelector<HTMLElement>('[aria-labelledby="history-heading"]');
-  if (!el) throw new Error('status history card is not rendered');
+/**
+ * The status-history ledger region inside the merged Order status card. Only
+ * present once the disclosure is open, and scoped so the card's own current-state
+ * badge (which repeats a state label) can't be mistaken for a ledger entry.
+ */
+function statusRegion(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[role="region"][aria-label="Status history"]');
+  if (!el) throw new Error('status history region is not open');
   return el;
+}
+
+/** Open the status-history disclosure on the Order status card. */
+async function openStatusHistory() {
+  await userEvent.click(screen.getByRole('button', { name: /show history/i }));
 }
 
 // Regression: the history is fetched once per `reference`, which never changes
@@ -523,10 +532,11 @@ it('refreshes the status history when the buyer accepts and the order moves', as
   } as any);
   asBuyer();
   renderPage();
+  await openStatusHistory();
 
   // Positive control: the pre-accept history is genuinely on the page.
-  expect(await within(historyCard()).findByText('Sent')).toBeInTheDocument();
-  expect(within(historyCard()).queryByText('Accepted')).not.toBeInTheDocument();
+  expect(await within(statusRegion()).findByText('Sent')).toBeInTheDocument();
+  expect(within(statusRegion()).queryByText('Accepted')).not.toBeInTheDocument();
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(1);
 
   fetchQuoteHistory.mockResolvedValueOnce([
@@ -536,9 +546,10 @@ it('refreshes the status history when the buyer accepts and the order moves', as
 
   await userEvent.click(screen.getByRole('button', { name: /accept quote/i }));
 
-  // The record now agrees with the badge: newest entry is Accepted.
-  expect(await within(historyCard()).findByText('Accepted')).toBeInTheDocument();
-  expect(within(historyCard()).getByText('Ada')).toBeInTheDocument();
+  // The record now agrees with the badge: newest entry is Accepted. (Disclosure
+  // stays open across the re-render.)
+  expect(await within(statusRegion()).findByText('Accepted')).toBeInTheDocument();
+  expect(within(statusRegion()).getByText('Ada')).toBeInTheDocument();
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(2);
 });
 
@@ -553,8 +564,9 @@ it('refreshes the status history when a broadcast moves the order underneath it'
   seedQuote('SENT');
   asBuyer();
   renderPage();
+  await openStatusHistory();
 
-  expect(await within(historyCard()).findByText('Sent')).toBeInTheDocument();
+  expect(await within(statusRegion()).findByText('Sent')).toBeInTheDocument();
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(1);
 
   // Hold the refetch open so the in-between render is observable.
@@ -568,11 +580,11 @@ it('refreshes the status history when a broadcast moves the order underneath it'
   });
 
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(2);
-  // Mid-refetch the card must go busy rather than keep showing the pre-change
+  // Mid-refetch the ledger must go busy rather than keep showing the pre-change
   // trail. Holding the old entries here would be the same staleness in
   // miniature: a record that disagrees with the badge already above it.
-  expect(historyCard()).toHaveAttribute('aria-busy', 'true');
-  expect(within(historyCard()).queryByText('Sent')).not.toBeInTheDocument();
+  expect(statusRegion()).toHaveAttribute('aria-busy', 'true');
+  expect(within(statusRegion()).queryByText('Sent')).not.toBeInTheDocument();
 
   await act(async () => {
     resolve([
@@ -581,8 +593,8 @@ it('refreshes the status history when a broadcast moves the order underneath it'
     ]);
   });
 
-  expect(await within(historyCard()).findByText('Cancelled')).toBeInTheDocument();
-  expect(within(historyCard()).getByText('Sent')).toBeInTheDocument();
+  expect(await within(statusRegion()).findByText('Cancelled')).toBeInTheDocument();
+  expect(within(statusRegion()).getByText('Sent')).toBeInTheDocument();
 });
 
 // A rejected write used to route through the store's `error`, which this page
@@ -789,7 +801,11 @@ it('shows the staff-only Edit history when the order carries an amendment log', 
   } as any);
   renderPage();
 
+  // Heading always shows; the trail is collapsed until opened.
   expect(screen.getByRole('heading', { name: /edit history/i })).toBeInTheDocument();
+  expect(screen.queryByText(/Enamel Mug/)).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: /show 1 edit/i }));
   expect(screen.getByText(/Enamel Mug: 4 × SGD 10.00 → 6 × SGD 12.50/)).toBeInTheDocument();
 });
 
@@ -834,6 +850,44 @@ it('still offers a staff_admin the editor on a draft', () => {
   renderPage();
 
   expect(screen.getByRole('button', { name: /edit items/i })).toBeInTheDocument();
+});
+
+it('gives a superadmin resend + approve-on-behalf actions while a proof is open', async () => {
+  asSuperadmin();
+  seedQuote('PROOFING');
+  const resendProof = vi.fn().mockResolvedValue(true);
+  const decideProof = vi.fn().mockResolvedValue(undefined);
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      proofs: [{ id: 9, version: 1, state: 'SENT', artwork_version_ref: null }],
+    },
+    resendProof,
+    decideProof,
+  } as any);
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /resend proof email/i }));
+  expect(resendProof).toHaveBeenCalledWith(9);
+
+  await userEvent.click(screen.getByRole('button', { name: /approve on behalf/i }));
+  // On behalf, but recorded server-side against the superadmin (approved_by).
+  expect(decideProof).toHaveBeenCalledWith(9, 'approve', null);
+});
+
+it('does not show on-behalf proof actions to a plain staff_admin', () => {
+  asStaff();
+  seedQuote('PROOFING');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      proofs: [{ id: 9, version: 1, state: 'SENT', artwork_version_ref: null }],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.queryByRole('button', { name: /approve on behalf/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /resend proof email/i })).not.toBeInTheDocument();
 });
 
 it('hides Pay now where buyer payment is not available', () => {
