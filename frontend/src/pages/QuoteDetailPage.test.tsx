@@ -765,6 +765,44 @@ it('confirms before committing an order to production', async () => {
   expect(issueInvoice).toHaveBeenCalledWith(42, 'PO-9', null);
 });
 
+it('shows the staff-only Edit history when the order carries an amendment log', () => {
+  asStaff();
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      amendment_log: [
+        {
+          batch: 'b1', action: 'edited', by: 1, by_name: 'Ops', at: '2026-07-21T06:02:00Z',
+          product_name: 'Enamel Mug', from: { unit_price: 10, qty: 4 }, to: { unit_price: 12.5, qty: 6 },
+        },
+      ],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.getByRole('heading', { name: /edit history/i })).toBeInTheDocument();
+  expect(screen.getByText(/Enamel Mug: 4 × SGD 10.00 → 6 × SGD 12.50/)).toBeInTheDocument();
+});
+
+it('never renders the Edit history for a buyer', () => {
+  asBuyer();
+  seedQuote('DRAFT');
+  // A buyer payload would not carry this; belt-and-braces, the page guards too.
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      amendment_log: [
+        { batch: 'b1', action: 'edited', by: 1, by_name: 'Ops', at: '2026-07-21T06:02:00Z',
+          product_name: 'Enamel Mug', from: { unit_price: 10, qty: 4 }, to: { unit_price: 12.5, qty: 6 } },
+      ],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.queryByRole('heading', { name: /edit history/i })).not.toBeInTheDocument();
+});
+
 it('hides Pay now where buyer payment is not available', () => {
   asBuyer();
   seedQuote('PROOF_APPROVED');

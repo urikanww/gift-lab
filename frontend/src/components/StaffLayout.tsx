@@ -15,15 +15,21 @@ interface NavItem {
 
 function useStaffNav(): NavItem[] {
   const q = useDashboardStore((s) => s.data?.queues);
+  const pipeline = useDashboardStore((s) => s.data?.pipeline);
   const overdue = useDashboardStore((s) => s.data?.production.overdue ?? 0);
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
+  // Each order-related menu carries a count of items sitting in ITS court -
+  // work staff still has to action, not things merely waiting on a buyer. Zero
+  // renders no badge (see NavList), so a clear queue reads as clear.
   return [
     { to: '/dashboard', label: 'Dashboard' },
-    { to: '/quotes', label: 'Quotes', badge: q?.proofsPending },
+    // Drafts are quotes not yet sent to the buyer - the staff action here.
+    { to: '/quotes', label: 'Quotes', badge: pipeline?.DRAFT },
     { to: '/production-queue', label: 'Production', badge: overdue || undefined },
     { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm },
     { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen },
-    { to: '/product-admin', label: 'Products' },
+    // Products awaiting catalogue approval before they can go live.
+    { to: '/product-admin', label: 'Products', badge: q?.cataloguePending },
     { to: '/notification-settings', label: 'Notifications' },
     // Pricing and Users are superadmin-only (the pages also guard themselves).
     ...(isSuperadmin ? [{ to: '/pricing-admin', label: 'Pricing' }] : []),
