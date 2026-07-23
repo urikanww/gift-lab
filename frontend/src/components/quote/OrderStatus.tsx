@@ -71,9 +71,13 @@ function formatChangedAt(changedAt: string | null): string | null {
 export default function OrderStatus({
   state,
   history,
+  note,
 }: {
   state: QuoteState;
   history: QuoteHistory;
+  /** Optional passive status note (e.g. buyer's "what happens next" copy),
+      rendered under the badge row so the glance and the note share one card. */
+  note?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
@@ -126,6 +130,8 @@ export default function OrderStatus({
           {expanded ? 'Hide history' : 'Show history'}
         </button>
       </div>
+
+      {note && <p className="mt-3 text-sm text-fg-muted">{note}</p>}
 
       {expanded && (
         <div
