@@ -77,6 +77,10 @@ export default function QuoteDetailPage() {
   // on screen.
   const [editingLines, setEditingLines] = useState(false);
 
+  // Staff-only amendment-log dialog, opened from the "Edit history" button
+  // beside "Edit items" in the Items card header.
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const [artworkRef, setArtworkRef] = useState('');
   const [artworkRefError, setArtworkRefError] = useState<string | undefined>();
   // Dedicated state for the DRAFT send-with-proof field. Kept separate from the
@@ -148,14 +152,32 @@ export default function QuoteDetailPage() {
   // the prominent review card (buyer) and the superadmin on-behalf controls.
   const openProof = latestOpenProof(quote.proofs);
 
-  // A buyer's in-app DESIGNER artwork (a print-usable PNG), if any line carries
-  // one. Lets staff issue the proof straight from it instead of re-uploading the
-  // same file. Deliberately excludes `buyer_uploaded` reference photos: those
-  // are a finished-look intent, not print-ready, and must be proofed from scratch.
-  const buyerDesignRef =
-    quote.line_items?.find(
-      (li) => li.customization?.mode !== 'buyer_uploaded' && li.customization?.artwork_ref,
-    )?.customization?.artwork_ref ?? null;
+  // The buyer's in-app DESIGNER artworks (print-usable PNGs), one per line that
+  // carries one. Lets staff issue the proof straight from any of them instead of
+  // re-uploading the same file - one reuse button per design line, labelled by
+  // product, so a multi-design order never silently picks the first line.
+  // Deliberately excludes `buyer_uploaded` reference photos: those are a
+  // finished-look intent, not print-ready, and must be proofed from scratch.
+  // Deduped by ref so a design shared across lines yields a single button.
+  const seenDesignRefs = new Set<string>();
+  const buyerDesigns = (quote.line_items ?? []).flatMap((li) => {
+    const ref =
+      li.customization?.mode !== 'buyer_uploaded' ? li.customization?.artwork_ref ?? null : null;
+    if (!ref || seenDesignRefs.has(ref)) return [];
+    seenDesignRefs.add(ref);
+    return [{ ref, name: li.product?.name ?? `Line #${li.id}` }];
+  });
+  /** File-input value label when the field holds one of the buyer's designs. */
+  const designLabel = (ref: string): string | undefined => {
+    const match = buyerDesigns.find((d) => d.ref === ref);
+    if (!match) return undefined;
+    return buyerDesigns.length > 1 ? `Buyer’s design — ${match.name}` : 'Buyer’s design';
+  };
+  /** Reuse-button label: name the line once there is more than one design. */
+  const designButtonLabel = (name: string): string =>
+    buyerDesigns.length > 1
+      ? `Use buyer’s design — ${name}`
+      : 'Use buyer’s design as the proof';
   // A line still needing a staff decision blocks the production gate: the gate
   // is a confirmation that everything is in hand, which is not yet true.
   const awaitingDecision =
@@ -460,10 +482,23 @@ export default function QuoteDetailPage() {
         )}
 
         {/* Order status - the glance (current/next/step) with the recorded
-            who/when trail folded in behind a disclosure. One card in place of
-            the old stepper + separate status-history pair. */}
+            who/when trail folded in behind a disclosure, plus the buyer's
+            passive status note folded into the same card so the ball is never
+            silently in our court. The note only shows for buyer-facing states
+            with no buyer action (states WITH an action surface it through
+            their own card); PROOFING's "being prepared" copy is contradictory
+            once a proof is actually open for review - the sign-off card below
+            covers that case. */}
         <Motion variants={staggerItem}>
-          <OrderStatus state={quote.state} history={history} />
+          <OrderStatus
+            state={quote.state}
+            history={history}
+            note={
+              !isStaff && !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs))
+                ? BUYER_STATUS_NOTE[quote.state]
+                : undefined
+            }
+          />
         </Motion>
 
         {/* Buyer proof sign-off - the page's primary action when a proof is
@@ -471,37 +506,31 @@ export default function QuoteDetailPage() {
             inline. See `buyerProofReview` above. */}
         {buyerProofReview}
 
-        {/* Buyer status note - passive "what happens next", sitting right under
-            the status glance so the ball is never silently in our court. Only
-            for buyer-facing states with no buyer action (states WITH an action
-            surface it through their own card). */}
-        {!isStaff &&
-          BUYER_STATUS_NOTE[quote.state] &&
-          // PROOFING's "being prepared" copy is contradictory once a proof is
-          // actually open for review - the sign-off card above covers that case.
-          !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs)) && (
-          <Motion variants={staggerItem}>
-            <Card padding="lg">
-              <h2 className="font-display text-xl text-fg">What happens next</h2>
-              <p className="mt-3 text-sm text-fg-muted">{BUYER_STATUS_NOTE[quote.state]}</p>
-            </Card>
-          </Motion>
-        )}
-
         {/* Line items */}
         <Motion variants={staggerItem}>
           <Card padding="none" className="overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <h2 className="font-display text-xl text-fg">Items</h2>
-              {/* Staff edit DRAFT only; a superadmin can edit at any stage (the
-                  service enforces the same rule, and re-anchors an issued
-                  invoice). Past SENT the buyer has seen the figures, so the
-                  superadmin override is deliberately narrow to that role. */}
-              {canEditLines && !editingLines && (
-                <Button variant="secondary" size="sm" onClick={() => setEditingLines(true)}>
-                  Edit items
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Staff-only edit trail for DRAFT amendments, opened as a
+                    dialog. The log is only present in staff payloads, so this
+                    never shows for a buyer; hidden too when the order was
+                    never amended. */}
+                {isStaff && quote.amendment_log && quote.amendment_log.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+                    History
+                  </Button>
+                )}
+                {/* Staff edit DRAFT only; a superadmin can edit at any stage (the
+                    service enforces the same rule, and re-anchors an issued
+                    invoice). Past SENT the buyer has seen the figures, so the
+                    superadmin override is deliberately narrow to that role. */}
+                {canEditLines && !editingLines && (
+                  <Button variant="secondary" size="sm" onClick={() => setEditingLines(true)}>
+                    Edit items
+                  </Button>
+                )}
+              </div>
             </div>
             {canEditLines && editingLines ? (
               <QuoteLineEditor
@@ -525,14 +554,14 @@ export default function QuoteDetailPage() {
           </Card>
         </Motion>
 
-        {/* Staff-only edit trail for DRAFT amendments, sitting just under the
-            items it describes. The log is only present in staff payloads, so
-            this never renders for a buyer; the component itself hides when the
-            order was never amended. */}
+        {/* Amendment-log dialog (portal) - triggered from the Items header. */}
         {isStaff && quote.amendment_log && quote.amendment_log.length > 0 && (
-          <Motion variants={staggerItem}>
-            <AmendmentHistory entries={quote.amendment_log} currency={quote.currency} />
-          </Motion>
+          <AmendmentHistory
+            entries={quote.amendment_log}
+            currency={quote.currency}
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+          />
         )}
 
         {/* Proofs history (buyer slot) - reference only, shown once there's no
@@ -633,7 +662,7 @@ export default function QuoteDetailPage() {
                           label="Attach proof (optional)"
                           hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
                           value={sendProofRef}
-                          valueLabel={sendProofRef === buyerDesignRef ? 'Buyer’s design' : undefined}
+                          valueLabel={designLabel(sendProofRef)}
                           error={sendProofRefError}
                           disabled={busy}
                           onChange={(ref) => {
@@ -641,22 +670,27 @@ export default function QuoteDetailPage() {
                             setSendProofRefError(undefined);
                           }}
                         />
-                        {/* One-click reuse: the buyer already supplied a
-                            print-usable designer artwork, so offer it as the
-                            proof instead of re-uploading the same file. */}
-                        {buyerDesignRef && !sendProofRef && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={busy}
-                            className="mt-2"
-                            onClick={() => {
-                              setSendProofRef(buyerDesignRef);
-                              setSendProofRefError(undefined);
-                            }}
-                          >
-                            Use buyer’s design as the proof
-                          </Button>
+                        {/* One-click reuse: the buyer already supplied
+                            print-usable designer artwork, so offer each design
+                            as the proof instead of re-uploading the same file -
+                            one button per design line. */}
+                        {buyerDesigns.length > 0 && !sendProofRef && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {buyerDesigns.map((design) => (
+                              <Button
+                                key={design.ref}
+                                variant="secondary"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => {
+                                  setSendProofRef(design.ref);
+                                  setSendProofRefError(undefined);
+                                }}
+                              >
+                                {designButtonLabel(design.name)}
+                              </Button>
+                            ))}
+                          </div>
                         )}
                       </div>
                       <Button
@@ -696,13 +730,13 @@ export default function QuoteDetailPage() {
                   quote.state === 'PROOFING' ||
                   quote.state === 'CHANGES_REQUESTED') && (
                   <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                       <div className="flex-1">
                         <ProofFileInput
                           label="Proof artwork"
                           hint="PDF or image, up to 3 MB."
                           value={artworkRef}
-                          valueLabel={artworkRef === buyerDesignRef ? 'Buyer’s design' : undefined}
+                          valueLabel={designLabel(artworkRef)}
                           error={artworkRefError}
                           disabled={busy}
                           onChange={(ref) => {
@@ -710,25 +744,27 @@ export default function QuoteDetailPage() {
                             setArtworkRefError(undefined);
                           }}
                         />
-                        {/* Reuse the buyer's designer artwork instead of
-                            re-uploading it. Reference-photo uploads are excluded
-                            upstream (buyerDesignRef), so this only appears when a
-                            print-usable design exists. */}
-                        {buyerDesignRef && !artworkRef && (
+                      </div>
+                      {/* Reuse the buyer's designer artwork instead of
+                          re-uploading it - one button per design line.
+                          Reference-photo uploads are excluded upstream
+                          (buyerDesigns), so these only appear when print-usable
+                          designs exist. Sit beside Issue proof so the ways to
+                          fill the field read as one action row. */}
+                      {!artworkRef &&
+                        buyerDesigns.map((design) => (
                           <Button
+                            key={design.ref}
                             variant="secondary"
-                            size="sm"
                             disabled={busy}
-                            className="mt-2"
                             onClick={() => {
-                              setArtworkRef(buyerDesignRef);
+                              setArtworkRef(design.ref);
                               setArtworkRefError(undefined);
                             }}
                           >
-                            Use buyer’s design as the proof
+                            {designButtonLabel(design.name)}
                           </Button>
-                        )}
-                      </div>
+                        ))}
                       <Button
                         variant="primary"
                         loading={busy}

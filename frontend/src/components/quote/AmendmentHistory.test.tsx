@@ -1,23 +1,40 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import AmendmentHistory from './AmendmentHistory';
 import type { AmendmentLogEntry } from '../../types';
 
-/** Renders, then opens the disclosure - the trail is collapsed by default. */
-const renderHistory = (entries: AmendmentLogEntry[]) => {
-  const result = render(<AmendmentHistory entries={entries} currency="SGD" />);
-  const toggle = screen.queryByRole('button', { name: /show \d+ edit/i });
-  if (toggle) fireEvent.click(toggle);
-  return result;
-};
+/** Renders the dialog open - the modal is controlled by the page's trigger. */
+const renderHistory = (entries: AmendmentLogEntry[]) =>
+  render(<AmendmentHistory entries={entries} currency="SGD" open onClose={() => {}} />);
 
 it('renders nothing when there are no edits', () => {
-  const { container } = renderHistory([]);
-  expect(container).toBeEmptyDOMElement();
+  renderHistory([]);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-it('is collapsed by default and opens on click', () => {
+it('stays hidden until opened and shows the trail as a dialog', () => {
+  const entries: AmendmentLogEntry[] = [
+    {
+      batch: 'b1', action: 'edited', by: 1, by_name: 'Ada Ops', at: '2026-07-21T06:02:00Z',
+      product_name: 'Enamel Mug', from: { unit_price: 10, qty: 4 }, to: { unit_price: 12.5, qty: 6 },
+    },
+  ];
+  const { rerender } = render(
+    <AmendmentHistory entries={entries} currency="SGD" open={false} onClose={() => {}} />,
+  );
+
+  // Closed: no dialog, no trail.
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Enamel Mug/)).not.toBeInTheDocument();
+
+  rerender(<AmendmentHistory entries={entries} currency="SGD" open onClose={() => {}} />);
+  expect(screen.getByRole('dialog', { name: /edit history/i })).toBeInTheDocument();
+  expect(screen.getByText(/Enamel Mug/)).toBeInTheDocument();
+});
+
+it('closes via the dialog close button', () => {
+  const onClose = vi.fn();
   render(
     <AmendmentHistory
       entries={[
@@ -27,15 +44,13 @@ it('is collapsed by default and opens on click', () => {
         },
       ]}
       currency="SGD"
+      open
+      onClose={onClose}
     />,
   );
 
-  // Heading always shows; the trail is hidden until opened.
-  expect(screen.getByRole('heading', { name: /edit history/i })).toBeInTheDocument();
-  expect(screen.queryByText(/Enamel Mug/)).not.toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole('button', { name: 'Show 1 edit' }));
-  expect(screen.getByText(/Enamel Mug/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /close dialog/i }));
+  expect(onClose).toHaveBeenCalled();
 });
 
 it('groups every change from one save under a single editor and time', () => {

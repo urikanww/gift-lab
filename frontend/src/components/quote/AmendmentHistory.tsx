@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Card } from '../../ui';
+import { Modal } from '../../ui';
 import type { AmendmentLogEntry } from '../../types';
 
 /**
@@ -7,6 +6,10 @@ import type { AmendmentLogEntry } from '../../types';
  * from the order's `amendment_log`, which the API returns to staff only - it
  * carries internal prices and margins, so this component must never render on a
  * buyer's view. The caller guards on role; this one guards on emptiness.
+ *
+ * Rendered as a modal opened from the "Edit history" button beside "Edit
+ * items" in the Items card header - it is reference material staff open when
+ * they need it, not a card competing for space in the staff column.
  *
  * Entries from a single save share a `batch`, so they are grouped into one
  * "Ada Ops · 21 Jul 2026, 14:02" block rather than shown as loose rows. Newest
@@ -96,43 +99,29 @@ function describe(entry: AmendmentLogEntry, currency: string): string {
 export default function AmendmentHistory({
   entries,
   currency,
+  open,
+  onClose,
 }: {
   entries: AmendmentLogEntry[];
   currency: string;
+  open: boolean;
+  onClose: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  // An order that was never amended has nothing to show. Render nothing rather
-  // than an empty card competing for space in the staff column.
+  // An order that was never amended has nothing to show. The caller hides the
+  // trigger button in that case; belt-and-braces, render no dialog either.
   if (!entries || entries.length === 0) return null;
 
   const batches = groupByBatch(entries);
-  const listId = 'edit-history-list';
 
   return (
-    <Card padding="lg" aria-labelledby="edits-heading">
-      {/* Collapsed by default - it is reference material staff open when they
-          need it, not something to scroll past on every order. The count tells
-          them whether it is worth opening without doing so. */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 id="edits-heading" className="font-display text-xl text-fg">
-          Edit history
-        </h2>
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={listId}
-          onClick={() => setExpanded((v) => !v)}
-          className="rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-        >
-          {expanded ? 'Hide' : `Show ${batches.length} ${batches.length === 1 ? 'edit' : 'edits'}`}
-        </button>
-      </div>
-      <p className="mt-1 text-sm text-fg-muted">
-        Changes made to this order while it was a draft. Staff-only.
-      </p>
-
-      {expanded && (
-      <ul id={listId} className="mt-4 flex flex-col divide-y divide-border">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Edit history"
+      description="Changes made to this order while it was a draft. Staff-only."
+      size="lg"
+    >
+      <ul className="flex flex-col divide-y divide-border">
         {batches.map((batch) => {
           const when = formatAt(batch.at);
           return (
@@ -159,7 +148,6 @@ export default function AmendmentHistory({
           );
         })}
       </ul>
-      )}
-    </Card>
+    </Modal>
   );
 }

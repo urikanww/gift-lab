@@ -294,6 +294,33 @@ it('lets staff issue the proof from the buyer’s designer artwork on DRAFT', as
   expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'artwork/buyer.png' });
 });
 
+it('offers one reuse button per design line, labelled by product', async () => {
+  const issueProof = vi.fn(async () => {});
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+        { id: 2, product_id: 6, qty: 5, line_state: 'PENDING', product: { name: 'Tote Bag' }, customization: { mode: 'designer', artwork_ref: 'artwork/tote.png' } },
+      ],
+    },
+    issueProof,
+  } as any);
+  asStaff();
+  renderPage();
+
+  // Two designs -> two buttons, each naming its line.
+  expect(screen.getByRole('button', { name: 'Use buyer’s design — Enamel Mug' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Use buyer’s design — Tote Bag' }));
+
+  // Picking one fills the field (labelled by product) and hides both buttons.
+  expect(screen.queryByRole('button', { name: /use buyer.s design/i })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Issue proof' }));
+  expect(issueProof).toHaveBeenCalledWith(42, 'artwork/tote.png', null);
+});
+
 it('offers no design-reuse shortcut for a buyer_uploaded reference line', () => {
   seedQuote('DRAFT');
   useQuoteStore.setState({
@@ -418,21 +445,19 @@ it('shows the product image and the saved design on a customised line', async ()
   ).toBeGreaterThan(0);
 });
 
-it('shows a "what happens next" note for a buyer in CHANGES_REQUESTED', () => {
+it('shows the status note in the order-status card for a buyer in CHANGES_REQUESTED', () => {
   seedQuote('CHANGES_REQUESTED');
   asBuyer();
   renderPage();
 
-  expect(screen.getByText('What happens next')).toBeInTheDocument();
   expect(screen.getByText(/received your change request/i)).toBeInTheDocument();
 });
 
-it('shows a "what happens next" note for a buyer in PROCURING', () => {
+it('shows the status note in the order-status card for a buyer in PROCURING', () => {
   seedQuote('PROCURING');
   asBuyer();
   renderPage();
 
-  expect(screen.getByText('What happens next')).toBeInTheDocument();
   expect(screen.getByText(/being prepared for production/i)).toBeInTheDocument();
 });
 
@@ -443,7 +468,9 @@ it('does NOT show the passive note in an actionable buyer state (SENT)', () => {
 
   // The actionable "Next step" card renders instead of the passive note.
   expect(screen.getByText('Next step')).toBeInTheDocument();
-  expect(screen.queryByText('What happens next')).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/received your change request|being prepared/i),
+  ).not.toBeInTheDocument();
 });
 
 it('does NOT show the buyer note for staff (staff sees their own controls)', () => {
@@ -451,7 +478,7 @@ it('does NOT show the buyer note for staff (staff sees their own controls)', () 
   asStaff();
   renderPage();
 
-  expect(screen.queryByText('What happens next')).not.toBeInTheDocument();
+  expect(screen.queryByText(/being prepared for production/i)).not.toBeInTheDocument();
   expect(screen.getByText('Staff actions')).toBeInTheDocument();
 });
 
@@ -866,11 +893,12 @@ it('shows the staff-only Edit history when the order carries an amendment log', 
   } as any);
   renderPage();
 
-  // Heading always shows; the trail is collapsed until opened.
-  expect(screen.getByRole('heading', { name: /edit history/i })).toBeInTheDocument();
+  // The trigger sits in the Items header; the trail opens as a dialog.
+  expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument();
   expect(screen.queryByText(/Enamel Mug/)).not.toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('button', { name: /show 1 edit/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'History' }));
+  expect(screen.getByRole('dialog', { name: /edit history/i })).toBeInTheDocument();
   expect(screen.getByText(/Enamel Mug: 4 × SGD 10.00 → 6 × SGD 12.50/)).toBeInTheDocument();
 });
 
@@ -889,7 +917,7 @@ it('never renders the Edit history for a buyer', () => {
   } as any);
   renderPage();
 
-  expect(screen.queryByRole('heading', { name: /edit history/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'History' })).not.toBeInTheDocument();
 });
 
 it('lets a superadmin edit items on a non-draft order', () => {
