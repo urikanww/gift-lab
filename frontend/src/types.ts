@@ -450,7 +450,8 @@ export interface ProductionJob {
   track: JobTrack;
   state: JobState;
   ready_at: string | null;
-  artwork_ref: string | null;
+  /** Print-ready files for this job, one per artwork line it covers. */
+  artwork_refs?: { line_item_id: number; product_name: string | null; ref: string }[];
   consignment_ref?: string | null;
   carrier?: Carrier | null;
   print_method: PrintMethod | null;
