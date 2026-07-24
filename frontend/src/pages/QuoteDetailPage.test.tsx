@@ -121,10 +121,22 @@ function renderPage() {
   );
 }
 
+// A buyer proof is per-line now, so an open proof needs a matching customised
+// line for the per-line review to compute a row for it.
 function seedOpenProof() {
   useQuoteStore.setState({
     current: {
       ...useQuoteStore.getState().current!,
+      line_items: [
+        {
+          id: 5,
+          product_id: 5,
+          qty: 10,
+          line_state: 'PENDING',
+          product: { name: 'Enamel Mug' },
+          customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' },
+        },
+      ],
       proofs: [
         {
           id: 9,
@@ -197,6 +209,92 @@ it('sends an attached reference image with the change request', async () => {
   await userEvent.click(screen.getByRole('button', { name: /send request/i }));
 
   expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Match this.', ['proofs/v1.pdf']);
+});
+
+// Two artwork lines, each with its own current proof, for the per-line review.
+function seedTwoLineProofs(secondState: 'SENT' | 'CHANGES_REQUESTED') {
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+        { id: 2, product_id: 6, qty: 5, line_state: 'PENDING', product: { name: 'Tote Bag' }, customization: { mode: 'designer', artwork_ref: 'artwork/tote.png' } },
+      ],
+      proofs: [
+        { id: 9, quote_id: 42, line_item_id: 1, product_name: 'Enamel Mug', version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'SENT', approved_by: null, approved_at: null, notes: null },
+        { id: 10, quote_id: 42, line_item_id: 2, product_name: 'Tote Bag', version: 2, artwork_version_ref: 'proofs/v2.pdf', state: secondState, approved_by: null, approved_at: null, notes: secondState === 'CHANGES_REQUESTED' ? 'Move the logo up.' : null },
+      ],
+    },
+  } as any);
+}
+
+it('reviews each artwork line independently — a SENT line is actionable, a CHANGES_REQUESTED line is passive', () => {
+  seedQuote('PROOFING');
+  seedTwoLineProofs('CHANGES_REQUESTED');
+  asBuyer();
+  renderPage();
+
+  // Scope to the review card - product names also appear in the items table.
+  const reviewCard = screen
+    .getByRole('heading', { name: 'Review your proof' })
+    .closest('[aria-labelledby="proof-review-heading"]') as HTMLElement;
+
+  // The SENT line is actionable: named, with its own approve control.
+  expect(within(reviewCard).getByText('Enamel Mug')).toBeInTheDocument();
+  // The CHANGES_REQUESTED line is passive: named, with a "being revised" note
+  // echoing the buyer's own note, and no approve/request-changes controls.
+  expect(within(reviewCard).getByText('Tote Bag')).toBeInTheDocument();
+  expect(within(reviewCard).getByText(/we’ll send you an updated proof/i)).toBeInTheDocument();
+  expect(within(reviewCard).getByText(/Move the logo up\./)).toBeInTheDocument();
+  // Only the one SENT line offers an approve control (plus the approve-all
+  // shortcut, which matches a different name).
+  expect(within(reviewCard).getAllByRole('button', { name: /approve proof/i })).toHaveLength(1);
+});
+
+it('shows a per-line progress banner across the artwork lines', () => {
+  seedQuote('PROOFING');
+  seedTwoLineProofs('CHANGES_REQUESTED');
+  asBuyer();
+  const { container } = renderPage();
+
+  // 0 approved of 2, one still awaiting the buyer, one being revised.
+  expect(container.textContent).toContain('0 of 2 approved');
+  expect(container.textContent).toContain('1 awaiting you');
+  expect(container.textContent).toContain('1 being revised');
+});
+
+it('offers "Approve all remaining" labelled with the SENT count, calling approveAllProofs', async () => {
+  const approveAllProofs = vi.fn(async () => true);
+  seedQuote('PROOFING');
+  // Both lines SENT: two remaining to approve in one shot.
+  seedTwoLineProofs('SENT');
+  useQuoteStore.setState({ approveAllProofs } as any);
+  asBuyer();
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /approve all 2 remaining/i }));
+  expect(approveAllProofs).toHaveBeenCalledWith(42);
+});
+
+it('hides "Approve all remaining" when no line is awaiting the buyer', () => {
+  seedQuote('CHANGES_REQUESTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+      ],
+      // The only line is being revised, so there is nothing to approve.
+      proofs: [
+        { id: 9, quote_id: 42, line_item_id: 1, product_name: 'Enamel Mug', version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'Fix the crest.' },
+      ],
+    },
+  } as any);
+  asBuyer();
+  renderPage();
+
+  expect(screen.getByText(/we’ll send you an updated proof/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /approve all/i })).not.toBeInTheDocument();
 });
 
 it('toasts "Payment received" when payment captures immediately', async () => {

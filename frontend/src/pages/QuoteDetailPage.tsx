@@ -16,8 +16,8 @@ import QuoteLineItems, { PricingSummary } from '../components/quote/QuoteLineIte
 import QuoteLineEditor from '../components/quote/QuoteLineEditor';
 import AmendmentHistory from '../components/quote/AmendmentHistory';
 import ArtworkPicker, { type ArtworkOption } from '../components/quote/ArtworkPicker';
-import ProofFileInput from '../components/quote/ProofFileInput';
 import LineProofRow from '../components/quote/LineProofRow';
+import BuyerProofItem from '../components/quote/BuyerProofItem';
 import BuyerNotifications from '../components/quote/BuyerNotifications';
 import type { LineItem, Proof, QuoteState } from '../types';
 
@@ -86,6 +86,7 @@ export default function QuoteDetailPage() {
     stageProof,
     sendProofs,
     decideProof,
+    approveAllProofs,
     resendProof,
     issueInvoice,
     confirmStock,
@@ -121,13 +122,6 @@ export default function QuoteDetailPage() {
   const [poRef, setPoRef] = useState('');
   const [poRefError, setPoRefError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  // "Request changes" inline reveal: let the buyer say WHAT to change instead
-  // of firing a canned note.
-  const [changesOpen, setChangesOpen] = useState(false);
-  const [changeNotes, setChangeNotes] = useState('');
-  // Optional reference image the buyer attaches to a change request. Held as the
-  // uploaded storage ref; passed to decideProof and cleared once sent.
-  const [changeAttachment, setChangeAttachment] = useState('');
   // Staff-only cancel confirm modal.
   // Committing is irreversible in practice (it opens production), so it is
   // confirmed rather than fired straight from the button.
@@ -177,9 +171,6 @@ export default function QuoteDetailPage() {
   const isCancellable = !['READY', 'CLOSED', 'CANCELLED'].includes(quote.state);
   // Staff edit a DRAFT; a superadmin may edit an order's lines at any stage.
   const canEditLines = (isStaff && quote.state === 'DRAFT') || isSuperadmin;
-  // The proof the buyer is being asked to sign off right now, if any. Drives
-  // the prominent review card (buyer) and the superadmin on-behalf controls.
-  const openProof = latestOpenProof(quote.proofs);
 
   // Every artwork already on the order that staff can attach as the proof
   // instead of re-uploading: the buyer's line designs (print-usable designer
@@ -280,125 +271,104 @@ export default function QuoteDetailPage() {
     quote.line_items?.some((li) => li.line_state === 'AWAITING_RECONFIRM') ?? false;
 
   /**
-   * Buyer proof sign-off - the primary call to action on the whole page when a
-   * proof is open. Shows the artwork INLINE (no click-through to see what you're
-   * approving) and the approve / request-changes controls right under it. Sits
-   * high on the page (rendered straight after the status card) so the decision
-   * is the first thing the buyer meets, never buried below pricing.
+   * Buyer per-line proof sign-off - the primary call to action on the whole page
+   * while any line is awaiting the buyer. Each artwork line's current proof is
+   * reviewed independently (artwork inline, per-item approve / request-changes),
+   * with a progress banner and an "Approve all remaining" shortcut. Sits high on
+   * the page (rendered straight after the status card) so the decision is the
+   * first thing the buyer meets, never buried below pricing.
    *
-   * Only rendered for a buyer with an open proof; staff and the read-only
-   * history use `proofsCard` below.
+   * Only rendered for a buyer with ≥1 line awaiting them or being revised; staff
+   * and the read-only history use `proofsCard` below.
    */
-  const buyerProofReview = !isStaff && openProof && (
+  // Every artwork line (a real customization, not dropped) paired with its
+  // latest proof, so each line reads its own review state.
+  const buyerReviewLines = isStaff
+    ? []
+    : (quote.line_items ?? [])
+        .filter((li) => li.line_state !== 'DROPPED' && li.customization)
+        .map((li) => ({ line: li, proof: latestProofByLine.get(li.id) ?? null }))
+        .filter((x): x is { line: LineItem; proof: Proof } => x.proof !== null);
+  // Counts across those lines drive the progress banner.
+  const buyerApprovedCount = buyerReviewLines.filter((x) => x.proof.state === 'APPROVED').length;
+  const buyerAwaitingCount = buyerReviewLines.filter((x) => x.proof.state === 'SENT').length;
+  const buyerRevisingCount = buyerReviewLines.filter(
+    (x) => x.proof.state === 'CHANGES_REQUESTED',
+  ).length;
+  // The lines the buyer can still act on (or watch being revised) - the ones we
+  // render a card for. Approved lines are summarised by the banner instead.
+  const buyerActionableLines = buyerReviewLines.filter(
+    (x) => x.proof.state === 'SENT' || x.proof.state === 'CHANGES_REQUESTED',
+  );
+
+  const buyerProgressBanner = [
+    `${buyerApprovedCount} of ${buyerReviewLines.length} approved`,
+    buyerAwaitingCount > 0 ? `${buyerAwaitingCount} awaiting you` : null,
+    buyerRevisingCount > 0 ? `${buyerRevisingCount} being revised` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const buyerProofReview = !isStaff && buyerActionableLines.length > 0 && (
     <Motion variants={staggerItem}>
       <Card padding="lg" aria-labelledby="proof-review-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 id="proof-review-heading" className="font-display text-xl text-fg">
             Review your proof
           </h2>
-          <span className="flex items-center gap-2">
-            <span className="text-sm font-medium text-fg">v{openProof.version}</span>
-            <Badge tone={proofStateTone(openProof.state)} size="sm">
-              {humanizeState(openProof.state)}
-            </Badge>
-          </span>
         </div>
         <p className="mt-1 text-sm text-fg-muted">
-          Check the artwork below. Approve it to move ahead, or request changes.
+          Check each artwork below. Approve it to move ahead, or request changes.
         </p>
 
-        {/* The artwork itself, shown in place. artwork_url is resolved
-            server-side; safeHref covers legacy rows holding a pasted URL. */}
-        <div className="mt-4">
-          <ArtworkPreview url={openProof.artwork_url ?? safeHref(openProof.artwork_version_ref)} />
-        </div>
+        {/* Progress across every artwork line, so a multi-line order reads at a
+            glance without counting cards. */}
+        <p className="mt-3 rounded-md border border-border bg-surface-2/50 px-3 py-2 text-sm font-medium text-fg">
+          {buyerProgressBanner}
+        </p>
 
-        <div className="mt-5 flex flex-col gap-3">
-          <div className="flex flex-wrap gap-3">
+        {/* One-click sign-off for every line still awaiting the buyer. */}
+        {buyerAwaitingCount > 0 && (
+          <div className="mt-4">
             <Button
               variant="primary"
               loading={busy}
               disabled={busy}
-              onClick={() => run(() => decideProof(openProof.id, 'approve', null), 'Proof approved')}
+              onClick={() =>
+                run(async () => {
+                  const ok = await approveAllProofs(quote.id);
+                  if (ok) toast({ title: 'All proofs approved', tone: 'success' });
+                })
+              }
             >
-              Approve proof
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy || changesOpen}
-              onClick={() => setChangesOpen(true)}
-            >
-              Request changes
+              Approve all {buyerAwaitingCount} remaining
             </Button>
           </div>
+        )}
 
-          {/* Inline reveal: capture WHAT to change before sending. */}
-          {changesOpen && (
-            <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2/50 p-3">
-              <label htmlFor="change-notes" className="text-sm font-medium text-fg">
-                What should we change?{' '}
-                <span className="font-normal text-danger">(required)</span>
-              </label>
-              <textarea
-                id="change-notes"
-                rows={3}
-                maxLength={2000}
-                value={changeNotes}
-                onChange={(e) => setChangeNotes(e.target.value)}
-                placeholder="e.g. Move the logo up and use the darker blue from our brand kit."
-                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-fg placeholder:text-fg-subtle transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-              />
-              <p className="text-xs text-fg-subtle">
-                Tell us what to fix so we can turn around a revised proof — this note goes to our team.
-              </p>
-
-              {/* Optional reference image: a mock-up, a photo, a sketch of what
-                  they want. Uploads to the buyer artwork endpoint and travels to
-                  staff on the change request. */}
-              <ProofFileInput
-                label="Attach a reference (optional)"
-                hint="An image showing what you'd like — PNG, JPG or WEBP, up to 10 MB."
-                value={changeAttachment}
-                error={undefined}
-                disabled={busy}
-                endpoint="/uploads/artwork"
-                field="artwork"
-                accept="image/png,image/jpeg,image/webp"
-                maxBytes={10 * 1024 * 1024}
-                onChange={(ref) => setChangeAttachment(ref)}
-              />
-
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="primary"
-                  loading={busy}
-                  // A reason is mandatory: staff need to know WHAT to revise, and
-                  // the API rejects request_changes without a note anyway.
-                  disabled={busy || changeNotes.trim().length === 0}
-                  onClick={() =>
-                    run(async () => {
-                      await decideProof(
-                        openProof.id,
-                        'request_changes',
-                        changeNotes.trim(),
-                        changeAttachment ? [changeAttachment] : undefined,
-                      );
-                      if (!useQuoteStore.getState().actionError) {
-                        setChangesOpen(false);
-                        setChangeNotes('');
-                        setChangeAttachment('');
-                      }
-                    }, 'Changes requested')
-                  }
-                >
-                  Send request
-                </Button>
-                <Button variant="ghost" disabled={busy} onClick={() => setChangesOpen(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
+        <div className="mt-4 flex flex-col gap-4">
+          {buyerActionableLines.map(({ proof }) => (
+            <BuyerProofItem
+              key={proof.id}
+              proof={proof}
+              busy={busy}
+              onApprove={() =>
+                run(() => decideProof(proof.id, 'approve', null), 'Proof approved')
+              }
+              onRequestChanges={(notes, attachmentRef) =>
+                run(
+                  () =>
+                    decideProof(
+                      proof.id,
+                      'request_changes',
+                      notes,
+                      attachmentRef ? [attachmentRef] : undefined,
+                    ),
+                  'Changes requested',
+                )
+              }
+            />
+          ))}
         </div>
       </Card>
     </Motion>
@@ -1053,9 +1023,9 @@ export default function QuoteDetailPage() {
         )}
 
         {/* Proofs history (buyer slot) - reference only, shown once there's no
-            open proof to act on; the open-proof sign-off lives in the review
+            line awaiting the buyer; the per-line sign-off lives in the review
             card near the top of the page. See `proofsCard`/`buyerProofReview`. */}
-        {!isStaff && !openProof && quote.proofs && quote.proofs.length > 0 && proofsCard}
+        {!isStaff && !buyerProofReview && quote.proofs && quote.proofs.length > 0 && proofsCard}
 
         {/* Buyer actions */}
         {!isStaff &&
@@ -1237,51 +1207,6 @@ export default function QuoteDetailPage() {
         )}
       </section>
     </Motion>
-  );
-}
-
-/**
- * Renders proof artwork in place so the buyer sees what they're approving
- * without a click-through. The signed URL carries no reliable extension, so we
- * try to render it as an image and fall back to an open-in-new-tab link when it
- * isn't one (e.g. a PDF proof) or fails to load. Clicking the image still opens
- * the full-size artwork in a new tab.
- */
-function ArtworkPreview({ url }: { url: string | null | undefined }) {
-  const [failed, setFailed] = useState(false);
-
-  if (!url) {
-    return <p className="text-sm text-fg-muted">Artwork preview isn’t available — please contact us.</p>;
-  }
-
-  if (failed) {
-    return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-      >
-        Open artwork ↗
-      </a>
-    );
-  }
-
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="block overflow-hidden rounded-md border border-border bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-      title="Open full-size artwork"
-    >
-      <img
-        src={url}
-        alt="Proof artwork"
-        onError={() => setFailed(true)}
-        className="mx-auto max-h-[28rem] w-full object-contain"
-      />
-    </a>
   );
 }
 
