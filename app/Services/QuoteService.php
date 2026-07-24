@@ -15,10 +15,10 @@ use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
 use App\Mail\QuoteReadyMail;
+use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
-use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\StockMovement;
 use App\Models\User;
@@ -219,11 +219,11 @@ final class QuoteService
      * @param  array<int, array{id?: int|null, product_id?: int, variant_id?: int|null, unit_price: float, qty: int}>  $lineAmendments
      * @param  array<int, int>  $removedLineIds
      * @param  array<int, array{label?: string, amount?: float}>|null  $adjustments  Null leaves the
-     *         existing set untouched; an array (including empty) REPLACES it. Signed amounts:
-     *         negative discounts, positive charges. Folded into the total after delivery.
+     *                                                                               existing set untouched; an array (including empty) REPLACES it. Signed amounts:
+     *                                                                               negative discounts, positive charges. Folded into the total after delivery.
      * @param  string|null  $remark  Staff's reason for this edit, stamped onto every entry of the
-     *         save's batch. Required by the endpoint (AmendQuoteRequest); optional here so
-     *         internal callers and older tests can amend without one.
+     *                               save's batch. Required by the endpoint (AmendQuoteRequest); optional here so
+     *                               internal callers and older tests can amend without one.
      */
     public function amend(
         Quote $quote,
@@ -652,22 +652,20 @@ final class QuoteService
                 'approved_by' => $proof->approved_by,
             ]);
 
-            $quote = $proof->quote;
-            $previous = $quote->state->value;
-
             // Approving artwork is NOT agreeing a price. On the artwork-first
             // route this used to back-fill acceptance silently, so a buyer could
             // be committed to a figure they were never shown - and there would
             // be no record of them having seen it. They now go on to accept the
             // price as a separate act; accept() completes the pair.
-            $quote->transitionTo(
-                $quote->accepted_at === null
-                    ? QuoteState::ArtworkApproved
-                    : QuoteState::ProofApproved,
-            );
+            //
+            // Per-line: mutate only this line's proof, then let the rollup decide
+            // the order state from ALL artwork lines. recomputeProofState()
+            // broadcasts QuoteStateChanged itself, so we only fire the
+            // proof-level ProofStatusChanged here.
+            $quote = $proof->quote;
+            $quote->recomputeProofState();
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
-            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $proof;
         });
@@ -681,7 +679,7 @@ final class QuoteService
      */
     /**
      * @param  array<int, string>  $attachments  Optional buyer reference-image
-     *                                            storage keys (artwork/…).
+     *                                           storage keys (artwork/…).
      */
     public function requestProofChanges(Proof $proof, ?string $notes, array $attachments = []): Proof
     {
@@ -694,15 +692,11 @@ final class QuoteService
             }
             $proof->transitionTo(ProofState::ChangesRequested);
 
+            // Per-line: mutate only this line's proof, then let the rollup decide
+            // the order state from ALL artwork lines. recomputeProofState()
+            // broadcasts QuoteStateChanged itself when the order state moves.
             $quote = $proof->quote;
-            // Slim path: price was never separately accepted, so the rejection may be
-            // about price or artwork -> send to CHANGES_REQUESTED for staff triage.
-            // Existing path (accepted_at set): artwork-only revision -> stay PROOFING.
-            if ($quote->accepted_at === null && $quote->state === QuoteState::Proofing) {
-                $previous = $quote->state->value;
-                $quote->transitionTo(QuoteState::ChangesRequested);
-                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
-            }
+            $quote->recomputeProofState();
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Events\ProofStatusChanged;
 use App\Exceptions\DomainRuleException;
 use App\Models\Company;
+use App\Models\LineItem;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
@@ -42,7 +43,12 @@ it('records an immutable approval and advances the quote', function (): void {
         'accepted_at' => now(),
         'accepted_by' => $this->buyer->id,
     ]);
-    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'state' => 'SENT']);
 
     $this->postJson("/api/proofs/{$proof->id}/decide", ['decision' => 'approve'])->assertOk();
 
