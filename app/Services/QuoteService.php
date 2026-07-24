@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\LineItemState;
-use App\Enums\OrderMilestone;
 use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
@@ -500,27 +499,23 @@ final class QuoteService
     }
 
     /**
-     * Send the quote to the buyer, freezing the price snapshot timestamp.
+     * Send the quote to the buyer (DRAFT -> SENT), freezing the price snapshot
+     * timestamp. Proofs are staged and sent per line through stageProof ->
+     * sendProofs, so this is a plain quote send with no artwork attached.
      */
-    public function send(Quote $quote, ?string $artworkRef = null, ?string $proofNotes = null): Quote
+    public function send(Quote $quote): Quote
     {
         if ($quote->state !== QuoteState::Draft) {
             throw new DomainRuleException('Only DRAFT quotes can be sent.');
         }
 
-        return DB::transaction(function () use ($quote, $artworkRef, $proofNotes): Quote {
+        return DB::transaction(function () use ($quote): Quote {
             $previous = $quote->state->value;
             $quote->price_snapshot_at = now();
             $quote->save();
 
-            if ($artworkRef !== null) {
-                $quote->transitionTo(QuoteState::Proofing);          // slim path
-                $this->createProofVersion($quote, $artworkRef, $proofNotes);
-                $this->emailQuoteReady($quote, true);
-            } else {
-                $quote->transitionTo(QuoteState::Sent);
-                $this->emailQuoteReady($quote, false);
-            }
+            $quote->transitionTo(QuoteState::Sent);
+            $this->emailQuoteReady($quote, false);
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
@@ -553,10 +548,6 @@ final class QuoteService
     }
 
     /**
-     * Staff issues a proof. First proof moves ACCEPTED -> PROOFING; subsequent
-     * proofs (after a change request) increment the version on the same quote.
-     */
-    /**
      * Re-send the buyer's proof-review email for an open (SENT) proof, without
      * issuing a new version. For staff chasing a buyer who lost or never saw the
      * first mail. Reuses the same rich review email (proof thumbnail + sign-off
@@ -578,62 +569,6 @@ final class QuoteService
 
         // emailQuoteReady picks the latest proof version, which is this open one.
         $this->emailQuoteReady($proof->quote, true);
-    }
-
-    public function issueProof(Quote $quote, string $artworkRef, ?string $notes): Proof
-    {
-        return DB::transaction(function () use ($quote, $artworkRef, $notes): Proof {
-            $enteredProofing = false;
-            // CHANGES_REQUESTED is included because issuing a revised proof is
-            // the way out of it. Without this edge the state was a dead end -
-            // its only exits were DRAFT and CANCELLED and no code performed the
-            // DRAFT one, so an order that landed here had to be rebuilt.
-            if ($quote->state === QuoteState::Accepted || $quote->state === QuoteState::ChangesRequested) {
-                $previous = $quote->state->value;
-                $quote->transitionTo(QuoteState::Proofing);
-                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
-                $enteredProofing = true;
-            }
-
-            if ($quote->state !== QuoteState::Proofing) {
-                throw new DomainRuleException('Quote must be ACCEPTED, PROOFING or CHANGES_REQUESTED to issue a proof.');
-            }
-
-            $proof = $this->createProofVersion($quote, $artworkRef, $notes);
-
-            if ($enteredProofing) {
-                // First proof: the richer quote-and-proof email, which carries a
-                // thumbnail of the artwork.
-                $this->emailQuoteReady($quote, true);
-            } else {
-                // Revisions used to notify nobody at all - the buyer was left
-                // waiting on a proof that was already sitting there, and staff
-                // had to phone every time. The state does not change on a
-                // revision, so this cannot ride on transitionTo().
-                DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::ProofIssued));
-            }
-
-            return $proof;
-        });
-    }
-
-    /**
-     * Create the next proof version row for a quote and broadcast it. Shared by
-     * issueProof (ACCEPTED/PROOFING) and the slim send path (DRAFT -> PROOFING).
-     */
-    private function createProofVersion(Quote $quote, string $artworkRef, ?string $notes): Proof
-    {
-        $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
-        $proof = Proof::create([
-            'quote_id' => $quote->id,
-            'version' => $nextVersion,
-            'artwork_version_ref' => $artworkRef,
-            'state' => ProofState::Sent->value,
-            'notes' => $notes,
-        ]);
-        DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
-
-        return $proof;
     }
 
     /**
