@@ -33,6 +33,7 @@ class Proof extends Model
 
     protected $fillable = [
         'quote_id',
+        'line_item_id',
         'version',
         'artwork_version_ref',
         'state',
@@ -187,6 +188,14 @@ class Proof extends Model
     public function quote(): BelongsTo
     {
         return $this->belongsTo(Quote::class);
+    }
+
+    /**
+     * @return BelongsTo<LineItem, Proof>
+     */
+    public function lineItem(): BelongsTo
+    {
+        return $this->belongsTo(LineItem::class);
     }
 
     /**
