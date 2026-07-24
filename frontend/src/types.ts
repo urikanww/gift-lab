@@ -46,7 +46,7 @@ export interface PrintZone {
 
 export type JobTrack = 'UV' | '3D';
 export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED';
-export type ProofState = 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
+export type ProofState = 'DRAFT' | 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
 
 export type Carrier = 'SINGPOST' | 'NINJAVAN' | 'JNT' | 'QXPRESS' | 'DHL' | 'FEDEX' | 'OTHER';
 
@@ -294,6 +294,10 @@ export interface Proof {
   quote_id: number;
   /** Display identity. quote_id remains the key realtime updates match on. */
   quote_reference?: string | null;
+  /** The line item this proof decorates - proofs are per-line, not per-order. */
+  line_item_id: number;
+  /** Product name of the line, snapshotted server-side; null pre-backfill. */
+  product_name?: string | null;
   version: number;
   artwork_version_ref: string;
   /**
@@ -392,6 +396,11 @@ export interface QuoteReminderNext {
   next_due_at: string | null;
   /** The configured day thresholds, e.g. [3, 7, 12]. */
   ladder_days: number[];
+  /**
+   * How many per-line proofs are still awaiting the buyer (SENT). Optional so an
+   * older payload (or a fixture) without it degrades gracefully.
+   */
+  awaiting_count?: number;
 }
 
 export interface QuoteReminder {

@@ -44,6 +44,7 @@ export function lineStateTone(state: LineItemState): BadgeTone {
 }
 
 const proofToneMap: Record<ProofState, BadgeTone> = {
+  DRAFT: 'neutral',
   SENT: 'info',
   CHANGES_REQUESTED: 'warning',
   APPROVED: 'success',
