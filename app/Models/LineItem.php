@@ -105,6 +105,20 @@ class LineItem extends Model
         return bcmul((string) $this->unit_price, (string) $this->qty, 2);
     }
 
+    /**
+     * Whether this line carries artwork that must be signed off before print.
+     * True for any customization (designer OR buyer-uploaded finished-look);
+     * false for plain stock lines, which never proof.
+     */
+    public function needsProof(): bool
+    {
+        $customization = $this->customization ?? [];
+
+        return is_array($customization)
+            && ($customization['mode'] ?? null) !== null
+            && $customization !== [];
+    }
+
     protected static function newFactory(): LineItemFactory
     {
         return LineItemFactory::new();
