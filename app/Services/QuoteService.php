@@ -1129,8 +1129,10 @@ final class QuoteService
 
         $proofImageUrl = null;
         if ($hasProof && ($proof = $quote->proofs()->latest('version')->first()) !== null) {
-            // 7 days: the presigned-URL ceiling on S3/Spaces. On a local dev disk
-            // this still resolves to the (host-served) app route. Either way the
+            // PROOF_IMAGE_URL_TTL_DAYS (the presigned-URL ceiling on S3/Spaces),
+            // shared with QuoteReadyMail's batched builder so the two proof paths
+            // sign for the same lifetime. On a local dev disk this still resolves
+            // to the (host-served) app route. Either way the
             // buyer opening the email within the week sees the artwork - and on
             // Spaces the link is a direct, reachable bucket URL, not localhost.
             //
@@ -1139,7 +1141,7 @@ final class QuoteService
             // floating on white. Prefer the flattened design-on-product
             // composite; fall back to the raw artwork for uploaded proofs (or
             // when compositing is unavailable).
-            $expiry = now()->addDays(7);
+            $expiry = now()->addDays(QuoteReadyMail::PROOF_IMAGE_URL_TTL_DAYS);
             $proofImageUrl = $this->composites->signedCompositeUrl($proof, $expiry)
                 ?? $proof->signedArtworkUrl($expiry);
         }

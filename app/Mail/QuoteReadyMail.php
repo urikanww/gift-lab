@@ -28,6 +28,15 @@ class QuoteReadyMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
+    /**
+     * Days a proof-image signed URL stays valid. The buyer may open this email
+     * days after it is sent, so the link has to outlive that gap - a short TTL
+     * renders a broken image on an object store. Shared by both proof paths
+     * (this batched builder and QuoteService::emailQuoteReady) so they cannot
+     * drift; 7 is the presigned-URL ceiling on S3/Spaces.
+     */
+    public const PROOF_IMAGE_URL_TTL_DAYS = 7;
+
     /** True when the mail carries any proof (single image OR a batched round). */
     public bool $hasProof;
 
@@ -61,8 +70,10 @@ class QuoteReadyMail extends Mailable implements ShouldQueue
     /**
      * Resolve each proof to {product_name, thumbnail_url}. The thumbnail is the
      * flattened design-on-product composite (a designer proof on its own is a
-     * transparent PNG that reads as a logo on white), falling back to the raw
-     * artwork URL - mirrors how ProofResource builds artwork_url.
+     * transparent PNG that reads as a logo on white), falling back to the signed
+     * artwork URL and finally the raw ref - the same chain, and the same long
+     * expiry, QuoteService::emailQuoteReady uses for the single-proof image, so
+     * an email opened days later still renders.
      *
      * @param  iterable<int, Proof>  $proofs
      * @return array<int, array{product_name: string, thumbnail_url: ?string}>
@@ -70,12 +81,14 @@ class QuoteReadyMail extends Mailable implements ShouldQueue
     private function buildProofItems(iterable $proofs): array
     {
         $composites = app(ProofCompositeService::class);
+        $expiry = now()->addDays(self::PROOF_IMAGE_URL_TTL_DAYS);
 
         $items = [];
         foreach ($proofs as $proof) {
             $items[] = [
                 'product_name' => $proof->lineItem?->product?->name ?? 'Item',
-                'thumbnail_url' => $composites->signedCompositeUrl($proof, now()->addMinutes(30))
+                'thumbnail_url' => $composites->signedCompositeUrl($proof, $expiry)
+                    ?? $proof->signedArtworkUrl($expiry)
                     ?? $proof->artworkUrl(),
             ];
         }
