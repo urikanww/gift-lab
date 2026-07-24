@@ -44,4 +44,14 @@ class QuotePolicy
     {
         return $user->isStaff();
     }
+
+    /**
+     * Sign a proof off: the owning-company buyer (their own approval) or a
+     * superadmin (on the buyer's behalf). Deliberately NOT any staff_admin -
+     * on-behalf approval is a superadmin action (mirrors the UI).
+     */
+    public function approveOnBehalf(User $user, Quote $quote): bool
+    {
+        return $user->company_id === $quote->company_id || $user->isSuperadmin();
+    }
 }

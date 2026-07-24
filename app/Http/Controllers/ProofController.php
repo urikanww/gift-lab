@@ -60,7 +60,7 @@ class ProofController extends Controller
      */
     public function approveAll(Request $request, Quote $quote): JsonResponse
     {
-        $this->authorize('view', $quote);
+        $this->authorize('approveOnBehalf', $quote);
 
         $this->quotes->approveAllOpenProofs($quote, $request->user());
 

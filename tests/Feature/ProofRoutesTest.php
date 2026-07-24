@@ -76,6 +76,27 @@ it('approves every open proof on a two-line order in one action', function (): v
         ->and($proofB->fresh()->state->value)->toBe('APPROVED');
 });
 
+it('forbids a non-superadmin staff_admin from approving on the buyer behalf', function (): void {
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOFING',
+        'accepted_at' => null,
+    ]);
+    $line = routeCustomizedLine($quote, 'artwork/a.png');
+    $proof = Proof::factory()->forLine($line)->create(['state' => 'SENT']);
+
+    // On-behalf approval is a superadmin action; a plain staff_admin is blocked.
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/quotes/{$quote->id}/proofs/approve-all")->assertStatus(403);
+    expect($proof->fresh()->state->value)->toBe('SENT');
+
+    // The owning-company buyer signs off their own order.
+    Sanctum::actingAs($this->buyer);
+    $this->postJson("/api/quotes/{$quote->id}/proofs/approve-all")->assertOk();
+    expect($proof->fresh()->state->value)->toBe('APPROVED')
+        ->and($quote->fresh()->state->value)->toBe('ARTWORK_APPROVED');
+});
+
 it('no longer exposes the order-level proof-issue route', function (): void {
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'ACCEPTED']);
     Sanctum::actingAs($this->staff);
