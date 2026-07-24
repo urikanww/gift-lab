@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\DecideProofRequest;
 use App\Http\Requests\StoreProofRequest;
 use App\Http\Resources\ProofResource;
+use App\Models\LineItem;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Services\QuoteService;
@@ -20,23 +21,50 @@ use Illuminate\Http\Request;
  */
 class ProofController extends Controller
 {
-    public function __construct(private readonly QuoteService $quotes)
-    {
-    }
+    public function __construct(private readonly QuoteService $quotes) {}
 
-    public function store(StoreProofRequest $request, Quote $quote): JsonResponse
+    /**
+     * Stage artwork for one line as a DRAFT proof. The round is not sent to the
+     * buyer until send() flips every staged draft in one email.
+     */
+    public function stage(StoreProofRequest $request, Quote $quote, LineItem $lineItem): JsonResponse
     {
-        $proof = $this->quotes->issueProof(
-            $quote,
-            $request->string('artwork_version_ref')->toString(),
-            $request->input('notes'),
-        );
+        abort_unless($lineItem->quote_id === $quote->id, 404);
+
+        $proof = $this->quotes->stageProof($quote, $lineItem, $request->string('artwork_version_ref')->toString());
 
         // The resource exposes quote_reference off the quote relation; we already
         // hold the quote, so hand it over rather than re-fetching the same row.
         $proof->setRelation('quote', $quote);
 
         return (new ProofResource($proof))->response()->setStatusCode(201);
+    }
+
+    /**
+     * Send the staged round: flip every DRAFT proof to SENT, move the order into
+     * PROOFING, and email the buyer once. Staff-only - the route also carries
+     * permission:quotes.edit, this floor stops a buyer that middleware lets by.
+     */
+    public function send(Request $request, Quote $quote): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $this->quotes->sendProofs($quote);
+
+        return response()->json(['message' => 'Proofs sent to the buyer.']);
+    }
+
+    /**
+     * Buyer signs off every line still awaiting them (SENT) in one action.
+     * CHANGES_REQUESTED lines are left alone.
+     */
+    public function approveAll(Request $request, Quote $quote): JsonResponse
+    {
+        $this->authorize('view', $quote);
+
+        $this->quotes->approveAllOpenProofs($quote, $request->user());
+
+        return response()->json(['message' => 'Approved.']);
     }
 
     public function decide(DecideProofRequest $request, Proof $proof): ProofResource

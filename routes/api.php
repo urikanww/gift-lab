@@ -152,7 +152,11 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::delete('/saved-addresses/{savedAddress}', [SavedAddressController::class, 'destroy']);
 
     // Proofs
-    Route::post('/quotes/{quote}/proofs', [ProofController::class, 'store']);
+    // Stage artwork for one line (DRAFT), then send the whole round in one email.
+    Route::post('/quotes/{quote}/lines/{lineItem}/proofs', [ProofController::class, 'stage'])->middleware('permission:quotes.edit');
+    Route::post('/quotes/{quote}/proofs/send', [ProofController::class, 'send'])->middleware('permission:quotes.edit');
+    // Buyer approves every item still awaiting them in one action.
+    Route::post('/quotes/{quote}/proofs/approve-all', [ProofController::class, 'approveAll']);
     Route::post('/proofs/{proof}/decide', [ProofController::class, 'decide']);
     // Staff re-send the buyer's proof-review email (quotes.edit; buyers blocked
     // by the controller floor).

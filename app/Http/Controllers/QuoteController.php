@@ -25,9 +25,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 class QuoteController extends Controller
 {
-    public function __construct(private readonly QuoteService $quotes)
-    {
-    }
+    public function __construct(private readonly QuoteService $quotes) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -247,11 +245,7 @@ class QuoteController extends Controller
     {
         $this->authorize('manageProduction', $quote);
 
-        return new QuoteResource($this->quotes->send(
-            $quote,
-            $request->input('artwork_version_ref'),
-            $request->input('notes'),
-        ));
+        return new QuoteResource($this->quotes->send($quote));
     }
 
     public function accept(Request $request, Quote $quote): QuoteResource
