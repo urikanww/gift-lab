@@ -10,6 +10,7 @@ namespace App\Enums;
  */
 enum ProofState: string
 {
+    case Draft = 'DRAFT';
     case Sent = 'SENT';
     case ChangesRequested = 'CHANGES_REQUESTED';
     case Approved = 'APPROVED';
@@ -20,6 +21,7 @@ enum ProofState: string
     public function nextStates(): array
     {
         return match ($this) {
+            self::Draft => [self::Sent],
             self::Sent => [self::ChangesRequested, self::Approved],
             self::ChangesRequested => [],
             self::Approved => [],
@@ -34,5 +36,11 @@ enum ProofState: string
     public function isApproved(): bool
     {
         return $this === self::Approved;
+    }
+
+    /** True while the buyer still owes a decision on this proof. */
+    public function isAwaitingBuyer(): bool
+    {
+        return $this === self::Sent;
     }
 }
