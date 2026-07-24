@@ -161,7 +161,10 @@ class QuoteController extends Controller
 
         $this->authorize('view', $quote);
 
-        return new QuoteResource($quote->load(['lineItems.product', 'proofs']));
+        // proofs.lineItem.product: ProofResource resolves the design-on-product
+        // composite through each proof's own line item, so eager-load it or the
+        // composite lookup fires two queries per proof (N+1).
+        return new QuoteResource($quote->load(['lineItems.product', 'proofs.lineItem.product']));
     }
 
     /**
