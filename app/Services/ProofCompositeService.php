@@ -73,32 +73,26 @@ class ProofCompositeService
 
     /**
      * The product photo behind this proof's artwork, when the artwork is a
-     * buyer line design. Matched by ref: staff issued the proof straight from
-     * the line's designer artwork, so the line names the product to composite
-     * onto. An uploaded/finished proof file matches no line and stays as-is.
+     * buyer line design. Taken straight from the proof's own line item: a proof
+     * belongs to exactly one line, and a designer line names the product to
+     * composite onto. A buyer-uploaded (finished-look) line, or one with no
+     * product photo, has nothing to flatten onto and stays as-is.
      */
     private function matchingProductImage(Proof $proof): ?string
     {
-        $ref = (string) $proof->artwork_version_ref;
-        if ($ref === '') {
+        $line = $proof->lineItem;
+        if ($line === null) {
             return null;
         }
 
-        foreach ($proof->quote?->lineItems ?? [] as $line) {
-            $customization = $line->customization ?? [];
-            if (($customization['mode'] ?? null) === 'buyer_uploaded') {
-                continue;
-            }
-            if (($customization['artwork_ref'] ?? null) !== $ref) {
-                continue;
-            }
-            $imageUrl = (string) ($line->product?->image_url ?? '');
-            if ($imageUrl !== '') {
-                return $imageUrl;
-            }
+        $customization = $line->customization ?? [];
+        if (($customization['mode'] ?? null) === 'buyer_uploaded') {
+            return null;
         }
 
-        return null;
+        $imageUrl = (string) ($line->product?->image_url ?? '');
+
+        return $imageUrl !== '' ? $imageUrl : null;
     }
 
     /** Flattened PNG bytes, or null when either image cannot be loaded. */

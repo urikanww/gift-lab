@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Resources\ProofResource;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
@@ -58,14 +59,15 @@ function seedDesignerProof(): Proof
     $company = Company::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOFING']);
     $product = Product::factory()->create(['image_url' => 'https://img.test/product.png']);
-    LineItem::factory()->create([
+    $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'product_id' => $product->id,
         'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/design.png'],
     ]);
 
-    return Proof::factory()->create([
-        'quote_id' => $quote->id,
+    // The proof hangs off THIS line, so the composite finds the product photo
+    // through the relation (proof->lineItem->product), not a ref scan.
+    return Proof::factory()->forLine($line)->create([
         'artwork_version_ref' => 'artwork/design.png',
     ]);
 }
@@ -113,7 +115,7 @@ it('serves the composite through ProofResource artwork_url for designer proofs',
     Http::fake(['img.test/*' => Http::response(pngBytes(200, 100, [255, 0, 0]))]);
 
     $proof = seedDesignerProof();
-    $data = \App\Http\Resources\ProofResource::make($proof)->resolve();
+    $data = ProofResource::make($proof)->resolve();
 
     // "View artwork" (and the version thumbnails) must show the flattened
     // design-on-product image, not the transparent design-only PNG.
@@ -131,19 +133,44 @@ it('returns null for an uploaded proof that matches no line design', function ()
     expect(app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay()))->toBeNull();
 });
 
-it('returns null for a buyer_uploaded reference line even when refs match', function (): void {
+it('returns null for a buyer_uploaded line even though its product has a photo', function (): void {
     $company = Company::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOFING']);
     $product = Product::factory()->create(['image_url' => 'https://img.test/product.png']);
-    LineItem::factory()->create([
+    $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'product_id' => $product->id,
         'customization' => ['mode' => 'buyer_uploaded', 'artwork_ref' => 'artwork/ref-photo.png'],
     ]);
-    $proof = Proof::factory()->create([
-        'quote_id' => $quote->id,
+    // Proof on the buyer_uploaded line: a finished-look upload is composited
+    // onto nothing, so no product photo is matched even though one exists.
+    $proof = Proof::factory()->forLine($line)->create([
         'artwork_version_ref' => 'artwork/ref-photo.png',
     ]);
 
     expect(app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay()))->toBeNull();
+});
+
+it('matches the product photo through the proof line item, not by an artwork ref scan', function (): void {
+    Storage::disk('artwork_test')->put('artwork/design.png', pngBytes(100, 100, [0, 0, 255], true));
+    Http::fake(['img.test/*' => Http::response(pngBytes(200, 100, [255, 0, 0]))]);
+
+    $company = Company::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOFING']);
+    $product = Product::factory()->create(['image_url' => 'https://img.test/product.png']);
+    // The line's customization ref deliberately differs from the proof's
+    // artwork_version_ref: the old scan matched on that ref and would miss here,
+    // so a composite proves the match is by relation (proof->lineItem->product).
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/original.png'],
+    ]);
+    $proof = Proof::factory()->forLine($line)->create([
+        'artwork_version_ref' => 'artwork/design.png',
+    ]);
+
+    $url = app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay());
+
+    expect($url)->toStartWith('https://bucket.test/artwork/composites/');
 });
