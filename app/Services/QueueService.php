@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Enums\JobTrack;
 use App\Enums\LineItemState;
+use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Events\OrderTrackingUpdated;
 use App\Events\ProductionQueueUpdated;
 use App\Events\QuoteStateChanged;
+use App\Exceptions\DomainRuleException;
+use App\Models\LineItem;
 use App\Models\ProductionJob;
-use App\Models\Proof;
 use App\Models\Quote;
 use App\Support\Broadcasting;
 use Illuminate\Support\Collection;
@@ -26,9 +29,7 @@ use RuntimeException;
  */
 final class QueueService
 {
-    public function __construct(private readonly AuditLogger $audit)
-    {
-    }
+    public function __construct(private readonly AuditLogger $audit) {}
 
     /**
      * Build production jobs for a quote whose line items are all resolved
@@ -57,12 +58,6 @@ final class QueueService
             );
         }
 
-        $approvedProof = $quote->approvedProof();
-
-        if ($approvedProof === null) {
-            throw new RuntimeException("Quote {$quote->id} has no approved proof; production gate not met.");
-        }
-
         $readyLines = $quote->lineItems->filter(
             fn ($line): bool => $line->line_state === LineItemState::Ready
         );
@@ -79,7 +74,7 @@ final class QueueService
 
         $jobs = collect();
 
-        DB::transaction(function () use ($quote, $groups, $approvedProof, &$jobs): void {
+        DB::transaction(function () use ($quote, $groups, &$jobs): void {
             foreach ($groups as $lines) {
                 $track = $lines->first()->product->class->track();
                 $job = ProductionJob::create([
@@ -87,7 +82,7 @@ final class QueueService
                     'track' => $track->value,
                     'ready_at' => now(),
                     'state' => JobState::Ready->value,
-                    'artwork_ref' => $this->resolveArtworkRef($track, $lines, $approvedProof),
+                    'artwork_refs' => $this->resolveArtworkRefs($track, $lines),
                     'print_method' => $lines->first()->product->print_method?->value,
                     'qty' => (int) $lines->sum('qty'),
                     'created_by' => auth()->id(),
@@ -111,32 +106,43 @@ final class QueueService
     }
 
     /**
-     * The print-ready file a track's job hands the shop floor. MODEL_3D lines
-     * (3D track) carry a UV-flattened production decal in
-     * customization.print_file_ref - the file the UV printer/jig actually
-     * consumes - which must supersede the proof mockup (artwork_version_ref,
-     * the buyer's on-canvas sign-off). Everything else, and any legacy/flat 3D
-     * line predating the decal pipeline (no print_file_ref), falls back to the
-     * approved proof artwork.
+     * Print-ready files a job hands the floor, one entry per artwork line it
+     * covers: { line_item_id, product_name, ref }. A 3D line uses its UV decal
+     * (customization.print_file_ref) when present, else that line's approved
+     * proof. A UV line uses that line's approved proof artwork. A line with no
+     * approved proof is a gate violation - the order can't be READY unless every
+     * artwork line is approved-or-dropped - so throw.
      *
-     * A 3D group is a single line (buildJobsForQuote gives each 3D line its own
-     * job), so the loop returns that one line's decal; the fallback covers the
-     * legacy no-print_file_ref case. UV groups skip straight to the proof.
-     *
-     * @param  Collection<int, \App\Models\LineItem>  $lines
+     * @param  Collection<int, LineItem>  $lines
+     * @return array<int, array{line_item_id: int, product_name: string, ref: string}>
      */
-    private function resolveArtworkRef(JobTrack $track, Collection $lines, Proof $approvedProof): ?string
+    private function resolveArtworkRefs(JobTrack $track, Collection $lines): array
     {
-        if ($track === JobTrack::ThreeD) {
-            foreach ($lines as $line) {
-                $printFileRef = $line->customization['print_file_ref'] ?? null;
-                if (is_string($printFileRef) && $printFileRef !== '') {
-                    return $printFileRef;
-                }
+        $out = [];
+        foreach ($lines as $line) {
+            if (! $line->needsProof()) {
+                continue; // plain stock line in a batched group - nothing to print
             }
+            $ref = null;
+            if ($track === JobTrack::ThreeD) {
+                $printFileRef = $line->customization['print_file_ref'] ?? null;
+                $ref = is_string($printFileRef) && $printFileRef !== '' ? $printFileRef : null;
+            }
+            if ($ref === null) {
+                $approved = $line->proofs()->where('state', ProofState::Approved->value)->orderByDesc('version')->first();
+                if ($approved === null) {
+                    throw new RuntimeException("Line {$line->id} has no approved proof; cannot build its print file.");
+                }
+                $ref = $approved->artwork_version_ref;
+            }
+            $out[] = [
+                'line_item_id' => $line->id,
+                'product_name' => (string) ($line->product?->name ?? "Line #{$line->id}"),
+                'ref' => $ref,
+            ];
         }
 
-        return $approvedProof->artwork_version_ref;
+        return $out;
     }
 
     /**
@@ -169,18 +175,18 @@ final class QueueService
      * refused here - it needs a consignment ref/carrier - so a scan can never
      * silently fire the buyer's "on the way" signal without a real handover.
      *
-     * @throws \App\Exceptions\DomainRuleException when the next state is SHIPPED
+     * @throws DomainRuleException when the next state is SHIPPED
      */
     public function advanceNext(ProductionJob $job): ProductionJob
     {
         $next = $job->state->nextStates()[0] ?? null;
 
         if ($next === null) {
-            throw new \App\Exceptions\DomainRuleException('This job has no further state to advance to.');
+            throw new DomainRuleException('This job has no further state to advance to.');
         }
 
         if ($next === JobState::Shipped) {
-            throw new \App\Exceptions\DomainRuleException(
+            throw new DomainRuleException(
                 'Marking a job shipped needs a consignment reference. Use the ship action.'
             );
         }
@@ -217,7 +223,7 @@ final class QueueService
         ProductionJob $job,
         JobState $target,
         ?string $consignmentRef = null,
-        ?\App\Enums\Carrier $carrier = null,
+        ?Carrier $carrier = null,
     ): ProductionJob {
         $from = $job->state->value;
 

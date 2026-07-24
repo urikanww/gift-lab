@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Enums\JobState;
+use App\Enums\JobTrack;
 use App\Events\ProductionQueueUpdated;
+use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
+use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
@@ -24,19 +28,25 @@ beforeEach(function (): void {
 function readyQuoteWithProof(): Quote
 {
     $quote = Quote::factory()->create(['company_id' => test()->company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create([
+    $line = LineItem::factory()->ready()->create([
         'quote_id' => $quote->id,
         'product_id' => test()->product->id,
         'qty' => 10,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
     ]);
+    Proof::factory()->forLine($line)->approved()->create();
 
     return $quote->load('lineItems.product');
 }
 
 it('refuses to queue a quote without an approved proof (gate 1)', function (): void {
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
-    LineItem::factory()->ready()->create(['quote_id' => $quote->id, 'product_id' => $this->product->id]);
+    // An artwork line (needsProof) with no approved proof is a gate violation.
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $this->product->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
+    ]);
 
     expect(fn () => $this->queue->buildJobsForQuote($quote->load('lineItems.product')))
         ->toThrow(RuntimeException::class);
@@ -58,51 +68,52 @@ it('builds a job per track, sets ready_at, and moves the quote to READY', functi
 it('prints the UV-flattened decal (print_file_ref) for a MODEL_3D job, not the proof mockup', function (): void {
     $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
-    $proof = Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create([
+    $line = LineItem::factory()->ready()->create([
         'quote_id' => $quote->id,
         'product_id' => $model3d->id,
-        'customization' => ['artwork_ref' => 'artwork/proof.png', 'print_file_ref' => 'artwork/decal-flat.png'],
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/proof.png', 'print_file_ref' => 'artwork/decal-flat.png'],
     ]);
+    $proof = Proof::factory()->forLine($line)->approved()->create();
 
     $job = $this->queue->buildJobsForQuote($quote->load('lineItems.product'))->first();
+    $refs = collect($job->artwork_refs)->pluck('ref');
 
     expect($job->track->value)->toBe('3D')
-        ->and($job->artwork_ref)->toBe('artwork/decal-flat.png')
-        ->and($job->artwork_ref)->not->toBe($proof->artwork_version_ref);
+        ->and($refs->all())->toContain('artwork/decal-flat.png')
+        ->and($refs->all())->not->toContain($proof->artwork_version_ref);
 });
 
 it('falls back to the proof artwork for a legacy MODEL_3D line with no print_file_ref', function (): void {
     $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
-    $proof = Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create([
+    $line = LineItem::factory()->ready()->create([
         'quote_id' => $quote->id,
         'product_id' => $model3d->id,
-        'customization' => ['artwork_ref' => 'artwork/proof.png'],
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/proof.png'],
     ]);
+    $proof = Proof::factory()->forLine($line)->approved()->create();
 
     $job = $this->queue->buildJobsForQuote($quote->load('lineItems.product'))->first();
 
-    expect($job->artwork_ref)->toBe($proof->artwork_version_ref);
+    expect(collect($job->artwork_refs)->pluck('ref')->all())->toContain($proof->artwork_version_ref);
 });
 
 it('splits multiple MODEL_3D lines into one job each, with its own decal, qty and print method', function (): void {
     $mugA = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $figB = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'RESIN']);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
     LineItem::factory()->ready()->create([
         'quote_id' => $quote->id, 'product_id' => $mugA->id, 'qty' => 4,
-        'customization' => ['print_file_ref' => 'artwork/decal-a.png'],
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal-a.png'],
     ]);
     LineItem::factory()->ready()->create([
         'quote_id' => $quote->id, 'product_id' => $figB->id, 'qty' => 7,
-        'customization' => ['print_file_ref' => 'artwork/decal-b.png'],
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal-b.png'],
     ]);
 
     $jobs = $this->queue->buildJobsForQuote($quote->load('lineItems.product'));
-    $byArtwork = $jobs->keyBy('artwork_ref');
+    // Each 3D job covers one line, so its artwork_refs holds a single entry.
+    $byArtwork = $jobs->keyBy(fn ($j) => collect($j->artwork_refs)->pluck('ref')->first());
 
     expect($jobs)->toHaveCount(2)
         ->and($jobs->every(fn ($j): bool => $j->track->value === '3D'))->toBeTrue()
@@ -115,24 +126,32 @@ it('splits multiple MODEL_3D lines into one job each, with its own decal, qty an
 it('keeps UV lines folded into one job while splitting the 3D line out', function (): void {
     $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
-    $proof = Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    // Two UV lines (this test's CORE product) + one 3D line.
-    LineItem::factory()->ready()->create(['quote_id' => $quote->id, 'product_id' => $this->product->id, 'qty' => 3]);
-    LineItem::factory()->ready()->create(['quote_id' => $quote->id, 'product_id' => $this->product->id, 'qty' => 5]);
+    // Two UV lines (this test's CORE product), each with its own approved proof + one 3D line.
+    $uv1 = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id, 'product_id' => $this->product->id, 'qty' => 3,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/uv-1.png'],
+    ]);
+    $uv2 = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id, 'product_id' => $this->product->id, 'qty' => 5,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/uv-2.png'],
+    ]);
+    $p1 = Proof::factory()->forLine($uv1)->approved()->create();
+    $p2 = Proof::factory()->forLine($uv2)->approved()->create();
     LineItem::factory()->ready()->create([
         'quote_id' => $quote->id, 'product_id' => $model3d->id, 'qty' => 2,
-        'customization' => ['print_file_ref' => 'artwork/decal.png'],
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png'],
     ]);
 
     $jobs = $this->queue->buildJobsForQuote($quote->load('lineItems.product'));
-    $uv = $jobs->firstWhere('track', App\Enums\JobTrack::Uv);
-    $threeD = $jobs->firstWhere('track', App\Enums\JobTrack::ThreeD);
+    $uv = $jobs->firstWhere('track', JobTrack::Uv);
+    $threeD = $jobs->firstWhere('track', JobTrack::ThreeD);
 
     expect($jobs)->toHaveCount(2)
         ->and($uv->qty)->toBe(8)
-        ->and($uv->artwork_ref)->toBe($proof->artwork_version_ref)
+        ->and(collect($uv->artwork_refs)->pluck('ref')->all())
+        ->toContain($p1->artwork_version_ref)->toContain($p2->artwork_version_ref)
         ->and($threeD->qty)->toBe(2)
-        ->and($threeD->artwork_ref)->toBe('artwork/decal.png');
+        ->and(collect($threeD->artwork_refs)->pluck('ref')->all())->toContain('artwork/decal.png');
 });
 
 it('uses the proof artwork for a UV job (print_file_ref never applies)', function (): void {
@@ -142,7 +161,7 @@ it('uses the proof artwork for a UV job (print_file_ref never applies)', functio
     $job = $this->queue->buildJobsForQuote($quote)->first();
 
     expect($job->track->value)->toBe('UV')
-        ->and($job->artwork_ref)->toBe($proof->artwork_version_ref);
+        ->and(collect($job->artwork_refs)->pluck('ref')->all())->toContain($proof->artwork_version_ref);
 });
 
 it('orders the shared queue FCFS by readiness', function (): void {
@@ -160,7 +179,7 @@ it('orders the shared queue FCFS by readiness', function (): void {
 
 it('requires a consignment ref to mark a job shipped', function (): void {
     $job = $this->queue->buildJobsForQuote(readyQuoteWithProof())->first();
-    $this->queue->advance($job, App\Enums\JobState::InProduction);
+    $this->queue->advance($job, JobState::InProduction);
 
     Sanctum::actingAs($this->staff);
     $this->postJson("/api/production-jobs/{$job->id}/advance", ['state' => 'SHIPPED'])
@@ -172,7 +191,7 @@ it('requires a consignment ref to mark a job shipped', function (): void {
 
 it('marks a job shipped with a consignment ref and audit-logs the transition', function (): void {
     $job = $this->queue->buildJobsForQuote(readyQuoteWithProof())->first();
-    $this->queue->advance($job, App\Enums\JobState::InProduction);
+    $this->queue->advance($job, JobState::InProduction);
 
     Sanctum::actingAs($this->staff);
     $this->postJson("/api/production-jobs/{$job->id}/advance", [
@@ -184,21 +203,20 @@ it('marks a job shipped with a consignment ref and audit-logs the transition', f
 
     expect($job->fresh()->consignment_ref)->toBe('SP123456789SG')
         ->and(
-            App\Models\AuditLog::where('event', 'production_job.advanced')
+            AuditLog::where('event', 'production_job.advanced')
                 ->whereJsonContains('new_values->state', 'SHIPPED')
                 ->exists()
         )->toBeTrue();
 });
 
-function ready3dJobWithDecal(string $decalRef): App\Models\ProductionJob
+function ready3dJobWithDecal(string $decalRef): ProductionJob
 {
     $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $quote = Quote::factory()->create(['company_id' => test()->company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
     LineItem::factory()->ready()->create([
         'quote_id' => $quote->id,
         'product_id' => $model3d->id,
-        'customization' => ['print_file_ref' => $decalRef],
+        'customization' => ['mode' => 'designer', 'print_file_ref' => $decalRef],
     ]);
 
     return test()->queue->buildJobsForQuote($quote->load('lineItems.product'))->first();
@@ -211,7 +229,7 @@ it('lets staff download a job print file off the private disk', function (): voi
     $job = ready3dJobWithDecal('artwork/decal.png');
 
     Sanctum::actingAs($this->staff);
-    $res = $this->get("/api/production-jobs/{$job->id}/print-file");
+    $res = $this->get("/api/production-jobs/{$job->id}/print-file?ref=artwork/decal.png");
 
     $res->assertOk();
     expect($res->headers->get('content-disposition'))->toContain('decal.png')
@@ -234,7 +252,7 @@ it('returns 404 when the print file is absent from the disk', function (): void 
     $job = ready3dJobWithDecal('artwork/gone.png'); // ref set, file never written
 
     Sanctum::actingAs($this->staff);
-    $this->get("/api/production-jobs/{$job->id}/print-file")->assertNotFound();
+    $this->get("/api/production-jobs/{$job->id}/print-file?ref=artwork/gone.png")->assertNotFound();
 });
 
 it('returns 404 when the job artwork ref is not a valid artwork key', function (): void {
@@ -242,9 +260,10 @@ it('returns 404 when the job artwork ref is not a valid artwork key', function (
     // A UV job carries the proof ref (a proofs/ key here), which must fail the
     // artwork/ guard rather than reach a disk read.
     $job = $this->queue->buildJobsForQuote(readyQuoteWithProof())->first();
+    $ref = collect($job->artwork_refs)->pluck('ref')->first();
 
     Sanctum::actingAs($this->staff);
-    $this->get("/api/production-jobs/{$job->id}/print-file")->assertNotFound();
+    $this->get("/api/production-jobs/{$job->id}/print-file?ref={$ref}")->assertNotFound();
 });
 
 it('restricts the queue endpoint to staff', function (): void {
@@ -270,11 +289,10 @@ it('exposes every model part + the customization/zone on a job line for the floo
         ['label' => 'Head', 'file_ref' => 'models3d/x-1-part1.stl', 'triangle_count' => 100, 'is_primary' => false, 'sort' => 1],
     ]);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
     LineItem::factory()->ready()->create([
         'quote_id' => $quote->id,
         'product_id' => $model3d->id,
-        'customization' => ['print_file_ref' => 'artwork/decal.png', 'filament_color' => 'Black', 'text' => 'HELLO'],
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png', 'filament_color' => 'Black', 'text' => 'HELLO'],
     ]);
     $this->queue->buildJobsForQuote($quote->load('lineItems.product'));
 

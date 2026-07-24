@@ -55,12 +55,13 @@ it('projects SHIPPED then DELIVERED on /track as the jobs advance', function ():
     // Drive a quote onto the floor: PROCURING + approved proof + a ready line,
     // then build the production job (moves the quote to READY).
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create([
+    $line = LineItem::factory()->ready()->create([
         'quote_id' => $quote->id,
         'product_id' => $product->id,
         'qty' => 10,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
     ]);
+    Proof::factory()->forLine($line)->approved()->create();
 
     $queue = app(QueueService::class);
     $job = $queue->buildJobsForQuote($quote->load('lineItems.product'))->first();

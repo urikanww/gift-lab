@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 use App\Events\LineItemAwaitingReconfirm;
 use App\Models\Company;
+use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\Proof;
-use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\SupplierReorder;
 use App\Models\User;
@@ -232,7 +232,7 @@ it('rejects a quote amendment that breaks the margin floor', function (): void {
     // Floor 12% over landed 10.00 => min 11.20; propose 9.00 => rejected.
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[['id' => $line->id, 'unit_price' => 9.00, 'qty' => 2]],
+        'lines' => [['id' => $line->id, 'unit_price' => 9.00, 'qty' => 2]],
     ])->assertStatus(422);
 });
 
@@ -269,7 +269,7 @@ it('keeps untouched lines in the subtotal when only some lines are amended', fun
     // (1 x 20.00) must still count toward the subtotal.
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[['id' => $amended->id, 'unit_price' => 16.00, 'qty' => 2]],
+        'lines' => [['id' => $amended->id, 'unit_price' => 16.00, 'qty' => 2]],
     ])->assertOk();
 
     $quote->refresh();
@@ -318,7 +318,7 @@ it('adds a new line and counts it toward the subtotal', function (): void {
 
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[
+        'lines' => [
             ['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2],
             ['id' => $second->id, 'unit_price' => 20.00, 'qty' => 1],
             ['product_id' => $added->id, 'unit_price' => 12.00, 'qty' => 3],
@@ -343,7 +343,7 @@ it('removes a line and drops it from the subtotal', function (): void {
 
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
+        'lines' => [['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
         'removed_line_ids' => [$second->id],
     ])->assertOk();
 
@@ -363,7 +363,7 @@ it('rejects an amendment that would remove every line', function (): void {
 
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
+        'lines' => [['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
         'removed_line_ids' => [$first->id, $second->id],
     ])->assertStatus(422)->assertJsonValidationErrors('removed_line_ids');
 
@@ -379,7 +379,7 @@ it('enforces the margin floor on an added line', function (): void {
     // Floor 12% over landed 10.00 => min 11.20; propose 9.00 => rejected.
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[
+        'lines' => [
             ['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2],
             ['product_id' => $added->id, 'unit_price' => 9.00, 'qty' => 3],
         ],
@@ -418,7 +418,7 @@ it('refuses to remove a line belonging to another quote', function (): void {
 
     $this->patchJson("/api/quotes/{$quote->id}/amend", [
         'remark' => 'Supplier price update applied.',
-        'lines' =>[['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
+        'lines' => [['id' => $first->id, 'unit_price' => 15.00, 'qty' => 2]],
         'removed_line_ids' => [$foreign->id],
     ])->assertStatus(422);
 
@@ -614,15 +614,16 @@ function quoteAwaitingStockConfirmation(): Quote
     $product = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
     $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 500]);
     $quote = Quote::factory()->create(['company_id' => test()->company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->create([
+    $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'product_id' => $product->id,
         'variant_id' => $variant->id,
         'qty' => 5,
         'unit_price' => 15.00,
         'line_state' => 'READY',
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
     ]);
+    Proof::factory()->forLine($line)->approved()->create();
 
     return $quote;
 }

@@ -4,15 +4,20 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\Carrier;
 use App\Enums\JobState;
+use App\Exceptions\CourierException;
+use App\Http\Requests\AdvanceBatchRequest;
 use App\Http\Requests\AdvanceJobRequest;
 use App\Http\Resources\ProductionJobResource;
 use App\Models\ProductionJob;
 use App\Models\Quote;
 use App\Services\QueueService;
+use App\Services\ShipmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -24,9 +29,8 @@ class ProductionQueueController extends Controller
 {
     public function __construct(
         private readonly QueueService $queue,
-        private readonly \App\Services\ShipmentService $shipment,
-    ) {
-    }
+        private readonly ShipmentService $shipment,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -40,7 +44,7 @@ class ProductionQueueController extends Controller
         $target = JobState::from($request->string('state')->toString());
         $consignmentRef = $request->input('consignment_ref');
         $carrierInput = $request->input('carrier');
-        $carrier = $carrierInput !== null ? \App\Enums\Carrier::from((string) $carrierInput) : null;
+        $carrier = $carrierInput !== null ? Carrier::from((string) $carrierInput) : null;
         $job = $this->queue->advance(
             $job,
             $target,
@@ -58,7 +62,7 @@ class ProductionQueueController extends Controller
         return new ProductionJobResource($this->queue->advanceNext($job));
     }
 
-    public function advanceBatch(\App\Http\Requests\AdvanceBatchRequest $request): \Illuminate\Http\JsonResponse
+    public function advanceBatch(AdvanceBatchRequest $request): JsonResponse
     {
         $target = JobState::from($request->string('state')->toString());
         /** @var array<int, int> $ids */
@@ -81,9 +85,13 @@ class ProductionQueueController extends Controller
     {
         $this->authorize('manageProduction', Quote::class);
 
-        $ref = $job->artwork_ref;
+        // A job now carries one file per artwork line (artwork_refs); the caller
+        // names which by ?ref. Only a ref actually on this job may stream, so a
+        // foreign/guessed key can never reach a disk read.
+        $ref = (string) $request->query('ref', '');
+        $onJob = collect($job->artwork_refs ?? [])->pluck('ref')->contains($ref);
 
-        if (! is_string($ref) || preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) !== 1) {
+        if (! $onJob || preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) !== 1) {
             abort(404);
         }
 
@@ -114,8 +122,8 @@ class ProductionQueueController extends Controller
         // courier failure needs a bespoke 502 with a safe, non-leaking message.
         try {
             $job = $this->shipment->createForJob($job);
-        } catch (\App\Exceptions\CourierException $e) {
-            \Illuminate\Support\Facades\Log::warning('Courier shipment failed.', ['job_id' => $job->id, 'error' => $e->getMessage()]);
+        } catch (CourierException $e) {
+            Log::warning('Courier shipment failed.', ['job_id' => $job->id, 'error' => $e->getMessage()]);
 
             return response()->json(['message' => 'The courier could not create this shipment. Please try again.'], 502);
         }

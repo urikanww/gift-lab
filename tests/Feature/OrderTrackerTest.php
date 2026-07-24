@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use App\Models\Company;
-use App\Models\Quote;
-use App\Services\OrderTracker;
 use App\Enums\JobState;
+use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
+use App\Models\Quote;
+use App\Services\OrderTracker;
 use App\Services\QueueService;
 
 it('builds a PII-free payload for a quote', function (): void {
@@ -31,8 +31,13 @@ it('exposes needed_by and item counts', function (): void {
         'state' => 'PROCURING',
         'needed_by' => '2026-08-15',
     ]);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create(['quote_id' => $quote->id, 'product_id' => $product->id, 'qty' => 5]);
+    $line = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'qty' => 5,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+    ]);
+    Proof::factory()->forLine($line)->approved()->create();
 
     $queue = app(QueueService::class);
     $job = $queue->buildJobsForQuote($quote->load('lineItems.product'))->first();

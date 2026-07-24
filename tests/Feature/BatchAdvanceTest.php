@@ -6,19 +6,25 @@ use App\Enums\JobState;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
+use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
 use App\Services\QueueService;
 use Laravel\Sanctum\Sanctum;
 
-function batchReadyUvJob(): App\Models\ProductionJob
+function batchReadyUvJob(): ProductionJob
 {
     $company = Company::factory()->create();
     $product = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create(['quote_id' => $quote->id, 'product_id' => $product->id, 'qty' => 2]);
+    $line = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'qty' => 2,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+    ]);
+    Proof::factory()->forLine($line)->approved()->create();
 
     return app(QueueService::class)->buildJobsForQuote($quote->load('lineItems.product'))->first();
 }
