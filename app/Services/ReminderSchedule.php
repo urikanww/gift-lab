@@ -47,7 +47,7 @@ class ReminderSchedule
      * Mirrors ChaseUnansweredOrders exactly: which states wait on what, the clock
      * each wait runs from, and the ladder each uses.
      *
-     * @return array{kind: string, reminders_sent: int, reminders_remaining: int, exhausted: bool, next_due_at: ?string, ladder_days: array<int, int>}|null
+     * @return array{kind: string, reminders_sent: int, reminders_remaining: int, exhausted: bool, next_due_at: ?string, ladder_days: array<int, int>, awaiting_count: int}|null
      */
     public function next(Quote $quote): ?array
     {
@@ -56,6 +56,11 @@ class ReminderSchedule
         if ($kind === null) {
             return null;
         }
+
+        // How many items still sit with the buyer. Proofs are per-line, so a
+        // proof round can leave several open at once; the reminder says how many
+        // rather than implying a single artwork. Zero for a price wait.
+        $awaitingCount = $this->awaitingCount($quote);
 
         $remindersSent = (int) $quote->reminders_sent;
         $total = count($ladder);
@@ -71,6 +76,7 @@ class ReminderSchedule
                 'exhausted' => true,
                 'next_due_at' => null,
                 'ladder_days' => $ladder,
+                'awaiting_count' => $awaitingCount,
             ];
         }
 
@@ -83,7 +89,24 @@ class ReminderSchedule
             'exhausted' => false,
             'next_due_at' => $dueAt->toIso8601String(),
             'ladder_days' => $ladder,
+            'awaiting_count' => $awaitingCount,
         ];
+    }
+
+    /**
+     * How many of the order's proofs are still SENT (awaiting the buyer). Reads
+     * the loaded relation when present - the proof wait requires it - so this
+     * fires no extra query on that path; otherwise counts straight from the db.
+     */
+    private function awaitingCount(Quote $quote): int
+    {
+        if ($quote->relationLoaded('proofs')) {
+            return $quote->proofs
+                ->filter(fn ($proof): bool => $proof->state->value === 'SENT')
+                ->count();
+        }
+
+        return $quote->proofs()->where('state', 'SENT')->count();
     }
 
     /**

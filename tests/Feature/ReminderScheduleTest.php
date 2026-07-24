@@ -108,3 +108,26 @@ it('schedules a proof reminder when a proof is open in proofing', function (): v
     expect($next['kind'])->toBe('proof')
         ->and($next['ladder_days'])->toBe([2, 5, 9]);
 });
+
+it('reports how many proofs are still awaiting the buyer', function (): void {
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOFING',
+        'reminders_sent' => 0,
+    ]);
+    Proof::factory()->count(2)->create([
+        'quote_id' => $quote->id,
+        'state' => 'SENT',
+        'created_at' => now()->subDay(),
+    ]);
+    // An already-approved proof on the same order is not awaiting anyone.
+    Proof::factory()->approved()->create([
+        'quote_id' => $quote->id,
+        'created_at' => now()->subDay(),
+    ]);
+
+    $next = $this->schedule->next($quote->load('proofs'));
+
+    expect($next['kind'])->toBe('proof')
+        ->and($next['awaiting_count'])->toBe(2);
+});
