@@ -100,7 +100,17 @@ class DashboardMetrics
             // version. Keyed on the PROOF state so it catches both paths - the
             // accepted-price order that stays PROOFING and the slim order that
             // moves to CHANGES_REQUESTED - which a quote-state count would miss.
-            'changesRequested' => Proof::query()->where('state', 'CHANGES_REQUESTED')->count(),
+            // Only the LATEST proof per quote counts: a bounced version that has
+            // already been superseded by a newer proof is history, not work, and
+            // counting it inflated the badge once an order looped more than once.
+            'changesRequested' => Proof::query()
+                ->where('state', 'CHANGES_REQUESTED')
+                ->whereNotExists(function ($query): void {
+                    $query->from('proofs as newer')
+                        ->whereColumn('newer.quote_id', 'proofs.quote_id')
+                        ->whereColumn('newer.version', '>', 'proofs.version');
+                })
+                ->count(),
             'procurementToReconfirm' => LineItem::query()->where('line_state', 'AWAITING_RECONFIRM')->count(),
             'cataloguePending' => Product::query()->where('publish_state', 'READY_TO_APPROVE')->count(),
             'reordersOpen' => SupplierReorder::query()->where('state', '!=', 'RECEIVED')->count(),

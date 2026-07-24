@@ -48,6 +48,7 @@ final class QuoteService
         private readonly StockLedger $ledger,
         private readonly OrderNotifier $notifier,
         private readonly StaffNotifier $staffNotifier,
+        private readonly ProofCompositeService $composites,
     ) {}
 
     /**
@@ -1085,7 +1086,15 @@ final class QuoteService
             // this still resolves to the (host-served) app route. Either way the
             // buyer opening the email within the week sees the artwork - and on
             // Spaces the link is a direct, reachable bucket URL, not localhost.
-            $proofImageUrl = $proof->signedArtworkUrl(now()->addDays(7));
+            //
+            // A proof issued straight from the buyer's designer artwork is a
+            // TRANSPARENT design-only PNG - on its own it reads as a logo
+            // floating on white. Prefer the flattened design-on-product
+            // composite; fall back to the raw artwork for uploaded proofs (or
+            // when compositing is unavailable).
+            $expiry = now()->addDays(7);
+            $proofImageUrl = $this->composites->signedCompositeUrl($proof, $expiry)
+                ?? $proof->signedArtworkUrl($expiry);
         }
 
         DB::afterCommit(fn () => Mail::to($recipient->email)->queue(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\Product;
+use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
 use App\Services\Dashboard\DashboardMetrics;
@@ -43,6 +44,27 @@ it('reports pipeline, production, and queue counts', function (): void {
     expect($res->json('pipeline.ACCEPTED'))->toBe(1);
     expect($res->json('production'))->toHaveKeys(['byState', 'wip', 'overdue']);
     expect($res->json('queues'))->toHaveKeys(['proofsPending', 'changesRequested', 'procurementToReconfirm', 'cataloguePending', 'reordersOpen']);
+});
+
+it('counts only the latest bounced proof per quote in changesRequested', function (): void {
+    $company = Company::factory()->create();
+
+    // One order bounced twice: v1's bounce is history once v2 exists - one
+    // order needing staff action, not two.
+    $looped = Quote::factory()->create(['company_id' => $company->id, 'state' => 'CHANGES_REQUESTED']);
+    Proof::factory()->create(['quote_id' => $looped->id, 'version' => 1, 'state' => 'CHANGES_REQUESTED']);
+    Proof::factory()->create(['quote_id' => $looped->id, 'version' => 2, 'state' => 'CHANGES_REQUESTED']);
+
+    // A bounce already answered with a newer SENT revision is the buyer's
+    // court now (and shows under proofsPending), not staff work.
+    $answered = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOFING']);
+    Proof::factory()->create(['quote_id' => $answered->id, 'version' => 1, 'state' => 'CHANGES_REQUESTED']);
+    Proof::factory()->create(['quote_id' => $answered->id, 'version' => 2, 'state' => 'SENT']);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/dashboard')->assertOk();
+
+    expect($res->json('queues.changesRequested'))->toBe(1);
 });
 
 it('includes value-booked only for superadmin', function (): void {
