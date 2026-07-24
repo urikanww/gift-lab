@@ -17,8 +17,9 @@ import QuoteLineEditor from '../components/quote/QuoteLineEditor';
 import AmendmentHistory from '../components/quote/AmendmentHistory';
 import ArtworkPicker, { type ArtworkOption } from '../components/quote/ArtworkPicker';
 import ProofFileInput from '../components/quote/ProofFileInput';
+import LineProofRow from '../components/quote/LineProofRow';
 import BuyerNotifications from '../components/quote/BuyerNotifications';
-import type { Proof, QuoteState } from '../types';
+import type { LineItem, Proof, QuoteState } from '../types';
 
 /**
  * Passive "what happens next" copy for buyer-facing states that carry no buyer
@@ -82,7 +83,8 @@ export default function QuoteDetailPage() {
     send,
     accept,
     procure,
-    issueProof,
+    stageProof,
+    sendProofs,
     decideProof,
     resendProof,
     issueInvoice,
@@ -111,18 +113,11 @@ export default function QuoteDetailPage() {
   // beside "Edit items" in the Items card header.
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Which proof field the buyer-design picker fills when open: DRAFT's
-  // send-with-proof field, or the issue-proof field. null = closed.
-  const [designPickerTarget, setDesignPickerTarget] = useState<'send' | 'issue' | null>(null);
+  // Which line the existing-artwork picker stages onto while open; null = closed.
+  // Proofs are per-line now, so the picker targets a specific line rather than a
+  // single shared proof field.
+  const [pickerLineId, setPickerLineId] = useState<number | null>(null);
 
-  const [artworkRef, setArtworkRef] = useState('');
-  const [artworkRefError, setArtworkRefError] = useState<string | undefined>();
-  // Dedicated state for the DRAFT send-with-proof field. Kept separate from the
-  // issue-proof state above: the component does not unmount across a state
-  // change, so a shared field would bleed a typed DRAFT ref into the
-  // Issue-proof input if the quote transitions to PROOFING under it.
-  const [sendProofRef, setSendProofRef] = useState('');
-  const [sendProofRefError, setSendProofRefError] = useState<string | undefined>();
   const [poRef, setPoRef] = useState('');
   const [poRefError, setPoRefError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -230,19 +225,55 @@ export default function QuoteDetailPage() {
       detail: 'Previously issued',
     });
   }
-  /** File-input value label when the field holds a picked artwork. */
-  const designLabel = (ref: string): string | undefined =>
-    artworkOptions.find((o) => o.ref === ref)?.name;
-  /** Fill the target proof field with a picked ref and clear its error. */
-  const applyBuyerDesign = (target: 'send' | 'issue', ref: string) => {
-    if (target === 'send') {
-      setSendProofRef(ref);
-      setSendProofRefError(undefined);
-    } else {
-      setArtworkRef(ref);
-      setArtworkRefError(undefined);
-    }
+  // Latest proof per line (highest version wins), so each row reads its own
+  // state. Proofs are per-line now, keyed on line_item_id.
+  const latestProofByLine = new Map<number, Proof>();
+  for (const p of quote.proofs ?? []) {
+    const existing = latestProofByLine.get(p.line_item_id);
+    if (!existing || p.version > existing.version) latestProofByLine.set(p.line_item_id, p);
+  }
+
+  // A line needs a proof when it carries a real customization (an in-app design,
+  // an uploaded artwork ref, or buyer reference photos) and has not been dropped.
+  // Not keyed on `mode` alone: a real designer line can arrive with artwork_ref
+  // set but no mode key (see the order 9BWVKWCDXH regression).
+  const lineNeedsProof = (li: LineItem): boolean => {
+    if (li.line_state === 'DROPPED') return false;
+    const c = li.customization;
+    if (!c) return false;
+    return Boolean(c.mode || c.artwork_ref || (c.reference_refs && c.reference_refs.length > 0));
   };
+  const proofLines = (quote.line_items ?? []).filter(lineNeedsProof);
+
+  // Reuse options for a line's picker, defaulting the line's own design first so
+  // the common case (proof this line from its own artwork) is one click.
+  const optionsForLine = (li: LineItem): ArtworkOption[] => {
+    const own =
+      li.customization?.mode !== 'buyer_uploaded' ? li.customization?.artwork_ref ?? null : null;
+    if (!own) return artworkOptions;
+    const idx = artworkOptions.findIndex((o) => o.ref === own);
+    if (idx <= 0) return artworkOptions;
+    return [
+      artworkOptions[idx],
+      ...artworkOptions.slice(0, idx),
+      ...artworkOptions.slice(idx + 1),
+    ];
+  };
+
+  // Blocker breakdown across the lines that need a proof. A DRAFT (staged but
+  // unsent) proof is deliberately counted as "Not prepared" - the buyer has not
+  // seen it yet, so it is not resolved.
+  const perLineProofs = proofLines.map((li) => ({
+    line: li,
+    proof: latestProofByLine.get(li.id) ?? null,
+  }));
+  const stagedCount = perLineProofs.filter((x) => x.proof?.state === 'DRAFT').length;
+  const awaitingBuyerCount = perLineProofs.filter((x) => x.proof?.state === 'SENT').length;
+  const inChangesCount = perLineProofs.filter((x) => x.proof?.state === 'CHANGES_REQUESTED').length;
+  const approvedProofCount = perLineProofs.filter((x) => x.proof?.state === 'APPROVED').length;
+  const notPreparedCount = perLineProofs.filter(
+    (x) => !x.proof || x.proof.state === 'DRAFT',
+  ).length;
   // A line still needing a staff decision blocks the production gate: the gate
   // is a confirmation that everything is in hand, which is not yet true.
   const awaitingDecision =
@@ -530,6 +561,57 @@ export default function QuoteDetailPage() {
     </Button>
   ) : undefined;
 
+  // Per-line proof staging: a row per line that needs a proof, above a blocker
+  // breakdown so staff see at a glance what is still outstanding. `showSend`
+  // adds the one Send button (all DRAFT->SENT in a single buyer email) plus an
+  // unsent-DRAFT warning - shown in the proofing states, not on a plain DRAFT
+  // quote where the buyer has not even accepted yet.
+  const perLineProofPanel = (showSend: boolean) => (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-fg-muted">
+        <span className="font-medium text-fg">Proof status:</span> Awaiting buyer{' '}
+        {awaitingBuyerCount} · In changes {inChangesCount} · Not prepared {notPreparedCount} ·
+        Approved {approvedProofCount}
+      </p>
+
+      <div className="flex flex-col divide-y divide-border">
+        {perLineProofs.map(({ line, proof }) => (
+          <LineProofRow
+            key={line.id}
+            line={line}
+            proof={proof}
+            artworkOptions={optionsForLine(line)}
+            busy={busy}
+            onStage={(ref) => void run(() => stageProof(quote.id, line.id, ref), 'Proof staged')}
+            onPickExisting={() => setPickerLineId(line.id)}
+            onDrop={() => setEditingLines(true)}
+          />
+        ))}
+      </div>
+
+      {showSend && (
+        <>
+          {stagedCount > 0 && (
+            <p className="rounded-md border border-warning/30 bg-warning-bg p-2 text-xs text-fg-muted">
+              {stagedCount} staged proof{stagedCount === 1 ? '' : 's'}{' '}
+              {stagedCount === 1 ? 'has' : 'have'} not been sent to the buyer yet.
+            </p>
+          )}
+          <div>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy || stagedCount === 0}
+              onClick={() => void run(() => sendProofs(quote.id), 'Proofs sent to buyer')}
+            >
+              Send proofs to buyer ({stagedCount} staged)
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   // Staff workflow panel, folded INTO the status card (the old standalone "Staff
   // actions" card is gone). The per-state controls carry their own description,
   // which now reads directly under the status badge. The buyer-notification
@@ -539,117 +621,57 @@ export default function QuoteDetailPage() {
     <div className="flex flex-col gap-5">
       <div>
         {quote.state === 'DRAFT' && (
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <ProofFileInput
-                  label="Attach proof (optional)"
-                  hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
-                  value={sendProofRef}
-                  valueLabel={designLabel(sendProofRef)}
-                  error={sendProofRefError}
-                  disabled={busy}
-                  onChange={(ref) => {
-                    setSendProofRef(ref);
-                    setSendProofRefError(undefined);
-                  }}
-                />
-                {/* Reuse: the order already carries artwork (buyer designs,
-                    change-request images, past proofs), so offer it instead of
-                    re-uploading. Always opens the picker so the choice stays
-                    visible. */}
-                {artworkOptions.length > 0 && !sendProofRef && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={busy}
-                    className="mt-2"
-                    onClick={() => setDesignPickerTarget('send')}
-                  >
-                    Use existing artwork
-                  </Button>
-                )}
+          <div className="flex flex-col gap-4">
+            {/* Optional pre-staging: proofs are per-line and can be prepared
+                before the buyer accepts. Sending the quote below is a separate,
+                param-less send - it does NOT send proofs (those go out once the
+                order is in proofing). */}
+            {proofLines.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-fg">Prepare proofs (optional)</span>
+                {perLineProofPanel(false)}
+                <p className="text-xs text-fg-subtle">
+                  Stage a proof for each customised line now if you like — you can also do this after
+                  the buyer accepts. Sending the quote does not send proofs.
+                </p>
               </div>
-              <Button
-                variant="primary"
-                loading={busy}
-                disabled={busy}
-                onClick={() => {
-                  // Empty field: frictionless plain send (DRAFT -> SENT), no
-                  // validation and nothing to reset.
-                  if (!sendProofRef.trim()) {
-                    void run(() => send(quote.id), 'Sent to buyer');
-                    return;
-                  }
-                  void run(async () => {
-                    await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
-                    // send() swallows errors into store.error and never rejects,
-                    // so only clear the field on a clean send.
-                    if (!useQuoteStore.getState().actionError) setSendProofRef('');
-                  }, 'Sent to buyer with proof');
-                }}
-              >
-                Send to buyer
-              </Button>
+            )}
+            <div className="flex flex-col gap-2">
+              <div>
+                <Button
+                  variant="primary"
+                  loading={busy}
+                  disabled={busy}
+                  onClick={() => void run(() => send(quote.id), 'Sent to buyer')}
+                >
+                  Send to buyer
+                </Button>
+              </div>
+              <p className="text-xs text-fg-subtle">
+                Emails the quote to the buyer and moves it to Sent. They can then accept it or request
+                changes.
+              </p>
             </div>
-            <p className="text-xs text-fg-subtle">
-              Emails the quote to the buyer and moves it to Sent. They can then accept it or request
-              changes.
-            </p>
           </div>
         )}
 
-        {/* CHANGES_REQUESTED included deliberately: issuing a revised proof is
-            how an order gets out of that state. Without this control the state
-            is a dead end and the order has to be cancelled and rebuilt. */}
+        {/* CHANGES_REQUESTED included deliberately: staging a revised proof and
+            re-sending is how an order gets out of that state. Without this the
+            state is a dead end and the order has to be cancelled and rebuilt. */}
         {(quote.state === 'ACCEPTED' ||
           quote.state === 'PROOFING' ||
           quote.state === 'CHANGES_REQUESTED') && (
           <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-              <div className="flex-1">
-                <ProofFileInput
-                  label="Proof artwork"
-                  hint="PDF or image, up to 3 MB."
-                  value={artworkRef}
-                  valueLabel={designLabel(artworkRef)}
-                  error={artworkRefError}
-                  disabled={busy}
-                  onChange={(ref) => {
-                    setArtworkRef(ref);
-                    setArtworkRefError(undefined);
-                  }}
-                />
-              </div>
-              {/* Reuse artwork the order already carries instead of re-uploading.
-                  Always opens the picker. Sits beside Issue proof so the ways to
-                  fill the field read as one action row. */}
-              {artworkOptions.length > 0 && !artworkRef && (
-                <Button
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => setDesignPickerTarget('issue')}
-                >
-                  Use existing artwork
-                </Button>
-              )}
-              <Button
-                variant="primary"
-                loading={busy}
-                disabled={busy || !artworkRef}
-                onClick={() => {
-                  void run(async () => {
-                    await issueProof(quote.id, artworkRef.trim(), null);
-                    setArtworkRef('');
-                  }, 'Proof issued');
-                }}
-              >
-                Issue proof
-              </Button>
-            </div>
+            {proofLines.length > 0 ? (
+              perLineProofPanel(true)
+            ) : (
+              <p className="text-sm text-fg-muted">
+                No customised lines on this order to proof.
+              </p>
+            )}
             <p className="text-xs text-fg-subtle">
-              Sends this artwork to the buyer as a proof to review. They approve it or send it back
-              with changes.
+              Prepare a proof for each line, then send them to the buyer together. They approve each,
+              or send it back with changes.
             </p>
           </div>
         )}
@@ -1003,15 +1025,20 @@ export default function QuoteDetailPage() {
           </Card>
         </Motion>
 
-        {/* Existing-artwork picker (portal) - which artwork fills the proof
-            field. */}
+        {/* Existing-artwork picker (portal) - which artwork stages onto the line
+            it was opened for. Picking stages the proof straight away. */}
         <ArtworkPicker
-          options={artworkOptions}
-          open={designPickerTarget !== null}
-          onClose={() => setDesignPickerTarget(null)}
+          options={
+            pickerLineId !== null
+              ? optionsForLine(proofLines.find((l) => l.id === pickerLineId) ?? ({} as LineItem))
+              : artworkOptions
+          }
+          open={pickerLineId !== null}
+          onClose={() => setPickerLineId(null)}
           onSelect={(ref) => {
-            if (designPickerTarget) applyBuyerDesign(designPickerTarget, ref);
-            setDesignPickerTarget(null);
+            const lineId = pickerLineId;
+            setPickerLineId(null);
+            if (lineId !== null) void run(() => stageProof(quote.id, lineId, ref), 'Proof staged');
           }}
         />
 
