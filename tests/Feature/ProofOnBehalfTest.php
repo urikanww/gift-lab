@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Mail\QuoteReadyMail;
+use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
@@ -11,6 +12,7 @@ use App\Models\Quote;
 use App\Models\User;
 use App\Services\QuoteService;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 
 use function Pest\Laravel\getJson;
@@ -31,8 +33,13 @@ function proofingQuote(): array
         'state' => 'PROOFING',
         'accepted_at' => now(),
     ]);
-    LineItem::factory()->create(['quote_id' => $quote->id, 'product_id' => test()->product->id]);
-    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT', 'version' => 1]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => test()->product->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'state' => 'SENT', 'version' => 1]);
 
     return [$quote, $proof];
 }
@@ -113,7 +120,7 @@ it('records the resend in the audit log against the acting superadmin', function
 
     postJson("/api/proofs/{$proof->id}/resend")->assertOk();
 
-    $log = App\Models\AuditLog::where('event', 'proof.resent')->latest('id')->first();
+    $log = AuditLog::where('event', 'proof.resent')->latest('id')->first();
     expect($log)->not->toBeNull()
         ->and($log->user_id)->toBe($this->superadmin->id)
         ->and($log->auditable_id)->toBe($proof->id)
@@ -124,8 +131,8 @@ it('records the resend in the audit log against the acting superadmin', function
 
 it('presigns a direct bucket URL for stored artwork when the disk is s3', function (): void {
     config(['filesystems.artwork_disk' => 's3']);
-    Illuminate\Support\Facades\Storage::fake('s3');
-    Illuminate\Support\Facades\Storage::disk('s3')
+    Storage::fake('s3');
+    Storage::disk('s3')
         ->buildTemporaryUrlsUsing(fn (string $path, $expiry, array $opts): string => 'https://bucket.example/'.$path);
 
     $proof = Proof::factory()->create(['artwork_version_ref' => 'proofs/art.png', 'state' => 'SENT']);

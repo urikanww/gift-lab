@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\JobState;
+use App\Enums\LineItemState;
+use App\Enums\ProofState;
 use App\Enums\QuoteState;
+use App\Events\QuoteStateChanged;
 use App\Exceptions\InvalidStateTransitionException;
 use App\Services\AuditLogger;
 use App\Services\OrderNotifier;
+use App\Support\Broadcasting;
 use Database\Factories\QuoteFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -29,6 +34,7 @@ class Quote extends Model
 {
     /** @use HasFactory<QuoteFactory> */
     use HasFactory;
+
     use SoftDeletes;
 
     /** Crockford-style base32 without ambiguous glyphs (I, L, O, U). */
@@ -285,9 +291,80 @@ class Quote extends Model
     public function approvedProof(): ?Proof
     {
         return $this->proofs()
-            ->where('state', \App\Enums\ProofState::Approved->value)
+            ->where('state', ProofState::Approved->value)
             ->latest('version')
             ->first();
+    }
+
+    /**
+     * Roll the per-line proof states up to the order state. Only artwork lines
+     * that are not dropped count. Called after every per-line proof decision,
+     * every line drop, and every amend touching an artwork line.
+     */
+    public function recomputeProofState(): void
+    {
+        // Query fresh: a caller may hold a stale proofs relation from before the just-written decision.
+        $lines = $this->lineItems()->get();
+        $proofs = $this->proofs()->get();
+
+        $countingLines = $lines->filter(
+            fn (LineItem $line): bool => $line->needsProof() && $line->line_state !== LineItemState::Dropped
+        );
+
+        if ($countingLines->isEmpty()) {
+            return;
+        }
+
+        $latestByLine = $proofs
+            ->groupBy('line_item_id')
+            ->map(fn ($group) => $group->sortByDesc('version')->first());
+
+        $anyAwaitingOrUnprepared = false;
+        $anyChanges = false;
+        $allApproved = true;
+
+        foreach ($countingLines as $line) {
+            $proof = $latestByLine->get($line->id);
+
+            if ($proof === null || $proof->state === ProofState::Draft) {
+                $anyAwaitingOrUnprepared = true;
+                $allApproved = false;
+
+                continue;
+            }
+            if ($proof->state === ProofState::Sent) {
+                $anyAwaitingOrUnprepared = true;
+                $allApproved = false;
+            } elseif ($proof->state === ProofState::ChangesRequested) {
+                $anyChanges = true;
+                $allApproved = false;
+            }
+        }
+
+        $target = match (true) {
+            $anyAwaitingOrUnprepared => QuoteState::Proofing,
+            $anyChanges => QuoteState::ChangesRequested,
+            $allApproved => $this->accepted_at === null
+                ? QuoteState::ArtworkApproved
+                : QuoteState::ProofApproved,
+            default => null,
+        };
+
+        if ($target === null || $this->state === $target) {
+            return;
+        }
+
+        if (! $this->state->canTransitionTo($target)) {
+            return;
+        }
+
+        $previous = $this->state->value;
+        $this->transitionTo($target);
+        DB::afterCommit(
+            fn () => Broadcasting::dispatch(
+                fn () => QuoteStateChanged::dispatch($this, $previous)
+            )
+        );
     }
 
     public static function generateTrackingCode(): string

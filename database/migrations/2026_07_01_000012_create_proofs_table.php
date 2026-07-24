@@ -22,9 +22,12 @@ return new class extends Migration
         Schema::create('proofs', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('quote_id')->constrained('quotes')->cascadeOnDelete();
+            // One proof lineage PER LINE ITEM: each customized line has its own
+            // versions and its own approval, independent of every other line.
+            $table->foreignId('line_item_id')->constrained('line_items')->cascadeOnDelete();
             $table->unsignedInteger('version')->default(1);
             $table->string('artwork_version_ref')->comment('object-store key; = production print file when approved');
-            $table->enum('state', ['SENT', 'CHANGES_REQUESTED', 'APPROVED'])->default('SENT');
+            $table->enum('state', ['DRAFT', 'SENT', 'CHANGES_REQUESTED', 'APPROVED'])->default('DRAFT');
             $table->foreignId('approved_by')->nullable()
                 ->constrained('users')->nullOnDelete();
             $table->timestamp('approved_at')->nullable();
@@ -32,9 +35,11 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index('quote_id');
+            $table->index('line_item_id');
             $table->index('state');
             $table->index(['quote_id', 'state']);
-            $table->unique(['quote_id', 'version']);
+            // Versions run per line, not per order.
+            $table->unique(['line_item_id', 'version']);
         });
     }
 

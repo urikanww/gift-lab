@@ -23,8 +23,13 @@ it('surfaces a carrier tracking link on a shipped order', function (): void {
     $company = Company::factory()->create(['billing_email' => 'buyer@acme.com']);
     $product = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROCURING']);
-    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
-    LineItem::factory()->ready()->create(['quote_id' => $quote->id, 'product_id' => $product->id, 'qty' => 3]);
+    $line = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'qty' => 3,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+    ]);
+    Proof::factory()->forLine($line)->approved()->create();
 
     $queue = app(QueueService::class);
     $job = $queue->buildJobsForQuote($quote->load('lineItems.product'))->first();

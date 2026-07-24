@@ -28,6 +28,13 @@ vi.mock('../components/quote/ProofFileInput', () => ({
   ),
 }));
 
+// The design-picker thumbnails exchange storage refs for signed preview URLs;
+// stub the network so tests stay offline (placeholder thumbs are fine here).
+vi.mock('../lib/uploadArtwork', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/uploadArtwork')>()),
+  fetchArtworkPreview: async () => ({ ok: false as const }),
+}));
+
 import { ThemeProvider, ToastProvider } from '../ui';
 import QuoteDetailPage from './QuoteDetailPage';
 import { useAuthStore } from '../stores/authStore';
@@ -61,6 +68,14 @@ function seedQuote(state: QuoteState) {
       line_items: [],
       proofs: [],
       created_at: '2026-07-01T00:00:00Z',
+      // Staff-only notification picture (the API always includes it for staff).
+      // Defaults to "nothing pending"; individual tests override as needed.
+      reminder: {
+        current_milestone: null,
+        current_milestone_enabled: false,
+        last_reminded_at: null,
+        next: null,
+      },
     },
     loading: false,
     error: null,
@@ -106,14 +121,28 @@ function renderPage() {
   );
 }
 
+// A buyer proof is per-line now, so an open proof needs a matching customised
+// line for the per-line review to compute a row for it.
 function seedOpenProof() {
   useQuoteStore.setState({
     current: {
       ...useQuoteStore.getState().current!,
+      line_items: [
+        {
+          id: 5,
+          product_id: 5,
+          qty: 10,
+          line_state: 'PENDING',
+          product: { name: 'Enamel Mug' },
+          customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' },
+        },
+      ],
       proofs: [
         {
           id: 9,
           quote_id: 42,
+          line_item_id: 5,
+          product_name: 'Enamel Mug',
           version: 1,
           artwork_version_ref: 'proofs/v1.pdf',
           state: 'SENT',
@@ -182,6 +211,92 @@ it('sends an attached reference image with the change request', async () => {
   expect(decideProof).toHaveBeenCalledWith(9, 'request_changes', 'Match this.', ['proofs/v1.pdf']);
 });
 
+// Two artwork lines, each with its own current proof, for the per-line review.
+function seedTwoLineProofs(secondState: 'SENT' | 'CHANGES_REQUESTED') {
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+        { id: 2, product_id: 6, qty: 5, line_state: 'PENDING', product: { name: 'Tote Bag' }, customization: { mode: 'designer', artwork_ref: 'artwork/tote.png' } },
+      ],
+      proofs: [
+        { id: 9, quote_id: 42, line_item_id: 1, product_name: 'Enamel Mug', version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'SENT', approved_by: null, approved_at: null, notes: null },
+        { id: 10, quote_id: 42, line_item_id: 2, product_name: 'Tote Bag', version: 2, artwork_version_ref: 'proofs/v2.pdf', state: secondState, approved_by: null, approved_at: null, notes: secondState === 'CHANGES_REQUESTED' ? 'Move the logo up.' : null },
+      ],
+    },
+  } as any);
+}
+
+it('reviews each artwork line independently — a SENT line is actionable, a CHANGES_REQUESTED line is passive', () => {
+  seedQuote('PROOFING');
+  seedTwoLineProofs('CHANGES_REQUESTED');
+  asBuyer();
+  renderPage();
+
+  // Scope to the review card - product names also appear in the items table.
+  const reviewCard = screen
+    .getByRole('heading', { name: 'Review your proof' })
+    .closest('[aria-labelledby="proof-review-heading"]') as HTMLElement;
+
+  // The SENT line is actionable: named, with its own approve control.
+  expect(within(reviewCard).getByText('Enamel Mug')).toBeInTheDocument();
+  // The CHANGES_REQUESTED line is passive: named, with a "being revised" note
+  // echoing the buyer's own note, and no approve/request-changes controls.
+  expect(within(reviewCard).getByText('Tote Bag')).toBeInTheDocument();
+  expect(within(reviewCard).getByText(/we’ll send you an updated proof/i)).toBeInTheDocument();
+  expect(within(reviewCard).getByText(/Move the logo up\./)).toBeInTheDocument();
+  // Only the one SENT line offers an approve control (plus the approve-all
+  // shortcut, which matches a different name).
+  expect(within(reviewCard).getAllByRole('button', { name: /approve proof/i })).toHaveLength(1);
+});
+
+it('shows a per-line progress banner across the artwork lines', () => {
+  seedQuote('PROOFING');
+  seedTwoLineProofs('CHANGES_REQUESTED');
+  asBuyer();
+  const { container } = renderPage();
+
+  // 0 approved of 2, one still awaiting the buyer, one being revised.
+  expect(container.textContent).toContain('0 of 2 approved');
+  expect(container.textContent).toContain('1 awaiting you');
+  expect(container.textContent).toContain('1 being revised');
+});
+
+it('offers "Approve all remaining" labelled with the SENT count, calling approveAllProofs', async () => {
+  const approveAllProofs = vi.fn(async () => true);
+  seedQuote('PROOFING');
+  // Both lines SENT: two remaining to approve in one shot.
+  seedTwoLineProofs('SENT');
+  useQuoteStore.setState({ approveAllProofs } as any);
+  asBuyer();
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /approve all 2 remaining/i }));
+  expect(approveAllProofs).toHaveBeenCalledWith(42);
+});
+
+it('hides "Approve all remaining" when no line is awaiting the buyer', () => {
+  seedQuote('CHANGES_REQUESTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+      ],
+      // The only line is being revised, so there is nothing to approve.
+      proofs: [
+        { id: 9, quote_id: 42, line_item_id: 1, product_name: 'Enamel Mug', version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'Fix the crest.' },
+      ],
+    },
+  } as any);
+  asBuyer();
+  renderPage();
+
+  expect(screen.getByText(/we’ll send you an updated proof/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /approve all/i })).not.toBeInTheDocument();
+});
+
 it('toasts "Payment received" when payment captures immediately', async () => {
   seedQuote('PROOF_APPROVED');
   // Pay now only renders where buyer payment is actually available; it used to
@@ -225,77 +340,132 @@ it('sends a plain quote when staff leaves the artwork reference blank on DRAFT',
   expect(send).toHaveBeenCalledWith(42);
 });
 
-it('posts the artwork ref when sending with a proof from DRAFT', async () => {
-  const send = vi.fn(async () => {});
-  seedQuote('DRAFT');
-  useQuoteStore.setState({ send } as any);
-  asStaff();
-  renderPage();
+// A customised DRAFT/proofing line that needs a proof, with its own design.
+function customisedLine(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    product_id: 5,
+    qty: 10,
+    line_state: 'PENDING',
+    product: { name: 'Enamel Mug' },
+    customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' },
+    ...overrides,
+  };
+}
 
-  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach proof (optional)' }));
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+// A per-line proof for a given line + state.
+function lineProof(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 90,
+    quote_id: 42,
+    line_item_id: 1,
+    product_name: 'Enamel Mug',
+    version: 1,
+    artwork_version_ref: 'proofs/staged.png',
+    state: 'DRAFT',
+    approved_by: null,
+    approved_at: null,
+    notes: null,
+    ...overrides,
+  };
+}
 
-  expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'proofs/v1.pdf' });
-});
-
-it('clears the DRAFT proof field after a successful send-with-proof', async () => {
-  const send = vi.fn(async () => {});
-  seedQuote('DRAFT');
-  useQuoteStore.setState({ send } as any);
-  asStaff();
-  renderPage();
-
-  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach proof (optional)' }));
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
-
-  await waitFor(() =>
-    expect(screen.getByTestId('ref:Attach proof (optional)')).toHaveTextContent(''),
-  );
-});
-
-it('keeps the attached proof when the send-with-proof fails', async () => {
-  // send() swallows failures into actionError and never rejects. The attached
-  // ref must survive so the staffer can retry without uploading the file again.
-  const send = vi.fn(async () => {
-    useQuoteStore.setState({ actionError: 'nope' } as any);
-  });
-  seedQuote('DRAFT');
-  useQuoteStore.setState({ send } as any);
-  asStaff();
-  renderPage();
-
-  await userEvent.click(screen.getByRole('button', { name: 'attach:Attach proof (optional)' }));
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
-
-  expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'proofs/v1.pdf' });
-  expect(screen.getByTestId('ref:Attach proof (optional)')).toHaveTextContent('proofs/v1.pdf');
-});
-
-
-it('lets staff issue the proof from the buyer’s designer artwork on DRAFT', async () => {
-  const send = vi.fn(async () => {});
+it('stages a per-line proof from an uploaded ref on a customised line', async () => {
+  const stageProof = vi.fn(async () => {});
   seedQuote('DRAFT');
   useQuoteStore.setState({
-    current: {
-      ...useQuoteStore.getState().current!,
-      line_items: [
-        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', customization: { mode: 'designer', artwork_ref: 'artwork/buyer.png' } },
-      ],
-    },
-    send,
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+    stageProof,
   } as any);
   asStaff();
   renderPage();
 
-  // One click reuses the buyer's design instead of re-uploading a file.
-  await userEvent.click(screen.getByRole('button', { name: /use buyer.s design/i }));
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+  // The uploader on the line's row yields the ref the server returns; staging
+  // is immediate and per-line.
+  await userEvent.click(screen.getByRole('button', { name: 'attach:Proof for Enamel Mug' }));
 
-  expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'artwork/buyer.png' });
+  expect(stageProof).toHaveBeenCalledWith(42, 1, 'proofs/v1.pdf');
 });
 
-it('offers one reuse button per design line, labelled by product', async () => {
-  const issueProof = vi.fn(async () => {});
+it('DRAFT "Send to buyer" is a plain param-less send, not a proof send', async () => {
+  const send = vi.fn(async () => {});
+  const sendProofs = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+    send,
+    sendProofs,
+  } as any);
+  asStaff();
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+
+  expect(send).toHaveBeenCalledWith(42);
+  expect(sendProofs).not.toHaveBeenCalled();
+});
+
+it('stages a line proof from the buyer’s existing design via the picker', async () => {
+  const stageProof = vi.fn(async () => {});
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+    stageProof,
+  } as any);
+  asStaff();
+  renderPage();
+
+  // Reuse the buyer's design instead of re-uploading: the button opens the
+  // picker (even for a single option), and picking stages the proof immediately.
+  await userEvent.click(screen.getByRole('button', { name: /use existing artwork/i }));
+  const dialog = await screen.findByRole('dialog', { name: /use existing artwork/i });
+  await userEvent.click(within(dialog).getByRole('button', { name: /buyer.s design/i }));
+
+  expect(stageProof).toHaveBeenCalledWith(42, 1, 'artwork/mug.png');
+});
+
+it('lists line designs, change-request images and past proofs in a line’s picker', async () => {
+  const stageProof = vi.fn(async () => {});
+  seedQuote('CHANGES_REQUESTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+        { id: 2, product_id: 6, qty: 5, line_state: 'PENDING', product: { name: 'Tote Bag' }, customization: { mode: 'designer', artwork_ref: 'artwork/tote.png' } },
+      ],
+      proofs: [
+        { id: 9, quote_id: 42, line_item_id: 1, product_name: 'Enamel Mug', version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'Do it like this' },
+        { id: 10, quote_id: 42, line_item_id: 1, product_name: 'Enamel Mug', version: 2, artwork_version_ref: 'proofs/v2.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'wrong image', change_attachments: [{ ref: 'artwork/wanted.png', url: null }] },
+      ],
+    },
+    stageProof,
+  } as any);
+  asStaff();
+  renderPage();
+
+  // Two lines, so two reuse buttons - open the first line's (Enamel Mug) picker.
+  await userEvent.click(screen.getAllByRole('button', { name: /use existing artwork/i })[0]);
+  const dialog = await screen.findByRole('dialog', { name: /use existing artwork/i });
+
+  // Every source is listed: both line designs, the buyer's change-request
+  // attachment, and both previously issued proof versions.
+  expect(within(dialog).getByRole('button', { name: /buyer.s design — enamel mug/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /buyer.s design — tote bag/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /change request image \(v2\)/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /proof v1 artwork/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /proof v2 artwork/i })).toBeInTheDocument();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: /change request image \(v2\)/i }));
+
+  // Picking closes the picker and stages that ref onto the line it was opened for.
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: /use existing artwork/i })).not.toBeInTheDocument(),
+  );
+  expect(stageProof).toHaveBeenCalledWith(42, 1, 'artwork/wanted.png');
+});
+
+it('shows the blocker breakdown across the lines that need a proof', () => {
   seedQuote('ACCEPTED');
   useQuoteStore.setState({
     current: {
@@ -304,39 +474,72 @@ it('offers one reuse button per design line, labelled by product', async () => {
         { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
         { id: 2, product_id: 6, qty: 5, line_state: 'PENDING', product: { name: 'Tote Bag' }, customization: { mode: 'designer', artwork_ref: 'artwork/tote.png' } },
       ],
+      // Line 1 sent (awaiting buyer); line 2 has no proof (not prepared).
+      proofs: [lineProof({ id: 90, line_item_id: 1, state: 'SENT' })],
     },
-    issueProof,
+  } as any);
+  asStaff();
+  const { container } = renderPage();
+
+  expect(container.textContent).toContain('Awaiting buyer 1');
+  expect(container.textContent).toContain('In changes 0');
+  expect(container.textContent).toContain('Not prepared 1');
+  expect(container.textContent).toContain('Approved 0');
+});
+
+it('disables "Send proofs" with nothing staged and enables it once a line is staged', async () => {
+  const sendProofs = vi.fn(async () => {});
+
+  // Nothing staged: the Send button is present but disabled.
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+    sendProofs,
   } as any);
   asStaff();
   renderPage();
 
-  // Two designs -> two buttons, each naming its line.
-  expect(screen.getByRole('button', { name: 'Use buyer’s design — Enamel Mug' })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Use buyer’s design — Tote Bag' }));
+  expect(screen.getByRole('button', { name: /send proofs to buyer \(0 staged\)/i })).toBeDisabled();
+  cleanup();
 
-  // Picking one fills the field (labelled by product) and hides both buttons.
-  expect(screen.queryByRole('button', { name: /use buyer.s design/i })).not.toBeInTheDocument();
-
-  await userEvent.click(screen.getByRole('button', { name: 'Issue proof' }));
-  expect(issueProof).toHaveBeenCalledWith(42, 'artwork/tote.png', null);
-});
-
-it('offers no design-reuse shortcut for a buyer_uploaded reference line', () => {
-  seedQuote('DRAFT');
+  // A staged (DRAFT) proof on the line: Send is enabled, the unsent warning
+  // shows, and clicking it flips every DRAFT to SENT in one call.
+  seedQuote('ACCEPTED');
   useQuoteStore.setState({
     current: {
       ...useQuoteStore.getState().current!,
-      // A finished-look reference photo is not print-ready, so it must be
-      // proofed from scratch - no reuse shortcut.
+      line_items: [customisedLine()],
+      proofs: [lineProof({ state: 'DRAFT' })],
+    },
+    sendProofs,
+  } as any);
+  asStaff();
+  renderPage();
+
+  expect(screen.getByText(/has not been sent to the buyer yet/i)).toBeInTheDocument();
+  const sendBtn = screen.getByRole('button', { name: /send proofs to buyer \(1 staged\)/i });
+  expect(sendBtn).toBeEnabled();
+  await userEvent.click(sendBtn);
+  expect(sendProofs).toHaveBeenCalledWith(42);
+});
+
+it('offers no per-line proof row for a buyer_uploaded reference line’s reuse (still needs a proof)', () => {
+  seedQuote('ACCEPTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      // A finished-look reference photo still needs a proof, so the line gets a
+      // row; but it carries no print-ready design of its own.
       line_items: [
-        { id: 1, product_id: 5, qty: 1, line_state: 'PENDING', customization: { mode: 'buyer_uploaded', reference_refs: ['artwork/ref.png'] } },
+        { id: 1, product_id: 5, qty: 1, line_state: 'PENDING', product: { name: 'Crest Polo' }, customization: { mode: 'buyer_uploaded', reference_refs: ['artwork/ref.png'] } },
       ],
     },
   } as any);
   asStaff();
   renderPage();
 
-  expect(screen.queryByRole('button', { name: /use buyer.s design/i })).not.toBeInTheDocument();
+  // The line still needs a proof, so its uploader row renders.
+  expect(screen.getByRole('button', { name: 'attach:Proof for Crest Polo' })).toBeInTheDocument();
 });
 
 it('hides the "proof being prepared" note for a buyer once a proof is open in PROOFING', () => {
@@ -479,33 +682,35 @@ it('does NOT show the buyer note for staff (staff sees their own controls)', () 
   renderPage();
 
   expect(screen.queryByText(/being prepared for production/i)).not.toBeInTheDocument();
-  expect(screen.getByText('Staff actions')).toBeInTheDocument();
+  // Staff see their own merged panel (folded into the status card) - anchored by
+  // the buyer-notification section, which renders for every staff order.
+  expect(screen.getByText('Buyer notifications')).toBeInTheDocument();
 });
 
-it('shows the Cancel quote control to staff on a cancellable quote', () => {
+it('shows the Cancel order control to staff on a cancellable quote', () => {
   seedQuote('SENT');
   asStaff();
   renderPage();
 
-  expect(screen.getByRole('button', { name: /cancel quote/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /cancel order/i })).toBeInTheDocument();
 });
 
-it('never shows the Cancel quote control to a buyer', () => {
+it('never shows the Cancel order control to a buyer', () => {
   seedQuote('SENT');
   asBuyer();
   renderPage();
 
-  expect(screen.queryByRole('button', { name: /cancel quote/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
 });
 
 it.each(['READY', 'CLOSED', 'CANCELLED'] as const)(
-  'hides the Cancel quote control once the quote is %s',
+  'hides the Cancel order control once the quote is %s',
   (state) => {
     seedQuote(state);
     asStaff();
     renderPage();
 
-    expect(screen.queryByRole('button', { name: /cancel quote/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
   },
 );
 
@@ -516,7 +721,7 @@ it('confirming the cancel modal calls cancelQuote with the trimmed reason and cl
   asStaff();
   renderPage();
 
-  await userEvent.click(screen.getByRole('button', { name: /cancel quote/i }));
+  await userEvent.click(screen.getByRole('button', { name: /cancel order/i }));
   await userEvent.type(screen.getByLabelText(/reason/i), '  Buyer changed their mind.  ');
   await userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
 
@@ -549,23 +754,47 @@ function headingIndex(name: string): number {
 }
 
 // The Proofs card is deliberately positioned per role. For staff it is
-// reference material, so it follows the controls they act with; for a buyer it
-// carries their proof sign-off, so it stays high on the page. These two tests
+// reference material, so it follows the merged status/actions card; for a buyer
+// it carries their proof sign-off, so it stays high on the page. These two tests
 // pin that difference - a "simplification" back to one slot breaks one of them.
-it('renders Proofs BELOW Staff actions for staff', () => {
+it('renders Proofs BELOW the merged staff panel for staff', () => {
   seedQuote('ACCEPTED');
   seedOpenProof();
   asStaff();
   renderPage();
 
-  expect(headingIndex('Proofs')).toBeGreaterThan(headingIndex('Staff actions'));
+  // The staff controls now live inside the status card (no "Staff actions"
+  // heading); anchor on the buyer-notification section that closes that panel.
+  expect(headingIndex('Proofs')).toBeGreaterThan(headingIndex('Buyer notifications'));
 
   // Same assertion via the DOM directly, independent of heading enumeration.
-  const staffCard = screen.getByRole('heading', { name: 'Staff actions' });
+  const staffPanel = screen.getByRole('heading', { name: 'Buyer notifications' });
   const proofs = screen.getByRole('heading', { name: 'Proofs' });
   expect(
-    staffCard.compareDocumentPosition(proofs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    staffPanel.compareDocumentPosition(proofs) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
+});
+
+it('singles out the approved artwork as the one for production across change rounds', () => {
+  seedQuote('PROOF_APPROVED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      proofs: [
+        { id: 1, quote_id: 42, version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'Do it like this' },
+        { id: 2, quote_id: 42, version: 2, artwork_version_ref: 'proofs/v2.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'wrong image' },
+        { id: 3, quote_id: 42, version: 3, artwork_version_ref: 'proofs/v3.pdf', state: 'APPROVED', approved_by: 2, approved_at: '2026-07-23T14:13:00Z', notes: null },
+      ],
+    },
+  } as any);
+  asStaff();
+  renderPage();
+
+  // The callout names the signed-off version explicitly...
+  expect(screen.getByText('Approved artwork: v3')).toBeInTheDocument();
+  expect(screen.getByText(/goes to production/i)).toBeInTheDocument();
+  // ...and the approved row is tagged in place, unlike the rejected versions.
+  expect(screen.getByText('Use for production')).toBeInTheDocument();
 });
 
 it('keeps the buyer’s proof review ABOVE the Next step card', () => {
@@ -775,13 +1004,23 @@ it('tells staff an artwork-approved order is waiting on the buyer', () => {
 });
 
 // CHANGES_REQUESTED was unrecoverable: no control performed a way out, so the
-// order had to be cancelled and rebuilt. Issuing a revised proof is that way.
-it('offers staff the issue-proof control on a changes-requested order', () => {
+// order had to be cancelled and rebuilt. Staging a revised proof per line and
+// re-sending is that way.
+it('offers staff the per-line proof controls on a changes-requested order', () => {
   asStaff();
   seedQuote('CHANGES_REQUESTED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
+      ],
+    },
+  } as any);
   renderPage();
 
-  expect(screen.getByRole('button', { name: 'attach:Proof artwork' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'attach:Proof for Enamel Mug' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /send proofs to buyer/i })).toBeInTheDocument();
   expect(screen.queryByText(/No staff action available/i)).not.toBeInTheDocument();
 });
 

@@ -24,7 +24,10 @@ return new class extends Migration
             $table->enum('track', ['UV', '3D']);
             $table->timestamp('ready_at')->nullable()->comment('drives FCFS queue order');
             $table->enum('state', ['READY', 'IN_PRODUCTION', 'SHIPPED', 'CLOSED'])->default('READY');
-            $table->string('artwork_ref')->nullable()->comment('print-ready file = approved proof artwork');
+            // A job prints one file per artwork line it covers. Each entry:
+            // { line_item_id, product_name, ref }. A 3D job has one; a batched UV
+            // job has one per approved UV line.
+            $table->json('artwork_refs')->nullable()->comment('print-ready files: [{line_item_id, product_name, ref}]');
             $table->enum('print_method', ['UV', 'FDM', 'RESIN'])->nullable();
             $table->integer('qty')->default(0);
             $table->foreignId('created_by')->nullable()

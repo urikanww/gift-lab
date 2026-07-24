@@ -14,7 +14,7 @@ vi.mock('../lib/echo', () => ({
   onEchoReconnect: () => () => {},
 }));
 
-import { useQueueStore } from './queueStore';
+import { printFilePath, printFilesZipPath, useQueueStore } from './queueStore';
 
 const job: ProductionJob = {
   id: 1,
@@ -22,7 +22,6 @@ const job: ProductionJob = {
   track: '3D',
   state: 'READY',
   ready_at: '2026-07-06T00:00:00Z',
-  artwork_ref: null,
   print_method: 'FDM',
   qty: 5,
 };
@@ -145,5 +144,15 @@ describe('queueStore', () => {
     expect(post).toHaveBeenCalledWith('/production-jobs/7/create-shipment');
     expect(result).toEqual(shipment);
     expect(get).toHaveBeenCalledWith('/production-queue');
+  });
+
+  it('printFilePath targets the per-item print-file endpoint with the ref query, URL-encoded', () => {
+    expect(printFilePath(7, 'prints/job-7/line 3.pdf')).toBe(
+      '/production-jobs/7/print-file?ref=prints%2Fjob-7%2Fline%203.pdf',
+    );
+  });
+
+  it('printFilesZipPath targets the whole-job ZIP endpoint', () => {
+    expect(printFilesZipPath(7)).toBe('/production-jobs/7/print-files.zip');
   });
 });

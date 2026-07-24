@@ -27,7 +27,7 @@ class ProductionJobResource extends JsonResource
             'track' => $this->track->value,
             'state' => $this->state->value,
             'ready_at' => $this->ready_at?->toIso8601String(),
-            'artwork_ref' => $this->artwork_ref,
+            'artwork_refs' => $this->artwork_refs ?? [],
             'consignment_ref' => $this->consignment_ref,
             'print_method' => $this->print_method?->value,
             'qty' => $this->qty,

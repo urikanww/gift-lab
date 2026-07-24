@@ -10,6 +10,7 @@ use Database\Factories\LineItemFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -25,6 +26,7 @@ class LineItem extends Model
 {
     /** @use HasFactory<LineItemFactory> */
     use HasFactory;
+
     use SoftDeletes;
 
     protected $fillable = [
@@ -90,6 +92,14 @@ class LineItem extends Model
         return $this->belongsTo(ProductionJob::class, 'job_id');
     }
 
+    /**
+     * @return HasMany<Proof, LineItem>
+     */
+    public function proofs(): HasMany
+    {
+        return $this->hasMany(Proof::class);
+    }
+
     public function transitionTo(LineItemState $target): void
     {
         if (! $this->line_state->canTransitionTo($target)) {
@@ -103,6 +113,20 @@ class LineItem extends Model
     public function lineTotal(): string
     {
         return bcmul((string) $this->unit_price, (string) $this->qty, 2);
+    }
+
+    /**
+     * Whether this line carries artwork that must be signed off before print.
+     * True for any customization (designer OR buyer-uploaded finished-look);
+     * false for plain stock lines, which never proof.
+     */
+    public function needsProof(): bool
+    {
+        $customization = $this->customization ?? [];
+
+        return is_array($customization)
+            && ($customization['mode'] ?? null) !== null
+            && $customization !== [];
     }
 
     protected static function newFactory(): LineItemFactory

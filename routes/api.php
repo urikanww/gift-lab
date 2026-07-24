@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AdminBlankCaptureController;
+use App\Http\Controllers\AdminBlankRecommendationController;
 use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AdminPriceBreakdownController;
 use App\Http\Controllers\AdminProductController;
@@ -11,10 +13,11 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GiftIdeasController;
 use App\Http\Controllers\LeadTimeEstimateController;
+use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
-use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PricingConfigController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
@@ -42,13 +45,13 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Authentication (Sanctum stateful cookie).
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 // Self-serve buyer registration (spec 6.1 Stage 0 - account created at
 // Request Quote). Throttled like login to blunt bulk account creation.
-Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
 
 // Public, no-account catalogue (browse + live estimate).
-Route::middleware('throttle:60,1')->group(function (): void {
+Route::middleware('throttle:catalogue')->group(function (): void {
     Route::get('/catalogue', [CatalogueController::class, 'index']);
     // {key} = slug (canonical, user-friendly) or numeric id (legacy links).
     Route::get('/catalogue/{key}', [CatalogueController::class, 'show']);
@@ -57,7 +60,7 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Relevance-ranked "you might also like" (same category + complements).
     Route::get('/catalogue/{key}/related', [CatalogueController::class, 'related']);
     // Staff-curated affiliate gift ideas feed (cached; IP-flagged rows excluded).
-    Route::get('/gift-ideas', [\App\Http\Controllers\GiftIdeasController::class, 'index']);
+    Route::get('/gift-ideas', [GiftIdeasController::class, 'index']);
     Route::post('/price-estimate', PriceEstimateController::class);
     // The one bulk-discount offer the engine applies, so the storefront can
     // state it instead of implying tiers that don't exist. Two keys only.
@@ -90,24 +93,24 @@ Route::post('/uploads/proof', [UploadController::class, 'proof'])
 
 // Login-free order tracking - opaque code + email-prefix check. Throttled
 // hard (anti-enumeration; the controller also returns a single generic error).
-Route::post('/track', TrackingController::class)->middleware('throttle:10,1');
+Route::post('/track', TrackingController::class)->middleware('throttle:tracking');
 
 // Signed one-click tracker (bookmark/QR from the confirmation). The signature is
 // the second factor, so no email is needed; throttled like /track.
 Route::get('/track/view', [TrackingController::class, 'view'])
-    ->middleware(['signed:relative', 'throttle:10,1'])
+    ->middleware(['signed:relative', 'throttle:tracking'])
     ->name('track.view');
 
 // Stripe webhook - unauthenticated, verified by signature (see controller).
-Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:120,1');
+Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:stripe-webhook');
 
 // Sessionless, signature-authenticated proof thumbnail for buyer emails
 // (email clients can't send cookies, so the signature is the auth).
 Route::get('/proofs/{proof}/image', ProofImageController::class)
     ->name('proofs.image')
-    ->middleware(['signed', 'throttle:60,1']);
+    ->middleware(['signed', 'throttle:proof-image']);
 
-Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
+Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
 
@@ -121,7 +124,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Order placement is tighter-throttled than the general authed group: a
     // real buyer never needs more than a handful a minute, but this caps
     // scripted junk-order floods (there's no payment gate to deter them).
-    Route::post('/quotes', [QuoteController::class, 'store'])->middleware('throttle:8,1');
+    Route::post('/quotes', [QuoteController::class, 'store'])->middleware('throttle:quote-store');
     // {ref} resolves by opaque reference OR numeric id (see controller).
     Route::get('/quotes/{ref}', [QuoteController::class, 'show']);
     // Buyer-facing order timeline (state trail, oldest first). {ref} resolves by
@@ -152,7 +155,11 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::delete('/saved-addresses/{savedAddress}', [SavedAddressController::class, 'destroy']);
 
     // Proofs
-    Route::post('/quotes/{quote}/proofs', [ProofController::class, 'store']);
+    // Stage artwork for one line (DRAFT), then send the whole round in one email.
+    Route::post('/quotes/{quote}/lines/{lineItem}/proofs', [ProofController::class, 'stage'])->middleware('permission:quotes.edit');
+    Route::post('/quotes/{quote}/proofs/send', [ProofController::class, 'send'])->middleware('permission:quotes.edit');
+    // Buyer approves every item still awaiting them in one action.
+    Route::post('/quotes/{quote}/proofs/approve-all', [ProofController::class, 'approveAll']);
     Route::post('/proofs/{proof}/decide', [ProofController::class, 'decide']);
     // Staff re-send the buyer's proof-review email (quotes.edit; buyers blocked
     // by the controller floor).
@@ -170,6 +177,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     // Streams the job's print-ready file (3D UV decal or approved proof
     // artwork) off the private disk so the floor can print it. Staff-gated.
     Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile'])->middleware('permission:production.view');
+    // ...or all of a batched job's per-line files at once, as a labelled ZIP.
+    Route::get('/production-jobs/{job}/print-files.zip', [ProductionQueueController::class, 'printFileZip'])->middleware('permission:production.view');
     Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment'])->middleware('permission:production.manage');
 
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
@@ -225,14 +234,14 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function (): void {
     Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive'])->middleware('permission:reorders.manage');
 
     // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
-    Route::post('/admin/blank-candidates/capture', [\App\Http\Controllers\AdminBlankCaptureController::class, 'store']);
+    Route::post('/admin/blank-candidates/capture', [AdminBlankCaptureController::class, 'store']);
 
     // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
-    Route::get('/admin/blank-recommendations', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'index']);
-    Route::post('/admin/blank-recommendations/add', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'add']);
-    Route::get('/admin/blank-recommendations/featured', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'featured']);
-    Route::post('/admin/blank-recommendations/feature', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'feature']);
-    Route::delete('/admin/blank-recommendations/feature/{feature}', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'unfeature']);
+    Route::get('/admin/blank-recommendations', [AdminBlankRecommendationController::class, 'index']);
+    Route::post('/admin/blank-recommendations/add', [AdminBlankRecommendationController::class, 'add']);
+    Route::get('/admin/blank-recommendations/featured', [AdminBlankRecommendationController::class, 'featured']);
+    Route::post('/admin/blank-recommendations/feature', [AdminBlankRecommendationController::class, 'feature']);
+    Route::delete('/admin/blank-recommendations/feature/{feature}', [AdminBlankRecommendationController::class, 'unfeature']);
 
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.

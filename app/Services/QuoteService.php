@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\LineItemState;
-use App\Enums\OrderMilestone;
 use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
@@ -15,10 +14,10 @@ use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
 use App\Mail\QuoteReadyMail;
+use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
-use App\Models\Invoice;
 use App\Models\Quote;
 use App\Models\StockMovement;
 use App\Models\User;
@@ -48,6 +47,7 @@ final class QuoteService
         private readonly StockLedger $ledger,
         private readonly OrderNotifier $notifier,
         private readonly StaffNotifier $staffNotifier,
+        private readonly ProofCompositeService $composites,
     ) {}
 
     /**
@@ -218,11 +218,11 @@ final class QuoteService
      * @param  array<int, array{id?: int|null, product_id?: int, variant_id?: int|null, unit_price: float, qty: int}>  $lineAmendments
      * @param  array<int, int>  $removedLineIds
      * @param  array<int, array{label?: string, amount?: float}>|null  $adjustments  Null leaves the
-     *         existing set untouched; an array (including empty) REPLACES it. Signed amounts:
-     *         negative discounts, positive charges. Folded into the total after delivery.
+     *                                                                               existing set untouched; an array (including empty) REPLACES it. Signed amounts:
+     *                                                                               negative discounts, positive charges. Folded into the total after delivery.
      * @param  string|null  $remark  Staff's reason for this edit, stamped onto every entry of the
-     *         save's batch. Required by the endpoint (AmendQuoteRequest); optional here so
-     *         internal callers and older tests can amend without one.
+     *                               save's batch. Required by the endpoint (AmendQuoteRequest); optional here so
+     *                               internal callers and older tests can amend without one.
      */
     public function amend(
         Quote $quote,
@@ -499,27 +499,23 @@ final class QuoteService
     }
 
     /**
-     * Send the quote to the buyer, freezing the price snapshot timestamp.
+     * Send the quote to the buyer (DRAFT -> SENT), freezing the price snapshot
+     * timestamp. Proofs are staged and sent per line through stageProof ->
+     * sendProofs, so this is a plain quote send with no artwork attached.
      */
-    public function send(Quote $quote, ?string $artworkRef = null, ?string $proofNotes = null): Quote
+    public function send(Quote $quote): Quote
     {
         if ($quote->state !== QuoteState::Draft) {
             throw new DomainRuleException('Only DRAFT quotes can be sent.');
         }
 
-        return DB::transaction(function () use ($quote, $artworkRef, $proofNotes): Quote {
+        return DB::transaction(function () use ($quote): Quote {
             $previous = $quote->state->value;
             $quote->price_snapshot_at = now();
             $quote->save();
 
-            if ($artworkRef !== null) {
-                $quote->transitionTo(QuoteState::Proofing);          // slim path
-                $this->createProofVersion($quote, $artworkRef, $proofNotes);
-                $this->emailQuoteReady($quote, true);
-            } else {
-                $quote->transitionTo(QuoteState::Sent);
-                $this->emailQuoteReady($quote, false);
-            }
+            $quote->transitionTo(QuoteState::Sent);
+            $this->emailQuoteReady($quote, false);
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
@@ -552,10 +548,6 @@ final class QuoteService
     }
 
     /**
-     * Staff issues a proof. First proof moves ACCEPTED -> PROOFING; subsequent
-     * proofs (after a change request) increment the version on the same quote.
-     */
-    /**
      * Re-send the buyer's proof-review email for an open (SENT) proof, without
      * issuing a new version. For staff chasing a buyer who lost or never saw the
      * first mail. Reuses the same rich review email (proof thumbnail + sign-off
@@ -579,60 +571,99 @@ final class QuoteService
         $this->emailQuoteReady($proof->quote, true);
     }
 
-    public function issueProof(Quote $quote, string $artworkRef, ?string $notes): Proof
+    /**
+     * Stage artwork for one line as a DRAFT proof (buyer not yet emailed). If the
+     * line already holds an unsent DRAFT, its artwork is replaced rather than
+     * bumping the version - re-picking a file before sending is not a revision.
+     */
+    public function stageProof(Quote $quote, LineItem $line, string $artworkRef): Proof
     {
-        return DB::transaction(function () use ($quote, $artworkRef, $notes): Proof {
-            $enteredProofing = false;
-            // CHANGES_REQUESTED is included because issuing a revised proof is
-            // the way out of it. Without this edge the state was a dead end -
-            // its only exits were DRAFT and CANCELLED and no code performed the
-            // DRAFT one, so an order that landed here had to be rebuilt.
-            if ($quote->state === QuoteState::Accepted || $quote->state === QuoteState::ChangesRequested) {
-                $previous = $quote->state->value;
-                $quote->transitionTo(QuoteState::Proofing);
-                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
-                $enteredProofing = true;
-            }
+        if (! $line->needsProof()) {
+            throw new DomainRuleException('This line does not take a proof.');
+        }
 
-            if ($quote->state !== QuoteState::Proofing) {
-                throw new DomainRuleException('Quote must be ACCEPTED, PROOFING or CHANGES_REQUESTED to issue a proof.');
-            }
+        return DB::transaction(function () use ($quote, $line, $artworkRef): Proof {
+            $openDraft = $line->proofs()
+                ->where('state', ProofState::Draft->value)
+                ->orderByDesc('version')
+                ->first();
 
-            $proof = $this->createProofVersion($quote, $artworkRef, $notes);
-
-            if ($enteredProofing) {
-                // First proof: the richer quote-and-proof email, which carries a
-                // thumbnail of the artwork.
-                $this->emailQuoteReady($quote, true);
+            if ($openDraft !== null) {
+                $openDraft->artwork_version_ref = $artworkRef;
+                $openDraft->save();
+                $proof = $openDraft;
             } else {
-                // Revisions used to notify nobody at all - the buyer was left
-                // waiting on a proof that was already sitting there, and staff
-                // had to phone every time. The state does not change on a
-                // revision, so this cannot ride on transitionTo().
-                DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::ProofIssued));
+                $nextVersion = ((int) $line->proofs()->max('version')) + 1;
+                $proof = Proof::create([
+                    'quote_id' => $quote->id,
+                    'line_item_id' => $line->id,
+                    'version' => $nextVersion,
+                    'artwork_version_ref' => $artworkRef,
+                    'state' => ProofState::Draft->value,
+                ]);
             }
+
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
 
             return $proof;
         });
     }
 
     /**
-     * Create the next proof version row for a quote and broadcast it. Shared by
-     * issueProof (ACCEPTED/PROOFING) and the slim send path (DRAFT -> PROOFING).
+     * Send the current round: flip every staged DRAFT proof to SENT, move the
+     * order into PROOFING, and email the buyer ONCE with the round's items.
      */
-    private function createProofVersion(Quote $quote, string $artworkRef, ?string $notes): Proof
+    public function sendProofs(Quote $quote): Quote
     {
-        $nextVersion = ((int) $quote->proofs()->max('version')) + 1;
-        $proof = Proof::create([
-            'quote_id' => $quote->id,
-            'version' => $nextVersion,
-            'artwork_version_ref' => $artworkRef,
-            'state' => ProofState::Sent->value,
-            'notes' => $notes,
-        ]);
-        DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+        $drafts = $quote->proofs()->where('state', ProofState::Draft->value)->get();
 
-        return $proof;
+        if ($drafts->isEmpty()) {
+            throw new DomainRuleException('Nothing is staged to send.');
+        }
+
+        return DB::transaction(function () use ($quote, $drafts): Quote {
+            foreach ($drafts as $draft) {
+                $draft->transitionTo(ProofState::Sent);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($draft, $quote->company_id)));
+            }
+
+            if (in_array($quote->state, [QuoteState::Accepted, QuoteState::ChangesRequested, QuoteState::Draft], true)) {
+                $previous = $quote->state->value;
+                if ($quote->state === QuoteState::Draft) {
+                    $quote->price_snapshot_at = now();
+                    $quote->save();
+                }
+                $quote->transitionTo(QuoteState::Proofing);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            }
+
+            DB::afterCommit(fn () => $this->emailProofsReady($quote));
+
+            return $quote;
+        });
+    }
+
+    /**
+     * Batched "proofs ready" email: the buyer is written to ONCE per round with
+     * a thumbnail per item, rather than one email per line. Fired after commit
+     * by sendProofs, so it queues directly (no further afterCommit needed).
+     * No-ops silently when no buyer recipient can be resolved.
+     */
+    private function emailProofsReady(Quote $quote): void
+    {
+        $recipient = $this->resolveBuyerRecipient($quote);
+        if ($recipient?->email === null) {
+            return;
+        }
+
+        $items = $quote->proofs()
+            ->where('state', ProofState::Sent->value)
+            ->with('lineItem.product')
+            ->get();
+
+        Mail::to($recipient->email)->queue(
+            new QuoteReadyMail($quote, $items, greetingName: $recipient->name)
+        );
     }
 
     /**
@@ -651,22 +682,20 @@ final class QuoteService
                 'approved_by' => $proof->approved_by,
             ]);
 
-            $quote = $proof->quote;
-            $previous = $quote->state->value;
-
             // Approving artwork is NOT agreeing a price. On the artwork-first
             // route this used to back-fill acceptance silently, so a buyer could
             // be committed to a figure they were never shown - and there would
             // be no record of them having seen it. They now go on to accept the
             // price as a separate act; accept() completes the pair.
-            $quote->transitionTo(
-                $quote->accepted_at === null
-                    ? QuoteState::ArtworkApproved
-                    : QuoteState::ProofApproved,
-            );
+            //
+            // Per-line: mutate only this line's proof, then let the rollup decide
+            // the order state from ALL artwork lines. recomputeProofState()
+            // broadcasts QuoteStateChanged itself, so we only fire the
+            // proof-level ProofStatusChanged here.
+            $quote = $proof->quote;
+            $quote->recomputeProofState();
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
-            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $proof;
         });
@@ -680,7 +709,7 @@ final class QuoteService
      */
     /**
      * @param  array<int, string>  $attachments  Optional buyer reference-image
-     *                                            storage keys (artwork/…).
+     *                                           storage keys (artwork/…).
      */
     public function requestProofChanges(Proof $proof, ?string $notes, array $attachments = []): Proof
     {
@@ -693,15 +722,11 @@ final class QuoteService
             }
             $proof->transitionTo(ProofState::ChangesRequested);
 
+            // Per-line: mutate only this line's proof, then let the rollup decide
+            // the order state from ALL artwork lines. recomputeProofState()
+            // broadcasts QuoteStateChanged itself when the order state moves.
             $quote = $proof->quote;
-            // Slim path: price was never separately accepted, so the rejection may be
-            // about price or artwork -> send to CHANGES_REQUESTED for staff triage.
-            // Existing path (accepted_at set): artwork-only revision -> stay PROOFING.
-            if ($quote->accepted_at === null && $quote->state === QuoteState::Proofing) {
-                $previous = $quote->state->value;
-                $quote->transitionTo(QuoteState::ChangesRequested);
-                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
-            }
+            $quote->recomputeProofState();
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
 
@@ -711,6 +736,29 @@ final class QuoteService
             DB::afterCommit(fn () => $this->staffNotifier->proofChangesRequested($proof));
 
             return $proof;
+        });
+    }
+
+    /**
+     * Approve every proof on the order still awaiting the buyer (SENT), in one
+     * transaction. Leaves CHANGES_REQUESTED lines alone. Attributed to the actor
+     * (buyer, or superadmin on-behalf). One roll-up at the end.
+     */
+    public function approveAllOpenProofs(Quote $quote, User $actor): void
+    {
+        DB::transaction(function () use ($quote, $actor): void {
+            $open = $quote->proofs()->where('state', ProofState::Sent->value)->get();
+            foreach ($open as $proof) {
+                $proof->approved_by = $actor->id;
+                $proof->approved_at = now();
+                $proof->transitionTo(ProofState::Approved);
+                $this->audit->log($proof, 'proof.approved', null, [
+                    'version' => $proof->version, 'line_item_id' => $proof->line_item_id,
+                    'approved_by' => $actor->id, 'batch' => true,
+                ]);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+            }
+            $quote->recomputeProofState();
         });
     }
 
@@ -1081,11 +1129,21 @@ final class QuoteService
 
         $proofImageUrl = null;
         if ($hasProof && ($proof = $quote->proofs()->latest('version')->first()) !== null) {
-            // 7 days: the presigned-URL ceiling on S3/Spaces. On a local dev disk
-            // this still resolves to the (host-served) app route. Either way the
+            // PROOF_IMAGE_URL_TTL_DAYS (the presigned-URL ceiling on S3/Spaces),
+            // shared with QuoteReadyMail's batched builder so the two proof paths
+            // sign for the same lifetime. On a local dev disk this still resolves
+            // to the (host-served) app route. Either way the
             // buyer opening the email within the week sees the artwork - and on
             // Spaces the link is a direct, reachable bucket URL, not localhost.
-            $proofImageUrl = $proof->signedArtworkUrl(now()->addDays(7));
+            //
+            // A proof issued straight from the buyer's designer artwork is a
+            // TRANSPARENT design-only PNG - on its own it reads as a logo
+            // floating on white. Prefer the flattened design-on-product
+            // composite; fall back to the raw artwork for uploaded proofs (or
+            // when compositing is unavailable).
+            $expiry = now()->addDays(QuoteReadyMail::PROOF_IMAGE_URL_TTL_DAYS);
+            $proofImageUrl = $this->composites->signedCompositeUrl($proof, $expiry)
+                ?? $proof->signedArtworkUrl($expiry);
         }
 
         DB::afterCommit(fn () => Mail::to($recipient->email)->queue(

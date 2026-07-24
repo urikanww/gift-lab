@@ -46,7 +46,7 @@ export interface PrintZone {
 
 export type JobTrack = 'UV' | '3D';
 export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED';
-export type ProofState = 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
+export type ProofState = 'DRAFT' | 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
 
 export type Carrier = 'SINGPOST' | 'NINJAVAN' | 'JNT' | 'QXPRESS' | 'DHL' | 'FEDEX' | 'OTHER';
 
@@ -294,6 +294,10 @@ export interface Proof {
   quote_id: number;
   /** Display identity. quote_id remains the key realtime updates match on. */
   quote_reference?: string | null;
+  /** The line item this proof decorates - proofs are per-line, not per-order. */
+  line_item_id: number;
+  /** Product name of the line, snapshotted server-side; null pre-backfill. */
+  product_name?: string | null;
   version: number;
   artwork_version_ref: string;
   /**
@@ -356,6 +360,58 @@ export interface Quote {
    * only for staff. Entries from one save share a `batch`.
    */
   amendment_log?: AmendmentLogEntry[];
+  /**
+   * Staff-only buyer-notification picture for the order: which milestone email
+   * the current state sent, and when the next automatic chase is due. Absent
+   * from buyer payloads. Drives the staff notification panel.
+   */
+  reminder?: QuoteReminder;
+}
+
+/** The buyer email tied to a state; keyed like the backend OrderMilestone enum. */
+export type MilestoneKey =
+  | 'accepted'
+  | 'artwork_approved'
+  | 'proof_issued'
+  | 'committed'
+  | 'in_production'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'line_changed'
+  | 'reminder_price'
+  | 'reminder_proof';
+
+/** The next automatic buyer chase for an order (staff view). */
+export interface QuoteReminderNext {
+  /** Which wait the chase is for. */
+  kind: 'price' | 'proof';
+  /** How many chase emails have already gone out (shared counter). */
+  reminders_sent: number;
+  /** Rungs of the ladder still to come. */
+  reminders_remaining: number;
+  /** True once the ladder is spent - the order is flagged for a human call. */
+  exhausted: boolean;
+  /** ISO instant the next chase is due, or null when exhausted. */
+  next_due_at: string | null;
+  /** The configured day thresholds, e.g. [3, 7, 12]. */
+  ladder_days: number[];
+  /**
+   * How many per-line proofs are still awaiting the buyer (SENT). Optional so an
+   * older payload (or a fixture) without it degrades gracefully.
+   */
+  awaiting_count?: number;
+}
+
+export interface QuoteReminder {
+  /** Milestone email the current state sent the buyer, or null when silent. */
+  current_milestone: MilestoneKey | null;
+  /** Whether that milestone is switched on (an off milestone never sent). */
+  current_milestone_enabled: boolean;
+  /** ISO instant of the most recent chase email, or null if none yet. */
+  last_reminded_at: string | null;
+  /** The next scheduled chase, or null when the order is not being chased. */
+  next: QuoteReminderNext | null;
 }
 
 /** A free-form money adjustment after delivery. Signed amount (see Quote). */
@@ -394,7 +450,8 @@ export interface ProductionJob {
   track: JobTrack;
   state: JobState;
   ready_at: string | null;
-  artwork_ref: string | null;
+  /** Print-ready files for this job, one per artwork line it covers. */
+  artwork_refs?: { line_item_id: number; product_name: string | null; ref: string }[];
   consignment_ref?: string | null;
   carrier?: Carrier | null;
   print_method: PrintMethod | null;

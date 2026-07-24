@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useQueueStore } from '../stores/queueStore';
+import { printFilePath, printFilesZipPath, useQueueStore } from '../stores/queueStore';
 import JobLabel from '../components/JobLabel';
 import api, { apiError } from '../lib/api';
 import { Badge, Button, Card, EmptyState, Input, Skeleton, Textarea, useToast } from '../ui';
@@ -70,7 +70,10 @@ export default function ProductionQueuePage() {
   } = useQueueStore();
   const { toast } = useToast();
   const [pendingId, setPendingId] = useState<number | null>(null);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  // Single-flight guard across all print-file downloads on the page. Keyed per
+  // link (`pf:<jobId>:<ref>` for one file, `zip:<jobId>` for the bundle) so only
+  // the clicked control spins while a job can expose several files.
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   // Which job's delivery-address panel is expanded (staff editor).
   const [addressPanelId, setAddressPanelId] = useState<number | null>(null);
   // Quote ids known to have a delivery address (loaded or just saved) - gates the
@@ -128,18 +131,18 @@ export default function ProductionQueuePage() {
     setScanValue('');
   };
 
-  // Download the job's print-ready file. The endpoint is Sanctum-gated, so the
-  // fetch goes through the authed axios client (cookie + XSRF) as a blob rather
-  // than a bare anchor, then a transient object URL triggers the save.
-  const onDownloadPrintFile = async (jobId: number) => {
-    if (downloadingId !== null) return;
-    setDownloadingId(jobId);
+  // Fetch a Sanctum-gated file through the authed axios client (cookie + XSRF)
+  // as a blob rather than a bare anchor, then trigger the save via a transient
+  // object URL. `key` single-flights the download and drives the button spinner.
+  const downloadBlob = async (key: string, path: string, fallbackName: string) => {
+    if (downloadingKey !== null) return;
+    setDownloadingKey(key);
     try {
-      const res = await api.get(`/production-jobs/${jobId}/print-file`, { responseType: 'blob' });
+      const res = await api.get(path, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filenameFromDisposition(res.headers['content-disposition']) ?? `job-${jobId}-print-file`;
+      a.download = filenameFromDisposition(res.headers['content-disposition']) ?? fallbackName;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -147,9 +150,15 @@ export default function ProductionQueuePage() {
     } catch (err) {
       toast({ title: 'Download failed', description: apiError(err), tone: 'danger' });
     } finally {
-      setDownloadingId(null);
+      setDownloadingKey(null);
     }
   };
+
+  // One print-ready file (per artwork line), or the whole job's files zipped.
+  const onDownloadPrintFile = (jobId: number, ref: string) =>
+    downloadBlob(`pf:${jobId}:${ref}`, printFilePath(jobId, ref), `job-${jobId}-print-file`);
+  const onDownloadAllPrintFiles = (jobId: number) =>
+    downloadBlob(`zip:${jobId}`, printFilesZipPath(jobId), `job-${jobId}-print-files.zip`);
 
   // Single-flight guard against a double-click firing a duplicate advance.
   const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string, carrierVal?: string) => {
@@ -349,17 +358,37 @@ export default function ProductionQueuePage() {
                       </div>
                     )}
 
-                    {j.artwork_ref && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        fullWidth
-                        loading={downloadingId === j.id}
-                        disabled={downloadingId !== null && downloadingId !== j.id}
-                        onClick={() => void onDownloadPrintFile(j.id)}
-                      >
-                        Download print file
-                      </Button>
+                    {!!j.artwork_refs?.length && (
+                      <div className="flex flex-col gap-1.5">
+                        {j.artwork_refs.map((f) => {
+                          const key = `pf:${j.id}:${f.ref}`;
+                          return (
+                            <Button
+                              key={f.ref}
+                              variant="ghost"
+                              size="sm"
+                              fullWidth
+                              loading={downloadingKey === key}
+                              disabled={downloadingKey !== null && downloadingKey !== key}
+                              onClick={() => void onDownloadPrintFile(j.id, f.ref)}
+                            >
+                              Download {f.product_name ?? 'Print file'}
+                            </Button>
+                          );
+                        })}
+                        {j.artwork_refs.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            fullWidth
+                            loading={downloadingKey === `zip:${j.id}`}
+                            disabled={downloadingKey !== null && downloadingKey !== `zip:${j.id}`}
+                            onClick={() => void onDownloadAllPrintFiles(j.id)}
+                          >
+                            Download all (ZIP)
+                          </Button>
+                        )}
+                      </div>
                     )}
 
                     <Button variant="ghost" size="sm" fullWidth onClick={() => setLabelJobId(j.id)}>

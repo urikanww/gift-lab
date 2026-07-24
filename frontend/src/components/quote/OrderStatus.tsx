@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Badge, Card, SkeletonText } from '../../ui';
 import { humanizeState, quoteStateTone } from '../../lib/quoteStatus';
 import type { QuoteHistoryEntry } from '../../lib/quotes';
@@ -72,12 +72,24 @@ export default function OrderStatus({
   state,
   history,
   note,
+  description,
+  trailing,
+  children,
 }: {
   state: QuoteState;
   history: QuoteHistory;
   /** Optional passive status note (e.g. buyer's "what happens next" copy),
       rendered under the badge row so the glance and the note share one card. */
   note?: string;
+  /** Staff-facing state description, rendered under the badge in place of the
+      buyer note. Distinct from `note` so the two audiences never collide. */
+  description?: ReactNode;
+  /** Right-edge slot on the badge row (e.g. the staff Cancel control), sitting
+      before the history toggle. */
+  trailing?: ReactNode;
+  /** Staff workflow controls + notification panel, folded into this card so the
+      old separate "Staff actions" card is gone. Rendered under the description. */
+  children?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
@@ -120,18 +132,30 @@ export default function OrderStatus({
         {/* CLOSED sits off the path, so it has no slot to count. */}
         {complete && <span className="text-xs text-fg-subtle">All steps complete</span>}
 
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={listId}
-          onClick={() => setExpanded((v) => !v)}
-          className="ml-auto rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-        >
-          {expanded ? 'Hide history' : 'Show history'}
-        </button>
+        {/* Right edge: the staff Cancel control (when supplied) sits furthest
+            right, with the history toggle beside it. `ml-auto` on the group
+            pushes both to the edge regardless of which are present. */}
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={listId}
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+          >
+            {expanded ? 'Hide history' : 'Show history'}
+          </button>
+          {trailing}
+        </div>
       </div>
 
+      {/* Under the badge: the buyer's passive note OR the staff state
+          description - never both, as a page passes one or the other. */}
       {note && <p className="mt-3 text-sm text-fg-muted">{note}</p>}
+      {description && <div className="mt-3 text-sm text-fg-muted">{description}</div>}
+
+      {/* Staff controls + notification panel, folded into this card. */}
+      {children && <div className="mt-4">{children}</div>}
 
       {expanded && (
         <div
@@ -146,25 +170,51 @@ export default function OrderStatus({
           {loading ? (
             <SkeletonText lines={2} className="mt-3" />
           ) : newestFirst.length > 0 ? (
-            <ul className="mt-3 flex flex-col divide-y divide-border">
+            /* Vertical timeline: a marker per change with a connector running
+               between them, so the trail reads as a sequence rather than a flat
+               table. Newest at the top - its marker is filled to mark "now". */
+            <ol className="mt-4 flex flex-col">
               {newestFirst.map((entry, i) => {
                 const when = formatChangedAt(entry.changed_at);
+                const isLatest = i === 0;
+                const isLast = i === newestFirst.length - 1;
                 return (
                   <li
                     key={`${entry.changed_at ?? 'unknown'}-${entry.to ?? 'unknown'}-${i}`}
-                    className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-3 first:pt-0"
+                    className="relative flex gap-4 pb-5 last:pb-0"
                   >
-                    <span className="font-medium text-fg">
-                      {entry.to ? humanizeState(entry.to) : 'Unknown status'}
-                    </span>
-                    <span className="flex flex-wrap items-baseline gap-x-3 text-sm text-fg-muted">
-                      {when && <time dateTime={entry.changed_at ?? undefined}>{when}</time>}
-                      <span>{actorLabel(entry)}</span>
-                    </span>
+                    {/* Connector: from this marker down to the next. Hidden on the
+                        last row so the line stops at the oldest entry. */}
+                    {!isLast && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-[5px] top-3 h-full w-px bg-border"
+                      />
+                    )}
+                    {/* Marker. The latest change is filled (brand); older ones are
+                        hollow, so the eye lands on where the order is now. */}
+                    <span
+                      aria-hidden="true"
+                      className={`relative z-10 mt-1.5 h-[11px] w-[11px] shrink-0 rounded-full border-2 ${
+                        isLatest ? 'border-primary bg-primary' : 'border-border-strong bg-surface'
+                      }`}
+                    />
+                    <div className="flex flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                      <span className="font-medium text-fg">
+                        {entry.to ? humanizeState(entry.to) : 'Unknown status'}
+                      </span>
+                      <span className="flex flex-wrap items-baseline gap-x-2 text-sm text-fg-muted">
+                        {when && <time dateTime={entry.changed_at ?? undefined}>{when}</time>}
+                        <span aria-hidden="true" className="text-fg-subtle">
+                          ·
+                        </span>
+                        <span>{actorLabel(entry)}</span>
+                      </span>
+                    </div>
                   </li>
                 );
               })}
-            </ul>
+            </ol>
           ) : failed ? (
             <p className="mt-3 text-sm text-fg-muted">Couldn’t load the status history.</p>
           ) : (

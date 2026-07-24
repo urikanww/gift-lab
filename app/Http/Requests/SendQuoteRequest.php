@@ -7,9 +7,9 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Optional proof-with-quote payload. Authorization is the controller's
- * manageProduction gate. When artwork_version_ref is present the quote takes
- * the slim path (DRAFT -> PROOFING) with a v1 proof attached.
+ * Plain quote send (DRAFT -> SENT). Authorization is the controller's
+ * manageProduction gate. Proofs now go through per-line stage -> send, so this
+ * request carries no artwork payload.
  */
 class SendQuoteRequest extends FormRequest
 {
@@ -23,9 +23,6 @@ class SendQuoteRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
-            'artwork_version_ref' => ['nullable', 'string', 'max:2048'],
-            'notes' => ['nullable', 'string', 'max:2000'],
-        ];
+        return [];
     }
 }

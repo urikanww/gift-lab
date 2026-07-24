@@ -5,11 +5,14 @@ declare(strict_types=1);
 use App\Enums\OrderMilestone;
 use App\Enums\QuoteState;
 use App\Mail\OrderMilestoneMail;
+use App\Mail\QuoteReadyMail;
 use App\Models\Company;
+use App\Models\LineItem;
 use App\Models\PricingConfig;
 use App\Models\Quote;
 use App\Models\User;
 use App\Services\OrderNotifier;
+use App\Services\QuoteService;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -177,26 +180,31 @@ it('replies to a monitored address rather than no-reply', function (): void {
     expect($mail->envelope()->replyTo[0]->address)->toBe('help@giftlab.test');
 });
 
-// P1-4: issueProof only emailed when the quote ENTERED proofing, so v2 and
-// later notified nobody. The buyer sat waiting on a proof already in front of
-// them, and staff phoned every time. A revision does not change state, so this
-// cannot ride on transitionTo().
-it('emails the buyer on every revised proof, not just the first', function (): void {
+// Per-line: every sendProofs round - first or revision - emails the buyer the
+// same batched QuoteReadyMail. There is no separate ProofIssued milestone path
+// anymore, so a revision round queues another QuoteReadyMail and no
+// OrderMilestoneMail.
+it('emails the buyer the batched proofs-ready mail on every round, not just the first', function (): void {
     $staff = User::factory()->staffAdmin()->create();
     $this->actingAs($staff);
     $quote = quoteIn(QuoteState::Accepted);
-    $service = app(App\Services\QuoteService::class);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    $service = app(QuoteService::class);
 
-    // v1 takes the quote into PROOFING and sends the richer quote-and-proof mail.
-    $service->issueProof($quote, 'proofs/v1.pdf', null);
-    Mail::assertQueued(App\Mail\QuoteReadyMail::class);
+    // v1 round takes the quote into PROOFING and sends the batched proofs mail.
+    $service->stageProof($quote, $line, 'proofs/v1.pdf');
+    $service->sendProofs($quote->fresh());
+    Mail::assertQueued(QuoteReadyMail::class, 1);
     Mail::assertNotQueued(OrderMilestoneMail::class);
 
-    // v2 is where the silence used to be.
-    $service->issueProof($quote->fresh(), 'proofs/v2.pdf', null);
+    // v2 round: another batched proofs mail, still no ProofIssued milestone.
+    $service->stageProof($quote->fresh(), $line, 'proofs/v2.pdf');
+    $service->sendProofs($quote->fresh());
 
-    Mail::assertQueued(
-        OrderMilestoneMail::class,
-        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::ProofIssued,
-    );
+    Mail::assertQueued(QuoteReadyMail::class, 2);
+    Mail::assertNotQueued(OrderMilestoneMail::class);
 });

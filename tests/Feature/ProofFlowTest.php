@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Events\ProofStatusChanged;
 use App\Exceptions\DomainRuleException;
 use App\Models\Company;
+use App\Models\LineItem;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
@@ -17,14 +18,23 @@ beforeEach(function (): void {
     $this->staff = User::factory()->staffAdmin()->create();
 });
 
-it('issues a proof and moves the quote into proofing', function (): void {
+it('stages a line proof and sends the round into proofing', function (): void {
     Event::fake([ProofStatusChanged::class]);
     Sanctum::actingAs($this->staff);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'ACCEPTED']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
 
-    $this->postJson("/api/quotes/{$quote->id}/proofs", [
+    // Staging leaves the order untouched; sending the round moves it to PROOFING.
+    $this->postJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs", [
         'artwork_version_ref' => 'proofs/v1.pdf',
     ])->assertCreated()->assertJsonPath('data.version', 1);
+    expect($quote->fresh()->state->value)->toBe('ACCEPTED');
+
+    $this->postJson("/api/quotes/{$quote->id}/proofs/send")->assertOk();
 
     expect($quote->fresh()->state->value)->toBe('PROOFING');
     Event::assertDispatched(ProofStatusChanged::class);
@@ -42,7 +52,12 @@ it('records an immutable approval and advances the quote', function (): void {
         'accepted_at' => now(),
         'accepted_by' => $this->buyer->id,
     ]);
-    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'state' => 'SENT']);
 
     $this->postJson("/api/proofs/{$proof->id}/decide", ['decision' => 'approve'])->assertOk();
 
@@ -63,7 +78,12 @@ it('prevents mutating an approved proof', function (): void {
 it('lets a buyer request changes without approving', function (): void {
     Sanctum::actingAs($this->buyer);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING', 'accepted_at' => now(), 'accepted_by' => $this->buyer->id]);
-    $proof = Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    $proof = Proof::factory()->forLine($line)->create(['state' => 'SENT']);
 
     $this->postJson("/api/proofs/{$proof->id}/decide", [
         'decision' => 'request_changes',
@@ -72,9 +92,12 @@ it('lets a buyer request changes without approving', function (): void {
 
     expect($proof->fresh()->state->value)->toBe('CHANGES_REQUESTED');
 
-    // A new proof version can still be issued on the same quote.
+    // A revised proof can still be staged on the same line and sent as v2.
     Sanctum::actingAs($this->staff);
-    $this->postJson("/api/quotes/{$quote->id}/proofs", [
+    $this->postJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs", [
         'artwork_version_ref' => 'proofs/v2.pdf',
     ])->assertCreated()->assertJsonPath('data.version', 2);
+    $this->postJson("/api/quotes/{$quote->id}/proofs/send")->assertOk();
+
+    expect($quote->fresh()->state->value)->toBe('PROOFING');
 });

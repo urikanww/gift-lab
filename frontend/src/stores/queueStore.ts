@@ -42,6 +42,17 @@ interface QueueStoreState {
   unsubscribe: () => void;
 }
 
+// Print-file downloads are Sanctum-gated, so callers fetch these paths through
+// the authed axios client (baseURL already carries the `/api` origin) as a blob
+// - never a bare anchor. One path per file, plus a bundle of the whole job.
+export function printFilePath(jobId: number, ref: string): string {
+  return `/production-jobs/${jobId}/print-file?ref=${encodeURIComponent(ref)}`;
+}
+
+export function printFilesZipPath(jobId: number): string {
+  return `/production-jobs/${jobId}/print-files.zip`;
+}
+
 // FCFS by ready_at - the queue always renders in readiness order, never order time.
 function sortQueue(jobs: ProductionJob[]): ProductionJob[] {
   return [...jobs].sort((a, b) => (a.ready_at ?? '').localeCompare(b.ready_at ?? ''));
@@ -164,7 +175,9 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
           track: e.track,
           state: e.state,
           ready_at: e.ready_at,
-          artwork_ref: existing?.artwork_ref ?? null,
+          // The lightweight broadcast carries no print files; keep what we loaded
+          // so the floor's download links survive a realtime state change.
+          artwork_refs: existing?.artwork_refs,
           print_method: existing?.print_method ?? null,
           qty: e.qty,
           // The lightweight broadcast carries no line items; keep what we loaded

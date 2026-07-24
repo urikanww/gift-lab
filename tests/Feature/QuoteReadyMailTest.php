@@ -2,11 +2,24 @@
 
 declare(strict_types=1);
 
+use App\Mail\OrderMilestoneMail;
 use App\Mail\QuoteReadyMail;
 use App\Models\Company;
+use App\Models\LineItem;
 use App\Models\Quote;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
+use Laravel\Sanctum\Sanctum;
+
+/** A customized line on the quote that takes a proof. */
+function mailProofLine(Quote $quote): LineItem
+{
+    return LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+}
 
 it('builds the quote+proof variant with a subject', function (): void {
     $quote = Quote::factory()->create();
@@ -73,13 +86,15 @@ it('escapes a malicious creator name in the greeting', function (): void {
     $mail->assertDontSeeInHtml('<script>', false);
 });
 
-it('emails the buyer with the proof variant on slim send', function (): void {
+it('emails the buyer with the proof variant when a proof round is sent', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'created_by' => $buyer->id]);
-    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $line = mailProofLine($quote);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
-    $this->postJson("/api/quotes/{$quote->id}/send", ['artwork_version_ref' => 'a/v1.png'])->assertOk();
+    $this->postJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs", ['artwork_version_ref' => 'a/v1.png'])->assertCreated();
+    $this->postJson("/api/quotes/{$quote->id}/proofs/send")->assertOk();
 
     Mail::assertQueued(QuoteReadyMail::class, fn ($m) => $m->hasProof === true && $m->hasTo($buyer->email));
     Mail::assertQueuedCount(1);
@@ -89,7 +104,7 @@ it('emails the buyer with the quote-only variant on plain send', function (): vo
     Mail::fake();
     $buyer = User::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'created_by' => $buyer->id]);
-    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
 
@@ -97,13 +112,15 @@ it('emails the buyer with the quote-only variant on plain send', function (): vo
     Mail::assertQueuedCount(1);
 });
 
-it('emails the buyer with the proof variant when the first proof is issued', function (): void {
+it('emails the buyer with the proof variant when the first round is sent on an accepted quote', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'ACCEPTED', 'accepted_at' => now(), 'accepted_by' => $buyer->id, 'created_by' => $buyer->id]);
-    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $line = mailProofLine($quote);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
-    $this->postJson("/api/quotes/{$quote->id}/proofs", ['artwork_version_ref' => 'a/v1.png'])->assertCreated();
+    $this->postJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs", ['artwork_version_ref' => 'a/v1.png'])->assertCreated();
+    $this->postJson("/api/quotes/{$quote->id}/proofs/send")->assertOk();
 
     Mail::assertQueued(QuoteReadyMail::class, fn ($m) => $m->hasProof === true && $m->hasTo($buyer->email));
     Mail::assertQueuedCount(1);
@@ -113,7 +130,7 @@ it('does not email a staff-created quote when the company has no buyer contact',
     Mail::fake();
     $staff = User::factory()->staffAdmin()->create();
     $quote = Quote::factory()->create(['state' => 'DRAFT', 'created_by' => $staff->id]);
-    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
 
@@ -126,7 +143,7 @@ it('emails the company buyer contact for a staff-created quote', function (): vo
     $buyer = User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']);
     $staff = User::factory()->staffAdmin()->create();
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'DRAFT', 'created_by' => $staff->id]);
-    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     $this->postJson("/api/quotes/{$quote->id}/send")->assertOk();
 
@@ -134,22 +151,21 @@ it('emails the company buyer contact for a staff-created quote', function (): vo
     Mail::assertQueuedCount(1);
 });
 
-// Was: 'does not re-email on a v2 proof (already in proofing)'. That silence
-// was the defect, not the design — the buyer waited on a proof already sitting
-// in front of them and staff phoned every time. A revision still sends no
-// QuoteReadyMail (that one carries the quote itself, and the quote has not
-// changed); it sends the lighter milestone email instead.
-it('sends the revision notice, not the quote email, on a v2 proof', function (): void {
+// Per-line: a revision round is just another sendProofs. It queues ONE batched
+// QuoteReadyMail (the round's items) and no ProofIssued milestone - the retired
+// order-level ProofIssued path is gone. The quote is already PROOFING, so the
+// send neither transitions the order nor fires any milestone email.
+it('sends the batched proofs-ready email, not a milestone, on a revision round', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'PROOFING', 'accepted_at' => now(), 'accepted_by' => $buyer->id, 'created_by' => $buyer->id]);
-    Laravel\Sanctum\Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $line = mailProofLine($quote);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
-    $this->postJson("/api/quotes/{$quote->id}/proofs", ['artwork_version_ref' => 'a/v2.png'])->assertCreated();
+    $this->postJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs", ['artwork_version_ref' => 'a/v2.png'])->assertCreated();
+    $this->postJson("/api/quotes/{$quote->id}/proofs/send")->assertOk();
 
-    Mail::assertNotQueued(App\Mail\QuoteReadyMail::class);
-    Mail::assertQueued(
-        App\Mail\OrderMilestoneMail::class,
-        fn ($mail): bool => $mail->milestone === App\Enums\OrderMilestone::ProofIssued,
-    );
+    Mail::assertQueued(QuoteReadyMail::class, 1);
+    Mail::assertQueued(QuoteReadyMail::class, fn (QuoteReadyMail $m): bool => $m->hasProof === true && $m->hasTo($buyer->email));
+    Mail::assertNotQueued(OrderMilestoneMail::class);
 });

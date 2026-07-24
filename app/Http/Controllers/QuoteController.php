@@ -25,9 +25,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 class QuoteController extends Controller
 {
-    public function __construct(private readonly QuoteService $quotes)
-    {
-    }
+    public function __construct(private readonly QuoteService $quotes) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -163,7 +161,10 @@ class QuoteController extends Controller
 
         $this->authorize('view', $quote);
 
-        return new QuoteResource($quote->load(['lineItems.product', 'proofs']));
+        // proofs.lineItem.product: ProofResource resolves the design-on-product
+        // composite through each proof's own line item, so eager-load it or the
+        // composite lookup fires two queries per proof (N+1).
+        return new QuoteResource($quote->load(['lineItems.product', 'proofs.lineItem.product']));
     }
 
     /**
@@ -247,11 +248,7 @@ class QuoteController extends Controller
     {
         $this->authorize('manageProduction', $quote);
 
-        return new QuoteResource($this->quotes->send(
-            $quote,
-            $request->input('artwork_version_ref'),
-            $request->input('notes'),
-        ));
+        return new QuoteResource($this->quotes->send($quote));
     }
 
     public function accept(Request $request, Quote $quote): QuoteResource

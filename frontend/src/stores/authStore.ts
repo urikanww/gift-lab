@@ -24,20 +24,36 @@ interface AuthState {
   logout: () => Promise<void>;
 }
 
+// In-flight guard for the session probe. Concurrent callers - React 18
+// StrictMode double-invokes the boot effect in dev, and any future component
+// could fetchUser() alongside App - share ONE /api/user request instead of each
+// firing their own. This is what a busy access log reads as "/api/user hit
+// twice in the same second"; collapse it to one.
+let userProbe: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   status: 'idle',
   error: null,
 
   fetchUser: async () => {
+    // Coalesce onto the request already in flight rather than starting another.
+    if (userProbe) return userProbe;
+
     set({ status: 'loading', error: null });
-    try {
-      const { data } = await api.get<User>('/user');
-      set({ user: data, status: 'ready' });
-    } catch {
-      // 401 is expected for anonymous visitors browsing the public catalogue.
-      set({ user: null, status: 'ready' });
-    }
+    userProbe = (async () => {
+      try {
+        const { data } = await api.get<User>('/user');
+        set({ user: data, status: 'ready' });
+      } catch {
+        // 401 is expected for anonymous visitors browsing the public catalogue.
+        set({ user: null, status: 'ready' });
+      } finally {
+        userProbe = null;
+      }
+    })();
+
+    return userProbe;
   },
 
   login: async (email, password) => {

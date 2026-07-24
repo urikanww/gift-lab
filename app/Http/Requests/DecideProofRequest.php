@@ -10,7 +10,9 @@ use Illuminate\Foundation\Http\FormRequest;
 /**
  * Buyer signs off a proof: approve, or request changes (spec 6.3). Approval is
  * recorded immutably; requesting changes forces a new proof version. Authorized
- * to the buyer of the owning company (or staff acting on their behalf).
+ * to the owning-company buyer (their own order) or a superadmin acting on their
+ * behalf - deliberately NOT any staff_admin, mirroring the UI's superadmin-only
+ * "on behalf" gate.
  */
 class DecideProofRequest extends FormRequest
 {
@@ -23,11 +25,7 @@ class DecideProofRequest extends FormRequest
             return false;
         }
 
-        if ($user->isStaff()) {
-            return true;
-        }
-
-        return $user->company_id === $proof->quote->company_id;
+        return $user->company_id === $proof->quote->company_id || $user->isSuperadmin();
     }
 
     /**

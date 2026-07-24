@@ -120,7 +120,15 @@ interface QuoteStoreState {
   send: (id: number, proof?: { artwork_version_ref: string; notes?: string }) => Promise<void>;
   accept: (id: number) => Promise<void>;
   procure: (id: number) => Promise<void>;
-  issueProof: (id: number, artworkRef: string, notes: string | null) => Promise<void>;
+  /**
+   * Stage (or replace) a DRAFT proof for one line, from a chosen artwork ref.
+   * Per-line: proofs are prepared line by line, then sent together.
+   */
+  stageProof: (quoteId: number, lineId: number, artworkRef: string) => Promise<void>;
+  /** Flip every DRAFT proof on the order to SENT in one buyer email (staff). */
+  sendProofs: (quoteId: number) => Promise<void>;
+  /** Approve every SENT proof on the order. Resolves true on success. */
+  approveAllProofs: (quoteId: number) => Promise<boolean>;
   decideProof: (
     proofId: number,
     decision: 'approve' | 'request_changes',
@@ -281,14 +289,40 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  issueProof: async (id, artworkRef, notes) => {
+  stageProof: async (quoteId, lineId, artworkRef) => {
     set({ actionError: null });
     try {
       await ensureCsrf();
-      await api.post(`/quotes/${id}/proofs`, { artwork_version_ref: artworkRef, notes });
-      await get().fetchQuote(id);
+      await api.post(`/quotes/${quoteId}/lines/${lineId}/proofs`, {
+        artwork_version_ref: artworkRef,
+      });
+      await get().fetchQuote(quoteId);
     } catch (err) {
       set({ actionError: apiError(err) });
+    }
+  },
+
+  sendProofs: async (quoteId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${quoteId}/proofs/send`);
+      await get().fetchQuote(quoteId);
+    } catch (err) {
+      set({ actionError: apiError(err) });
+    }
+  },
+
+  approveAllProofs: async (quoteId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${quoteId}/proofs/approve-all`);
+      await get().fetchQuote(quoteId);
+      return true;
+    } catch (err) {
+      set({ actionError: apiError(err) });
+      return false;
     }
   },
 

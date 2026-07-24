@@ -79,6 +79,30 @@ it('keeps the queue query count flat as jobs are added', function (): void {
     expect($large)->toBeLessThanOrEqual($small + 1);
 });
 
+it('exposes proof line identity and the staff reminder awaiting_count on quote-show', function (): void {
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOFING',
+        'reminders_sent' => 0,
+    ]);
+    // A SENT proof on its own line: the buyer still owes a decision, so the
+    // reminder ladder is live and its awaiting_count should be present.
+    $proof = Proof::factory()->create([
+        'quote_id' => $quote->id,
+        'state' => 'SENT',
+        'created_at' => now()->subDay(),
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $this->getJson("/api/quotes/{$quote->reference}")
+        ->assertOk()
+        // ProofResource now carries the line identity the client groups by.
+        ->assertJsonPath('data.proofs.0.line_item_id', $proof->line_item_id)
+        // Staff-only reminder block still surfaces the forward-looking chase,
+        // including how many proofs are still awaiting the buyer (Phase 5.3).
+        ->assertJsonPath('data.reminder.next.awaiting_count', 1);
+});
+
 it('keeps the quote-show query count flat as line items and proofs are added', function (): void {
     $quote = Quote::factory()->create(['company_id' => $this->company->id]);
     Sanctum::actingAs($this->staff);

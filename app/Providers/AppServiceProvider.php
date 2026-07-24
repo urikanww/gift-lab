@@ -137,6 +137,27 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Inline `throttle:N,1` middleware keys an ANONYMOUS request by IP alone
+        // (sha1(domain|IP)) with no per-route prefix, and an AUTHENTICATED one by
+        // user id alone - so every inline numeric throttle in routes/api.php shared
+        // ONE counter per caller within each auth state. The marketplace login page
+        // fires a burst of /catalogue + /bulk-pricing (60/min budget); those hits
+        // landed in the SAME bucket login's 6/min limit checks, so a normal page
+        // load tripped "Too Many Attempts" before the buyer submitted a credential.
+        // Likewise POST /quotes (8/min) shared the authed 120/min group's bucket.
+        //
+        // Named limiters get their own key namespace (md5(limiterName.key)), so each
+        // surface below has an isolated budget. Anonymous surfaces key by IP;
+        // authenticated surfaces key by user id, falling back to IP.
+        RateLimiter::for('login', fn (Request $request): Limit => Limit::perMinute(6)->by($request->ip()));
+        RateLimiter::for('register', fn (Request $request): Limit => Limit::perMinute(6)->by($request->ip()));
+        RateLimiter::for('catalogue', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('tracking', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
+        RateLimiter::for('stripe-webhook', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip()));
+        RateLimiter::for('proof-image', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('authenticated', fn (Request $request): Limit => Limit::perMinute(120)->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
+        RateLimiter::for('quote-store', fn (Request $request): Limit => Limit::perMinute(8)->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
+
         // Central authorization safety net: register QuotePolicy explicitly so
         // Gate::authorize / $this->authorize('...', $quote) enforces tenancy
         // isolation for every quote action, instead of relying on scattered
