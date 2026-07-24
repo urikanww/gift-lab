@@ -644,12 +644,26 @@ final class QuoteService
     }
 
     /**
-     * Batched "proofs ready" email. Real per-item version wired in a later task;
-     * for now reuse the existing quote-ready email so the round is announced once.
+     * Batched "proofs ready" email: the buyer is written to ONCE per round with
+     * a thumbnail per item, rather than one email per line. Fired after commit
+     * by sendProofs, so it queues directly (no further afterCommit needed).
+     * No-ops silently when no buyer recipient can be resolved.
      */
     private function emailProofsReady(Quote $quote): void
     {
-        $this->emailQuoteReady($quote, true);
+        $recipient = $this->resolveBuyerRecipient($quote);
+        if ($recipient?->email === null) {
+            return;
+        }
+
+        $items = $quote->proofs()
+            ->where('state', ProofState::Sent->value)
+            ->with('lineItem.product')
+            ->get();
+
+        Mail::to($recipient->email)->queue(
+            new QuoteReadyMail($quote, $items, greetingName: $recipient->name)
+        );
     }
 
     /**

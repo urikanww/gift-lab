@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Enums\OrderMilestone;
 use App\Mail\OrderMilestoneMail;
 use App\Mail\QuoteReadyMail;
 use App\Models\Company;
@@ -152,15 +151,11 @@ it('emails the company buyer contact for a staff-created quote', function (): vo
     Mail::assertQueuedCount(1);
 });
 
-// TODO(per-line): revision-round email wiring is Task 5.1. In the retired
-// order-level flow a v2 proof deliberately sent the lighter ProofIssued
-// milestone (not the heavy QuoteReadyMail), since the quote itself had not
-// changed. The per-line flow has no separate "revision" path yet: every
-// sendProofs round currently reuses the batched QuoteReadyMail (see
-// QuoteService::emailProofsReady, an explicit stopgap) and sends no ProofIssued
-// milestone. Which of those a revision round SHOULD send is unsettled and owned
-// by Task 5.1, so this case is skipped rather than asserting either behavior.
-it('sends the revision notice, not the quote email, on a v2 proof round', function (): void {
+// Per-line: a revision round is just another sendProofs. It queues ONE batched
+// QuoteReadyMail (the round's items) and no ProofIssued milestone - the retired
+// order-level ProofIssued path is gone. The quote is already PROOFING, so the
+// send neither transitions the order nor fires any milestone email.
+it('sends the batched proofs-ready email, not a milestone, on a revision round', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'PROOFING', 'accepted_at' => now(), 'accepted_by' => $buyer->id, 'created_by' => $buyer->id]);
@@ -170,9 +165,7 @@ it('sends the revision notice, not the quote email, on a v2 proof round', functi
     $this->postJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs", ['artwork_version_ref' => 'a/v2.png'])->assertCreated();
     $this->postJson("/api/quotes/{$quote->id}/proofs/send")->assertOk();
 
-    Mail::assertNotQueued(QuoteReadyMail::class);
-    Mail::assertQueued(
-        OrderMilestoneMail::class,
-        fn ($mail): bool => $mail->milestone === OrderMilestone::ProofIssued,
-    );
-})->skip('TODO(per-line): revision-round email design is Task 5.1; per-line send currently reuses the batched QuoteReadyMail and sends no ProofIssued milestone.');
+    Mail::assertQueued(QuoteReadyMail::class, 1);
+    Mail::assertQueued(QuoteReadyMail::class, fn (QuoteReadyMail $m): bool => $m->hasProof === true && $m->hasTo($buyer->email));
+    Mail::assertNotQueued(OrderMilestoneMail::class);
+});

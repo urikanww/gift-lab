@@ -180,14 +180,11 @@ it('replies to a monitored address rather than no-reply', function (): void {
     expect($mail->envelope()->replyTo[0]->address)->toBe('help@giftlab.test');
 });
 
-// TODO(per-line): revision-round email wiring is Task 5.1. In the retired
-// order-level flow, issueProof sent the ProofIssued milestone on every revision
-// after the first. The per-line flow has no separate revision path yet:
-// sendProofs reuses the batched QuoteReadyMail (QuoteService::emailProofsReady,
-// an explicit stopgap) and sends no ProofIssued milestone. Whether a revision
-// round should send that milestone is unsettled and owned by Task 5.1, so this
-// case is skipped rather than asserting behavior the new flow does not yet have.
-it('emails the buyer on every revised proof round, not just the first', function (): void {
+// Per-line: every sendProofs round - first or revision - emails the buyer the
+// same batched QuoteReadyMail. There is no separate ProofIssued milestone path
+// anymore, so a revision round queues another QuoteReadyMail and no
+// OrderMilestoneMail.
+it('emails the buyer the batched proofs-ready mail on every round, not just the first', function (): void {
     $staff = User::factory()->staffAdmin()->create();
     $this->actingAs($staff);
     $quote = quoteIn(QuoteState::Accepted);
@@ -198,18 +195,16 @@ it('emails the buyer on every revised proof round, not just the first', function
     ]);
     $service = app(QuoteService::class);
 
-    // v1 round takes the quote into PROOFING and sends the quote-and-proof mail.
+    // v1 round takes the quote into PROOFING and sends the batched proofs mail.
     $service->stageProof($quote, $line, 'proofs/v1.pdf');
     $service->sendProofs($quote->fresh());
-    Mail::assertQueued(QuoteReadyMail::class);
+    Mail::assertQueued(QuoteReadyMail::class, 1);
     Mail::assertNotQueued(OrderMilestoneMail::class);
 
-    // v2 round is where a revision milestone would fire.
+    // v2 round: another batched proofs mail, still no ProofIssued milestone.
     $service->stageProof($quote->fresh(), $line, 'proofs/v2.pdf');
     $service->sendProofs($quote->fresh());
 
-    Mail::assertQueued(
-        OrderMilestoneMail::class,
-        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::ProofIssued,
-    );
-})->skip('TODO(per-line): revision-round email design is Task 5.1; per-line send currently reuses the batched QuoteReadyMail and sends no ProofIssued milestone.');
+    Mail::assertQueued(QuoteReadyMail::class, 2);
+    Mail::assertNotQueued(OrderMilestoneMail::class);
+});

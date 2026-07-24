@@ -116,7 +116,29 @@
 
                             <tr>
                                 <td class="gl-px" style="padding:28px 48px 8px 48px;" align="center">
-                                    @if($hasProof && $proofImageUrl)
+                                    @if(!empty($proofItems))
+                                        {{-- Batched round: one row per item, product name + its own thumbnail. --}}
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                            @foreach($proofItems as $item)
+                                                <tr>
+                                                    <td style="padding:0 0 20px 0;" align="center">
+                                                        <p style="margin:0 0 10px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#14141a;">{{ $item['product_name'] }}</p>
+                                                        @if($item['thumbnail_url'])
+                                                            <img src="{{ $item['thumbnail_url'] }}" alt="{{ $item['product_name'] }} proof" class="gl-proof-img" width="504" style="display:block; margin:0 auto; width:100%; max-width:504px; height:auto; border:1px solid #e6e6ef; border-radius:10px;">
+                                                        @else
+                                                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px dashed #cfcfdd; border-radius:10px;">
+                                                                <tr>
+                                                                    <td align="center" style="padding:36px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; letter-spacing:1px; color:#8a8a99; text-transform:uppercase;">
+                                                                        Proof preview
+                                                                    </td>
+                                                                </tr>
+                                                            </table>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </table>
+                                    @elseif($hasProof && $proofImageUrl)
                                         <img src="{{ $proofImageUrl }}" alt="Proof preview" class="gl-proof-img" width="504" style="display:block; width:100%; max-width:504px; height:auto; border:1px solid #e6e6ef; border-radius:10px;">
                                     @else
                                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px dashed #cfcfdd; border-radius:10px;">
