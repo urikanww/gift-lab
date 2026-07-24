@@ -109,6 +109,64 @@ class ProductionQueueController extends Controller
     }
 
     /**
+     * Stream a ZIP of every print-ready file on a job, one entry per artwork
+     * line, each named "{product_name}-{basename(ref)}" so the floor can tell
+     * the plates apart. Same staff gate and same artwork/ boundary validation as
+     * the single-file download; refs that fail the guard or are absent from the
+     * disk are skipped, and a job with nothing printable yields 404.
+     *
+     * Files are pulled through the disk (addFromString) rather than by local
+     * path, so this works unchanged on the local dev disk and on remote Spaces.
+     */
+    public function printFileZip(Request $request, ProductionJob $job): StreamedResponse
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        $disk = Storage::disk((string) config('filesystems.artwork_disk'));
+
+        /** @var array<string, string> $entries zip-entry name => file contents */
+        $entries = [];
+        foreach (($job->artwork_refs ?? []) as $item) {
+            $ref = is_array($item) ? (string) ($item['ref'] ?? '') : '';
+            if (preg_match('#^artwork/[A-Za-z0-9_\-]+\.[A-Za-z0-9]{1,10}$#', $ref) !== 1 || ! $disk->exists($ref)) {
+                continue;
+            }
+
+            $label = is_array($item) ? (string) ($item['product_name'] ?? '') : '';
+            $base = ($label !== '' ? $label.'-' : '').basename($ref);
+            $name = $base;
+            $n = 2;
+            while (isset($entries[$name])) {
+                $name = pathinfo($base, PATHINFO_FILENAME).'-'.$n.'.'.pathinfo($base, PATHINFO_EXTENSION);
+                $n++;
+            }
+            $entries[$name] = (string) $disk->get($ref);
+        }
+
+        if ($entries === []) {
+            abort(404);
+        }
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'printfiles').'.zip';
+        $zip = new \ZipArchive;
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            abort(500, 'Could not build the print-file archive.');
+        }
+        foreach ($entries as $name => $contents) {
+            $zip->addFromString($name, $contents);
+        }
+        $zip->close();
+
+        return response()->streamDownload(function () use ($zipPath): void {
+            readfile($zipPath);
+            @unlink($zipPath);
+        }, "job-{$job->id}-print-files.zip", [
+            'Content-Type' => 'application/zip',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
      * Hand a produced job to the courier and mark it SHIPPED with the returned
      * consignment ref + carrier. Staff-gated by the same policy as the rest of
      * the queue. A missing ship-to yields 422; a courier failure yields 502.

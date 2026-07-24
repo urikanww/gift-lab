@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AdminBlankCaptureController;
+use App\Http\Controllers\AdminBlankRecommendationController;
 use App\Http\Controllers\AdminCatalogueController;
 use App\Http\Controllers\AdminPriceBreakdownController;
 use App\Http\Controllers\AdminProductController;
@@ -11,10 +13,11 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GiftIdeasController;
 use App\Http\Controllers\LeadTimeEstimateController;
+use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
-use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PricingConfigController;
 use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\ProductionQueueController;
@@ -57,7 +60,7 @@ Route::middleware('throttle:catalogue')->group(function (): void {
     // Relevance-ranked "you might also like" (same category + complements).
     Route::get('/catalogue/{key}/related', [CatalogueController::class, 'related']);
     // Staff-curated affiliate gift ideas feed (cached; IP-flagged rows excluded).
-    Route::get('/gift-ideas', [\App\Http\Controllers\GiftIdeasController::class, 'index']);
+    Route::get('/gift-ideas', [GiftIdeasController::class, 'index']);
     Route::post('/price-estimate', PriceEstimateController::class);
     // The one bulk-discount offer the engine applies, so the storefront can
     // state it instead of implying tiers that don't exist. Two keys only.
@@ -174,6 +177,8 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Streams the job's print-ready file (3D UV decal or approved proof
     // artwork) off the private disk so the floor can print it. Staff-gated.
     Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile'])->middleware('permission:production.view');
+    // ...or all of a batched job's per-line files at once, as a labelled ZIP.
+    Route::get('/production-jobs/{job}/print-files.zip', [ProductionQueueController::class, 'printFileZip'])->middleware('permission:production.view');
     Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment'])->middleware('permission:production.manage');
 
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
@@ -229,14 +234,14 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive'])->middleware('permission:reorders.manage');
 
     // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
-    Route::post('/admin/blank-candidates/capture', [\App\Http\Controllers\AdminBlankCaptureController::class, 'store']);
+    Route::post('/admin/blank-candidates/capture', [AdminBlankCaptureController::class, 'store']);
 
     // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
-    Route::get('/admin/blank-recommendations', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'index']);
-    Route::post('/admin/blank-recommendations/add', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'add']);
-    Route::get('/admin/blank-recommendations/featured', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'featured']);
-    Route::post('/admin/blank-recommendations/feature', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'feature']);
-    Route::delete('/admin/blank-recommendations/feature/{feature}', [\App\Http\Controllers\AdminBlankRecommendationController::class, 'unfeature']);
+    Route::get('/admin/blank-recommendations', [AdminBlankRecommendationController::class, 'index']);
+    Route::post('/admin/blank-recommendations/add', [AdminBlankRecommendationController::class, 'add']);
+    Route::get('/admin/blank-recommendations/featured', [AdminBlankRecommendationController::class, 'featured']);
+    Route::post('/admin/blank-recommendations/feature', [AdminBlankRecommendationController::class, 'feature']);
+    Route::delete('/admin/blank-recommendations/feature/{feature}', [AdminBlankRecommendationController::class, 'unfeature']);
 
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.
