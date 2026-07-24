@@ -791,6 +791,29 @@ final class QuoteService
     }
 
     /**
+     * Approve every proof on the order still awaiting the buyer (SENT), in one
+     * transaction. Leaves CHANGES_REQUESTED lines alone. Attributed to the actor
+     * (buyer, or superadmin on-behalf). One roll-up at the end.
+     */
+    public function approveAllOpenProofs(Quote $quote, User $actor): void
+    {
+        DB::transaction(function () use ($quote, $actor): void {
+            $open = $quote->proofs()->where('state', ProofState::Sent->value)->get();
+            foreach ($open as $proof) {
+                $proof->approved_by = $actor->id;
+                $proof->approved_at = now();
+                $proof->transitionTo(ProofState::Approved);
+                $this->audit->log($proof, 'proof.approved', null, [
+                    'version' => $proof->version, 'line_item_id' => $proof->line_item_id,
+                    'approved_by' => $actor->id, 'batch' => true,
+                ]);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+            }
+            $quote->recomputeProofState();
+        });
+    }
+
+    /**
      * Staff issues the invoice: quote PROOF_APPROVED -> INVOICED -> CONFIRMED.
      */
     public function issueInvoice(Quote $quote, string $poRef, ?string $invoiceRef, ?string $terms): Invoice
