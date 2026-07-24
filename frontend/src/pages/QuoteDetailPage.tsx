@@ -15,7 +15,9 @@ import { useQuoteHistory } from '../lib/useQuoteHistory';
 import QuoteLineItems, { PricingSummary } from '../components/quote/QuoteLineItems';
 import QuoteLineEditor from '../components/quote/QuoteLineEditor';
 import AmendmentHistory from '../components/quote/AmendmentHistory';
+import ArtworkPicker, { type ArtworkOption } from '../components/quote/ArtworkPicker';
 import ProofFileInput from '../components/quote/ProofFileInput';
+import BuyerNotifications from '../components/quote/BuyerNotifications';
 import type { Proof, QuoteState } from '../types';
 
 /**
@@ -36,6 +38,34 @@ const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
   READY: 'Your order is ready. We’ll be in touch about delivery.',
   CLOSED: 'This order is complete. Thanks for working with us.',
 };
+
+/**
+ * Small clickable preview of a proof version's artwork, shown on every row so
+ * versions read at a glance (parity with the change-request attachment thumbs).
+ * Files an <img> cannot render (a PDF proof) hide themselves - the "View
+ * artwork" link stays as the way in.
+ */
+function ProofArtworkThumb({ url, version }: { url: string; version: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="block h-16 w-16 overflow-hidden rounded-md border border-border bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title={`Open proof v${version} artwork`}
+    >
+      <img
+        src={url}
+        alt={`Proof v${version} artwork`}
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-cover"
+      />
+    </a>
+  );
+}
 
 export default function QuoteDetailPage() {
   // Buyer/public URLs carry the opaque order reference; the API resolves it
@@ -77,9 +107,13 @@ export default function QuoteDetailPage() {
   // on screen.
   const [editingLines, setEditingLines] = useState(false);
 
-  // Staff-only amendment-log dialog, opened from the "Edit history" button
+  // Staff-only amendment-log dialog, opened from the "History" button
   // beside "Edit items" in the Items card header.
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Which proof field the buyer-design picker fills when open: DRAFT's
+  // send-with-proof field, or the issue-proof field. null = closed.
+  const [designPickerTarget, setDesignPickerTarget] = useState<'send' | 'issue' | null>(null);
 
   const [artworkRef, setArtworkRef] = useState('');
   const [artworkRefError, setArtworkRefError] = useState<string | undefined>();
@@ -152,32 +186,63 @@ export default function QuoteDetailPage() {
   // the prominent review card (buyer) and the superadmin on-behalf controls.
   const openProof = latestOpenProof(quote.proofs);
 
-  // The buyer's in-app DESIGNER artworks (print-usable PNGs), one per line that
-  // carries one. Lets staff issue the proof straight from any of them instead of
-  // re-uploading the same file - one reuse button per design line, labelled by
-  // product, so a multi-design order never silently picks the first line.
-  // Deliberately excludes `buyer_uploaded` reference photos: those are a
-  // finished-look intent, not print-ready, and must be proofed from scratch.
-  // Deduped by ref so a design shared across lines yields a single button.
-  const seenDesignRefs = new Set<string>();
-  const buyerDesigns = (quote.line_items ?? []).flatMap((li) => {
+  // Every artwork already on the order that staff can attach as the proof
+  // instead of re-uploading: the buyer's line designs (print-usable designer
+  // PNGs - `buyer_uploaded` reference photos are excluded, they are a
+  // finished-look intent, not print-ready), images the buyer attached to
+  // change requests (newest bounce first), and previously issued proof
+  // versions (newest first). Deduped by ref so the same file lists once under
+  // its first (most authoritative) source.
+  const seenArtworkRefs = new Set<string>();
+  const artworkOptions: ArtworkOption[] = [];
+  const addArtworkOption = (option: ArtworkOption) => {
+    if (!option.ref || seenArtworkRefs.has(option.ref)) return;
+    seenArtworkRefs.add(option.ref);
+    artworkOptions.push(option);
+  };
+  for (const li of quote.line_items ?? []) {
     const ref =
       li.customization?.mode !== 'buyer_uploaded' ? li.customization?.artwork_ref ?? null : null;
-    if (!ref || seenDesignRefs.has(ref)) return [];
-    seenDesignRefs.add(ref);
-    return [{ ref, name: li.product?.name ?? `Line #${li.id}` }];
-  });
-  /** File-input value label when the field holds one of the buyer's designs. */
-  const designLabel = (ref: string): string | undefined => {
-    const match = buyerDesigns.find((d) => d.ref === ref);
-    if (!match) return undefined;
-    return buyerDesigns.length > 1 ? `Buyer’s design — ${match.name}` : 'Buyer’s design';
+    if (!ref) continue;
+    addArtworkOption({
+      ref,
+      name: `Buyer’s design — ${li.product?.name ?? `Line #${li.id}`}`,
+      detail: 'From the order line',
+      productImageUrl: li.product?.image_url ?? null,
+    });
+  }
+  const proofsNewestFirst = [...(quote.proofs ?? [])].sort((a, b) => b.version - a.version);
+  for (const p of proofsNewestFirst) {
+    for (const attachment of p.change_attachments ?? []) {
+      addArtworkOption({
+        ref: attachment.ref,
+        url: attachment.url,
+        name: `Change request image (v${p.version})`,
+        detail: 'Attached by the buyer',
+      });
+    }
+  }
+  for (const p of proofsNewestFirst) {
+    addArtworkOption({
+      ref: p.artwork_version_ref,
+      url: p.artwork_url,
+      name: `Proof v${p.version} artwork`,
+      detail: 'Previously issued',
+    });
+  }
+  /** File-input value label when the field holds a picked artwork. */
+  const designLabel = (ref: string): string | undefined =>
+    artworkOptions.find((o) => o.ref === ref)?.name;
+  /** Fill the target proof field with a picked ref and clear its error. */
+  const applyBuyerDesign = (target: 'send' | 'issue', ref: string) => {
+    if (target === 'send') {
+      setSendProofRef(ref);
+      setSendProofRefError(undefined);
+    } else {
+      setArtworkRef(ref);
+      setArtworkRefError(undefined);
+    }
   };
-  /** Reuse-button label: name the line once there is more than one design. */
-  const designButtonLabel = (name: string): string =>
-    buyerDesigns.length > 1
-      ? `Use buyer’s design — ${name}`
-      : 'Use buyer’s design as the proof';
   // A line still needing a staff decision blocks the production gate: the gate
   // is a confirmation that everything is in hand, which is not yet true.
   const awaitingDecision =
@@ -315,22 +380,77 @@ export default function QuoteDetailPage() {
    * staff it is the record they read while working the controls, so it follows
    * the Staff actions card.
    */
+  // The signed-off version - what actually goes to print. Across several
+  // change-request rounds this is the one row that matters, so it is called out
+  // above the list AND highlighted in place, rather than reading as just another
+  // version with a green pill.
+  const approvedProof = quote.proofs?.find((p) => p.state === 'APPROVED') ?? null;
+  const approvedProofHref = approvedProof
+    ? approvedProof.artwork_url ?? safeHref(approvedProof.artwork_version_ref)
+    : null;
+
   const proofsCard = (
     <Motion variants={staggerItem}>
       <Card padding="lg" aria-labelledby="proofs-heading">
         <h2 id="proofs-heading" className="font-display text-xl text-fg">
           Proofs
         </h2>
+
+        {/* Approved-artwork callout: which version is print-ready, so nobody has
+            to scan the version list to find the one that ships. */}
+        {approvedProof && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-success/40 bg-success-bg p-3">
+            {approvedProof.artwork_url && (
+              <ProofArtworkThumb url={approvedProof.artwork_url} version={approvedProof.version} />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 text-sm font-medium text-fg">
+                <span aria-hidden="true" className="text-success">
+                  ✓
+                </span>
+                Approved artwork: v{approvedProof.version}
+              </p>
+              <p className="mt-0.5 text-xs text-fg-muted">
+                This is the signed-off version — the one that goes to production.
+              </p>
+            </div>
+            {approvedProofHref && (
+              <a
+                href={approvedProofHref}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+              >
+                View artwork
+              </a>
+            )}
+          </div>
+        )}
+
         {quote.proofs && quote.proofs.length > 0 ? (
           <ul className="mt-4 flex flex-col divide-y divide-border">
-            {quote.proofs.map((p) => (
-              <li key={p.id} className="flex flex-col gap-2 py-3 first:pt-0">
+            {quote.proofs.map((p) => {
+              const isApproved = p.state === 'APPROVED';
+              return (
+              <li
+                key={p.id}
+                className={`flex flex-col gap-2 py-3 first:pt-0 ${
+                  isApproved
+                    ? 'rounded-md border border-success/40 bg-success-bg/40 px-3'
+                    : ''
+                }`}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="flex items-center gap-3">
                     <span className="font-medium text-fg">v{p.version}</span>
                     <Badge tone={proofStateTone(p.state)} size="sm">
                       {humanizeState(p.state)}
                     </Badge>
+                    {/* In-list echo of the callout above, so the approved row is
+                        unmistakable even mid-list among rejected versions. */}
+                    {isApproved && (
+                      <span className="text-xs font-medium text-success">Use for production</span>
+                    )}
                   </span>
                   {/* artwork_url is resolved server-side so the client never has
                       to know whether the proof was uploaded or pasted. Falls back
@@ -348,6 +468,11 @@ export default function QuoteDetailPage() {
                     <span className="text-sm text-fg-subtle">{p.artwork_version_ref}</span>
                   )}
                 </div>
+
+                {/* Artwork preview on every version, so the list reads at a
+                    glance without opening each link. Unrenderable files (PDF
+                    proofs) hide themselves; View artwork stays the way in. */}
+                {p.artwork_url && <ProofArtworkThumb url={p.artwork_url} version={p.version} />}
 
                 {/* The buyer's change request: their note + any reference images
                     they attached, so staff see WHAT to revise on this version. */}
@@ -387,7 +512,8 @@ export default function QuoteDetailPage() {
                   </div>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-fg-muted">No proofs issued yet.</p>
@@ -395,6 +521,323 @@ export default function QuoteDetailPage() {
       </Card>
     </Motion>
   );
+
+  // Right-edge Cancel control for the status card. Compact (the badge row is
+  // tight); the full "what happens" instruction lives in the confirm modal.
+  const cancelControl = isCancellable ? (
+    <Button variant="danger" size="sm" disabled={busy} onClick={() => setCancelOpen(true)}>
+      Cancel order
+    </Button>
+  ) : undefined;
+
+  // Staff workflow panel, folded INTO the status card (the old standalone "Staff
+  // actions" card is gone). The per-state controls carry their own description,
+  // which now reads directly under the status badge. The buyer-notification
+  // panel closes it out so staff can see what the buyer was told and when they
+  // will next hear from us.
+  const staffPanel = isStaff ? (
+    <div className="flex flex-col gap-5">
+      <div>
+        {quote.state === 'DRAFT' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <ProofFileInput
+                  label="Attach proof (optional)"
+                  hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
+                  value={sendProofRef}
+                  valueLabel={designLabel(sendProofRef)}
+                  error={sendProofRefError}
+                  disabled={busy}
+                  onChange={(ref) => {
+                    setSendProofRef(ref);
+                    setSendProofRefError(undefined);
+                  }}
+                />
+                {/* Reuse: the order already carries artwork (buyer designs,
+                    change-request images, past proofs), so offer it instead of
+                    re-uploading. Always opens the picker so the choice stays
+                    visible. */}
+                {artworkOptions.length > 0 && !sendProofRef && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    className="mt-2"
+                    onClick={() => setDesignPickerTarget('send')}
+                  >
+                    Use existing artwork
+                  </Button>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={busy}
+                onClick={() => {
+                  // Empty field: frictionless plain send (DRAFT -> SENT), no
+                  // validation and nothing to reset.
+                  if (!sendProofRef.trim()) {
+                    void run(() => send(quote.id), 'Sent to buyer');
+                    return;
+                  }
+                  void run(async () => {
+                    await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
+                    // send() swallows errors into store.error and never rejects,
+                    // so only clear the field on a clean send.
+                    if (!useQuoteStore.getState().actionError) setSendProofRef('');
+                  }, 'Sent to buyer with proof');
+                }}
+              >
+                Send to buyer
+              </Button>
+            </div>
+            <p className="text-xs text-fg-subtle">
+              Emails the quote to the buyer and moves it to Sent. They can then accept it or request
+              changes.
+            </p>
+          </div>
+        )}
+
+        {/* CHANGES_REQUESTED included deliberately: issuing a revised proof is
+            how an order gets out of that state. Without this control the state
+            is a dead end and the order has to be cancelled and rebuilt. */}
+        {(quote.state === 'ACCEPTED' ||
+          quote.state === 'PROOFING' ||
+          quote.state === 'CHANGES_REQUESTED') && (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="flex-1">
+                <ProofFileInput
+                  label="Proof artwork"
+                  hint="PDF or image, up to 3 MB."
+                  value={artworkRef}
+                  valueLabel={designLabel(artworkRef)}
+                  error={artworkRefError}
+                  disabled={busy}
+                  onChange={(ref) => {
+                    setArtworkRef(ref);
+                    setArtworkRefError(undefined);
+                  }}
+                />
+              </div>
+              {/* Reuse artwork the order already carries instead of re-uploading.
+                  Always opens the picker. Sits beside Issue proof so the ways to
+                  fill the field read as one action row. */}
+              {artworkOptions.length > 0 && !artworkRef && (
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => setDesignPickerTarget('issue')}
+                >
+                  Use existing artwork
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={busy || !artworkRef}
+                onClick={() => {
+                  void run(async () => {
+                    await issueProof(quote.id, artworkRef.trim(), null);
+                    setArtworkRef('');
+                  }, 'Proof issued');
+                }}
+              >
+                Issue proof
+              </Button>
+            </div>
+            <p className="text-xs text-fg-subtle">
+              Sends this artwork to the buyer as a proof to review. They approve it or send it back
+              with changes.
+            </p>
+          </div>
+        )}
+
+        {/* Renamed from "Issue invoice": the same transaction drives the quote
+            through INVOICED to CONFIRMED - the production gate - so say so, and
+            confirm before it fires. */}
+        {quote.state === 'PROOF_APPROVED' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <Input
+                  label="PO reference"
+                  placeholder="PO number"
+                  hint="Raises the invoice and commits the order to production."
+                  value={poRef}
+                  error={poRefError}
+                  onChange={(e) => {
+                    setPoRef(e.target.value);
+                    setPoRefError(undefined);
+                  }}
+                />
+              </div>
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={busy || !poRef}
+                onClick={() => {
+                  const err = validatePoRef(poRef);
+                  if (err) {
+                    setPoRefError(err);
+                    return;
+                  }
+                  setCommitOpen(true);
+                }}
+              >
+                Commit order
+              </Button>
+            </div>
+            <p className="text-xs text-fg-subtle">
+              Raises the invoice and confirms the order for production. After this it can no longer be
+              edited — you’ll be asked to confirm first.
+            </p>
+          </div>
+        )}
+
+        {quote.state === 'CONFIRMED' && (
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy}
+              onClick={() => run(() => procure(quote.id), 'Procurement started')}
+            >
+              Run procurement
+            </Button>
+            <p className="text-xs text-fg-subtle">
+              Checks stock for every line and opens purchasing for anything short, moving the order
+              into procurement.
+            </p>
+          </div>
+        )}
+
+        {quote.state === 'PROCURING' && (
+          <div className="flex flex-col gap-2">
+            {awaitingDecision ? (
+              <>
+                <p className="text-sm text-fg-muted">
+                  One or more lines need a stock or price decision before this order can go to
+                  production.
+                </p>
+                <Link
+                  to="/procurement"
+                  className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                >
+                  Go to procurement desk →
+                </Link>
+              </>
+            ) : (
+              /* The production gate. Nothing reaches the floor on a stock figure
+                 alone - most goods are bought in after the order, so a person
+                 confirming they are here is the only reliable check. */
+              <>
+                <p className="text-sm text-fg-muted">
+                  Every line is resolved. Check the items above against what has actually arrived,
+                  then release the order to production.
+                </p>
+                <ul className="my-1 flex flex-col gap-1 text-sm text-fg">
+                  {quote.line_items
+                    ?.filter((li) => li.line_state === 'READY')
+                    .map((li) => (
+                      <li key={li.id} className="tabular-nums">
+                        {li.qty} × {li.product?.name ?? `Product #${li.product_id}`}
+                        {li.procurement_note && (
+                          <span className="ml-2 text-xs text-warning">⚠ {li.procurement_note}</span>
+                        )}
+                      </li>
+                    ))}
+                </ul>
+                <div>
+                  <Button
+                    variant="primary"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() =>
+                      run(() => confirmStock(quote.id), 'Stock confirmed — sent to production')
+                    }
+                  >
+                    Confirm stock and start production
+                  </Button>
+                </div>
+                <p className="text-xs text-fg-subtle">
+                  Your name and the time are recorded against this confirmation.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Waiting on the buyer, not on staff - say which, rather than a bare
+            "no action available" that leaves staff wondering whether it's
+            stuck. */}
+        {quote.state === 'ARTWORK_APPROVED' && (
+          <p className="text-sm text-fg-muted">
+            Artwork approved. Waiting for the buyer to accept the price — nothing to do here until
+            they do.
+          </p>
+        )}
+
+        {![
+          'DRAFT',
+          'ACCEPTED',
+          'PROOFING',
+          'CHANGES_REQUESTED',
+          'ARTWORK_APPROVED',
+          'PROOF_APPROVED',
+          'CONFIRMED',
+          'PROCURING',
+        ].includes(quote.state) && (
+          <p className="text-sm text-fg-muted">No staff action available for this state.</p>
+        )}
+      </div>
+
+      {/* Superadmin-only, and only while a proof is open (awaiting the buyer):
+          nudge them by resending the review email, or sign the proof off on
+          their behalf. The approval is recorded against the superadmin. */}
+      {isSuperadmin && latestOpenProof(quote.proofs) && (
+        <div className="flex flex-col gap-2 border-t border-border pt-4">
+          <span className="text-sm font-medium text-fg">On the buyer’s behalf</span>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              loading={busy}
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  const ok = await resendProof(latestOpenProof(quote.proofs)!.id);
+                  if (ok) toast({ title: 'Proof email resent', tone: 'success' });
+                })
+              }
+            >
+              Resend proof email
+            </Button>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
+                  'Proof approved on the buyer’s behalf',
+                )
+              }
+            >
+              Approve on behalf
+            </Button>
+          </div>
+          <p className="text-xs text-fg-subtle">
+            Resend the review email, or approve the proof yourself — the approval is recorded against
+            your name, not the buyer’s.
+          </p>
+        </div>
+      )}
+
+      {/* What the buyer has been told, and when they will next hear from us. */}
+      <BuyerNotifications quote={quote} history={history.entries} />
+    </div>
+  ) : undefined;
 
   return (
     <Motion variants={staggerContainer} initial="hidden" animate="visible">
@@ -498,7 +941,13 @@ export default function QuoteDetailPage() {
                 ? BUYER_STATUS_NOTE[quote.state]
                 : undefined
             }
-          />
+            // Staff: the old "Staff actions" card is folded in here - controls
+            // and the buyer-notification panel below the badge, Cancel pinned to
+            // the badge row's right edge.
+            trailing={isStaff ? cancelControl : undefined}
+          >
+            {staffPanel}
+          </OrderStatus>
         </Motion>
 
         {/* Buyer proof sign-off - the page's primary action when a proof is
@@ -553,6 +1002,18 @@ export default function QuoteDetailPage() {
             )}
           </Card>
         </Motion>
+
+        {/* Existing-artwork picker (portal) - which artwork fills the proof
+            field. */}
+        <ArtworkPicker
+          options={artworkOptions}
+          open={designPickerTarget !== null}
+          onClose={() => setDesignPickerTarget(null)}
+          onSelect={(ref) => {
+            if (designPickerTarget) applyBuyerDesign(designPickerTarget, ref);
+            setDesignPickerTarget(null);
+          }}
+        />
 
         {/* Amendment-log dialog (portal) - triggered from the Items header. */}
         {isStaff && quote.amendment_log && quote.amendment_log.length > 0 && (
@@ -645,359 +1106,8 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
-        {/* Staff workflow controls */}
-        {isStaff && (
-          <Motion variants={staggerItem}>
-            <Card padding="lg" aria-labelledby="staff-heading">
-              <h2 id="staff-heading" className="font-display text-xl text-fg">
-                Staff actions
-              </h2>
-
-              <div className="mt-4">
-                {quote.state === 'DRAFT' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="flex-1">
-                        <ProofFileInput
-                          label="Attach proof (optional)"
-                          hint="Leave empty to send a plain quote, or attach artwork to send it straight into proofing. PDF or image, up to 3 MB."
-                          value={sendProofRef}
-                          valueLabel={designLabel(sendProofRef)}
-                          error={sendProofRefError}
-                          disabled={busy}
-                          onChange={(ref) => {
-                            setSendProofRef(ref);
-                            setSendProofRefError(undefined);
-                          }}
-                        />
-                        {/* One-click reuse: the buyer already supplied
-                            print-usable designer artwork, so offer each design
-                            as the proof instead of re-uploading the same file -
-                            one button per design line. */}
-                        {buyerDesigns.length > 0 && !sendProofRef && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {buyerDesigns.map((design) => (
-                              <Button
-                                key={design.ref}
-                                variant="secondary"
-                                size="sm"
-                                disabled={busy}
-                                onClick={() => {
-                                  setSendProofRef(design.ref);
-                                  setSendProofRefError(undefined);
-                                }}
-                              >
-                                {designButtonLabel(design.name)}
-                              </Button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <Button
-                        variant="primary"
-                        loading={busy}
-                        disabled={busy}
-                        onClick={() => {
-                          // Empty field: frictionless plain send (DRAFT -> SENT),
-                          // no validation and nothing to reset.
-                          if (!sendProofRef.trim()) {
-                            void run(() => send(quote.id), 'Sent to buyer');
-                            return;
-                          }
-                          void run(async () => {
-                            await send(quote.id, { artwork_version_ref: sendProofRef.trim() });
-                            // send() swallows errors into store.error and never
-                            // rejects, so only clear the field on a clean send.
-                            if (!useQuoteStore.getState().actionError) setSendProofRef('');
-                          }, 'Sent to buyer with proof');
-                        }}
-                      >
-                        Send to buyer
-                      </Button>
-                    </div>
-                    <p className="text-xs text-fg-subtle">
-                      Emails the quote to the buyer and moves it to Sent. They can then accept it or
-                      request changes.
-                    </p>
-                  </div>
-                )}
-
-                {/* CHANGES_REQUESTED included deliberately: issuing a revised
-                    proof is how an order gets out of that state. Without this
-                    control the state is a dead end and the order has to be
-                    cancelled and rebuilt. */}
-                {(quote.state === 'ACCEPTED' ||
-                  quote.state === 'PROOFING' ||
-                  quote.state === 'CHANGES_REQUESTED') && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-                      <div className="flex-1">
-                        <ProofFileInput
-                          label="Proof artwork"
-                          hint="PDF or image, up to 3 MB."
-                          value={artworkRef}
-                          valueLabel={designLabel(artworkRef)}
-                          error={artworkRefError}
-                          disabled={busy}
-                          onChange={(ref) => {
-                            setArtworkRef(ref);
-                            setArtworkRefError(undefined);
-                          }}
-                        />
-                      </div>
-                      {/* Reuse the buyer's designer artwork instead of
-                          re-uploading it - one button per design line.
-                          Reference-photo uploads are excluded upstream
-                          (buyerDesigns), so these only appear when print-usable
-                          designs exist. Sit beside Issue proof so the ways to
-                          fill the field read as one action row. */}
-                      {!artworkRef &&
-                        buyerDesigns.map((design) => (
-                          <Button
-                            key={design.ref}
-                            variant="secondary"
-                            disabled={busy}
-                            onClick={() => {
-                              setArtworkRef(design.ref);
-                              setArtworkRefError(undefined);
-                            }}
-                          >
-                            {designButtonLabel(design.name)}
-                          </Button>
-                        ))}
-                      <Button
-                        variant="primary"
-                        loading={busy}
-                        disabled={busy || !artworkRef}
-                        onClick={() => {
-                          void run(async () => {
-                            await issueProof(quote.id, artworkRef.trim(), null);
-                            setArtworkRef('');
-                          }, 'Proof issued');
-                        }}
-                      >
-                        Issue proof
-                      </Button>
-                    </div>
-                    <p className="text-xs text-fg-subtle">
-                      Sends this artwork to the buyer as a proof to review. They approve it or send it
-                      back with changes.
-                    </p>
-                  </div>
-                )}
-
-                {/* This button was labelled "Issue invoice" and gave no hint
-                    that the same transaction drives the quote through INVOICED
-                    to CONFIRMED - the production gate. Staff were committing
-                    the order without being told they were. Renamed to say so,
-                    and confirmed before it fires. */}
-                {quote.state === 'PROOF_APPROVED' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="flex-1">
-                        <Input
-                          label="PO reference"
-                          placeholder="PO number"
-                          hint="Raises the invoice and commits the order to production."
-                          value={poRef}
-                          error={poRefError}
-                          onChange={(e) => {
-                            setPoRef(e.target.value);
-                            setPoRefError(undefined);
-                          }}
-                        />
-                      </div>
-                      <Button
-                        variant="primary"
-                        loading={busy}
-                        disabled={busy || !poRef}
-                        onClick={() => {
-                          const err = validatePoRef(poRef);
-                          if (err) {
-                            setPoRefError(err);
-                            return;
-                          }
-                          setCommitOpen(true);
-                        }}
-                      >
-                        Commit order
-                      </Button>
-                    </div>
-                    <p className="text-xs text-fg-subtle">
-                      Raises the invoice and confirms the order for production. After this it can no
-                      longer be edited — you’ll be asked to confirm first.
-                    </p>
-                  </div>
-                )}
-
-                {quote.state === 'CONFIRMED' && (
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant="primary"
-                      loading={busy}
-                      disabled={busy}
-                      onClick={() => run(() => procure(quote.id), 'Procurement started')}
-                    >
-                      Run procurement
-                    </Button>
-                    <p className="text-xs text-fg-subtle">
-                      Checks stock for every line and opens purchasing for anything short, moving the
-                      order into procurement.
-                    </p>
-                  </div>
-                )}
-
-                {quote.state === 'PROCURING' && (
-                  <div className="flex flex-col gap-2">
-                    {awaitingDecision ? (
-                      <>
-                        <p className="text-sm text-fg-muted">
-                          One or more lines need a stock or price decision before this order can go to
-                          production.
-                        </p>
-                        <Link
-                          to="/procurement"
-                          className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                        >
-                          Go to procurement desk →
-                        </Link>
-                      </>
-                    ) : (
-                      /* The production gate. Nothing reaches the floor on the
-                         strength of a stock figure alone - most goods are bought
-                         in after the order, so a person confirming they are here
-                         is the only reliable check. Attributed, because with the
-                         automatic checks advisory this is the last one left. */
-                      <>
-                        <p className="text-sm text-fg-muted">
-                          Every line is resolved. Check the items above against what has actually
-                          arrived, then release the order to production.
-                        </p>
-                        <ul className="my-1 flex flex-col gap-1 text-sm text-fg">
-                          {quote.line_items
-                            ?.filter((li) => li.line_state === 'READY')
-                            .map((li) => (
-                              <li key={li.id} className="tabular-nums">
-                                {li.qty} × {li.product?.name ?? `Product #${li.product_id}`}
-                                {/* Advisory finding from procurement. It did not
-                                    stop the order — this is the moment someone
-                                    is looking at the goods, so it is the moment
-                                    worth showing it. */}
-                                {li.procurement_note && (
-                                  <span className="ml-2 text-xs text-warning">
-                                    ⚠ {li.procurement_note}
-                                  </span>
-                                )}
-                              </li>
-                            ))}
-                        </ul>
-                        <div>
-                          <Button
-                            variant="primary"
-                            loading={busy}
-                            disabled={busy}
-                            onClick={() =>
-                              run(() => confirmStock(quote.id), 'Stock confirmed — sent to production')
-                            }
-                          >
-                            Confirm stock and start production
-                          </Button>
-                        </div>
-                        <p className="text-xs text-fg-subtle">
-                          Your name and the time are recorded against this confirmation.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Waiting on the buyer, not on staff - say which, rather than
-                    the bare "no action available" that leaves staff wondering
-                    whether something is stuck. */}
-                {quote.state === 'ARTWORK_APPROVED' && (
-                  <p className="text-sm text-fg-muted">
-                    Artwork approved. Waiting for the buyer to accept the price — nothing to do here
-                    until they do.
-                  </p>
-                )}
-
-                {![
-                  'DRAFT',
-                  'ACCEPTED',
-                  'PROOFING',
-                  'CHANGES_REQUESTED',
-                  'ARTWORK_APPROVED',
-                  'PROOF_APPROVED',
-                  'CONFIRMED',
-                  'PROCURING',
-                ].includes(quote.state) && (
-                  <p className="text-sm text-fg-muted">No staff action available for this state.</p>
-                )}
-              </div>
-
-              {/* Superadmin-only, and only while a proof is open (awaiting the
-                  buyer): nudge them by resending the review email, or sign the
-                  proof off on their behalf. The approval is recorded against the
-                  superadmin, not the buyer - see approveProof's approved_by. */}
-              {isSuperadmin && latestOpenProof(quote.proofs) && (
-                <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
-                  <span className="text-sm font-medium text-fg">On the buyer’s behalf</span>
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      variant="secondary"
-                      loading={busy}
-                      disabled={busy}
-                      onClick={() =>
-                        run(async () => {
-                          const ok = await resendProof(latestOpenProof(quote.proofs)!.id);
-                          if (ok) toast({ title: 'Proof email resent', tone: 'success' });
-                        })
-                      }
-                    >
-                      Resend proof email
-                    </Button>
-                    <Button
-                      variant="primary"
-                      loading={busy}
-                      disabled={busy}
-                      onClick={() =>
-                        run(
-                          () => decideProof(latestOpenProof(quote.proofs)!.id, 'approve', null),
-                          'Proof approved on the buyer’s behalf',
-                        )
-                      }
-                    >
-                      Approve on behalf
-                    </Button>
-                  </div>
-                  <p className="text-xs text-fg-subtle">
-                    Resend the review email, or approve the proof yourself — the approval is
-                    recorded against your name, not the buyer’s.
-                  </p>
-                </div>
-              )}
-
-              {/* Cancel: staff-only, available from every pre-production state. */}
-              {isCancellable && (
-                <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
-                  <div>
-                    <Button variant="danger" disabled={busy} onClick={() => setCancelOpen(true)}>
-                      Cancel quote
-                    </Button>
-                  </div>
-                  <p className="text-xs text-fg-subtle">
-                    Stops this order for good. Any stock already reserved is returned. This can’t be
-                    undone.
-                  </p>
-                </div>
-              )}
-            </Card>
-          </Motion>
-        )}
-
         {/* Proofs (staff slot) - reference material for staff, so it follows the
-            controls they act with rather than pushing them down. See
-            `proofsCard` above. */}
+            merged status/actions card. See `proofsCard`/`staffPanel` above. */}
         {isStaff && proofsCard}
 
         {/* The commitment step. Issuing the invoice also drives the order to
@@ -1042,12 +1152,12 @@ export default function QuoteDetailPage() {
               setCancelOpen(false);
               setCancelReason('');
             }}
-            title="Cancel this quote?"
-            description="Stock already consumed will be returned. This cannot be undone."
+            title="Cancel this order?"
+            description="This stops the order for good and returns any stock already reserved for it. The buyer is emailed that their order was cancelled. This cannot be undone."
             footer={
               <>
                 <Button variant="ghost" disabled={busy} onClick={() => setCancelOpen(false)}>
-                  Keep quote
+                  Keep order
                 </Button>
                 <Button
                   variant="danger"

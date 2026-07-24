@@ -6,6 +6,8 @@ namespace App\Http\Resources;
 
 use App\Models\PricingConfig;
 use App\Models\Quote;
+use App\Services\OrderNotifier;
+use App\Services\ReminderSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -80,7 +82,37 @@ class QuoteResource extends JsonResource
                     fn ($proof) => $proof->setRelation('quote', $this->resource)
                 ))
             ),
+            // Staff-only buyer-notification picture for this order: which milestone
+            // email the buyer was sent on reaching the current state (paired with
+            // the transition time from the history endpoint on the client), and
+            // when the next automatic chase is due. Drives the order page's
+            // notification panel. Carries no buyer address, but it exposes the
+            // internal chase cadence, so it is gated on staff.
+            'reminder' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn (): array => $this->reminderSummary(),
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array{current_milestone: ?string, current_milestone_enabled: bool, last_reminded_at: ?string, next: array<string, mixed>|null}
+     */
+    private function reminderSummary(): array
+    {
+        $milestone = OrderNotifier::milestoneForState($this->state);
+        $notifier = app(OrderNotifier::class);
+
+        return [
+            // The buyer email tied to the CURRENT state (null when the state is
+            // silent, e.g. PROOF_APPROVED). The client pairs the key with the
+            // matching transition time from the history trail to show "sent when".
+            'current_milestone' => $milestone?->value,
+            'current_milestone_enabled' => $milestone !== null && $notifier->isEnabled($milestone),
+            'last_reminded_at' => $this->last_reminded_at?->toIso8601String(),
+            // Forward-looking: the next automatic chase, or null when none pends.
+            'next' => app(ReminderSchedule::class)->next($this->resource),
         ];
     }
 }

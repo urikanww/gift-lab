@@ -47,6 +47,16 @@ class OrderNotifier
     ];
 
     /**
+     * The milestone a given state announces to the buyer, or null when the state
+     * is silent. Exposed so the order page can tell staff which email the buyer
+     * was sent on reaching the current state, without re-encoding this map.
+     */
+    public static function milestoneForState(QuoteState $state): ?OrderMilestone
+    {
+        return self::STATE_MILESTONES[$state->value] ?? null;
+    }
+
+    /**
      * Announce a state change, if that state has anything to say.
      *
      * Never throws: a mail failure must not roll back the transition that

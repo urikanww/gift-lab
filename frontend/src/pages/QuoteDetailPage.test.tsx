@@ -28,6 +28,13 @@ vi.mock('../components/quote/ProofFileInput', () => ({
   ),
 }));
 
+// The design-picker thumbnails exchange storage refs for signed preview URLs;
+// stub the network so tests stay offline (placeholder thumbs are fine here).
+vi.mock('../lib/uploadArtwork', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/uploadArtwork')>()),
+  fetchArtworkPreview: async () => ({ ok: false as const }),
+}));
+
 import { ThemeProvider, ToastProvider } from '../ui';
 import QuoteDetailPage from './QuoteDetailPage';
 import { useAuthStore } from '../stores/authStore';
@@ -61,6 +68,14 @@ function seedQuote(state: QuoteState) {
       line_items: [],
       proofs: [],
       created_at: '2026-07-01T00:00:00Z',
+      // Staff-only notification picture (the API always includes it for staff).
+      // Defaults to "nothing pending"; individual tests override as needed.
+      reminder: {
+        current_milestone: null,
+        current_milestone_enabled: false,
+        last_reminded_at: null,
+        next: null,
+      },
     },
     loading: false,
     error: null,
@@ -287,16 +302,19 @@ it('lets staff issue the proof from the buyer’s designer artwork on DRAFT', as
   asStaff();
   renderPage();
 
-  // One click reuses the buyer's design instead of re-uploading a file.
-  await userEvent.click(screen.getByRole('button', { name: /use buyer.s design/i }));
+  // Reuse the buyer's design instead of re-uploading a file: the button opens
+  // the picker (even for a single option), picking fills the field.
+  await userEvent.click(screen.getByRole('button', { name: /use existing artwork/i }));
+  const dialog = await screen.findByRole('dialog', { name: /use existing artwork/i });
+  await userEvent.click(within(dialog).getByRole('button', { name: /buyer.s design/i }));
   await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
 
   expect(send).toHaveBeenCalledWith(42, { artwork_version_ref: 'artwork/buyer.png' });
 });
 
-it('offers one reuse button per design line, labelled by product', async () => {
+it('lists line designs, change-request images and past proofs in the picker', async () => {
   const issueProof = vi.fn(async () => {});
-  seedQuote('ACCEPTED');
+  seedQuote('CHANGES_REQUESTED');
   useQuoteStore.setState({
     current: {
       ...useQuoteStore.getState().current!,
@@ -304,21 +322,37 @@ it('offers one reuse button per design line, labelled by product', async () => {
         { id: 1, product_id: 5, qty: 10, line_state: 'PENDING', product: { name: 'Enamel Mug' }, customization: { mode: 'designer', artwork_ref: 'artwork/mug.png' } },
         { id: 2, product_id: 6, qty: 5, line_state: 'PENDING', product: { name: 'Tote Bag' }, customization: { mode: 'designer', artwork_ref: 'artwork/tote.png' } },
       ],
+      proofs: [
+        { id: 9, quote_id: 42, version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'Do it like this' },
+        { id: 10, quote_id: 42, version: 2, artwork_version_ref: 'proofs/v2.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'wrong image', change_attachments: [{ ref: 'artwork/wanted.png', url: null }] },
+      ],
     },
     issueProof,
   } as any);
   asStaff();
   renderPage();
 
-  // Two designs -> two buttons, each naming its line.
-  expect(screen.getByRole('button', { name: 'Use buyer’s design — Enamel Mug' })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Use buyer’s design — Tote Bag' }));
+  await userEvent.click(screen.getByRole('button', { name: /use existing artwork/i }));
+  const dialog = await screen.findByRole('dialog', { name: /use existing artwork/i });
 
-  // Picking one fills the field (labelled by product) and hides both buttons.
-  expect(screen.queryByRole('button', { name: /use buyer.s design/i })).not.toBeInTheDocument();
+  // All three sources listed: both line designs, the buyer's change-request
+  // attachment, and both previously issued proof versions.
+  expect(within(dialog).getByRole('button', { name: /buyer.s design — enamel mug/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /buyer.s design — tote bag/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /change request image \(v2\)/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /proof v1 artwork/i })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: /proof v2 artwork/i })).toBeInTheDocument();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: /change request image \(v2\)/i }));
+
+  // Picking closes the picker, fills the field and hides the reuse button.
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: /use existing artwork/i })).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByRole('button', { name: /use existing artwork/i })).not.toBeInTheDocument();
 
   await userEvent.click(screen.getByRole('button', { name: 'Issue proof' }));
-  expect(issueProof).toHaveBeenCalledWith(42, 'artwork/tote.png', null);
+  expect(issueProof).toHaveBeenCalledWith(42, 'artwork/wanted.png', null);
 });
 
 it('offers no design-reuse shortcut for a buyer_uploaded reference line', () => {
@@ -336,7 +370,7 @@ it('offers no design-reuse shortcut for a buyer_uploaded reference line', () => 
   asStaff();
   renderPage();
 
-  expect(screen.queryByRole('button', { name: /use buyer.s design/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /use existing artwork/i })).not.toBeInTheDocument();
 });
 
 it('hides the "proof being prepared" note for a buyer once a proof is open in PROOFING', () => {
@@ -479,33 +513,35 @@ it('does NOT show the buyer note for staff (staff sees their own controls)', () 
   renderPage();
 
   expect(screen.queryByText(/being prepared for production/i)).not.toBeInTheDocument();
-  expect(screen.getByText('Staff actions')).toBeInTheDocument();
+  // Staff see their own merged panel (folded into the status card) - anchored by
+  // the buyer-notification section, which renders for every staff order.
+  expect(screen.getByText('Buyer notifications')).toBeInTheDocument();
 });
 
-it('shows the Cancel quote control to staff on a cancellable quote', () => {
+it('shows the Cancel order control to staff on a cancellable quote', () => {
   seedQuote('SENT');
   asStaff();
   renderPage();
 
-  expect(screen.getByRole('button', { name: /cancel quote/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /cancel order/i })).toBeInTheDocument();
 });
 
-it('never shows the Cancel quote control to a buyer', () => {
+it('never shows the Cancel order control to a buyer', () => {
   seedQuote('SENT');
   asBuyer();
   renderPage();
 
-  expect(screen.queryByRole('button', { name: /cancel quote/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
 });
 
 it.each(['READY', 'CLOSED', 'CANCELLED'] as const)(
-  'hides the Cancel quote control once the quote is %s',
+  'hides the Cancel order control once the quote is %s',
   (state) => {
     seedQuote(state);
     asStaff();
     renderPage();
 
-    expect(screen.queryByRole('button', { name: /cancel quote/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
   },
 );
 
@@ -516,7 +552,7 @@ it('confirming the cancel modal calls cancelQuote with the trimmed reason and cl
   asStaff();
   renderPage();
 
-  await userEvent.click(screen.getByRole('button', { name: /cancel quote/i }));
+  await userEvent.click(screen.getByRole('button', { name: /cancel order/i }));
   await userEvent.type(screen.getByLabelText(/reason/i), '  Buyer changed their mind.  ');
   await userEvent.click(screen.getByRole('button', { name: /confirm cancellation/i }));
 
@@ -549,23 +585,47 @@ function headingIndex(name: string): number {
 }
 
 // The Proofs card is deliberately positioned per role. For staff it is
-// reference material, so it follows the controls they act with; for a buyer it
-// carries their proof sign-off, so it stays high on the page. These two tests
+// reference material, so it follows the merged status/actions card; for a buyer
+// it carries their proof sign-off, so it stays high on the page. These two tests
 // pin that difference - a "simplification" back to one slot breaks one of them.
-it('renders Proofs BELOW Staff actions for staff', () => {
+it('renders Proofs BELOW the merged staff panel for staff', () => {
   seedQuote('ACCEPTED');
   seedOpenProof();
   asStaff();
   renderPage();
 
-  expect(headingIndex('Proofs')).toBeGreaterThan(headingIndex('Staff actions'));
+  // The staff controls now live inside the status card (no "Staff actions"
+  // heading); anchor on the buyer-notification section that closes that panel.
+  expect(headingIndex('Proofs')).toBeGreaterThan(headingIndex('Buyer notifications'));
 
   // Same assertion via the DOM directly, independent of heading enumeration.
-  const staffCard = screen.getByRole('heading', { name: 'Staff actions' });
+  const staffPanel = screen.getByRole('heading', { name: 'Buyer notifications' });
   const proofs = screen.getByRole('heading', { name: 'Proofs' });
   expect(
-    staffCard.compareDocumentPosition(proofs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    staffPanel.compareDocumentPosition(proofs) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
+});
+
+it('singles out the approved artwork as the one for production across change rounds', () => {
+  seedQuote('PROOF_APPROVED');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      proofs: [
+        { id: 1, quote_id: 42, version: 1, artwork_version_ref: 'proofs/v1.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'Do it like this' },
+        { id: 2, quote_id: 42, version: 2, artwork_version_ref: 'proofs/v2.pdf', state: 'CHANGES_REQUESTED', approved_by: null, approved_at: null, notes: 'wrong image' },
+        { id: 3, quote_id: 42, version: 3, artwork_version_ref: 'proofs/v3.pdf', state: 'APPROVED', approved_by: 2, approved_at: '2026-07-23T14:13:00Z', notes: null },
+      ],
+    },
+  } as any);
+  asStaff();
+  renderPage();
+
+  // The callout names the signed-off version explicitly...
+  expect(screen.getByText('Approved artwork: v3')).toBeInTheDocument();
+  expect(screen.getByText(/goes to production/i)).toBeInTheDocument();
+  // ...and the approved row is tagged in place, unlike the rejected versions.
+  expect(screen.getByText('Use for production')).toBeInTheDocument();
 });
 
 it('keeps the buyer’s proof review ABOVE the Next step card', () => {

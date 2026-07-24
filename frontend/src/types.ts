@@ -356,6 +356,53 @@ export interface Quote {
    * only for staff. Entries from one save share a `batch`.
    */
   amendment_log?: AmendmentLogEntry[];
+  /**
+   * Staff-only buyer-notification picture for the order: which milestone email
+   * the current state sent, and when the next automatic chase is due. Absent
+   * from buyer payloads. Drives the staff notification panel.
+   */
+  reminder?: QuoteReminder;
+}
+
+/** The buyer email tied to a state; keyed like the backend OrderMilestone enum. */
+export type MilestoneKey =
+  | 'accepted'
+  | 'artwork_approved'
+  | 'proof_issued'
+  | 'committed'
+  | 'in_production'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'line_changed'
+  | 'reminder_price'
+  | 'reminder_proof';
+
+/** The next automatic buyer chase for an order (staff view). */
+export interface QuoteReminderNext {
+  /** Which wait the chase is for. */
+  kind: 'price' | 'proof';
+  /** How many chase emails have already gone out (shared counter). */
+  reminders_sent: number;
+  /** Rungs of the ladder still to come. */
+  reminders_remaining: number;
+  /** True once the ladder is spent - the order is flagged for a human call. */
+  exhausted: boolean;
+  /** ISO instant the next chase is due, or null when exhausted. */
+  next_due_at: string | null;
+  /** The configured day thresholds, e.g. [3, 7, 12]. */
+  ladder_days: number[];
+}
+
+export interface QuoteReminder {
+  /** Milestone email the current state sent the buyer, or null when silent. */
+  current_milestone: MilestoneKey | null;
+  /** Whether that milestone is switched on (an off milestone never sent). */
+  current_milestone_enabled: boolean;
+  /** ISO instant of the most recent chase email, or null if none yet. */
+  last_reminded_at: string | null;
+  /** The next scheduled chase, or null when the order is not being chased. */
+  next: QuoteReminderNext | null;
 }
 
 /** A free-form money adjustment after delivery. Signed amount (see Quote). */
