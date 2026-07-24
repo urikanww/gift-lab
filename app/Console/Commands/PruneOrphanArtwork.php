@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Storage;
  *   - line_items.customization->artwork_ref    (the line's captured artwork)
  *   - line_items.customization->print_file_ref (the 3D UV-flattened decal)
  *   - proofs.artwork_version_ref               (a formal proof version)
- *   - production_jobs.artwork_ref              (the approved print file)
+ *   - production_jobs.artwork_refs[].ref       (the approved print files)
  * so a still-live design at any stage of the funnel is never pruned. Only files
  * older than the grace window (--days, default 7) are eligible, so an upload
  * mid-checkout (ref not yet persisted) is safe.
@@ -117,10 +117,14 @@ class PruneOrphanArtwork extends Command
                 }
             });
 
+        // artwork_refs is a JSON list of {line_item_id, product_name, ref}; the
+        // approved print file for each line lives under `ref`. Pull every ref out
+        // of the list so a still-live job never has its artwork pruned.
         ProductionJob::query()
             ->withTrashed()
-            ->whereNotNull('artwork_ref')
-            ->pluck('artwork_ref')
+            ->whereNotNull('artwork_refs')
+            ->pluck('artwork_refs')
+            ->flatMap(fn ($list) => collect($list)->pluck('ref'))
             ->each(function (?string $ref) use (&$keys): void {
                 if (is_string($ref) && $ref !== '') {
                     $keys[$ref] = true;

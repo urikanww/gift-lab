@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\LineItem;
+use App\Models\ProductionJob;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
@@ -50,6 +51,23 @@ it('keeps a 3D UV-flattened print file referenced via print_file_ref', function 
     $this->artisan('artwork:prune-orphans', ['--days' => 7])->assertSuccessful();
 
     Storage::disk($this->artworkDisk)->assertExists($decal);
+});
+
+it('keeps a print file referenced by a production job artwork_refs entry', function (): void {
+    $printFile = 'artwork/job-approved.png';
+    agedArtwork($this->artworkDisk, $printFile, 30);
+
+    // The approved print file for a live job lives inside the artwork_refs JSON
+    // list, so it must be treated as in-use and never pruned.
+    ProductionJob::factory()->create([
+        'artwork_refs' => [
+            ['line_item_id' => 1, 'product_name' => 'Cap', 'ref' => $printFile],
+        ],
+    ]);
+
+    $this->artisan('artwork:prune-orphans', ['--days' => 7])->assertSuccessful();
+
+    Storage::disk($this->artworkDisk)->assertExists($printFile);
 });
 
 it('spares a recent unreferenced upload inside the grace window', function (): void {
