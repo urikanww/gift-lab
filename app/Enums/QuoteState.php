@@ -43,7 +43,8 @@ enum QuoteState: string
             // was missing. Draft: staff pull the order back to re-price it.
             // Without the first edge this state was unrecoverable and the order
             // had to be cancelled and rebuilt.
-            self::ChangesRequested => [self::Draft, self::Proofing, self::Cancelled],
+            // per-line proof rollup: order can reach this once every line is resolved
+            self::ChangesRequested => [self::Draft, self::Proofing, self::ArtworkApproved, self::ProofApproved, self::Cancelled],
             self::Accepted => [self::Proofing, self::Cancelled],
             // Two exits by design. ProofApproved when the price was agreed first
             // (price-first route); ArtworkApproved when it was not, so the price
