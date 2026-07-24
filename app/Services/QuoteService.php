@@ -675,6 +675,49 @@ final class QuoteService
     }
 
     /**
+     * Send the current round: flip every staged DRAFT proof to SENT, move the
+     * order into PROOFING, and email the buyer ONCE with the round's items.
+     */
+    public function sendProofs(Quote $quote): Quote
+    {
+        $drafts = $quote->proofs()->where('state', ProofState::Draft->value)->get();
+
+        if ($drafts->isEmpty()) {
+            throw new DomainRuleException('Nothing is staged to send.');
+        }
+
+        return DB::transaction(function () use ($quote, $drafts): Quote {
+            foreach ($drafts as $draft) {
+                $draft->transitionTo(ProofState::Sent);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($draft, $quote->company_id)));
+            }
+
+            if (in_array($quote->state, [QuoteState::Accepted, QuoteState::ChangesRequested, QuoteState::Draft], true)) {
+                $previous = $quote->state->value;
+                if ($quote->state === QuoteState::Draft) {
+                    $quote->price_snapshot_at = now();
+                    $quote->save();
+                }
+                $quote->transitionTo(QuoteState::Proofing);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            }
+
+            DB::afterCommit(fn () => $this->emailProofsReady($quote));
+
+            return $quote;
+        });
+    }
+
+    /**
+     * Batched "proofs ready" email. Real per-item version wired in a later task;
+     * for now reuse the existing quote-ready email so the round is announced once.
+     */
+    private function emailProofsReady(Quote $quote): void
+    {
+        $this->emailQuoteReady($quote, true);
+    }
+
+    /**
      * Buyer approves a proof: immutable sign-off + quote -> PROOF_APPROVED.
      */
     public function approveProof(Proof $proof): Proof
