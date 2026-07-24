@@ -10,6 +10,7 @@ use Database\Factories\LineItemFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -25,6 +26,7 @@ class LineItem extends Model
 {
     /** @use HasFactory<LineItemFactory> */
     use HasFactory;
+
     use SoftDeletes;
 
     protected $fillable = [
@@ -88,6 +90,14 @@ class LineItem extends Model
     public function job(): BelongsTo
     {
         return $this->belongsTo(ProductionJob::class, 'job_id');
+    }
+
+    /**
+     * @return HasMany<Proof, LineItem>
+     */
+    public function proofs(): HasMany
+    {
+        return $this->hasMany(Proof::class);
     }
 
     public function transitionTo(LineItemState $target): void

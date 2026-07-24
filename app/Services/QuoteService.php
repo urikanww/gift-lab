@@ -637,6 +637,44 @@ final class QuoteService
     }
 
     /**
+     * Stage artwork for one line as a DRAFT proof (buyer not yet emailed). If the
+     * line already holds an unsent DRAFT, its artwork is replaced rather than
+     * bumping the version - re-picking a file before sending is not a revision.
+     */
+    public function stageProof(Quote $quote, LineItem $line, string $artworkRef): Proof
+    {
+        if (! $line->needsProof()) {
+            throw new DomainRuleException('This line does not take a proof.');
+        }
+
+        return DB::transaction(function () use ($quote, $line, $artworkRef): Proof {
+            $openDraft = $line->proofs()
+                ->where('state', ProofState::Draft->value)
+                ->orderByDesc('version')
+                ->first();
+
+            if ($openDraft !== null) {
+                $openDraft->artwork_version_ref = $artworkRef;
+                $openDraft->save();
+                $proof = $openDraft;
+            } else {
+                $nextVersion = ((int) $line->proofs()->max('version')) + 1;
+                $proof = Proof::create([
+                    'quote_id' => $quote->id,
+                    'line_item_id' => $line->id,
+                    'version' => $nextVersion,
+                    'artwork_version_ref' => $artworkRef,
+                    'state' => ProofState::Draft->value,
+                ]);
+            }
+
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($proof, $quote->company_id)));
+
+            return $proof;
+        });
+    }
+
+    /**
      * Buyer approves a proof: immutable sign-off + quote -> PROOF_APPROVED.
      */
     public function approveProof(Proof $proof): Proof
