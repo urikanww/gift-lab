@@ -22,6 +22,11 @@ class ProofResource extends JsonResource
         return [
             'id' => $this->id,
             'quote_id' => $this->quote_id,
+            // Line identity, so the client can group proofs per line and label
+            // them by product. The quote-show path eager-loads
+            // proofs.lineItem.product to keep product_name off the N+1 path.
+            'line_item_id' => $this->line_item_id,
+            'product_name' => $this->lineItem?->product?->name,
             // The displayed order identifier. quote_id stays because the realtime
             // stores join incoming broadcasts against on-screen rows by it.
             'quote_reference' => $this->quote?->reference,
