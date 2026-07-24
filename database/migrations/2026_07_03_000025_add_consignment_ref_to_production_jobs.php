@@ -17,7 +17,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('production_jobs', function (Blueprint $table): void {
-            $table->string('consignment_ref', 128)->nullable()->after('artwork_ref');
+            $table->string('consignment_ref', 128)->nullable()->after('artwork_refs');
         });
     }
 

@@ -36,7 +36,7 @@ class ProductionJob extends Model
         'track',
         'ready_at',
         'state',
-        'artwork_ref',
+        'artwork_refs',
         'consignment_ref',
         'carrier',
         'print_method',
@@ -53,6 +53,7 @@ class ProductionJob extends Model
             'carrier' => \App\Enums\Carrier::class,
             'print_method' => PrintMethod::class,
             'qty' => 'integer',
+            'artwork_refs' => 'array',
         ];
     }
 
