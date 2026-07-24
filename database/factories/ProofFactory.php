@@ -21,7 +21,13 @@ class ProofFactory extends Factory
     {
         return [
             'quote_id' => Quote::factory(),
-            'line_item_id' => LineItem::factory(),
+            // Bind the proof to a customized line on ITS OWN quote, so recomputeProofState
+            // (which matches proofs to counting lines by quote+line) sees a real target.
+            'line_item_id' => fn (array $attributes) => LineItem::factory()->create([
+                'quote_id' => $attributes['quote_id'],
+                'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/factory.png'],
+                'line_state' => 'PENDING',
+            ])->id,
             'version' => 1,
             'artwork_version_ref' => 'proofs/'.$this->faker->uuid().'.pdf',
             'state' => ProofState::Draft->value,
@@ -36,6 +42,15 @@ class ProofFactory extends Factory
         return $this->state(fn (): array => [
             'state' => 'APPROVED',
             'approved_at' => now(),
+        ]);
+    }
+
+    /** Attach this proof to an existing line (and its quote). */
+    public function forLine(LineItem $line): static
+    {
+        return $this->state(fn (): array => [
+            'quote_id' => $line->quote_id,
+            'line_item_id' => $line->id,
         ]);
     }
 }
