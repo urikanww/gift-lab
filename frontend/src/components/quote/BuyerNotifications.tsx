@@ -27,10 +27,10 @@ const MILESTONE_LABEL: Record<MilestoneKey, string> = {
   reminder_proof: 'Proof reminder',
 };
 
-/** What the buyer is being chased to do, for the "due" line. */
+/** What the buyer is being chased to do, phrased for "...if the buyer hasn't ___ by then". */
 const CHASE_ACTION: Record<'price' | 'proof', string> = {
-  price: 'accepts the pricing',
-  proof: 'approves the proof',
+  price: 'accepted the pricing',
+  proof: 'approved the proof',
 };
 
 function formatInstant(iso: string | null | undefined): string | null {

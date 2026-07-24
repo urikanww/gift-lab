@@ -87,7 +87,7 @@ it('spells out the next scheduled reminder and the ladder', () => {
   );
 
   expect(screen.getByText(/Next reminder:/i)).toBeInTheDocument();
-  expect(screen.getByText(/accepts the pricing/i)).toBeInTheDocument();
+  expect(screen.getByText(/accepted the pricing/i)).toBeInTheDocument();
   expect(screen.getByText(/3 \/ 7 \/ 12-day ladder/i)).toBeInTheDocument();
 });
 
