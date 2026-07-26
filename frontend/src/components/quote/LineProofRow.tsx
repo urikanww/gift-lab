@@ -24,8 +24,13 @@ interface LineProofRowProps {
   onStage: (artworkRef: string) => void;
   /** Open the existing-artwork picker for this line. */
   onPickExisting: () => void;
-  /** Drop this line (existing cancel-line flow). */
-  onDrop: () => void;
+  /**
+   * Drop this line (existing cancel-line flow). Undefined when the caller
+   * cannot currently act on a drop (e.g. the line editor isn't reachable for
+   * this staff member/order state) - the control is hidden rather than
+   * rendered as a dead click.
+   */
+  onDrop?: () => void;
 }
 
 /** Badge label + tone for a line's proof state; neutral when none exists yet. */
@@ -91,9 +96,11 @@ export default function LineProofRow({
             Use existing artwork
           </Button>
         )}
-        <Button variant="danger" size="sm" disabled={busy} onClick={onDrop}>
-          Drop item
-        </Button>
+        {onDrop && (
+          <Button variant="danger" size="sm" disabled={busy} onClick={onDrop}>
+            Drop item
+          </Button>
+        )}
       </div>
     </div>
   );

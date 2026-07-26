@@ -946,6 +946,30 @@ it('keeps the order on screen when a write is rejected, and explains why', async
   expect(screen.getAllByRole('button', { name: 'Commit order' })[0]).toBeInTheDocument();
 });
 
+// Bug: the commit/confirm modal rendered no body at all, so a duplicate PO
+// reference (backend `unique` -> 422) only ever surfaced on the page-top
+// banner - behind the modal overlay staff were still looking at. The modal
+// must show its own failure, not leave staff to re-click into the same 422.
+it('shows the commit error inside the still-open modal, not only behind it on the page banner', async () => {
+  asStaff();
+  seedQuote('PROOF_APPROVED');
+  useQuoteStore.setState({
+    issueInvoice: async () => {
+      useQuoteStore.setState({ actionError: 'PO reference has already been used.' } as any);
+    },
+  } as any);
+  renderPage();
+
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText(/PO reference/i), 'PO-1');
+  await user.click(screen.getByRole('button', { name: 'Commit order' }));
+  await user.click(screen.getAllByRole('button', { name: 'Commit order' })[1]);
+
+  // The modal stays open on failure - and now shows the failure itself.
+  const dialog = await screen.findByRole('dialog', { name: /commit this order to production/i });
+  expect(within(dialog).getByText('PO reference has already been used.')).toBeInTheDocument();
+});
+
 it('dismisses the inline write error without touching the order', async () => {
   asStaff();
   seedQuote('PROOF_APPROVED');
@@ -1182,6 +1206,59 @@ it('still offers a staff_admin the editor on a draft', () => {
   renderPage();
 
   expect(screen.getByRole('button', { name: /edit items/i })).toBeInTheDocument();
+});
+
+// Bug: "Drop item" always fired onDrop, which just opens the line editor -
+// but the editor only renders when `canEditLines` is true (a plain
+// staff_admin past DRAFT can't reach it). The button was therefore a silent
+// no-op for that staff member on a sent/proofing order. Product decision:
+// hide the control rather than newly permit the drop.
+it('hides the Drop item control from a plain staff_admin past DRAFT, where it would be a no-op', () => {
+  asStaff();
+  seedQuote('PROOFING');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+  } as any);
+  renderPage();
+
+  expect(screen.queryByRole('button', { name: /drop item/i })).not.toBeInTheDocument();
+});
+
+it('offers the Drop item control on a DRAFT quote, where a plain staff_admin can edit lines', () => {
+  asStaff();
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+  } as any);
+  renderPage();
+
+  expect(screen.getByRole('button', { name: /drop item/i })).toBeInTheDocument();
+});
+
+it('offers the Drop item control to a superadmin past DRAFT (the editor override)', () => {
+  asSuperadmin();
+  seedQuote('PROOFING');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
+  } as any);
+  renderPage();
+
+  expect(screen.getByRole('button', { name: /drop item/i })).toBeInTheDocument();
+});
+
+// Bug: the DRAFT-send helper told staff the buyer could "accept it or request
+// changes" at the price-quote stage - but the SENT buyer card only offers
+// "Accept quote"; request-changes exists only later, against the proof. Fix
+// is copy-only (no new buyer button at this stage).
+it('does not claim the buyer can request changes at the price-quote (DRAFT-send) stage', () => {
+  asStaff();
+  seedQuote('DRAFT');
+  renderPage();
+
+  expect(
+    screen.queryByText(/they can then accept it or request changes/i),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/they accept the price to move into proofing/i)).toBeInTheDocument();
 });
 
 it('gives a superadmin resend + approve-on-behalf actions while a proof is open', async () => {

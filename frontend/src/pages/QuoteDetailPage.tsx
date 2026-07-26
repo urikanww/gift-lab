@@ -126,6 +126,11 @@ export default function QuoteDetailPage() {
   // Committing is irreversible in practice (it opens production), so it is
   // confirmed rather than fired straight from the button.
   const [commitOpen, setCommitOpen] = useState(false);
+  // Set only from the commit modal's own confirm action, so a failure raised
+  // there is visible in the modal body itself - the modal used to have no
+  // body at all, so a duplicate PO reference only ever surfaced on the
+  // page-top banner, behind the modal overlay staff were still looking at.
+  const [commitError, setCommitError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   // Tracking link/QR moved out of a full-width card into a header button that
@@ -554,7 +559,11 @@ export default function QuoteDetailPage() {
             busy={busy}
             onStage={(ref) => void run(() => stageProof(quote.id, line.id, ref), 'Proof staged')}
             onPickExisting={() => setPickerLineId(line.id)}
-            onDrop={() => setEditingLines(true)}
+            // Dropping a line only works while the line editor is reachable
+            // (`canEditLines`) - past that (e.g. a plain staff_admin once the
+            // order has been sent) the control used to be a silent no-op, so
+            // it is hidden rather than newly permitted.
+            onDrop={canEditLines ? () => setEditingLines(true) : undefined}
           />
         ))}
       </div>
@@ -618,8 +627,8 @@ export default function QuoteDetailPage() {
                 </Button>
               </div>
               <p className="text-xs text-fg-subtle">
-                Emails the quote to the buyer and moves it to Sent. They can then accept it or request
-                changes.
+                Emails the quote to the buyer and moves it to Sent. They accept the price to move into
+                proofing — changes are requested later, against the proof.
               </p>
             </div>
           </div>
@@ -675,6 +684,7 @@ export default function QuoteDetailPage() {
                     setPoRefError(err);
                     return;
                   }
+                  setCommitError(null);
                   setCommitOpen(true);
                 }}
               >
@@ -1113,12 +1123,22 @@ export default function QuoteDetailPage() {
         {isStaff && (
           <Modal
             open={commitOpen}
-            onClose={() => setCommitOpen(false)}
+            onClose={() => {
+              setCommitOpen(false);
+              setCommitError(null);
+            }}
             title="Commit this order to production?"
             description="This raises the invoice and confirms the order. Production can begin and the order can no longer be edited."
             footer={
               <>
-                <Button variant="ghost" onClick={() => setCommitOpen(false)} disabled={busy}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setCommitOpen(false);
+                    setCommitError(null);
+                  }}
+                  disabled={busy}
+                >
                   Back
                 </Button>
                 <Button
@@ -1128,9 +1148,13 @@ export default function QuoteDetailPage() {
                   onClick={() =>
                     void run(async () => {
                       await issueInvoice(quote.id, poRef.trim(), null);
-                      if (!useQuoteStore.getState().actionError) {
+                      const err = useQuoteStore.getState().actionError;
+                      if (!err) {
                         setPoRef('');
                         setCommitOpen(false);
+                        setCommitError(null);
+                      } else {
+                        setCommitError(err);
                       }
                     }, 'Order committed to production')
                   }
@@ -1139,7 +1163,13 @@ export default function QuoteDetailPage() {
                 </Button>
               </>
             }
-          />
+          >
+            {commitError && (
+              <p className="rounded-md border border-danger/30 bg-danger-bg p-3 text-sm text-fg">
+                {commitError}
+              </p>
+            )}
+          </Modal>
         )}
 
         {isStaff && isCancellable && (
