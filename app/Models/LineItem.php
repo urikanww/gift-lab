@@ -117,16 +117,34 @@ class LineItem extends Model
 
     /**
      * Whether this line carries artwork that must be signed off before print.
-     * True for any customization (designer OR buyer-uploaded finished-look);
-     * false for plain stock lines, which never proof.
+     * True for any customization (designer OR buyer-uploaded finished-look),
+     * for a line with an artwork reference, or for a line with reference
+     * images attached; false for plain stock lines and dropped lines, which
+     * never proof.
      */
     public function needsProof(): bool
     {
+        if ($this->line_state === LineItemState::Dropped) {
+            return false;
+        }
+
         $customization = $this->customization ?? [];
 
-        return is_array($customization)
-            && ($customization['mode'] ?? null) !== null
-            && $customization !== [];
+        if (! is_array($customization) || $customization === []) {
+            return false;
+        }
+
+        if (($customization['mode'] ?? null) !== null) {
+            return true;
+        }
+
+        if (! empty($customization['artwork_ref'] ?? null)) {
+            return true;
+        }
+
+        $referenceRefs = $customization['reference_refs'] ?? null;
+
+        return is_array($referenceRefs) && $referenceRefs !== [];
     }
 
     protected static function newFactory(): LineItemFactory
