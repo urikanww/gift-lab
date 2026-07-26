@@ -35,7 +35,7 @@ class NotificationSettingsController extends Controller
     private const LABELS = [
         'accepted' => ['Quote accepted', 'Confirms we received their acceptance.'],
         'artwork_approved' => ['Artwork approved', 'Tells them the price still needs agreeing.'],
-        'proof_issued' => ['Revised proof issued', 'Sent for every proof after the first.'],
+        'proof_issued' => ['Revised proof issued', 'Sent whenever a proof is sent to the buyer.'],
         'committed' => ['Order confirmed', 'Sent when the order is committed to production.'],
         'in_production' => ['In production', 'Sent when the order reaches the floor.'],
         'shipped' => ['Shipped', 'Sent when the order leaves you.'],

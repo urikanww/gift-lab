@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Enums\OrderMilestone;
 use App\Events\LineItemAwaitingReconfirm;
+use App\Mail\OrderMilestoneMail;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\LineItem;
@@ -17,6 +19,7 @@ use App\Services\Procurement\FixtureMarketplaceRechecker;
 use App\Services\Procurement\ProcurementManager;
 use App\Services\QuoteService;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 
 beforeEach(function (): void {
@@ -214,6 +217,146 @@ it('retotals the quote and PO after a reconfirmation drop', function (): void {
     $quote->refresh();
     expect((float) $quote->subtotal)->toBe(100.00)
         ->and((float) $quote->total)->toBe(130.00);
+});
+
+// LineChanged ships off by default (staff usually make this call personally),
+// but once switched on it must actually fire — the toggle existed with no
+// email behind it at all until now.
+it('emails the buyer LineChanged when a reconfirmed line is dropped, once switched on', function (): void {
+    Mail::fake();
+    PricingConfig::updateOrCreate(
+        ['group' => 'notifications', 'key' => OrderMilestone::LineChanged->value],
+        ['value' => true],
+    );
+    Sanctum::actingAs($this->staff);
+    $buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
+    $variant = Variant::factory()->create(['product_id' => $this->product->id, 'stock_on_hand' => 0]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'created_by' => $buyer->id,
+        'subtotal' => 500.00,
+        'delivery' => 30.00,
+        'total' => 530.00,
+    ]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $this->product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10,
+        'unit_price' => 40.00,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'drop'])->assertOk();
+
+    Mail::assertQueued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::LineChanged
+            && $mail->hasTo($buyer->email),
+    );
+});
+
+it('emails the buyer LineChanged when a reconfirmed line is amended, once switched on', function (): void {
+    Mail::fake();
+    PricingConfig::updateOrCreate(
+        ['group' => 'notifications', 'key' => OrderMilestone::LineChanged->value],
+        ['value' => true],
+    );
+    Sanctum::actingAs($this->staff);
+    $buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
+    // Pinned base_cost: the shared $this->product has a random one (2-40),
+    // which occasionally sits above the amended unit price and trips the
+    // margin-floor validator this test has nothing to do with.
+    $product = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 450]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'created_by' => $buyer->id,
+        'subtotal' => 422533.00,
+        'delivery' => 60.00,
+        'total' => 422593.00,
+    ]);
+    Proof::factory()->approved()->create(['quote_id' => $quote->id]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10000,
+        'unit_price' => 42.25,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $this->postJson("/api/line-items/{$line->id}/reconfirm", [
+        'action' => 'amend',
+        'qty' => 400,
+        'unit_price' => 40.00,
+    ])->assertOk();
+
+    Mail::assertQueued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::LineChanged
+            && $mail->hasTo($buyer->email),
+    );
+});
+
+it('leaves LineChanged unsent for drop or amend while the toggle is off (its default)', function (): void {
+    Mail::fake();
+    Sanctum::actingAs($this->staff);
+    $buyer = User::factory()->create(['company_id' => $this->company->id, 'role' => 'buyer']);
+
+    $dropVariant = Variant::factory()->create(['product_id' => $this->product->id, 'stock_on_hand' => 0]);
+    $dropQuote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'created_by' => $buyer->id,
+        'subtotal' => 500.00,
+        'delivery' => 30.00,
+        'total' => 530.00,
+    ]);
+    $dropLine = LineItem::factory()->create([
+        'quote_id' => $dropQuote->id,
+        'product_id' => $this->product->id,
+        'variant_id' => $dropVariant->id,
+        'qty' => 10,
+        'unit_price' => 40.00,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+    $this->postJson("/api/line-items/{$dropLine->id}/reconfirm", ['action' => 'drop'])->assertOk();
+
+    // Pinned base_cost: the shared $this->product has a random one (2-40),
+    // which occasionally sits above the amended unit price and trips the
+    // margin-floor validator this test has nothing to do with.
+    $amendProduct = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);
+    $amendVariant = Variant::factory()->create(['product_id' => $amendProduct->id, 'stock_on_hand' => 450]);
+    $amendQuote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'created_by' => $buyer->id,
+        'subtotal' => 422533.00,
+        'delivery' => 60.00,
+        'total' => 422593.00,
+    ]);
+    Proof::factory()->approved()->create(['quote_id' => $amendQuote->id]);
+    $amendLine = LineItem::factory()->create([
+        'quote_id' => $amendQuote->id,
+        'product_id' => $amendProduct->id,
+        'variant_id' => $amendVariant->id,
+        'qty' => 10000,
+        'unit_price' => 42.25,
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+    $this->postJson("/api/line-items/{$amendLine->id}/reconfirm", [
+        'action' => 'amend',
+        'qty' => 400,
+        'unit_price' => 40.00,
+    ])->assertOk();
+
+    Mail::assertNotQueued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::LineChanged,
+    );
 });
 
 it('rejects a quote amendment that breaks the margin floor', function (): void {

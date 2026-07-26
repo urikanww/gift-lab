@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\LineItemState;
+use App\Enums\OrderMilestone;
 use App\Enums\PaymentState;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
@@ -647,10 +648,15 @@ final class QuoteService
      * Batched "proofs ready" email: the buyer is written to ONCE per round with
      * a thumbnail per item, rather than one email per line. Fired after commit
      * by sendProofs, so it queues directly (no further afterCommit needed).
-     * No-ops silently when no buyer recipient can be resolved.
+     * No-ops silently when no buyer recipient can be resolved, or when the
+     * buyer has switched the "Revised proof issued" notification off.
      */
     private function emailProofsReady(Quote $quote): void
     {
+        if (! $this->notifier->isEnabled(OrderMilestone::ProofIssued)) {
+            return;
+        }
+
         $recipient = $this->resolveBuyerRecipient($quote);
         if ($recipient?->email === null) {
             return;
@@ -916,7 +922,9 @@ final class QuoteService
             );
         }
 
-        DB::transaction(function () use ($line, $decision): void {
+        $notifyLineChanged = false;
+
+        DB::transaction(function () use ($line, $decision, &$notifyLineChanged): void {
             // Money delta this decision introduces against the quote's frozen
             // totals. Tracked as a delta (not a full re-price) so the setup /
             // customization fees baked into the original subtotal survive.
@@ -931,6 +939,7 @@ final class QuoteService
                     $line->transitionTo(LineItemState::Amended);
                     $this->procurement->procureLine($line);
                     $totalDelta = (float) $line->lineTotal() - $before;
+                    $notifyLineChanged = true;
                     break;
 
                 case 'approve':
@@ -957,6 +966,7 @@ final class QuoteService
                 case 'drop':
                     $line->transitionTo(LineItemState::Dropped);
                     $totalDelta = -(float) $line->lineTotal();
+                    $notifyLineChanged = true;
                     break;
             }
 
@@ -966,6 +976,20 @@ final class QuoteService
                 $this->retotalAfterReconfirm($line, $totalDelta);
             }
         });
+
+        // Off by default (see OrderMilestone::LineChanged); OrderNotifier::send()
+        // itself checks the toggle, so this only queues mail when staff have
+        // opted in. Deferred to after the transaction commits, matching every
+        // other milestone email in this service.
+        if ($notifyLineChanged) {
+            $quoteId = $line->quote_id;
+            DB::afterCommit(function () use ($quoteId): void {
+                $quote = Quote::find($quoteId);
+                if ($quote !== null) {
+                    $this->notifier->send($quote, OrderMilestone::LineChanged);
+                }
+            });
+        }
 
         $this->tryQueue($line->quote->fresh(['lineItems']));
 
