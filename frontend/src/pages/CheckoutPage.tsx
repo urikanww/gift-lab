@@ -198,7 +198,15 @@ export default function CheckoutPage() {
       // The cart was converted; a future checkout is a new attempt.
       idempotencyKey.current = crypto.randomUUID();
     } else {
-      setSubmitError('Could not place your order. Please review your cart and try again.');
+      // Prefer the store's actionError: it carries the real 422 reason (an
+      // unpublished product, a raised MOQ, a removed variant, a stale artwork
+      // ref, a past needed_by...). Falling back to a hardcoded generic string
+      // left the buyer with no idea what to fix, and the persisted cart would
+      // reproduce the same failure on every retry.
+      setSubmitError(
+        useQuoteStore.getState().actionError ??
+          'Could not place your order. Please review your cart and try again.',
+      );
     }
   };
 
