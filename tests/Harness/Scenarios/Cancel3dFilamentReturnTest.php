@@ -14,20 +14,20 @@ use Tests\Harness\Agents\ValidatorAgent;
 use Tests\Harness\Support\HarnessContext;
 
 /**
- * Characterizes doc "blocker 4": does cancelling a procured MODEL_3D order
- * return the filament it consumed?
+ * Locks the INTENTIONAL product decision that cancelling a procured MODEL_3D
+ * order does NOT return its consumed filament to stock. Exact filament tracking
+ * across defect output is impractical, so 3D consumption is deliberately not
+ * reversed on cancel (confirmed as a product decision, not a bug — this is not
+ * doc "blocker 4", which is retired).
  *
- * Model3dProcurement::procure() (app/Services/Procurement/Model3dProcurement.php:64-65)
- * decrements Filament::qty_on_hand with a direct column write - no
- * StockMovement is ever recorded for a 3D line's consumption. QuoteService's
- * returnConsumedStock() (app/Services/QuoteService.php:834-860), which cancel()
- * relies on to give back consumed stock, only reverses StockMovement 'SALE'
- * rows and explicitly skips any line with variant === null (line 838-841) -
- * which every MODEL_3D line is, since it is sourced from a Filament row, not a
- * Variant. So even setting the skip aside, there is no ledger entry for it to
- * reverse. This test drives a real procured 3D order through cancel and
- * asserts whatever the filament balance actually does - it does not assume
- * the outcome up front.
+ * Mechanism, for reference: Model3dProcurement::procure()
+ * (app/Services/Procurement/Model3dProcurement.php:64-65) decrements
+ * Filament::qty_on_hand with a direct column write - no StockMovement is
+ * recorded for a 3D line. QuoteService::returnConsumedStock()
+ * (app/Services/QuoteService.php:834-860) only reverses StockMovement 'SALE'
+ * rows and skips lines with variant === null (every MODEL_3D line). This test
+ * asserts filament stays consumed after cancel, so if that behaviour ever
+ * changes the change is deliberate and visible here.
  */
 beforeEach(function (): void {
     Mail::fake();
