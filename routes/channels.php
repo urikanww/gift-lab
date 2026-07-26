@@ -19,12 +19,16 @@ Broadcast::channel('company.{companyId}', function (User $user, int $companyId):
     return $user->isStaff() || $user->company_id === $companyId;
 });
 
-// Floor operators: shared production queue.
+// Floor operators: shared production queue. Mirrors the granular
+// permission:production.view gate on GET /api/production-queue - realtime
+// access must never exceed HTTP access, since these payloads carry
+// cost/margin fields.
 Broadcast::channel('staff.queue', function (User $user): bool {
-    return $user->isStaff();
+    return $user->isStaff() && $user->hasPermission('production.view');
 });
 
-// Procurement desk: awaiting-reconfirm alerts.
+// Procurement desk: awaiting-reconfirm alerts. Mirrors the granular
+// permission:procurement.view gate on GET /api/procurement/awaiting-reconfirm.
 Broadcast::channel('staff.procurement', function (User $user): bool {
-    return $user->isStaff();
+    return $user->isStaff() && $user->hasPermission('procurement.view');
 });
