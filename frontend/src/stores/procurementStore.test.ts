@@ -1,8 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const get = vi.fn();
+const post = vi.fn();
 vi.mock('../lib/api', () => ({
-  default: { get: (...a: unknown[]) => get(...a) },
+  default: {
+    get: (...a: unknown[]) => get(...a),
+    post: (...a: unknown[]) => post(...a),
+  },
   apiError: () => 'Could not load the desk.',
   ensureCsrf: async () => {},
 }));
@@ -12,9 +16,23 @@ vi.mock('../lib/echo', () => ({
 }));
 
 import { useProcurementStore } from './procurementStore';
+import type { ReconfirmAlert } from './procurementStore';
+
+const alert = (overrides: Partial<ReconfirmAlert> = {}): ReconfirmAlert => ({
+  line_item_id: 5,
+  quote_id: 9,
+  quote_reference: 'ORD-1',
+  reason: 'qty_short',
+  ordered_qty: 10,
+  procured_qty: 4,
+  unit_price: '15.00',
+  procured_price: null,
+  ...overrides,
+});
 
 beforeEach(() => {
   get.mockReset();
+  post.mockReset();
   useProcurementStore.setState({ alerts: [], error: null, loading: false });
 });
 
@@ -82,4 +100,89 @@ it('surfaces a failed load instead of showing an empty desk', async () => {
   const state = useProcurementStore.getState();
   expect(state.error).toBe('Could not load the desk.');
   expect(state.loading).toBe(false);
+});
+
+// Bug: run() on the page used to infer success from the alert list shrinking.
+// The live `.awaiting-reconfirm` subscription can add an unrelated alert
+// while a reconfirm request is in flight, which made a genuine success look
+// like a failure (the list was the same length, or longer, than before). The
+// store must report the real HTTP outcome instead.
+it('reports the real outcome even when an unrelated alert arrives mid-request', async () => {
+  useProcurementStore.setState({ alerts: [alert()] });
+
+  let resolvePost!: (value: unknown) => void;
+  post.mockReturnValue(
+    new Promise((resolve) => {
+      resolvePost = resolve;
+    }),
+  );
+
+  const outcomePromise = useProcurementStore.getState().reconfirm(5, 'drop');
+
+  // Simulate the live subscription growing the list while the drop is in flight.
+  useProcurementStore.setState((s) => ({
+    alerts: [...s.alerts, alert({ line_item_id: 8, quote_id: 20, quote_reference: 'ORD-3' })],
+  }));
+
+  resolvePost({
+    data: {
+      data: {
+        id: 5,
+        quote_id: 9,
+        quote_reference: 'ORD-1',
+        qty: 10,
+        unit_price: '15.00',
+        procured_qty: 0,
+        procured_price: null,
+        line_state: 'DROPPED',
+      },
+    },
+  });
+
+  const outcome = await outcomePromise;
+
+  expect(outcome).toMatchObject({ success: true, line_state: 'DROPPED' });
+  const alerts = useProcurementStore.getState().alerts;
+  expect(alerts.map((a) => a.line_item_id)).toEqual([8]);
+});
+
+// Bug: alert removal used to be keyed off "the request didn't throw", so an
+// amend that re-procures and immediately fails its own re-check (still short,
+// still AWAITING_RECONFIRM) silently vanished from the desk as if resolved.
+it('keeps the alert when an amend re-blocks (response line_state is AWAITING_RECONFIRM)', async () => {
+  useProcurementStore.setState({ alerts: [alert()] });
+  post.mockResolvedValue({
+    data: {
+      data: {
+        id: 5,
+        quote_id: 9,
+        quote_reference: 'ORD-1',
+        qty: 7,
+        unit_price: '16.00',
+        procured_qty: 3,
+        procured_price: null,
+        line_state: 'AWAITING_RECONFIRM',
+      },
+    },
+  });
+
+  const outcome = await useProcurementStore
+    .getState()
+    .reconfirm(5, 'amend', { qty: 7, unit_price: 16 });
+
+  expect(outcome).toMatchObject({ success: true, line_state: 'AWAITING_RECONFIRM' });
+  const alerts = useProcurementStore.getState().alerts;
+  expect(alerts).toHaveLength(1);
+  expect(alerts[0]).toMatchObject({ line_item_id: 5, procured_qty: 3, reason: 'qty_short' });
+});
+
+it('reports failure and keeps the alert when the request errors', async () => {
+  useProcurementStore.setState({ alerts: [alert()] });
+  post.mockRejectedValue(new Error('boom'));
+
+  const outcome = await useProcurementStore.getState().reconfirm(5, 'drop');
+
+  expect(outcome.success).toBe(false);
+  expect(useProcurementStore.getState().alerts).toHaveLength(1);
+  expect(useProcurementStore.getState().error).toBe('Could not load the desk.');
 });
