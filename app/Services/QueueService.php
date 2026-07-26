@@ -8,6 +8,7 @@ use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Enums\JobTrack;
 use App\Enums\LineItemState;
+use App\Enums\OrderMilestone;
 use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Events\OrderTrackingUpdated;
@@ -29,7 +30,10 @@ use RuntimeException;
  */
 final class QueueService
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly OrderNotifier $notifier,
+    ) {}
 
     /**
      * Build production jobs for a quote whose line items are all resolved
@@ -258,6 +262,21 @@ final class QueueService
         // which keys off QuoteState::Closed - was unreachable: no other code
         // path ever performed the READY->CLOSED transition.
         $job->loadMissing('quote');
+
+        // Buyer email: "your order is on its way". This is the only send site
+        // for OrderMilestone::Shipped - unlike every other milestone it is not
+        // driven off Quote::transitionTo() (there is no QuoteState for a job
+        // being shipped), so without this call the milestone's copy and its
+        // "enabled by default" flag simply never fire. transitionTo() above
+        // already guarantees this is a genuine ...->SHIPPED move: JobState::
+        // Shipped->canTransitionTo(Shipped) is false, so a second advance() to
+        // SHIPPED on an already-shipped job throws before reaching here - one
+        // send per job, guaranteed by the state machine rather than a separate
+        // "already notified" flag.
+        if ($target === JobState::Shipped && $job->quote !== null) {
+            $this->notifier->send($job->quote, OrderMilestone::Shipped);
+        }
+
         if ($target === JobState::Closed
             && $job->quote !== null
             && $job->quote->state === QuoteState::Ready
