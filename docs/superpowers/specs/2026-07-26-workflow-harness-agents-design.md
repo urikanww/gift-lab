@@ -23,7 +23,18 @@ across the whole journey.
 This harness provides that. Four cooperating **agents** each play one role by
 calling the real API, and a **validator** agent acts as a test oracle that
 checks invariants after every hop. Scenarios wire the agents together to run the
-happy path and the known-broken paths, proving the flow and catching the breaks.
+happy path and the once-broken paths, proving the flow end-to-end.
+
+**Note on the four blockers.** `docs/ORDER_WORKFLOW.md` (2026-07-21) is stale:
+verified against current code, blockers 1 and 3 are already fixed (the
+`CHANGES_REQUESTED` state now has forward edges; the reconfirm `approve` branch
+now re-totals via `retotalAfterReconfirm`). Blocker 4 (3D filament return on
+cancel) is unconfirmed — `returnConsumedStock` reads the stock ledger but skips
+`variant === null` lines, which a 3D line may be. Therefore the blocker
+scenarios are written as **regression tests**: they drive the once-broken path
+and assert the invariant now HOLDS (locking the fix; failing loudly if it ever
+regresses). Blocker 4 is built the same way — if the path is still broken, the
+validator catches the violation; if fixed, it locks the fix.
 
 **Non-goals:** no LLM/AI, no new runtime code shipped into the app, no changes
 to the order state machine or services. This is test-only infrastructure.
@@ -107,9 +118,10 @@ a scenario can distinguish an expected block from an unexpected 500.
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| `reconfirm(lineItem, choice, data)` | `POST /line-items/{lineItem}/reconfirm` | choice ∈ amend / accept-as-is / drop |
+| `reconfirm(lineItem, action, data)` | `POST /line-items/{lineItem}/reconfirm` | `action` ∈ `amend` / `approve` (accept-as-is) / `drop`; `amend` also sends `qty` + `unit_price` |
 | `pullQueue()` | `GET /production-queue` | |
-| `downloadPrintFile(job)` | `GET /production-jobs/{job}/print-file` | download auto-advances job to in-production |
+| `downloadPrintFile(job, ref)` | `GET /production-jobs/{job}/print-file?ref=...` | streams the file; does **not** start the job (download-starts-job was removed — starting is now explicit) |
+| `startJob(job)` | `POST /production-jobs/{job}/advance` (`state`) | explicit start into production |
 | `advanceNext(job)` | `POST /production-jobs/{job}/advance-next` | drives toward CLOSED |
 
 **ValidatorAgent** — reads DB state (not HTTP) and `QuoteState::canTransitionTo`.
@@ -134,15 +146,28 @@ violation. This mirrors the real PROOFING loop and prevents an infinite scenario
 
 Checked after the relevant hop in each scenario:
 
+Implemented as named `ValidatorAgent::check()` methods (generic, data-only):
+
 | Code | Invariant |
 |---|---|
-| `ILLEGAL_TRANSITION` | Every state change is in the source state's `nextStates()`. |
-| `PER_LINE_FILE_COUNT` | Print-file count for a job equals its line-item count (per-line-item proofs model). |
-| `INVOICE_MATCHES_PRODUCED` | Invoiced quantity equals the quantity sent to the floor. |
-| `LEDGER_BALANCED_AFTER_CANCEL` | After cancel, stock/filament returned equals stock/filament consumed (via `StockLedger`). |
-| `NO_STUCK_ORDER` | An order in a non-terminal state always has at least one reachable forward transition given its data. |
+| `ILLEGAL_TRANSITION` | A given state change is in the source state's `nextStates()`. |
+| `INVOICE_MATCHES_PRODUCED` | For every non-dropped line, billed `qty` equals `procured_qty` when a produced quantity is set. |
+| `LEDGER_BALANCED_AFTER_CANCEL` | For every line with a variant, net `StockMovement` delta (SALE + RETURN) is zero after cancel. |
 
-The validator never mutates app state.
+Two further invariants from the flow are **scenario-level** assertions rather than
+generic validator methods, because they need job/track or path context the
+scenario already holds:
+
+- **Per-line print file present** — the happy path asserts each built job carries
+  a non-empty `artwork_refs`, and reaching CLOSED proves the files streamed.
+- **No stuck order** — the changes-requested scenario asserts the order actually
+  advances past `CHANGES_REQUESTED` (recovers), which is the concrete form of
+  "not stuck".
+
+Blocker 4's filament check is also scenario-level (Task in the plan reads
+`Model3dProcurement` to assert filament `qty_on_hand` is restored), because a
+direct-column decrement leaves no `StockMovement` for the generic ledger check
+to see. The validator never mutates app state.
 
 ---
 
@@ -154,37 +179,40 @@ company/buyer/staff/product/variant factories).
 
 1. **HappyPath** (`HappyPathTest.php`) — price-first route:
    draft → send (artwork blank) → buyer accept → stage+send proof → buyer
-   approve → issue invoice → procure → READY → download print file → advance to
-   CLOSED. Asserts: reaches CLOSED, `violations()` is empty.
+   approve → issue invoice → procure → READY → start job → advance to CLOSED.
+   Asserts: reaches CLOSED, `violations()` is empty.
 
-2. **ArtworkSlimPathDeadEnd** (`ArtworkSlimPathDeadEndTest.php`) — Blocker 1:
-   send DRAFT **with** an artwork reference (slim path DRAFT→PROOFING), buyer
-   requests changes → CHANGES_REQUESTED. Asserts the harness detects the dead
-   end: no forward transition performs the recovery today, so the validator
-   records `NO_STUCK_ORDER`. This is a *known-broken* path; the scenario proves
-   the harness catches it. (If the app is later fixed, this scenario's expected
-   outcome flips to "recovers" — noted inline.)
+2. **ChangesRequestedRecovers** (`ChangesRequestedRecoversTest.php`) — Blocker 1
+   regression: drive to PROOFING, buyer requests changes → CHANGES_REQUESTED,
+   then StaffAgent issues a revised proof and buyer approves. Asserts the order
+   recovers (reaches ARTWORK_APPROVED/PROOF_APPROVED) and `violations()` is
+   empty — proving `CHANGES_REQUESTED` is no longer a dead end.
 
-3. **AcceptAsIsOvercharge** (`AcceptAsIsOverchargeTest.php`) — Blocker 3:
-   drive to PROCURING with a quantity shortfall on a line, ProductionAgent picks
-   **accept-as-is**. Validator records `INVOICE_MATCHES_PRODUCED` violation
-   (client invoiced full qty, floor produces fewer).
+3. **AcceptAsIsRetotals** (`AcceptAsIsRetotalsTest.php`) — Blocker 3 regression:
+   force a line into AWAITING_RECONFIRM (set `block_on_qty_short=1` in
+   `PricingConfig`, then procure with stock < qty), ProductionAgent picks
+   **accept-as-is** (`action: approve`). Asserts `INVOICE_MATCHES_PRODUCED`
+   holds — line `qty` is set to `procured_qty` and the quote/invoice re-total,
+   so the buyer is not overcharged.
 
-4. **Cancel3dFilamentLoss** (`Cancel3dFilamentLossTest.php`) — Blocker 4:
-   a MODEL_3D order procured (filament consumed), then StaffAgent cancels.
-   Validator records `LEDGER_BALANCED_AFTER_CANCEL` violation (filament not
-   returned). Contrast a CORE line in the same or a sibling assertion, which
-   returns correctly.
+4. **Cancel3dFilamentReturn** (`Cancel3dFilamentReturnTest.php`) — Blocker 4,
+   status unconfirmed: a MODEL_3D order procured (filament consumed), then
+   StaffAgent cancels. Run `check('LEDGER_BALANCED_AFTER_CANCEL')`. If the path
+   is fixed, the invariant holds and the test locks it; if filament is still
+   lost, the validator records the violation and the test documents it (asserting
+   the observed reality, with an inline note). The build task reads
+   `Model3dProcurement` + `returnConsumedStock` to settle which.
 
 5. **SilentBuyerChase** (`SilentBuyerChaseTest.php`) — buyer `goSilent()` after
-   SENT; run the existing chase mechanism (`ChaseUnansweredOrders`) and assert a
-   chase is produced for the un-actioned order. Reuses the behaviour proven by
-   `tests/Feature/ChaseUnansweredOrdersTest.php`, driven through the harness
-   actors.
+   SENT; run the existing chase command (`quotes:chase`) and assert a chase is
+   produced for the un-actioned order (`reminders_sent` increments). Reuses the
+   behaviour proven by `tests/Feature/ChaseUnansweredOrdersTest.php`, driven
+   through the harness actors.
 
-Scenarios 2–4 target today's known-broken paths; their assertions are on the
-*violation being caught*, which is the harness's core value. If a blocker is
-fixed, only that scenario's expected outcome changes — the agents do not.
+Scenarios 2–4 are regression tests over paths the `ORDER_WORKFLOW.md` doc calls
+broken but which current code has fixed (1, 3) or leaves unconfirmed (4). They
+lock the current behaviour: same agents drive the path; only the expected
+outcome reflects reality.
 
 ---
 
