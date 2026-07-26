@@ -191,11 +191,18 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/print-zone', [AdminCatalogueController::class, 'savePrintZone'])->middleware('permission:products.edit');
-    Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel'])->middleware('permission:products.view');
-    // Print-floor production file (H2S .3mf); falls back to the model file.
-    Route::get('/admin/products/{product}/production-file', [AdminCatalogueController::class, 'productionFile'])->middleware('permission:products.view');
+    // Also used by the production floor's per-job 3D preview (ProductionQueuePage),
+    // so a staff_admin granted only production.view (no products.view) must pass
+    // too - ANY-of gate.
+    Route::get('/admin/products/{product}/model', [AdminCatalogueController::class, 'adminModel'])->middleware('permission:products.view,production.view');
+    // Print-floor production file (H2S .3mf); falls back to the model file. Also
+    // used by the production floor - see note above.
+    Route::get('/admin/products/{product}/production-file', [AdminCatalogueController::class, 'productionFile'])->middleware('permission:products.view,production.view');
     // Multi-part 3D models: stream, attach and remove individual parts (staff).
-    Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel'])->middleware('permission:products.view');
+    // The read (stream) side is also used by the production floor to download a
+    // part's STL for printing - see note above; write actions below stay
+    // products.edit only.
+    Route::get('/admin/products/{product}/parts/{part}/model', [AdminCatalogueController::class, 'partModel'])->middleware('permission:products.view,production.view');
     Route::post('/admin/products/{product}/parts', [AdminCatalogueController::class, 'uploadModelPart'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/parts/{part}/primary', [AdminCatalogueController::class, 'setPrimaryPart'])->middleware('permission:products.edit');
     Route::delete('/admin/products/{product}/parts/{part}', [AdminCatalogueController::class, 'deleteModelPart'])->middleware('permission:products.edit');

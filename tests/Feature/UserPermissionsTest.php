@@ -10,6 +10,7 @@ use App\Models\Quote;
 use App\Models\User;
 use App\Services\QuoteService;
 use App\Support\Permissions;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 
 use function Pest\Laravel\getJson;
@@ -218,6 +219,73 @@ it('keeps a grandfathered staff_admin able to reach product sub-routes', functio
     Sanctum::actingAs($this->staff); // null permissions = unrestricted
 
     postJson("/api/admin/products/{$product->id}/variants", [])->assertStatus(422);
+});
+
+// The production floor (ProductionQueuePage) needs the 3D preview, print-floor
+// production file and per-part STL streams to load a MODEL_3D job - but those
+// live under the /admin/products/* catalogue routes, gated on products.view. A
+// staff_admin granted ONLY production.* (a supported, common configuration -
+// see the grandfather-default test above) was locked out of their own queue's
+// model preview and part downloads with a 403. These three routes are an
+// ANY-of gate (products.view OR production.view) so both the catalogue team
+// and the floor can reach them.
+
+it('lets a production-only staff_admin load the 3D preview, production file and STL parts', function (): void {
+    Storage::fake('local');
+    Storage::disk('local')->put('models3d/x-1.stl', 'MESHBYTES');
+    Storage::disk('local')->put('models3d/x-1-part1.stl', 'PARTBYTES');
+
+    $this->staff->update(['permissions' => ['production.view']]); // no products.view
+    $product = Product::factory()->create([
+        'class' => 'MODEL_3D',
+        'print_method' => 'FDM',
+        'model_file_ref' => 'models3d/x-1.stl',
+    ]);
+    $part = $product->modelParts()->create([
+        'label' => 'Head', 'file_ref' => 'models3d/x-1-part1.stl',
+        'triangle_count' => 100, 'is_primary' => false, 'sort' => 0,
+    ]);
+    Sanctum::actingAs($this->staff);
+
+    getJson("/api/admin/products/{$product->id}/model")->assertOk();
+    getJson("/api/admin/products/{$product->id}/production-file")->assertOk();
+    getJson("/api/admin/products/{$product->id}/parts/{$part->id}/model")->assertOk();
+});
+
+it('still lets a products.view-only staff_admin load the 3D preview, production file and STL parts', function (): void {
+    Storage::fake('local');
+    Storage::disk('local')->put('models3d/x-1.stl', 'MESHBYTES');
+    Storage::disk('local')->put('models3d/x-1-part1.stl', 'PARTBYTES');
+
+    $this->staff->update(['permissions' => ['products.view']]); // no production.view
+    $product = Product::factory()->create([
+        'class' => 'MODEL_3D',
+        'print_method' => 'FDM',
+        'model_file_ref' => 'models3d/x-1.stl',
+    ]);
+    $part = $product->modelParts()->create([
+        'label' => 'Head', 'file_ref' => 'models3d/x-1-part1.stl',
+        'triangle_count' => 100, 'is_primary' => false, 'sort' => 0,
+    ]);
+    Sanctum::actingAs($this->staff);
+
+    getJson("/api/admin/products/{$product->id}/model")->assertOk();
+    getJson("/api/admin/products/{$product->id}/production-file")->assertOk();
+    getJson("/api/admin/products/{$product->id}/parts/{$part->id}/model")->assertOk();
+});
+
+it('403s a staff_admin with neither products.view nor production.view on the floor model/part routes', function (): void {
+    $this->staff->update(['permissions' => ['quotes.view']]); // neither
+    $product = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+    $part = $product->modelParts()->create([
+        'label' => 'Head', 'file_ref' => 'models3d/x-1-part1.stl',
+        'triangle_count' => 100, 'is_primary' => false, 'sort' => 0,
+    ]);
+    Sanctum::actingAs($this->staff);
+
+    getJson("/api/admin/products/{$product->id}/model")->assertStatus(403);
+    getJson("/api/admin/products/{$product->id}/production-file")->assertStatus(403);
+    getJson("/api/admin/products/{$product->id}/parts/{$part->id}/model")->assertStatus(403);
 });
 
 // ---- sensitive sections: Pricing & Users -------------------------------
