@@ -1,15 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductionJob } from '../types';
 
-const { get, post, put } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
+const { get, post, put, listen, stopListening } = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  listen: vi.fn(),
+  stopListening: vi.fn(),
+}));
 vi.mock('../lib/api', () => ({
   default: { get, post, put },
   apiError: (e: unknown) => String(e),
   ensureCsrf: vi.fn(),
 }));
-// The store wires Reverb channels at import; stub them out for the test.
+// The store wires Reverb channels at import; stub them out for the test, but
+// capture the registered handler via `listen` so realtime tests can invoke it
+// directly instead of standing up a real socket.
 vi.mock('../lib/echo', () => ({
-  joinSharedPrivate: () => ({ listen: vi.fn(), stopListening: vi.fn() }),
+  joinSharedPrivate: () => ({ listen, stopListening }),
   leaveSharedPrivate: vi.fn(),
   onEchoReconnect: () => () => {},
 }));
@@ -27,10 +35,12 @@ const job: ProductionJob = {
 };
 
 beforeEach(() => {
-  useQueueStore.setState({ jobs: [], loading: false, error: null });
+  useQueueStore.setState({ jobs: [], loading: false, error: null, subscribed: false });
   get.mockReset();
   post.mockReset();
   put.mockReset();
+  listen.mockReset();
+  stopListening.mockReset();
 });
 
 describe('queueStore', () => {
@@ -73,6 +83,71 @@ describe('queueStore', () => {
 
     expect(post).toHaveBeenCalledWith('/production-jobs/1/advance', { state: 'IN_PRODUCTION' });
     expect(useQueueStore.getState().loading).toBe(false);
+  });
+
+  // The bug: advance's catch block used to do set({ error }) then immediately
+  // await fetchQueue({ silent: true }), whose first statement resets error to
+  // null - wiping the message before the page's onScan ever read it. An
+  // operator scanning a wrong-state job got zero feedback. The fix re-throws
+  // so the caller can catch and toast it directly.
+  it('advance rejects with the API error (instead of swallowing it) so the caller can toast it', async () => {
+    useQueueStore.setState({ jobs: [job], loading: false });
+    const apiErr = new Error('422 job is not READY');
+    post.mockRejectedValue(apiErr);
+    get.mockResolvedValue({ data: { data: [job] } }); // reconciling refetch still succeeds
+
+    await expect(useQueueStore.getState().advance(1, 'IN_PRODUCTION')).rejects.toThrow(
+      '422 job is not READY',
+    );
+
+    // The reconciling refetch still ran (dropped-socket guard preserved)...
+    expect(get).toHaveBeenCalledWith('/production-queue');
+    // ...but the rejection itself - not a wiped store.error - is what carries
+    // the failure to the caller.
+  });
+
+  it('advance still reconciles the queue via a silent refetch even when the mutation itself fails', async () => {
+    useQueueStore.setState({ jobs: [job], loading: false });
+    post.mockRejectedValue(new Error('500'));
+    get.mockResolvedValue({ data: { data: [job] } });
+
+    await expect(useQueueStore.getState().advance(1, 'IN_PRODUCTION')).rejects.toThrow();
+
+    expect(useQueueStore.getState().loading).toBe(false);
+    expect(useQueueStore.getState().jobs).toHaveLength(1);
+  });
+
+  it('advance still clears the happy path (no lingering error, queue refetched) on success', async () => {
+    useQueueStore.setState({ jobs: [job], loading: false, error: 'stale previous error' });
+    post.mockResolvedValue({ data: {} });
+    get.mockResolvedValue({ data: { data: [job] } });
+
+    await useQueueStore.getState().advance(1, 'IN_PRODUCTION');
+
+    expect(useQueueStore.getState().error).toBeNull();
+  });
+
+  it('advanceNext posts to the job and refetches silently on success', async () => {
+    useQueueStore.setState({ jobs: [job], loading: false });
+    post.mockResolvedValue({ data: {} });
+    get.mockResolvedValue({ data: { data: [job] } });
+
+    await useQueueStore.getState().advanceNext(1);
+
+    expect(post).toHaveBeenCalledWith('/production-jobs/1/advance-next');
+    expect(useQueueStore.getState().error).toBeNull();
+  });
+
+  // Same bug as advance(), for the scan-to-advance path specifically: a scanned
+  // job in the wrong state (the backend's 422 SHIPPED-guard) must reach the
+  // operator, not vanish into a refetch that resets store.error to null.
+  it('advanceNext rejects with the API error (instead of swallowing it) so onScan can toast it', async () => {
+    useQueueStore.setState({ jobs: [job], loading: false });
+    const apiErr = new Error('422 job already SHIPPED');
+    post.mockRejectedValue(apiErr);
+    get.mockResolvedValue({ data: { data: [job] } });
+
+    await expect(useQueueStore.getState().advanceNext(1)).rejects.toThrow('422 job already SHIPPED');
   });
 
   it('advanceBatch posts job_ids + state and refetches', async () => {
@@ -144,6 +219,86 @@ describe('queueStore', () => {
     expect(post).toHaveBeenCalledWith('/production-jobs/7/create-shipment');
     expect(result).toEqual(shipment);
     expect(get).toHaveBeenCalledWith('/production-queue');
+  });
+
+  describe('realtime ProductionQueueUpdated handling', () => {
+    // Grab the handler `subscribe()` registered on the mocked channel, so tests
+    // can fire a realtime event without a real socket.
+    function subscribeAndGetHandler() {
+      useQueueStore.getState().subscribe();
+      expect(listen).toHaveBeenCalledWith('.production-queue.updated', expect.any(Function));
+      return listen.mock.calls[listen.mock.calls.length - 1][1] as (e: unknown) => void;
+    }
+
+    // The bug: the broadcast payload never carries artwork_refs/line_items. For
+    // a job already in state that's fine (the merge below preserves what was
+    // loaded), but for a job the board has never seen, merging the stub left
+    // those fields permanently undefined - no future refetch would ever
+    // backfill them, so "Download print file" never appeared until a manual
+    // reload. The fix: an unknown "queued" job triggers a silent fetchQueue()
+    // to hydrate the full record instead of caching the incomplete stub.
+    it('a "queued" event for a job NOT already in state triggers a silent fetchQueue to hydrate it', () => {
+      useQueueStore.setState({ jobs: [], loading: false });
+      get.mockResolvedValue({ data: { data: [] } });
+      const handler = subscribeAndGetHandler();
+
+      handler({
+        job_id: 99,
+        quote_id: 900,
+        quote_reference: 'ABC123',
+        track: '3D',
+        state: 'READY',
+        ready_at: '2026-07-06T00:00:00Z',
+        qty: 2,
+        action: 'queued',
+      });
+
+      expect(get).toHaveBeenCalledWith('/production-queue');
+    });
+
+    it('a "queued" event for a job already in state keeps the existing in-place merge (no refetch, fields preserved)', () => {
+      const existingJob: ProductionJob = {
+        ...job,
+        artwork_refs: [{ line_item_id: 1, product_name: 'Mug', ref: 'prints/job-1/mug.pdf' }],
+        line_items: [],
+      };
+      useQueueStore.setState({ jobs: [existingJob], loading: false });
+      const handler = subscribeAndGetHandler();
+
+      handler({
+        job_id: existingJob.id,
+        quote_id: existingJob.quote_id,
+        quote_reference: existingJob.quote_reference,
+        track: existingJob.track,
+        state: 'READY',
+        ready_at: existingJob.ready_at,
+        qty: existingJob.qty,
+        action: 'queued',
+      });
+
+      expect(get).not.toHaveBeenCalledWith('/production-queue');
+      const updated = useQueueStore.getState().jobs.find((j) => j.id === existingJob.id);
+      expect(updated?.artwork_refs).toEqual(existingJob.artwork_refs);
+      expect(updated?.line_items).toEqual(existingJob.line_items);
+    });
+
+    it('a "closed" event still removes the job from state, even though it is not "queued"', () => {
+      useQueueStore.setState({ jobs: [job], loading: false });
+      const handler = subscribeAndGetHandler();
+
+      handler({
+        job_id: job.id,
+        quote_id: job.quote_id,
+        track: job.track,
+        state: 'CLOSED',
+        ready_at: job.ready_at,
+        qty: job.qty,
+        action: 'closed',
+      });
+
+      expect(useQueueStore.getState().jobs).toHaveLength(0);
+      expect(get).not.toHaveBeenCalledWith('/production-queue');
+    });
   });
 
   it('printFilePath targets the per-item print-file endpoint with the ref query, URL-encoded', () => {

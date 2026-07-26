@@ -116,8 +116,10 @@ export default function ProductionQueuePage() {
   // Release the camera if the page unmounts while a scan is running.
   useEffect(() => () => void stopCameraRef.current?.(), []);
 
-  // Resolve a scanned/typed value to a queued job and advance it. Surfaces the
-  // store error (e.g. the backend's 422 SHIPPED-guard) as a toast.
+  // Resolve a scanned/typed value to a queued job and advance it. advanceNext
+  // now re-throws on failure (the 422 SHIPPED-guard, a 500, etc.) instead of
+  // parking the message in store.error - fetchQueue's post-mutation refetch
+  // would have reset that field to null before this function ever read it.
   const onScan = async (raw: string) => {
     const id = Number(String(raw).trim());
     if (!Number.isInteger(id) || id <= 0) return;
@@ -125,10 +127,13 @@ export default function ProductionQueuePage() {
       toast({ title: `Job #${id} not on the queue`, tone: 'warning' });
       return;
     }
-    await advanceNext(id);
-    const err = useQueueStore.getState().error;
-    if (err) toast({ title: err, tone: 'warning' });
-    setScanValue('');
+    try {
+      await advanceNext(id);
+    } catch (err) {
+      toast({ title: apiError(err), tone: 'warning' });
+    } finally {
+      setScanValue('');
+    }
   };
 
   // Fetch a Sanctum-gated file through the authed axios client (cookie + XSRF)
@@ -161,6 +166,9 @@ export default function ProductionQueuePage() {
     downloadBlob(`zip:${jobId}`, printFilesZipPath(jobId), `job-${jobId}-print-files.zip`);
 
   // Single-flight guard against a double-click firing a duplicate advance.
+  // advance() re-throws on failure (see queueStore) so a wrong-state 422 or a
+  // 500 reaches the operator as a toast instead of a frozen button with no
+  // feedback; the confirm-shipped form only resets on the success path.
   const onAdvance = async (jobId: number, to: JobState, consignmentRef?: string, carrierVal?: string) => {
     if (pendingId !== null) return;
     setPendingId(jobId);
@@ -169,6 +177,8 @@ export default function ProductionQueuePage() {
       setShippingId(null);
       setConsignment('');
       setCarrier('');
+    } catch (err) {
+      toast({ title: 'Could not update job', description: apiError(err), tone: 'danger' });
     } finally {
       setPendingId(null);
     }

@@ -89,8 +89,15 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       // silently frozen button.
       await get().fetchQueue({ silent: true });
     } catch (err) {
-      set({ error: apiError(err) });
+      // Still refetch to reconcile the queue against server truth (a dropped
+      // socket shouldn't leave a stale row), but do NOT stash the message in
+      // store.error - fetchQueue's first line resets that field to null, so a
+      // set-then-refetch here would wipe it before anyone could read it, and
+      // that's exactly how this failure used to go silent. Re-throw instead so
+      // the caller (the page's onScan/onAdvance) can catch it and toast -
+      // mirroring how createShipment already propagates instead of swallowing.
       await get().fetchQueue({ silent: true });
+      throw err;
     }
   },
 
@@ -118,8 +125,12 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       await api.post(`/production-jobs/${jobId}/advance-next`);
       await get().fetchQueue({ silent: true });
     } catch (err) {
-      set({ error: apiError(err) });
+      // See advance() above: still refetch to reconcile, but don't stash the
+      // message in store.error (fetchQueue would just reset it to null) -
+      // re-throw so onScan's catch can toast the 422 SHIPPED-guard (or any
+      // other failure) instead of it vanishing.
       await get().fetchQueue({ silent: true });
+      throw err;
     }
   },
 
@@ -161,8 +172,18 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
     offReconnect = onEchoReconnect(() => void get().fetchQueue({ silent: true }));
 
     queueUpdatedListener = (e: QueueUpdatedPayload) => {
+      const existing = get().jobs.find((j) => j.id === e.job_id);
+      if (e.action === 'queued' && !existing) {
+        // The lightweight broadcast omits artwork_refs/line_items entirely. For
+        // a job we've never loaded, merging the stub below would permanently
+        // hide the print-file download and customization panel until a manual
+        // reload - there's no future refetch to backfill them. Hydrate the
+        // full job from the API instead; this is the no-polling live board's
+        // only source of truth for a job that appears after initial load.
+        void get().fetchQueue({ silent: true });
+        return;
+      }
       set((s) => {
-        const existing = s.jobs.find((j) => j.id === e.job_id);
         if (e.action === 'closed') {
           return { jobs: s.jobs.filter((j) => j.id !== e.job_id) };
         }
