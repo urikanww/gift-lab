@@ -66,3 +66,24 @@ it('lands buyers on their dashboard after sign-in', async () => {
   await submitCredentials();
   await waitFor(() => expect(screen.getByText('BUYER DASHBOARD')).toBeInTheDocument());
 });
+
+it('redirects an already-authenticated staff_admin away from /login to the dashboard', () => {
+  useAuthStore.setState({
+    user: { id: 1, company_id: null, name: 'U', email: 'u@x.test', role: 'staff_admin' },
+    status: 'ready',
+    error: null,
+  } as any);
+  renderLogin();
+  expect(screen.getByText('DASHBOARD PAGE')).toBeInTheDocument();
+  expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+});
+
+it('redirects an already-authenticated buyer away from /login to their account', () => {
+  useAuthStore.setState({
+    user: { id: 2, company_id: 7, name: 'B', email: 'b@x.test', role: 'buyer' },
+    status: 'ready',
+    error: null,
+  } as any);
+  renderLogin();
+  expect(screen.getByText('BUYER DASHBOARD')).toBeInTheDocument();
+});

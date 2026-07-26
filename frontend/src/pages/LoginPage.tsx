@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
 import { Button, Card, Input, Logo } from '../ui';
@@ -10,7 +10,7 @@ interface LocationState {
 }
 
 export default function LoginPage() {
-  const { login, error } = useAuthStore();
+  const { login, error, user } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from;
@@ -18,6 +18,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Already signed in (e.g. bookmarked /login, or back-navigated to it) - bounce
+  // to the same role-aware landing a fresh sign-in would use, instead of
+  // showing the form again over an active session.
+  if (user) {
+    return <Navigate to={from ?? (isStaffRole(user.role) ? '/dashboard' : '/account')} replace />;
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

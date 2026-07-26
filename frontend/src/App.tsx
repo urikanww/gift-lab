@@ -176,20 +176,24 @@ export default function App() {
               <Route path="orders/:reference" element={<QuoteDetailPage />} />
               <Route path="account/addresses" element={<AddressBookPage />} />
               <Route path="dashboard" element={<ProtectedRoute staffOnly><DashboardPage /></ProtectedRoute>} />
-              <Route path="production-queue" element={<ProtectedRoute staffOnly><ProductionQueuePage /></ProtectedRoute>} />
-              <Route path="procurement" element={<ProtectedRoute staffOnly><ProcurementPage /></ProtectedRoute>} />
-              <Route path="reorders" element={<ProtectedRoute staffOnly><ReorderBuyListPage /></ProtectedRoute>} />
-              <Route path="catalogue-admin" element={<ProtectedRoute staffOnly><CatalogueAdminPage /></ProtectedRoute>} />
+              {/* These operational routes mirror their page's primary API
+                  permission (see routes/api.php + StaffLayout's nav) so a
+                  restricted staff_admin lacking the grant is redirected to
+                  /dashboard instead of mounting a page whose data call 403s. */}
+              <Route path="production-queue" element={<ProtectedRoute permission="production.view"><ProductionQueuePage /></ProtectedRoute>} />
+              <Route path="procurement" element={<ProtectedRoute permission="procurement.view"><ProcurementPage /></ProtectedRoute>} />
+              <Route path="reorders" element={<ProtectedRoute permission="reorders.view"><ReorderBuyListPage /></ProtectedRoute>} />
+              <Route path="catalogue-admin" element={<ProtectedRoute permission="products.view"><CatalogueAdminPage /></ProtectedRoute>} />
               <Route path="blank-recommendations" element={<ProtectedRoute staffOnly><BlankRecommendationPage /></ProtectedRoute>} />
-              <Route path="product-admin" element={<ProtectedRoute staffOnly><ProductAdminPage /></ProtectedRoute>} />
-              <Route path="product-admin/new" element={<ProtectedRoute staffOnly><ProductAdminCreatePage /></ProtectedRoute>} />
-              <Route path="product-admin/:id" element={<ProtectedRoute staffOnly><ProductAdminDetailPage /></ProtectedRoute>} />
+              <Route path="product-admin" element={<ProtectedRoute permission="products.view"><ProductAdminPage /></ProtectedRoute>} />
+              <Route path="product-admin/new" element={<ProtectedRoute permission="products.edit"><ProductAdminCreatePage /></ProtectedRoute>} />
+              <Route path="product-admin/:id" element={<ProtectedRoute permission="products.view"><ProductAdminDetailPage /></ProtectedRoute>} />
               {/* Pricing is sensitive but delegable: superadmin, or a staff_admin
                   granted pricing.view. The backend gates the same permission. */}
               <Route path="pricing-admin" element={<ProtectedRoute permission="pricing.view"><PricingAdminPage /></ProtectedRoute>} />
               {/* Staff-level, unlike Pricing: this is an operational setting about
                   what clients hear, not a financial constant. */}
-              <Route path="notification-settings" element={<ProtectedRoute staffOnly><NotificationSettingsPage /></ProtectedRoute>} />
+              <Route path="notification-settings" element={<ProtectedRoute permission="notifications.view"><NotificationSettingsPage /></ProtectedRoute>} />
               {/* Users is sensitive but delegable: superadmin, or a staff_admin
                   granted users.view. Write actions behind these pages need
                   users.manage, enforced by the backend route middleware. */}
