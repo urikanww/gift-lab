@@ -151,6 +151,55 @@ it('returns null for a buyer_uploaded line even though its product has a photo',
     expect(app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay()))->toBeNull();
 });
 
+it('reads a self-referential storage product photo off disk, never over HTTP', function (): void {
+    // A product photo uploaded via AdminProductController::uploadImage is
+    // stamped url('storage/products/...') - our OWN app URL. Fetching that
+    // over HTTP is the app calling itself, which can deadlock a
+    // single-worker server; it must be read straight off the public disk.
+    Storage::fake('public');
+    Storage::disk('artwork_test')->put('artwork/design.png', pngBytes(100, 100, [0, 0, 255], true));
+    Storage::disk('public')->put('products/core-8.jpg', pngBytes(200, 100, [255, 0, 0]));
+    Http::fake();
+
+    $company = Company::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOFING']);
+    $product = Product::factory()->create(['image_url' => url('storage/products/core-8.jpg')]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/design.png'],
+    ]);
+    $proof = Proof::factory()->forLine($line)->create(['artwork_version_ref' => 'artwork/design.png']);
+
+    $url = app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay());
+
+    expect($url)->toStartWith('https://bucket.test/artwork/composites/');
+    Http::assertNothingSent();
+});
+
+it('falls back to null fast, with no HTTP call, when the self-referential product photo is missing', function (): void {
+    Storage::fake('public');
+    Storage::disk('artwork_test')->put('artwork/design.png', pngBytes(100, 100, [0, 0, 255], true));
+    // Deliberately no file put on the public disk at this path.
+    Http::fake();
+
+    $company = Company::factory()->create();
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOFING']);
+    $product = Product::factory()->create(['image_url' => url('storage/products/missing.jpg')]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/design.png'],
+    ]);
+    $proof = Proof::factory()->forLine($line)->create(['artwork_version_ref' => 'artwork/design.png']);
+
+    $url = app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay());
+
+    expect($url)->toBeNull();
+    Http::assertNothingSent();
+    expect(Storage::disk('artwork_test')->files('artwork/composites'))->toHaveCount(0);
+});
+
 it('matches the product photo through the proof line item, not by an artwork ref scan', function (): void {
     Storage::disk('artwork_test')->put('artwork/design.png', pngBytes(100, 100, [0, 0, 255], true));
     Http::fake(['img.test/*' => Http::response(pngBytes(200, 100, [255, 0, 0]))]);

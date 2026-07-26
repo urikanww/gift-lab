@@ -152,9 +152,35 @@ class ProofCompositeService
         return $png === false ? null : $png;
     }
 
-    /** Product photo bytes: absolute URLs fetched over HTTP, refs off the disk. */
+    /**
+     * Product photo bytes: self-referential "our own /storage/..." URLs are
+     * read straight off the public disk, genuinely external URLs (a real CDN,
+     * S3/Spaces, an affiliate's catalogue host, etc.) are fetched over HTTP,
+     * and bare refs come off the artwork disk.
+     *
+     * Product photos are uploaded via AdminProductController::uploadImage
+     * onto the "public" disk and stamped as `url('storage/'.$path)`
+     * (localhost/APP_URL + "/storage/products/..."). Fetching that over HTTP
+     * means the app calling itself - on a single-worker server that can
+     * deadlock the request, and any missing/slow file blocks the thread for
+     * the full timeout. Matching the same `url('storage/')` prefix
+     * AdminProductController::removeImage() already uses to recover the disk
+     * path, we read those bytes directly instead; disk exists()/get() fail
+     * fast on a missing file, no network wait involved. A migrated-to-Spaces
+     * photo (see assets:migrate-to-spaces) is a genuine external URL and
+     * still goes over HTTP.
+     */
     private function fetchProductImage(string $imageUrl): ?string
     {
+        $publicPrefix = url('storage/');
+        if (str_starts_with($imageUrl, $publicPrefix)) {
+            $relativePath = ltrim(substr($imageUrl, strlen($publicPrefix)), '/');
+
+            return $relativePath !== '' && Storage::disk('public')->exists($relativePath)
+                ? Storage::disk('public')->get($relativePath)
+                : null;
+        }
+
         if (str_starts_with($imageUrl, 'http://') || str_starts_with($imageUrl, 'https://')) {
             $response = Http::timeout(10)->get($imageUrl);
 
