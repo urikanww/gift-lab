@@ -148,3 +148,24 @@ it('rejects a non-CSV upload', function (): void {
     $bad = UploadedFile::fake()->create('malware.exe', 10, 'application/octet-stream');
     $this->postJson('/api/admin/products/import', ['file' => $bad])->assertStatus(422);
 });
+
+it('defaults a blank print_method to FDM and a blank stock_mode to MAKE_TO_ORDER instead of fataling', function (): void {
+    Sanctum::actingAs($this->superadmin);
+
+    // print_method and stock_mode columns left blank - prepareImportRow() must
+    // fall back to PrintMethod::Fdm / StockMode::MakeToOrder rather than
+    // fataling on an unqualified enum reference (App\Enums\PrintMethod /
+    // App\Enums\StockMode were not imported in the controller).
+    $csv = IMPORT_HEADER."\n"
+        .'Blank Defaults,CORE,,,5,SGD,1,,,,,,,false,OWNED,cred,true,PENDING,,,777,,,,,'."\n";
+
+    $res = $this->postJson('/api/admin/products/import', ['file' => importCsv($csv)]);
+
+    $res->assertOk();
+    $res->assertJsonPath('data.created', 1);
+    $res->assertJsonPath('data.skipped', 0);
+
+    $p = Product::where('source_product_id', '777')->firstOrFail();
+    expect($p->print_method)->toBe(\App\Enums\PrintMethod::Fdm);
+    expect($p->stock_mode)->toBe(\App\Enums\StockMode::MakeToOrder);
+});

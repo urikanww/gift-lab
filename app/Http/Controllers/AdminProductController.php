@@ -6,8 +6,10 @@ namespace App\Http\Controllers;
 
 use App\Enums\License;
 use App\Enums\Model3dSource;
+use App\Enums\PrintMethod;
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
+use App\Enums\StockMode;
 use App\Enums\StockMovementReason;
 use App\Jobs\EnrichImportedModel3dProduct;
 use App\Models\AuditLog;
