@@ -146,8 +146,8 @@ it('lets a superadmin amend a line on a non-draft order', function (): void {
 
     app(QuoteService::class)->amend($quote, [['id' => $line->id, 'unit_price' => 20, 'qty' => 4]], null, null, [], null, 'Corrected a mispriced line.');
 
-    // 4 x 20 + 5 delivery
-    expect((float) $quote->fresh()->total)->toBe(85.0);
+    // 4 x 20 + 5 delivery + gst (9% of 85 = 7.65)
+    expect((float) $quote->fresh()->total)->toBe(92.65);
 });
 
 it('still blocks a plain staff_admin from amending a non-draft order', function (): void {
@@ -180,8 +180,8 @@ it('re-anchors an already-issued invoice to the new total on a superadmin edit',
 
     app(QuoteService::class)->amend($quote, [['id' => $line->id, 'unit_price' => 20, 'qty' => 4]], null, null, [], null, 'Corrected a mispriced line.');
 
-    // Invoice follows the quote: 4 x 20 + 5 = 85.
-    expect((float) $invoice->fresh()->amount)->toBe(85.0);
+    // Invoice follows the quote: 4 x 20 + 5 delivery + gst (9% of 85 = 7.65) = 92.65.
+    expect((float) $invoice->fresh()->amount)->toBe(92.65);
 });
 
 // The product sub-routes (model streams, parts, variants, images) are gated too,

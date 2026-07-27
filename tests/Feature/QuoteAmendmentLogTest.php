@@ -174,8 +174,8 @@ it('folds signed adjustments into the total, after delivery', function (): void 
     );
 
     $fresh = $quote->fresh();
-    // 40 + 5 + (-6 + 3.51) = 42.51
-    expect((float) $fresh->total)->toBe(42.51)
+    // 40 + 5 + gst(9% of 45 = 4.05) + (-6 + 3.51) = 46.56
+    expect((float) $fresh->total)->toBe(46.56)
         ->and($fresh->adjustments)->toHaveCount(2)
         ->and($fresh->adjustments[0]['label'])->toBe('Loyalty discount')
         // JSON has no int/float distinction, so -6 decodes as int; compare by value.
@@ -202,8 +202,8 @@ it('clears adjustments when an empty set is sent', function (): void {
 
     $fresh = $quote->fresh();
     expect($fresh->adjustments)->toBe([])
-        // 40 + 5 + 0
-        ->and((float) $fresh->total)->toBe(45.0);
+        // 40 + 5 + gst(9% of 45 = 4.05) + 0
+        ->and((float) $fresh->total)->toBe(49.05);
 });
 
 it('logs an adjustments change in the edit trail', function (): void {
@@ -403,7 +403,8 @@ it('deltas against the current database subtotal, not a stale in-memory copy, on
     // silently losing the concurrent writer's +60.
     $fresh = $quote->fresh();
     expect((float) $fresh->subtotal)->toBe(120.0)
-        ->and((float) $fresh->total)->toBe(125.0); // 120 subtotal + 5 delivery
+        // 120 subtotal + 5 delivery + gst(9% of 125 = 11.25)
+        ->and((float) $fresh->total)->toBe(136.25);
 });
 
 it('leaves the fee-inclusive subtotal unchanged when an amend touches only a non-line field', function (): void {

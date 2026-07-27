@@ -184,12 +184,16 @@ it('retotals the quote and PO after a reconfirmation amend', function (): void {
         'unit_price' => 40.00,
     ])->assertOk();
 
-    // Line total went 422500.00 -> 16000.00 (delta -406500.00); the SGD 33 of
-    // setup/customization fees baked into the original subtotal must survive.
+    // The line carries the factory's default customization (logo_size M), so
+    // the reconfirm-amend delta is fee-inclusive (lineSubtotalContribution()),
+    // not a bare unit x qty resum: before = 422500.00 + (8.00 flat + 0.40/unit
+    // x 10000 = 4008.00) = 426508.00; after = 16000.00 + (8.00 + 0.40 x 400 =
+    // 168.00) = 16168.00; delta -410340.00.
     $quote->refresh();
-    expect((float) $quote->subtotal)->toBe(16033.00)
-        ->and((float) $quote->total)->toBe(16093.00)
-        ->and((float) $po->fresh()->amount)->toBe(16093.00);
+    expect((float) $quote->subtotal)->toBe(12193.00)
+        // + delivery 60.00 + gst (9% of 12253.00 = 1102.77)
+        ->and((float) $quote->total)->toBe(13355.77)
+        ->and((float) $po->fresh()->amount)->toBe(13355.77);
 });
 
 it('retotals the quote and PO after a reconfirmation drop', function (): void {
@@ -214,9 +218,14 @@ it('retotals the quote and PO after a reconfirmation drop', function (): void {
 
     $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'drop'])->assertOk();
 
+    // The dropped line carries the factory's default customization (logo_size
+    // M): its fee-inclusive contribution is (10 x 40.00) + 8.00 flat + (0.40 x
+    // 10) = 412.00, not the bare 400.00 unit x qty figure - the reconfirm-drop
+    // fee bug this fix closes.
     $quote->refresh();
-    expect((float) $quote->subtotal)->toBe(100.00)
-        ->and((float) $quote->total)->toBe(130.00);
+    expect((float) $quote->subtotal)->toBe(88.00)
+        // + delivery 30.00 + gst (9% of 118.00 = 10.62)
+        ->and((float) $quote->total)->toBe(128.62);
 });
 
 // LineChanged ships off by default (staff usually make this call personally),
@@ -422,7 +431,8 @@ it('keeps untouched lines in the subtotal when only some lines are amended', fun
 
     $quote->refresh();
     expect((float) $quote->subtotal)->toBe(52.00)
-        ->and((float) $quote->total)->toBe(82.00);
+        // + delivery 30.00 + gst (9% of 82.00 = 7.38)
+        ->and((float) $quote->total)->toBe(89.38);
 
     // The omitted line is untouched, not silently zeroed or removed.
     $untouched->refresh();
@@ -475,10 +485,11 @@ it('adds a new line and counts it toward the subtotal', function (): void {
     ])->assertOk();
 
     $quote->refresh();
-    // 30.00 + 20.00 + 36.00 = 86.00, plus 30.00 delivery.
+    // 30.00 + 20.00 + 36.00 = 86.00, plus 30.00 delivery, plus gst (9% of
+    // 116.00 = 10.44).
     expect($quote->lineItems()->count())->toBe(3)
         ->and((float) $quote->subtotal)->toBe(86.00)
-        ->and((float) $quote->total)->toBe(116.00);
+        ->and((float) $quote->total)->toBe(126.44);
 
     $new = $quote->lineItems()->where('product_id', $added->id)->sole();
     expect($new->line_state->value)->toBe('PENDING')
@@ -499,7 +510,8 @@ it('removes a line and drops it from the subtotal', function (): void {
     $quote->refresh();
     expect($quote->lineItems()->count())->toBe(1)
         ->and((float) $quote->subtotal)->toBe(30.00)
-        ->and((float) $quote->total)->toBe(60.00);
+        // + delivery 30.00 + gst (9% of 60.00 = 5.40)
+        ->and((float) $quote->total)->toBe(65.40);
 
     // Soft-deleted, so the order's history survives the removal.
     $this->assertSoftDeleted('line_items', ['id' => $second->id]);
@@ -551,7 +563,8 @@ it('amends delivery alone, with no lines in the payload', function (): void {
     $quote->refresh();
     expect((float) $quote->delivery)->toBe(12.00)
         ->and((float) $quote->subtotal)->toBe(50.00)
-        ->and((float) $quote->total)->toBe(62.00);
+        // + gst (9% of 62.00 = 5.58)
+        ->and((float) $quote->total)->toBe(67.58);
 });
 
 it('refuses to remove a line belonging to another quote', function (): void {
@@ -686,13 +699,14 @@ it('retotals the quote and invoice when a shortfall is accepted as-is', function
     $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'approve'])->assertOk();
 
     // Bill follows the goods: 60 x 15.00 = 900.00, against an original line of
-    // 1500.00. The line is what will actually be produced, too.
+    // 1500.00. The line is what will actually be produced, too. Total adds gst
+    // (9% of 950.00 = 85.50).
     $quote->refresh();
     expect($line->fresh()->qty)->toBe(60)
         ->and($line->fresh()->line_state->value)->toBe('READY')
         ->and((float) $quote->subtotal)->toBe(900.00)
-        ->and((float) $quote->total)->toBe(950.00)
-        ->and((float) $invoice->fresh()->amount)->toBe(950.00);
+        ->and((float) $quote->total)->toBe(1035.50)
+        ->and((float) $invoice->fresh()->amount)->toBe(1035.50);
 });
 
 // procured_qty 0 means nothing could be sourced at all - no variant, no

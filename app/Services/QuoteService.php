@@ -151,6 +151,13 @@ final class QuoteService
                 'currency' => 'SGD',
                 'subtotal' => $totals['subtotal'],
                 'delivery' => $totals['delivery'],
+                // Rate is SNAPSHOT here, at create time: gst_rate is copied onto
+                // the row rather than re-read from live config, so a later edit
+                // to tax.gst_pct never reprices a quote that already exists (the
+                // same freeze discipline as every other per-line snapshot in
+                // this method).
+                'gst_amount' => $totals['gst'],
+                'gst_rate' => $totals['gst_rate'],
                 'total' => $totals['total'],
                 'notes' => $notes,
                 'needed_by' => $neededBy,
@@ -254,7 +261,12 @@ final class QuoteService
             // every read/write below operates on this same locked instance.
             $quote = Quote::query()->lockForUpdate()->findOrFail($quote->id);
 
-            $before = ['subtotal' => $quote->subtotal, 'delivery' => $quote->delivery, 'total' => $quote->total];
+            $before = [
+                'subtotal' => $quote->subtotal,
+                'delivery' => $quote->delivery,
+                'gst_amount' => $quote->gst_amount,
+                'total' => $quote->total,
+            ];
             $log = $quote->amendment_log ?? [];
             // Subtotal is adjusted by DELTA, never rebuilt from a bare
             // unit_price*qty resum (Wave 2 money bug): the quote's frozen
@@ -445,10 +457,24 @@ final class QuoteService
 
             $quote->subtotal = round((float) $quote->subtotal + $subtotalDelta, 2);
             $quote->delivery = $newDelivery;
-            // Adjustments land after delivery, and can pull the total down (a
-            // discount) as well as up (a tax/fee) - see Quote::adjustmentsTotal.
+
+            // GST is recomputed on the post-delta (subtotal + delivery) base, but
+            // at the quote's own SNAPSHOT gst_rate - never the live tax.gst_pct
+            // config - so a rate change after the quote was created never
+            // reprices it on a later amend. Adjustments are deliberately left
+            // out of the GST base (spec: GST does not apply to free-form staff
+            // adjustments; a "tax" adjustment would double-count).
+            $gstRate = (float) $quote->gst_rate / 100;
+            $quote->gst_amount = $this->pricing->gstAmount(
+                (float) $quote->subtotal + (float) $quote->delivery,
+                $gstRate,
+            );
+
+            // Adjustments land after delivery and GST, and can pull the total
+            // down (a discount) as well as up (a tax/fee) - see
+            // Quote::adjustmentsTotal.
             $quote->total = round(
-                (float) $quote->subtotal + (float) $quote->delivery + $quote->adjustmentsTotal(),
+                (float) $quote->subtotal + (float) $quote->delivery + (float) $quote->gst_amount + $quote->adjustmentsTotal(),
                 2,
             );
             $quote->amendment_log = $log;
@@ -461,20 +487,26 @@ final class QuoteService
             $this->audit->log($quote, 'quote.amended', $before, [
                 'subtotal' => $quote->subtotal,
                 'delivery' => $quote->delivery,
+                'gst_amount' => $quote->gst_amount,
                 'total' => $quote->total,
             ]);
 
             // A superadmin edit can land on an already-invoiced order. Keep the
-            // authoritative invoice amount in step with the new total, exactly as
-            // a post-procurement reconfirmation does, so the buyer is never
-            // invoiced for a superseded figure. No-op on a DRAFT (no invoice yet).
+            // authoritative invoice amount (and its GST component) in step with
+            // the new total, exactly as a post-procurement reconfirmation does,
+            // so the buyer is never invoiced for a superseded figure. No-op on a
+            // DRAFT (no invoice yet).
             if ($quote->state !== QuoteState::Draft) {
                 $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
                 if ($invoice !== null) {
-                    $invoiceBefore = ['amount' => $invoice->amount];
+                    $invoiceBefore = ['amount' => $invoice->amount, 'gst_amount' => $invoice->gst_amount];
                     $invoice->amount = $quote->total;
+                    $invoice->gst_amount = $quote->gst_amount;
                     $invoice->save();
-                    $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, ['amount' => $invoice->amount]);
+                    $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, [
+                        'amount' => $invoice->amount,
+                        'gst_amount' => $invoice->gst_amount,
+                    ]);
                 }
             }
 
@@ -873,7 +905,12 @@ final class QuoteService
                 'invoice_ref' => $invoiceRef,
                 'terms' => $terms ?? $locked->company->default_terms,
                 'payment_state' => PaymentState::Unpaid->value,
+                // The invoice amount is the quote's GST-inclusive total; gst_amount
+                // and gst_rate are copied across (not re-derived) so the invoice
+                // carries the same frozen snapshot the quote already holds.
                 'amount' => $locked->total,
+                'gst_amount' => $locked->gst_amount,
+                'gst_rate' => $locked->gst_rate,
                 'currency' => $locked->currency,
                 'issued_by' => Auth::id(),
                 'issued_at' => now(),
@@ -1064,13 +1101,19 @@ final class QuoteService
 
             switch ($decision['action']) {
                 case 'amend':
-                    $before = (float) $line->lineTotal();
+                    // Fee-inclusive, mirroring amend()'s own delta discipline
+                    // (lineSubtotalContribution(), not bare lineTotal()) - a
+                    // customized line's flat/per-unit decoration fee is baked
+                    // into the frozen subtotal and must be re-derived from the
+                    // AMENDED qty, not silently dropped or left at the
+                    // pre-reconfirm figure.
+                    $before = $this->lineSubtotalContribution($line);
                     $line->qty = $decision['qty'];
                     $line->unit_price = $decision['unit_price'];
                     $line->save();
                     $line->transitionTo(LineItemState::Amended);
                     $this->procurement->procureLine($line);
-                    $totalDelta = (float) $line->lineTotal() - $before;
+                    $totalDelta = $this->lineSubtotalContribution($line) - $before;
                     $notifyLineChanged = true;
                     break;
 
@@ -1096,8 +1139,16 @@ final class QuoteService
                     break;
 
                 case 'drop':
+                    // Measured BEFORE the transition: lineSubtotalContribution()
+                    // reads back 0.0 for a DROPPED line, so the fee-inclusive
+                    // figure must be captured while the line is still counted.
+                    // Bare lineTotal() (unit x qty) used to leave a customized
+                    // line's flat + per-unit decoration fee stranded in the
+                    // subtotal on drop - the buyer billed a setup fee for a line
+                    // that was never produced.
+                    $before = $this->lineSubtotalContribution($line);
                     $line->transitionTo(LineItemState::Dropped);
-                    $totalDelta = -(float) $line->lineTotal();
+                    $totalDelta = -$before;
                     $notifyLineChanged = true;
                     break;
             }
@@ -1140,31 +1191,48 @@ final class QuoteService
 
         $before = [
             'subtotal' => $quote->subtotal,
+            'gst_amount' => $quote->gst_amount,
             'total' => $quote->total,
         ];
 
         $quote->subtotal = round((float) $quote->subtotal + $totalDelta, 2);
+
+        // GST is recomputed on the new (post-delta) subtotal + delivery base, at
+        // the quote's own SNAPSHOT gst_rate - never the live tax.gst_pct config -
+        // exactly like amend(). Adjustments stay outside the GST base.
+        $gstRate = (float) $quote->gst_rate / 100;
+        $quote->gst_amount = $this->pricing->gstAmount(
+            (float) $quote->subtotal + (float) $quote->delivery,
+            $gstRate,
+        );
+
         // Keep the staff adjustments (discount/tax/fee) in the re-anchored total,
         // exactly as the amend path does - otherwise a reconfirmation would
         // quietly wipe them from what the buyer is invoiced.
         $quote->total = round(
-            (float) $quote->subtotal + (float) $quote->delivery + $quote->adjustmentsTotal(),
+            (float) $quote->subtotal + (float) $quote->delivery + (float) $quote->gst_amount + $quote->adjustmentsTotal(),
             2,
         );
         $quote->save();
 
         // The invoice amount was frozen at issue time; keep the authoritative
-        // invoice figure in lock-step with the amended quote.
+        // invoice figure (and its GST component) in lock-step with the amended
+        // quote.
         $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
         if ($invoice !== null) {
-            $invoiceBefore = ['amount' => $invoice->amount];
+            $invoiceBefore = ['amount' => $invoice->amount, 'gst_amount' => $invoice->gst_amount];
             $invoice->amount = $quote->total;
+            $invoice->gst_amount = $quote->gst_amount;
             $invoice->save();
-            $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, ['amount' => $invoice->amount]);
+            $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, [
+                'amount' => $invoice->amount,
+                'gst_amount' => $invoice->gst_amount,
+            ]);
         }
 
         $this->audit->log($quote, 'quote.retotaled_after_reconfirm', $before, [
             'subtotal' => $quote->subtotal,
+            'gst_amount' => $quote->gst_amount,
             'total' => $quote->total,
             'line_item_id' => $line->id,
         ]);
