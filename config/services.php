@@ -107,10 +107,28 @@ return [
         'item_path' => env('LAZADA_AFFILIATE_ITEM_PATH', '/marketing/product/detail'),
     ],
 
+    // Capture-on-browse (ListingCapture / OutboundUrlGuard). Optional host
+    // allowlist narrowing which hosts staff may paste a capture URL for -
+    // empty (default) means no allowlist; the private/loopback/link-local/
+    // metadata IP block in OutboundUrlGuard is the real SSRF control and
+    // applies regardless of this list.
+    'catalogue' => [
+        'capture' => [
+            'allowlist' => array_filter(array_map('trim', explode(',', (string) env('CATALOGUE_CAPTURE_ALLOWLIST', '')))),
+        ],
+    ],
+
     // Stripe (B2C "pay now"). Without a secret key the fixture gateway is used.
     'stripe' => [
         'secret' => env('STRIPE_SECRET'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        // Mirrors HttpNinjaVanClient's guarded outbound posture: bounded
+        // connect/read timeouts and a small number of automatic retries for
+        // transient network faults (the Stripe SDK itself only retries safe
+        // idempotent-by-construction requests when max_network_retries > 0).
+        'connect_timeout' => env('STRIPE_CONNECT_TIMEOUT', 5),
+        'read_timeout' => env('STRIPE_READ_TIMEOUT', 20),
+        'max_network_retries' => env('STRIPE_MAX_NETWORK_RETRIES', 2),
     ],
 
     // NinjaVan courier (delivery dispatch). When client id + secret are present

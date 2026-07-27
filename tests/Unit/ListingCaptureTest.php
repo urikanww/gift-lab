@@ -69,3 +69,39 @@ it('returns null on a failed fetch', function (): void {
 
     expect(app(ListingCapture::class)->capture('https://blankco.sg/down'))->toBeNull();
 });
+
+it('returns null when a redirect hop points at a private IP (SSRF guard blocks the hop)', function (): void {
+    // The initial host resolves publicly (via TestCase's default DNS stub),
+    // but it 302s straight at a loopback address - simulating a compromised
+    // or malicious supplier page trying to pivot the server's own request
+    // inward. The guard must re-validate the Location header, not just the
+    // URL staff pasted in.
+    Http::fake([
+        'blankco.sg/*' => Http::response('', 302, ['Location' => 'http://127.0.0.1/admin']),
+        '127.0.0.1/*' => Http::response('<html><title>should never be reached</title></html>', 200),
+    ]);
+
+    expect(app(ListingCapture::class)->capture('https://blankco.sg/redirect-me'))->toBeNull();
+});
+
+it('returns null when a redirect hop points at the cloud metadata IP', function (): void {
+    Http::fake([
+        'blankco.sg/*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data/']),
+    ]);
+
+    expect(app(ListingCapture::class)->capture('https://blankco.sg/redirect-me'))->toBeNull();
+});
+
+it('follows a safe redirect chain to a public host and extracts the final page', function (): void {
+    Http::fake([
+        'blankco.sg/old-mug' => Http::response('', 301, ['Location' => 'https://blankco.sg/mug-440']),
+        'blankco.sg/mug-440' => Http::response(<<<'HTML'
+            <html><head><title>Redirected Mug</title></head></html>
+            HTML, 200),
+    ]);
+
+    $data = app(ListingCapture::class)->capture('https://blankco.sg/old-mug');
+
+    expect($data)->not->toBeNull()
+        ->and($data->name)->toBe('Redirected Mug');
+});

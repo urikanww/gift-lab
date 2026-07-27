@@ -27,7 +27,7 @@ final class AdminBlankCaptureController extends Controller
         abort_unless($request->user()->isStaff(), 403);
 
         $validated = $request->validate([
-            'url' => ['required', 'url', 'max:2048'],
+            'url' => ['required', 'url:http,https', 'max:2048'],
         ]);
 
         $data = $capture->capture($validated['url']);

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Catalogue;
 
 use App\Services\Scraper\ScrapedProductData;
+use App\Support\OutboundUrlGuard;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -14,22 +16,30 @@ use Throwable;
  * Graph, then <title>. Standard HTML/OG pages (most local suppliers) extract
  * cleanly; JS-heavy anti-bot marketplaces may only yield the URL-derived id +
  * whatever OG the shell serves — staff completes the rest in the gate.
+ *
+ * SSRF hardening: a staff-supplied URL is untrusted input that this server
+ * fetches on the staff member's behalf, so both the initial URL AND every
+ * redirect hop are re-validated through OutboundUrlGuard before being
+ * followed - a first-hop-only check would let a public-looking URL 302 to
+ * the cloud metadata endpoint or an internal service. Redirects are followed
+ * manually (Http::withoutRedirecting()) rather than letting the HTTP client
+ * auto-follow them, specifically so each hop can be checked before the
+ * request is made.
  */
 final class ListingCapture
 {
+    /** Bounded hop count - matches common browser/client redirect limits. */
+    private const MAX_REDIRECTS = 5;
+
     public function capture(string $url): ?ScrapedProductData
     {
         try {
-            $res = Http::withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                    .'(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                'Accept' => 'text/html,application/xhtml+xml',
-            ])->connectTimeout(5)->timeout(20)->get($url);
+            $res = $this->fetch($url);
         } catch (Throwable) {
             return null;
         }
 
-        if (! $res->successful()) {
+        if ($res === null || ! $res->successful()) {
             return null;
         }
 
@@ -50,6 +60,70 @@ final class ListingCapture
             imageUrl: $image,
             printable: false,
         );
+    }
+
+    /**
+     * Manual bounded redirect loop: every URL fetched - the original and each
+     * subsequent Location header - is validated through OutboundUrlGuard
+     * BEFORE the request is made. OutboundUrlGuard::assertSafe() throws on an
+     * unsafe hop, which propagates up to capture()'s try/catch and degrades
+     * to a null result, same as any other fetch failure.
+     */
+    private function fetch(string $url): ?Response
+    {
+        OutboundUrlGuard::assertSafe($url);
+
+        $current = $url;
+        for ($redirects = 0; $redirects <= self::MAX_REDIRECTS; $redirects++) {
+            $res = Http::withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                    .'(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Accept' => 'text/html,application/xhtml+xml',
+            ])->connectTimeout(5)->timeout(20)->withoutRedirecting()->get($current);
+
+            if (! $res->redirect()) {
+                return $res;
+            }
+
+            $location = $res->header('Location');
+            if (! is_string($location) || $location === '') {
+                return null;
+            }
+
+            $current = $this->resolveRedirectUrl($current, $location);
+            OutboundUrlGuard::assertSafe($current);
+        }
+
+        // Exhausted the hop budget without landing on a non-redirect response.
+        return null;
+    }
+
+    /** Resolves a Location header value (absolute, protocol-relative, or path) against the URL it came from. */
+    private function resolveRedirectUrl(string $base, string $location): string
+    {
+        if (preg_match('#^https?://#i', $location)) {
+            return $location;
+        }
+
+        $parts = parse_url($base);
+        $scheme = $parts['scheme'] ?? 'https';
+        $host = $parts['host'] ?? '';
+        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+
+        if (str_starts_with($location, '//')) {
+            return "{$scheme}:{$location}";
+        }
+
+        if (str_starts_with($location, '/')) {
+            return "{$scheme}://{$host}{$port}{$location}";
+        }
+
+        // Relative to the base's path (rare for capture targets, but handled
+        // for completeness rather than silently mis-resolving it).
+        $basePath = $parts['path'] ?? '/';
+        $dir = rtrim(substr($basePath, 0, (int) strrpos($basePath, '/') + 1), '/');
+
+        return "{$scheme}://{$host}{$port}{$dir}/{$location}";
     }
 
     /** @return array{name?:string,price?:float,image?:string} */

@@ -250,7 +250,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/supplier-reorders/{reorder}/receive', [AdminReorderController::class, 'receive'])->middleware('permission:reorders.manage');
 
     // Capture-on-browse: paste a product URL -> draft SCRAPED_UV blank in the gate.
-    Route::post('/admin/blank-candidates/capture', [AdminBlankCaptureController::class, 'store']);
+    Route::post('/admin/blank-candidates/capture', [AdminBlankCaptureController::class, 'store'])->middleware('permission:products.edit');
 
     // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
     Route::get('/admin/blank-recommendations', [AdminBlankRecommendationController::class, 'index']);
