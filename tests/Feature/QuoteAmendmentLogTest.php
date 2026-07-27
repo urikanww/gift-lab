@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Company;
+use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Quote;
@@ -437,4 +438,72 @@ it('leaves the fee-inclusive subtotal unchanged when an amend touches only a non
 
     expect((float) $quote->fresh()->subtotal)->toBe($before)
         ->and($quote->fresh()->notes)->toBe('Buyer asked for a delivery note.');
+});
+
+// Re-anchor guard: a VOID invoice is a closed, credit-noted document (see
+// QuoteService::voidInvoiceAndCredit / QuoteCancelTest). A later superadmin
+// amend on that quote must never overwrite the VOID invoice's frozen amount -
+// otherwise the invoice would silently disagree with the credit note that
+// was minted against it.
+it('does not overwrite a VOID invoices amount when a superadmin amends the quote', function (): void {
+    Sanctum::actingAs(User::factory()->superadmin()->create());
+    [$quote, $line] = draftWithLine();
+    $quote->update(['state' => 'CONFIRMED']);
+
+    $invoice = Invoice::create([
+        'quote_id' => $quote->id,
+        'po_ref' => 'PO-'.$quote->id,
+        'payment_state' => 'VOID',
+        'amount' => 999.99,
+        'gst_amount' => 0,
+        'gst_rate' => 9,
+        'currency' => 'SGD',
+        'issued_at' => now(),
+    ]);
+
+    app(QuoteService::class)->amend(
+        $quote,
+        [['id' => $line->id, 'unit_price' => 999, 'qty' => 999]],
+        null,
+        null,
+        [],
+        null,
+        'Superadmin correction on a voided order.',
+    );
+
+    expect((float) $invoice->fresh()->amount)->toBe(999.99);
+});
+
+// Adjacent finding: raising a PAID invoice's amount means it is no longer
+// fully paid, so the payment_state must downgrade to PARTIAL rather than
+// silently keep reading PAID against a now-larger figure.
+it('downgrades a PAID invoice to PARTIAL when a superadmin amend raises its amount', function (): void {
+    Sanctum::actingAs(User::factory()->superadmin()->create());
+    [$quote, $line] = draftWithLine(); // subtotal 40, delivery 5
+    $quote->update(['state' => 'CONFIRMED']);
+
+    $invoice = Invoice::create([
+        'quote_id' => $quote->id,
+        'po_ref' => 'PO-'.$quote->id,
+        'payment_state' => 'PAID',
+        'amount' => $quote->total,
+        'gst_amount' => $quote->gst_amount,
+        'gst_rate' => $quote->gst_rate,
+        'currency' => 'SGD',
+        'issued_at' => now(),
+    ]);
+
+    app(QuoteService::class)->amend(
+        $quote,
+        [['id' => $line->id, 'unit_price' => 50, 'qty' => 4]], // raises the total
+        null,
+        null,
+        [],
+        null,
+        'Superadmin raises the price after invoicing.',
+    );
+
+    $fresh = $invoice->fresh();
+    expect($fresh->payment_state->value)->toBe('PARTIAL')
+        ->and((float) $fresh->amount)->toBe((float) $quote->fresh()->total);
 });

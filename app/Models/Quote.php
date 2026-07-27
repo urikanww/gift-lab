@@ -154,6 +154,7 @@ class Quote extends Model
             $quote->proofs()->get()->each->delete();
             $quote->jobs()->get()->each->delete();
             $quote->purchaseOrders()->get()->each->delete();
+            $quote->creditNotes()->get()->each->delete();
         });
 
         static::restoring(function (Quote $quote): void {
@@ -161,6 +162,7 @@ class Quote extends Model
             $quote->proofs()->onlyTrashed()->get()->each->restore();
             $quote->jobs()->onlyTrashed()->get()->each->restore();
             $quote->purchaseOrders()->onlyTrashed()->get()->each->restore();
+            $quote->creditNotes()->onlyTrashed()->get()->each->restore();
         });
     }
 
@@ -210,6 +212,14 @@ class Quote extends Model
     public function purchaseOrders(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    /**
+     * @return HasMany<CreditNote>
+     */
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(CreditNote::class);
     }
 
     /**

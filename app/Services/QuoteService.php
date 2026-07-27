@@ -15,6 +15,7 @@ use App\Events\ProofStatusChanged;
 use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
 use App\Mail\QuoteReadyMail;
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
@@ -497,21 +498,54 @@ final class QuoteService
             // so the buyer is never invoiced for a superseded figure. No-op on a
             // DRAFT (no invoice yet).
             if ($quote->state !== QuoteState::Draft) {
-                $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
-                if ($invoice !== null) {
-                    $invoiceBefore = ['amount' => $invoice->amount, 'gst_amount' => $invoice->gst_amount];
-                    $invoice->amount = $quote->total;
-                    $invoice->gst_amount = $quote->gst_amount;
-                    $invoice->save();
-                    $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, [
-                        'amount' => $invoice->amount,
-                        'gst_amount' => $invoice->gst_amount,
-                    ]);
-                }
+                $this->reanchorInvoices($quote);
             }
 
             return $quote->fresh(['lineItems']);
         });
+    }
+
+    /**
+     * Re-anchor every LIVE (non-VOID) invoice on the quote to its current total,
+     * shared by amend()'s superadmin path and retotalAfterReconfirm(). A VOID
+     * invoice is a closed, credit-noted document (see voidInvoiceAndCredit()) -
+     * it is skipped entirely, never overwritten. Raising the amount on an
+     * invoice already marked PAID means it is no longer fully paid, so that
+     * invoice is downgraded to PARTIAL rather than silently left reading PAID
+     * against a now-larger figure. Iterates every invoice for the same reason
+     * voidInvoiceAndCredit() does (see its docblock) rather than assuming
+     * exactly one via latest()->first().
+     */
+    private function reanchorInvoices(Quote $quote): void
+    {
+        $invoices = $quote->purchaseOrders()->get();
+
+        foreach ($invoices as $invoice) {
+            if ($invoice->payment_state === PaymentState::Void) {
+                continue;
+            }
+
+            $invoiceBefore = [
+                'amount' => $invoice->amount,
+                'gst_amount' => $invoice->gst_amount,
+                'payment_state' => $invoice->payment_state->value,
+            ];
+
+            $raised = round((float) $quote->total, 2) > round((float) $invoice->amount, 2);
+
+            $invoice->amount = $quote->total;
+            $invoice->gst_amount = $quote->gst_amount;
+            if ($raised && $invoice->payment_state === PaymentState::Paid) {
+                $invoice->payment_state = PaymentState::Partial;
+            }
+            $invoice->save();
+
+            $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, [
+                'amount' => $invoice->amount,
+                'gst_amount' => $invoice->gst_amount,
+                'payment_state' => $invoice->payment_state->value,
+            ]);
+        }
     }
 
     /**
@@ -992,12 +1026,72 @@ final class QuoteService
             // included, which pulls a negative balance back toward zero).
             $this->returnConsumedStock($quote);
 
+            // Close the money loop: a PAID/PARTIAL B2B invoice has no gateway to
+            // refund through, so cancelling one voids it and mints a credit note
+            // for what was collected. Must run inside this same transaction -
+            // transitionTo() above already threw for a 2nd cancel (Cancelled has
+            // no outgoing edges), so getting here at all means this is the one
+            // and only time this quote is closed.
+            $this->voidInvoiceAndCredit($quote, $reason);
+
             $this->audit->log($quote, 'quote.cancelled', ['state' => $previous], ['reason' => $reason]);
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $quote->fresh(['lineItems']);
         });
+    }
+
+    /**
+     * Close the money loop on a cancelled quote. There is no payment gateway to
+     * refund through in B2B - a PAID/PARTIAL invoice is closed by minting a
+     * credit note for the exact (GST-inclusive) amount already invoiced, then
+     * voiding the invoice so it stops reading as collectible. An UNPAID invoice
+     * is simply voided (nothing was collected, so nothing to credit). A quote
+     * that was never invoiced is a clean no-op.
+     *
+     * Iterates every LIVE invoice on the quote rather than trusting
+     * purchaseOrders()->latest()->first(): issueInvoice() already guarantees at
+     * most one invoice per quote in the steady state (locked check-then-create),
+     * so this is a defensive superset rather than a behaviour change - and it
+     * sidesteps needing a soft-delete-aware unique index on invoices.quote_id,
+     * which would need driver-specific handling (native partial index on
+     * MySQL, a filtered index expression on SQLite) to get right across both
+     * the app's MySQL target and the SQLite test suite.
+     */
+    private function voidInvoiceAndCredit(Quote $quote, ?string $reason): void
+    {
+        $invoices = $quote->purchaseOrders()->lockForUpdate()->get();
+
+        foreach ($invoices as $invoice) {
+            if (in_array($invoice->payment_state, [PaymentState::Paid, PaymentState::Partial], true)) {
+                // Verbatim off the invoice - already GST-inclusive - never
+                // recomputed from the quote (which may itself have moved on).
+                $creditNote = CreditNote::create([
+                    'quote_id' => $quote->id,
+                    'invoice_id' => $invoice->id,
+                    'amount' => (float) $invoice->amount,
+                    'reason' => $reason,
+                    'issued_by' => Auth::id(),
+                    'issued_at' => now(),
+                ]);
+
+                $this->audit->log($creditNote, 'credit_note.issued', null, [
+                    'invoice_id' => $invoice->id,
+                    'amount' => $creditNote->amount,
+                ]);
+            }
+
+            if ($invoice->payment_state !== PaymentState::Void) {
+                $before = $invoice->payment_state->value;
+                $invoice->payment_state = PaymentState::Void;
+                $invoice->save();
+
+                $this->audit->log($invoice, 'invoice.voided', ['payment_state' => $before], [
+                    'payment_state' => PaymentState::Void->value,
+                ]);
+            }
+        }
     }
 
     /**
@@ -1217,18 +1311,9 @@ final class QuoteService
 
         // The invoice amount was frozen at issue time; keep the authoritative
         // invoice figure (and its GST component) in lock-step with the amended
-        // quote.
-        $invoice = $quote->purchaseOrders()->latest('issued_at')->first();
-        if ($invoice !== null) {
-            $invoiceBefore = ['amount' => $invoice->amount, 'gst_amount' => $invoice->gst_amount];
-            $invoice->amount = $quote->total;
-            $invoice->gst_amount = $quote->gst_amount;
-            $invoice->save();
-            $this->audit->log($invoice, 'invoice.retotaled', $invoiceBefore, [
-                'amount' => $invoice->amount,
-                'gst_amount' => $invoice->gst_amount,
-            ]);
-        }
+        // quote. Skips a VOID invoice and downgrades PAID->PARTIAL on a raise -
+        // see reanchorInvoices()'s docblock.
+        $this->reanchorInvoices($quote);
 
         $this->audit->log($quote, 'quote.retotaled_after_reconfirm', $before, [
             'subtotal' => $quote->subtotal,

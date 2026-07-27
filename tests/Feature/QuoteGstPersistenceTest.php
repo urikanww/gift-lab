@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\Company;
+use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\PricingConfig;
 use App\Models\Product;
@@ -156,4 +157,46 @@ it('issues an invoice whose amount equals the GST-inclusive quote total, with gs
         ->and((float) $invoice->amount)->toBe(577.70)
         ->and((float) $invoice->gst_amount)->toBe(47.70)
         ->and((float) $invoice->gst_rate)->toBe(9.0);
+});
+
+// Re-anchor guard, reconfirm path: a VOID invoice is a closed, credit-noted
+// document (see QuoteService::voidInvoiceAndCredit). A reconfirm decision that
+// changes the quote's money must not overwrite the VOID invoice's frozen
+// amount - mirrors the same guard in amend().
+it('does not overwrite a VOID invoices amount when retotalAfterReconfirm runs', function (): void {
+    seedPricing();
+    Sanctum::actingAs($this->staff);
+    $product = Product::factory()->create(['base_cost' => 30, 'class' => 'CORE', 'print_method' => 'UV']);
+    $variant = Variant::factory()->create(['product_id' => $product->id, 'stock_on_hand' => 0]);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'subtotal' => 500.00,
+        'delivery' => 30.00,
+        'gst_rate' => 9,
+    ]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $product->id,
+        'variant_id' => $variant->id,
+        'qty' => 10,
+        'unit_price' => 40.00,
+        'customization' => ['logo_size' => 'M'],
+        'line_state' => 'AWAITING_RECONFIRM',
+    ]);
+
+    $invoice = Invoice::create([
+        'quote_id' => $quote->id,
+        'po_ref' => 'PO-'.$quote->id,
+        'payment_state' => 'VOID',
+        'amount' => 888.88,
+        'gst_amount' => 0,
+        'gst_rate' => 9,
+        'currency' => 'SGD',
+        'issued_at' => now(),
+    ]);
+
+    app(QuoteService::class)->reconfirmLine($line, ['action' => 'drop']);
+
+    expect((float) $invoice->fresh()->amount)->toBe(888.88);
 });
