@@ -66,6 +66,61 @@ it('shows ops navigation links for staff roles', () => {
 it('hides ops navigation from buyers and anonymous visitors', () => {
   renderHeader();
   expect(screen.queryByRole('link', { name: /catalogue gate/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /^production$/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /^procurement$/i })).not.toBeInTheDocument();
+});
+
+it('shows only the permitted staff shortcut for a restricted staff_admin', () => {
+  // Mirrors StaffLayout's useStaffNav filtering: a staff_admin with an
+  // explicit permissions list only sees the sections it grants (see
+  // lib/roles.ts hasPermission and App.tsx's per-route `permission` props).
+  useAuthStore.setState({
+    user: { ...testUser, role: 'staff_admin', company_id: null, permissions: ['production.view'] },
+    status: 'ready',
+    error: null,
+  });
+  renderHeader();
+
+  const nav = screen.getByRole('navigation', { name: /primary/i });
+  expect(within(nav).getByRole('link', { name: /^production$/i })).toHaveAttribute(
+    'href',
+    '/production-queue',
+  );
+  expect(within(nav).queryByRole('link', { name: /procurement/i })).not.toBeInTheDocument();
+  expect(within(nav).queryByRole('link', { name: /catalogue gate/i })).not.toBeInTheDocument();
+});
+
+it('shows no staff shortcuts for a staff_admin granted none of the ops permissions', () => {
+  useAuthStore.setState({
+    user: { ...testUser, role: 'staff_admin', company_id: null, permissions: [] },
+    status: 'ready',
+    error: null,
+  });
+  renderHeader();
+
+  const nav = screen.getByRole('navigation', { name: /primary/i });
+  expect(within(nav).queryByRole('link', { name: /catalogue gate/i })).not.toBeInTheDocument();
+  expect(within(nav).queryByRole('link', { name: /^production$/i })).not.toBeInTheDocument();
+  expect(within(nav).queryByRole('link', { name: /procurement/i })).not.toBeInTheDocument();
+});
+
+it('mirrors the same permission filtering in the mobile drawer', async () => {
+  const user = userEvent.setup();
+  useAuthStore.setState({
+    user: { ...testUser, role: 'staff_admin', company_id: null, permissions: ['procurement.view'] },
+    status: 'ready',
+    error: null,
+  });
+  renderHeader();
+
+  await user.click(screen.getByRole('button', { name: /open menu/i }));
+  const drawer = screen.getByRole('navigation', { name: /mobile/i });
+  expect(within(drawer).getByRole('link', { name: /procurement/i })).toHaveAttribute(
+    'href',
+    '/procurement',
+  );
+  expect(within(drawer).queryByRole('link', { name: /^production$/i })).not.toBeInTheDocument();
+  expect(within(drawer).queryByRole('link', { name: /catalogue gate/i })).not.toBeInTheDocument();
 });
 
 it('labels the quotes link "Quotes" for staff and "My Orders" for buyers', () => {

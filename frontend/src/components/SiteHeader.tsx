@@ -10,7 +10,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useCartStore } from '../stores/cartStore';
 import { CATEGORIES } from '../lib/categories';
-import { isStaffRole } from '../lib/roles';
+import { hasPermission, isStaffRole } from '../lib/roles';
 import { Badge, Button, Input, Logo, useTheme, cn } from '../ui';
 import type { User } from '../types';
 
@@ -30,6 +30,15 @@ export default function SiteHeader() {
   const cartCount = useCartStore((s) => s.lines.length);
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Each staff shortcut is gated on the SAME granular permission its route
+  // enforces (see App.tsx's ProtectedRoute permission props / StaffLayout's
+  // useStaffNav), so a restricted staff_admin never sees a link that would
+  // just bounce them back to /dashboard.
+  const showCatalogue = hasPermission(user, 'products.view');
+  const showProduction = hasPermission(user, 'production.view');
+  const showProcurement = hasPermission(user, 'procurement.view');
+  const showStaffNav = showCatalogue || showProduction || showProcurement;
 
   const onSearch = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -62,18 +71,24 @@ export default function SiteHeader() {
           <NavLink to="/gift-ideas" className={navLinkClass}>
             Gift ideas
           </NavLink>
-          {isStaffRole(user?.role) && (
+          {showStaffNav && (
             <>
               <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-              <NavLink to="/catalogue-admin" className={navLinkClass}>
-                Catalogue gate
-              </NavLink>
-              <NavLink to="/production-queue" className={navLinkClass}>
-                Production
-              </NavLink>
-              <NavLink to="/procurement" className={navLinkClass}>
-                Procurement
-              </NavLink>
+              {showCatalogue && (
+                <NavLink to="/catalogue-admin" className={navLinkClass}>
+                  Catalogue gate
+                </NavLink>
+              )}
+              {showProduction && (
+                <NavLink to="/production-queue" className={navLinkClass}>
+                  Production
+                </NavLink>
+              )}
+              {showProcurement && (
+                <NavLink to="/procurement" className={navLinkClass}>
+                  Procurement
+                </NavLink>
+              )}
             </>
           )}
         </nav>
@@ -349,6 +364,11 @@ function MobileDrawer({
   const panelRef = useRef<HTMLElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // Same per-link permission gating as the desktop nav (see SiteHeader above).
+  const showCatalogue = hasPermission(user, 'products.view');
+  const showProduction = hasPermission(user, 'production.view');
+  const showProcurement = hasPermission(user, 'procurement.view');
+
   // Escape to close + Tab focus trap (mirrors ui/Modal.tsx).
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -458,17 +478,23 @@ function MobileDrawer({
                   </NavLink>
                 </>
               )}
-              {isStaffRole(user?.role) && (
+              {(showCatalogue || showProduction || showProcurement) && (
                 <>
-                  <NavLink to="/catalogue-admin" onClick={onClose} className={navLinkClass}>
-                    Catalogue gate
-                  </NavLink>
-                  <NavLink to="/production-queue" onClick={onClose} className={navLinkClass}>
-                    Production
-                  </NavLink>
-                  <NavLink to="/procurement" onClick={onClose} className={navLinkClass}>
-                    Procurement
-                  </NavLink>
+                  {showCatalogue && (
+                    <NavLink to="/catalogue-admin" onClick={onClose} className={navLinkClass}>
+                      Catalogue gate
+                    </NavLink>
+                  )}
+                  {showProduction && (
+                    <NavLink to="/production-queue" onClick={onClose} className={navLinkClass}>
+                      Production
+                    </NavLink>
+                  )}
+                  {showProcurement && (
+                    <NavLink to="/procurement" onClick={onClose} className={navLinkClass}>
+                      Procurement
+                    </NavLink>
+                  )}
                 </>
               )}
               {/* Buyers get explicit account links above; AccountLink now only
