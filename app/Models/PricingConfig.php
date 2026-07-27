@@ -36,10 +36,28 @@ class PricingConfig extends Model
     private const CACHE_TTL_SECONDS = 30;
 
     /**
+     * Sentinel persisted in the shared cache to mark a genuinely-absent
+     * group:key. `Cache::remember()` treats a callback result of `null` as a
+     * cache miss and never stores it (Laravel's Repository::get() can't tell
+     * "stored null" from "nothing stored"), so without this an absent key
+     * would hit the DB on every single read. Values are decoded from JSON via
+     * the 'array' cast (json_decode(..., true)), which only ever yields
+     * scalars/arrays - never this exact string - so there's no collision risk
+     * with a real config value.
+     */
+    private const ABSENT_SENTINEL = "\0PricingConfig::ABSENT\0";
+
+    /**
      * Request-scoped memo of resolved group:key => value, layered on top of the
      * shared cache. Collapses repeated reads within a single request to one
      * lookup; the shared cache collapses reads across requests and bounds
      * cross-process staleness to CACHE_TTL_SECONDS.
+     *
+     * Cleared at the start of every queued job (see AppServiceProvider::boot(),
+     * which listens for JobProcessing) so a long-lived `queue:work` process -
+     * which never restarts between jobs - can't keep serving a value read
+     * before an admin's edit. php-fpm needs no such hook: each request is a
+     * fresh process, so this memo is empty every time.
      *
      * @var array<string, mixed>
      */
@@ -76,14 +94,16 @@ class PricingConfig extends Model
         $memoKey = $group.':'.$key;
 
         if (! array_key_exists($memoKey, static::$memo)) {
-            static::$memo[$memoKey] = Cache::remember(
+            $cached = Cache::remember(
                 static::cacheKey($group, $key),
                 self::CACHE_TTL_SECONDS,
                 static fn () => static::query()
                     ->where('group', $group)
                     ->where('key', $key)
-                    ->first()?->value,
+                    ->first()?->value ?? self::ABSENT_SENTINEL,
             );
+
+            static::$memo[$memoKey] = $cached === self::ABSENT_SENTINEL ? null : $cached;
         }
 
         return static::$memo[$memoKey] ?? $default;

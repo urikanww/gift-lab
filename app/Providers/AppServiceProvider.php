@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Events\OrderTrackingUpdated;
 use App\Events\QuoteStateChanged;
+use App\Models\PricingConfig;
 use App\Models\Quote;
 use App\Models\SavedAddress;
 use App\Policies\QuotePolicy;
@@ -31,6 +32,7 @@ use App\Services\Scraper\HttpShopeeAffiliateClient;
 use App\Support\Broadcasting;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -232,6 +234,23 @@ class AppServiceProvider extends ServiceProvider
         // quote in READY) dispatch OrderTrackingUpdated directly in QueueService.
         Event::listen(QuoteStateChanged::class, function (QuoteStateChanged $event): void {
             Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($event->quote));
+        });
+
+        // PricingConfig::$memo is a process-global static, so it lives for the
+        // whole process rather than one request. Under php-fpm that's harmless
+        // (each request IS a fresh process), but `queue:work` (see
+        // deploy/supervisor/giftlab-worker.conf, --max-time=3600) keeps a
+        // worker process alive for up to an hour across many jobs: without
+        // this, the first job to read a pricing key would pin it for every
+        // later job in that worker, even after an admin edits it. Flushing on
+        // JobProcessing (fired immediately before each job's handle()) gives
+        // every job a clean memo, matching php-fpm's per-request freshness.
+        // (Laravel Octane, which reuses one process across requests the same
+        // way, isn't installed in this app - no octane/octane dependency, no
+        // config/octane.php - so there's no RequestReceived event to hook yet;
+        // add the same flushMemo() call to it if Octane is ever adopted.)
+        Event::listen(JobProcessing::class, static function (): void {
+            PricingConfig::flushMemo();
         });
     }
 
