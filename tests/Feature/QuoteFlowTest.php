@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Events\QuoteStateChanged;
 use App\Models\Company;
 use App\Models\Product;
+use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
 use App\Models\Variant;
@@ -12,6 +13,7 @@ use App\Services\QuoteService;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Sanctum\Sanctum;
@@ -232,4 +234,83 @@ it('omits the company name on buyer quote listings', function (): void {
 
     $response = $this->getJson('/api/quotes')->assertOk();
     expect($response->json('data.0'))->not->toHaveKey('company_name');
+});
+
+/**
+ * Run the staff quotes index and return how many queries it took.
+ */
+function staffQuotesIndexQueryCount(): int
+{
+    $count = 0;
+    DB::listen(function () use (&$count): void {
+        $count++;
+    });
+
+    test()->getJson('/api/quotes')->assertOk();
+
+    return $count;
+}
+
+/**
+ * Create a SENT quote with an open (SENT) proof: exactly the row shape that
+ * drives ReminderSchedule::awaitingCount() and ProofResource's product_name
+ * per proof.
+ */
+function quoteAwaitingReminderWithProof(int|string $companyId, string $state = 'SENT'): Quote
+{
+    $quote = Quote::factory()->create([
+        'company_id' => $companyId,
+        'state' => $state,
+        'reminders_sent' => 0,
+    ]);
+    Proof::factory()->create(['quote_id' => $quote->id, 'state' => 'SENT']);
+
+    return $quote;
+}
+
+it('keeps the staff quotes index query count flat as SENT/PROOFING rows are added', function (): void {
+    Sanctum::actingAs($this->staff);
+
+    quoteAwaitingReminderWithProof($this->company->id, 'SENT');
+    quoteAwaitingReminderWithProof($this->company->id, 'PROOFING');
+    $small = staffQuotesIndexQueryCount();
+
+    foreach (range(1, 8) as $ignored) {
+        quoteAwaitingReminderWithProof($this->company->id, 'SENT');
+        quoteAwaitingReminderWithProof($this->company->id, 'PROOFING');
+    }
+    $large = staffQuotesIndexQueryCount();
+
+    // Each SENT/ARTWORK_APPROVED row's reminder block used to run a fresh
+    // proofs()->where('state','SENT')->count() query (ReminderSchedule::
+    // awaitingCount), and each proof's product_name used to re-fetch its
+    // lineItem->product - both N+1 without eager-loading proofs.lineItem.product
+    // in QuoteController::index(). Without that fix this climbs by roughly one
+    // query per added row; fixed, it stays flat regardless of row count.
+    expect($large)->toBeLessThanOrEqual($small + 1);
+});
+
+it('still surfaces the proof-chase reminder on a PROOFING row in the staff index (not dropped by eager-loading)', function (): void {
+    Sanctum::actingAs($this->staff);
+
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOFING',
+        'reminders_sent' => 0,
+    ]);
+    Proof::factory()->create([
+        'quote_id' => $quote->id,
+        'state' => 'SENT',
+        'created_at' => now()->subDay(),
+    ]);
+
+    $response = $this->getJson('/api/quotes')->assertOk();
+    $row = collect($response->json('data'))->firstWhere('id', $quote->id);
+
+    // ReminderSchedule::pending() only recognises a PROOFING wait when the
+    // proofs relation is loaded - dropping the eager-load silently nulls this
+    // out instead of erroring, so assert the actual reminder content.
+    expect($row['reminder']['next'])->not->toBeNull()
+        ->and($row['reminder']['next']['kind'])->toBe('proof')
+        ->and($row['reminder']['next']['awaiting_count'])->toBe(1);
 });

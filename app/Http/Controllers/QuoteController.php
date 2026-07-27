@@ -34,7 +34,12 @@ class QuoteController extends Controller
         $quotes = Quote::query()
             ->when(! $user->isStaff(), fn ($q) => $q->where('company_id', $user->company_id))
             // Staff see all companies - load the name so the UI can label rows.
-            ->when($user->isStaff(), fn ($q) => $q->with('company'))
+            // proofs.lineItem.product is loaded too: QuoteResource's staff-only
+            // reminder block reads $quote->proofs (ReminderSchedule::awaitingCount
+            // and ::pending) and ProofResource reads each proof's lineItem->product
+            // for product_name - without both eager-loaded here, either fires a
+            // fresh query per SENT/PROOFING row (N+1 that scales with page size).
+            ->when($user->isStaff(), fn ($q) => $q->with(['company', 'proofs.lineItem.product']))
             ->when($request->filled('q'), function ($query) use ($request): void {
                 // ?q[]=abc arrives as an array; casting that to string is a TypeError
                 // (a 500 on a public search box), so ignore anything not a string.
