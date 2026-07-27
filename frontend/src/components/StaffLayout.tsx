@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
 import { hasPermission } from '../lib/roles';
@@ -58,14 +58,27 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const items = useStaffNav();
+  const location = useLocation();
   return (
     <nav className="flex flex-col gap-1" aria-label="Staff">
-      {items.map((it) => (
-        <NavLink key={it.to} to={it.to} onClick={onNavigate} className={linkClass}>
-          <span>{it.label}</span>
-          {it.badge ? <Badge tone="brand" size="sm">{it.badge}</Badge> : null}
-        </NavLink>
-      ))}
+      {items.map((it) => {
+        // The order-detail page (`orders/:reference`) is reached from the
+        // Quotes desk but its route lives outside `/quotes`, so NavLink's own
+        // matching leaves the sidebar with nothing lit while staff are looking
+        // at an order. Light up Quotes for that route too.
+        const extraActive = it.to === '/quotes' && location.pathname.startsWith('/orders/');
+        return (
+          <NavLink
+            key={it.to}
+            to={it.to}
+            onClick={onNavigate}
+            className={({ isActive }) => linkClass({ isActive: isActive || extraActive })}
+          >
+            <span>{it.label}</span>
+            {it.badge ? <Badge tone="brand" size="sm">{it.badge}</Badge> : null}
+          </NavLink>
+        );
+      })}
     </nav>
   );
 }

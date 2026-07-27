@@ -1307,3 +1307,37 @@ it('hides Pay now where buyer payment is not available', () => {
   expect(screen.queryByRole('button', { name: /pay now/i })).not.toBeInTheDocument();
   expect(screen.getByText(/We’ll send your invoice/i)).toBeInTheDocument();
 });
+
+// Staff arrive at an order from the /quotes console list, but the page never
+// gave them a way back other than the browser Back button - the breadcrumb
+// was buyer-only. A staff-visible link restores that path.
+it('gives staff a back-to-Quotes link, since the buyer breadcrumb is hidden for them', () => {
+  asStaff();
+  seedQuote('SENT');
+  renderPage();
+
+  const back = screen.getByRole('link', { name: /back to quotes/i });
+  expect(back).toHaveAttribute('href', '/quotes');
+});
+
+it('still shows the buyer breadcrumb, unchanged, for a buyer', () => {
+  asBuyer();
+  seedQuote('SENT');
+  renderPage();
+
+  expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /back to quotes/i })).not.toBeInTheDocument();
+});
+
+// The header used to render its own state pill right above the OrderStatus
+// card's badge, which leads with the same humanizeState(quote.state) - the same
+// label appeared twice within ~40px. The card's badge is the one worth keeping:
+// it carries the next-step/step-N-of-9 context the header pill lacked.
+it('shows the order state badge once, not duplicated between the header and the status card', () => {
+  asStaff();
+  seedQuote('SENT');
+  renderPage();
+
+  // "Sent" is the humanized label for the SENT state.
+  expect(screen.getAllByText('Sent')).toHaveLength(1);
+});

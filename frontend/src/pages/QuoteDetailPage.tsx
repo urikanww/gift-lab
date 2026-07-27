@@ -7,7 +7,7 @@ import { EmptyState as LegacyEmpty, ErrorState } from '../components/ui/States';
 import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
 import { isStaffRole } from '../lib/roles';
-import { humanizeState, proofStateTone, quoteStateTone } from '../lib/quoteStatus';
+import { humanizeState, proofStateTone } from '../lib/quoteStatus';
 import TrackingQr from '../components/TrackingQr';
 import Breadcrumb from '../components/Breadcrumb';
 import OrderStatus from '../components/quote/OrderStatus';
@@ -858,6 +858,20 @@ export default function QuoteDetailPage() {
           </Motion>
         )}
 
+        {/* Staff: the breadcrumb above is buyer-only, and /orders/:reference
+            never matches the /quotes sidebar item, so this was staff's only way
+            back to the console list without the browser Back button. */}
+        {isStaff && (
+          <Motion variants={staggerItem}>
+            <Link
+              to="/quotes"
+              className="inline-flex w-fit items-center gap-1 text-sm text-fg-muted hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
+              <span aria-hidden="true">←</span> Back to Quotes
+            </Link>
+          </Motion>
+        )}
+
         {/* Header */}
         <Motion variants={staggerItem}>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -898,9 +912,9 @@ export default function QuoteDetailPage() {
                   Track order
                 </Button>
               )}
-              <Badge tone={quoteStateTone(quote.state)} size="md" dot>
-                {humanizeState(quote.state)}
-              </Badge>
+              {/* The state badge itself lives just below, on the OrderStatus
+                  card, which carries the richer next-step/step-N-of-9 context -
+                  a second plain badge here only repeated the same label. */}
             </div>
           </div>
         </Motion>
