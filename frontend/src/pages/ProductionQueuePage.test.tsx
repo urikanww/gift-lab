@@ -103,3 +103,18 @@ it('toasts the API error when a button-driven advance fails', async () => {
   expect(await screen.findByText('422 job is not READY')).toBeInTheDocument();
   expect(advance).toHaveBeenCalledWith(5, 'IN_PRODUCTION', undefined, undefined);
 });
+
+// Bug: the "Create NinjaVan shipment" button is disabled on first load for
+// every job because addressReady only ever gets populated by opening the
+// DeliveryAddressPanel - even a job that already has a saved address renders
+// with an unexplained, permanently-greyed primary action. The production job
+// resource does not expose address-readiness, so the fix is to explain the
+// gate rather than silently leave it disabled.
+it('explains why the create-shipment button is disabled before the address panel is opened', async () => {
+  seed({ jobs: [{ ...job, state: 'IN_PRODUCTION' }] });
+  renderPage();
+
+  const button = screen.getByRole('button', { name: /create ninjavan shipment/i });
+  expect(button).toBeDisabled();
+  expect(screen.getByText(/open delivery address to confirm before booking/i)).toBeInTheDocument();
+});

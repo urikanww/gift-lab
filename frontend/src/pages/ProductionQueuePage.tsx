@@ -423,19 +423,31 @@ export default function ProductionQueuePage() {
                     )}
 
                     {j.state === 'IN_PRODUCTION' && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        fullWidth
-                        loading={creatingShipmentId === j.id}
-                        disabled={
-                          !addressReady.has(j.quote_id) ||
-                          (creatingShipmentId !== null && creatingShipmentId !== j.id)
-                        }
-                        onClick={() => void onCreateShipment(j.id)}
-                      >
-                        Create NinjaVan shipment
-                      </Button>
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          fullWidth
+                          loading={creatingShipmentId === j.id}
+                          disabled={
+                            !addressReady.has(j.quote_id) ||
+                            (creatingShipmentId !== null && creatingShipmentId !== j.id)
+                          }
+                          onClick={() => void onCreateShipment(j.id)}
+                        >
+                          Create NinjaVan shipment
+                        </Button>
+                        {/* addressReady only ever gets set by opening the panel below
+                            (onLoaded/onSaved) - the queue resource doesn't expose
+                            address-readiness, so on first load this button is disabled
+                            for every job, even ones with a saved address. Explain the
+                            gate instead of leaving an unexplained disabled primary action. */}
+                        {!addressReady.has(j.quote_id) && (
+                          <p className="text-xs text-fg-subtle">
+                            Open delivery address to confirm before booking.
+                          </p>
+                        )}
+                      </>
                     )}
 
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
