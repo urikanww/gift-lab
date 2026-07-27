@@ -5,7 +5,23 @@ import { getEcho } from '../lib/echo';
 import { Button, Card, Input } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import { TrackResultView } from '../components/TrackResultView';
-import type { TrackResult } from '../types';
+import type { Shipment, TrackResult } from '../types';
+
+/**
+ * Shape of the `.order.tracking-updated` broadcast. shipments/items_* were
+ * added alongside status/status_at/delivered_at on Shipment - older backend
+ * builds (or a flaky payload) might still omit them, so every field here is
+ * optional and the merge below falls back to the previous snapshot per-field.
+ */
+interface OrderTrackingUpdatedEvent {
+  stage: string;
+  stage_label: string;
+  cancelled: boolean;
+  updated_at: string | null;
+  shipments?: Shipment[];
+  items_completed?: number;
+  items_total?: number;
+}
 
 /**
  * Login-free order tracking. Opaque code + first-5-of-email → read-only status.
@@ -27,16 +43,22 @@ export default function TrackPage() {
     const channelName = `track.${reference}`;
     getEcho()
       .channel(channelName)
-      .listen(
-        '.order.tracking-updated',
-        (e: { stage: string; stage_label: string; cancelled: boolean; updated_at: string | null }) => {
-          setResult((prev) =>
-            prev
-              ? { ...prev, stage: e.stage, stage_label: e.stage_label, cancelled: e.cancelled, updated_at: e.updated_at }
-              : prev,
-          );
-        },
-      );
+      .listen('.order.tracking-updated', (e: OrderTrackingUpdatedEvent) => {
+        setResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                stage: e.stage,
+                stage_label: e.stage_label,
+                cancelled: e.cancelled,
+                updated_at: e.updated_at,
+                shipments: e.shipments ?? prev.shipments,
+                items_completed: e.items_completed ?? prev.items_completed,
+                items_total: e.items_total ?? prev.items_total,
+              }
+            : prev,
+        );
+      });
     return () => {
       getEcho().leaveChannel(channelName);
     };

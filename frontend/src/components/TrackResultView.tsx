@@ -70,29 +70,48 @@ export function TrackResultView({ result }: { result: TrackResult }) {
           )}
 
         {result.shipments?.length > 0 && (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <p className="text-2xs uppercase tracking-wide text-fg-subtle">Shipments</p>
             {result.shipments.map((s, i) => (
-              <p key={i} className="text-sm text-fg">
-                {s.tracking_url ? (
-                  <a href={s.tracking_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                    Track with {s.carrier_label ?? 'carrier'} ({s.ref})
-                  </a>
+              <div key={i} className="flex flex-col gap-0.5">
+                <p className="text-sm text-fg">
+                  {s.tracking_url ? (
+                    <a href={s.tracking_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                      Track with {s.carrier_label ?? 'carrier'} ({s.ref})
+                    </a>
+                  ) : (
+                    <span>
+                      {s.carrier_label ? `${s.carrier_label}: ` : ''}
+                      {s.ref}
+                    </span>
+                  )}
+                </p>
+                {s.delivered_at ? (
+                  <p className="text-xs text-success">Delivered {new Date(s.delivered_at).toLocaleDateString()}</p>
                 ) : (
-                  <span>
-                    {s.carrier_label ? `${s.carrier_label}: ` : ''}
-                    {s.ref}
-                  </span>
+                  s.status && (
+                    <p className="text-xs text-fg-muted">
+                      {s.status}
+                      {s.status_at ? ` · ${new Date(s.status_at).toLocaleString()}` : ''}
+                    </p>
+                  )
                 )}
-              </p>
+              </div>
             ))}
           </div>
         )}
 
-        {result.updated_at && (
-          <p className="text-xs text-fg-subtle">
-            Last updated {new Date(result.updated_at).toLocaleString()}
-          </p>
+        {(result.placed_at || result.updated_at) && (
+          <div className="flex flex-col gap-0.5">
+            {result.placed_at && (
+              <p className="text-xs text-fg-subtle">Order placed {new Date(result.placed_at).toLocaleDateString()}</p>
+            )}
+            {result.updated_at && (
+              <p className="text-xs text-fg-subtle">
+                Last updated {new Date(result.updated_at).toLocaleString()}
+              </p>
+            )}
+          </div>
         )}
       </Card>
     </Motion>
