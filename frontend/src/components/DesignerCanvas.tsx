@@ -129,6 +129,13 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
   // Print-zone clamp, defined inside the canvas-lifecycle effect (it closes
   // over the live dims) but needed by add/band/nudge handlers outside it.
   const clampToPrintAreaRef = useRef<((obj: FabricObject) => void) | null>(null);
+  // Size-band clamp, same story - also reused by the resize effect below so a
+  // rescaled logo still respects its band after a container resize.
+  const clampToBandRef = useRef<((obj: FabricObject) => void) | null>(null);
+  // emitPlacement (defined further down) reads `dims` and the `onPlacementChange`
+  // prop; the canvas-lifecycle effect only runs once (see below) so it must call
+  // through this ref rather than close over a stale copy.
+  const emitPlacementRef = useRef<() => void>(() => {});
   const [captured, setCaptured] = useState(false);
   const animate = useReducedMotionSafe();
   const { toast } = useOptionalToast();
@@ -151,6 +158,12 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
   // the same aspect ratio as the requested width/height.
   const aspect = height / width;
   const [dims, setDims] = useState({ w: width, h: height });
+  // Read inside the canvas-lifecycle effect's closures (registered once - see
+  // below) so they always see the LIVE size, not the size at mount time.
+  const dimsRef = useRef(dims);
+  // Last dims the fabric canvas was actually sized to, so the resize effect can
+  // compute a rescale factor (and skip work when nothing changed).
+  const prevDimsRef = useRef(dims);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -195,8 +208,8 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     // the S/M/L label always reflects the actual footprint the buyer pays for.
     const clampToBand = (obj: FabricObject) => {
       const band = LOGO_BANDS[logoSizeRef.current];
-      const minW = dims.w * band.min;
-      const maxW = dims.w * band.max;
+      const minW = dimsRef.current.w * band.min;
+      const maxW = dimsRef.current.w * band.max;
       const w = obj.getScaledWidth();
       const factor = w > maxW ? maxW / w : w < minW ? minW / w : 1;
       if (factor !== 1) {
@@ -205,6 +218,7 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
         obj.setCoords();
       }
     };
+    clampToBandRef.current = clampToBand;
     const onScaling = (e: { target?: FabricObject }) => {
       if (e.target instanceof FabricImage) clampToBand(e.target);
       if (e.target) clampToPrintArea(e.target);
@@ -218,21 +232,21 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
       // Drag/scale finished - retract the live guides.
       setGuides({ x: null, y: null });
       // Notify any external 3D preview of the settled placement.
-      emitPlacement();
+      emitPlacementRef.current();
     };
     const onRotating = (e: { target?: FabricObject }) => {
       if (e.target) clampToPrintArea(e.target);
-      emitPlacement();
+      emitPlacementRef.current();
     };
     // Keep every design element inside the producible print zone (audit C7/G5):
     // the at-add clamp alone let a drag push the logo outside the dashed frame
     // - or fully off-canvas - and that uncorrected placement became the print
     // file (C9). Applied on move, scale, rotate and nudge.
     const clampToPrintArea = (obj: FabricObject) => {
-      const minX = dims.w * PRINT_INSET;
-      const maxX = dims.w * (1 - PRINT_INSET);
-      const minY = dims.h * PRINT_INSET;
-      const maxY = dims.h * (1 - PRINT_INSET);
+      const minX = dimsRef.current.w * PRINT_INSET;
+      const maxX = dimsRef.current.w * (1 - PRINT_INSET);
+      const minY = dimsRef.current.h * PRINT_INSET;
+      const maxY = dimsRef.current.h * (1 - PRINT_INSET);
       obj.setCoords();
       const br = obj.getBoundingRect();
       let dx = 0;
@@ -254,8 +268,8 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     const onMoving = (e: { target?: FabricObject }) => {
       const obj = e.target;
       if (!obj) return;
-      const snapsX = [dims.w / 2, dims.w / 3, (dims.w * 2) / 3];
-      const snapsY = [dims.h / 2, dims.h / 3, (dims.h * 2) / 3];
+      const snapsX = [dimsRef.current.w / 2, dimsRef.current.w / 3, (dimsRef.current.w * 2) / 3];
+      const snapsY = [dimsRef.current.h / 2, dimsRef.current.h / 3, (dimsRef.current.h * 2) / 3];
       let gx: number | null = null;
       let gy: number | null = null;
       for (const s of snapsX) {
@@ -275,7 +289,7 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
       obj.setCoords();
       clampToPrintArea(obj);
       setGuides({ x: gx, y: gy });
-      emitPlacement();
+      emitPlacementRef.current();
     };
     // Snapshot ONCE at the start of a drag/resize gesture (not on every
     // incremental move/scale event) so Ctrl/Cmd+Z reverses the whole transform.
@@ -292,6 +306,48 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
       void canvas.dispose();
       canvasRef.current = null;
     };
+    // Mount once: this used to re-run (dispose + rebuild the fabric canvas) on
+    // every [dims.w, dims.h] change, which silently wiped every placed object
+    // on a container resize/rotation while the parent's hasLogo/price state
+    // kept advertising a logo that no longer existed on the canvas (and the
+    // print export came back blank). The handlers above read the live size via
+    // dimsRef (kept in sync by the resize effect below) instead of closing
+    // over `dims`, so a single long-lived canvas instance stays correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resize the SAME fabric canvas instead of tearing it down: rescale + move
+  // every existing object by the container's size delta so a mid-design
+  // resize (responsive breakpoint change, orientation change) never loses the
+  // buyer's placed artwork. hasLogo/objectCount are untouched here because
+  // nothing is added or removed - they stay exactly in sync with what's
+  // actually on the canvas.
+  useEffect(() => {
+    dimsRef.current = dims;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const prev = prevDimsRef.current;
+    if (prev.w === dims.w && prev.h === dims.h) return;
+    const factor = prev.w > 0 ? dims.w / prev.w : 1;
+    canvas.setDimensions({ width: dims.w, height: dims.h });
+    if (factor !== 1) {
+      canvas.getObjects().forEach((obj) => {
+        obj.set({
+          left: (obj.left ?? 0) * factor,
+          top: (obj.top ?? 0) * factor,
+          scaleX: (obj.scaleX ?? 1) * factor,
+          scaleY: (obj.scaleY ?? 1) * factor,
+        });
+        obj.setCoords();
+        // Re-apply the band/zone clamps at the new size: uniform rescale keeps
+        // relative placement, but rounding can nudge a logo a pixel outside
+        // its band or the print frame.
+        if (obj instanceof FabricImage) clampToBandRef.current?.(obj);
+        clampToPrintAreaRef.current?.(obj);
+      });
+    }
+    canvas.requestRenderAll();
+    prevDimsRef.current = dims;
   }, [dims.w, dims.h]);
 
   // Backdrop <img> load state - hide it (and fall back to the plain stage)
@@ -318,6 +374,11 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     const { fu, fv } = canvasToZoneFraction({ x: img.left ?? 0, y: img.top ?? 0 }, px());
     onPlacementChange?.({ fu, fv, angle: img.angle ?? 0 });
   };
+  // Keep the ref the (mount-once) canvas-lifecycle effect calls through
+  // pointed at the latest closure, so it always reads the live dims/prop.
+  useEffect(() => {
+    emitPlacementRef.current = emitPlacement;
+  });
   useImperativeHandle(
     ref,
     () => ({
@@ -434,6 +495,11 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     // 44px touch hit-area on the corner handles (audit C5-mobile) - the
     // rendered handle stays small; only the touch target grows.
     img.set({ centeredRotation: true, touchCornerSize: 44 });
+    // Owner rule: only ONE artwork file may be on the canvas at a time - a new
+    // upload REPLACES whatever logo is already placed rather than stacking a
+    // second image on top of it (the pushHistory() above already snapshotted
+    // the prior layout, so Ctrl/Cmd+Z brings the replaced logo back).
+    canvas.getObjects().filter((o) => o instanceof FabricImage).forEach((o) => canvas.remove(o));
     canvas.add(img);
     canvas.setActiveObject(img);
     canvas.requestRenderAll();
@@ -726,7 +792,9 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
     e.preventDefault();
     setDragOver(false);
     // Validate the dropped file through the SAME gate as the picker - a
-    // rejected drop must explain itself, never vanish (audit C1/C2).
+    // rejected drop must explain itself, never vanish (audit C1/C2). Only the
+    // first file is ever used (single-artwork rule) even if several were
+    // dragged in at once - handleLogoUpload replaces, it never stacks.
     const file = e.dataTransfer.files[0];
     if (file) void handleLogoUpload(file);
   };
@@ -915,12 +983,19 @@ const DesignerCanvas = forwardRef<DesignerCanvasHandle, DesignerCanvasProps>(fun
               >
                 <UploadIcon />
                 <span className="text-sm font-medium text-fg">Choose an image</span>
-                <span className="text-2xs text-fg-subtle">PNG or JPEG, up to {MAX_UPLOAD_MB} MB</span>
+                <span className="text-2xs text-fg-subtle">
+                  PNG or JPEG, up to {MAX_UPLOAD_MB} MB · one image - uploading again replaces it
+                </span>
                 <input
                   type="file"
                   accept="image/png,image/jpeg"
+                  multiple={false}
                   className="sr-only"
                   onChange={(e) => {
+                    // Only a single artwork may ever be on the canvas (owner
+                    // rule) - the input isn't `multiple` so the OS picker can't
+                    // return more than one file, but stay defensive and take
+                    // just the first regardless of how the event was raised.
                     const file = e.target.files?.[0];
                     if (file) void handleLogoUpload(file);
                     e.target.value = '';

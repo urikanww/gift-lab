@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ThemeProvider } from '../ui';
 import type { DesignerCanvasHandle } from './DesignerCanvas';
 
@@ -89,6 +89,18 @@ beforeEach(() => {
     observe() {}
     unobserve() {}
     disconnect() {}
+  };
+  // jsdom never actually decodes an <img>, so the print-quality probe
+  // (`new Image()` + onload) inside handleLogoUpload would hang forever.
+  // Resolve it deterministically so a real upload flow can complete in a test.
+  (globalThis as any).Image = class {
+    naturalWidth = 2000;
+    naturalHeight = 2000;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_v: string) {
+      queueMicrotask(() => this.onload?.());
+    }
   };
 });
 
@@ -243,6 +255,122 @@ it('exposes an imperative handle whose zone-fraction placement round-trips', asy
 
   // The live render surface is reachable for a THREE.CanvasTexture.
   expect(ref.current!.getCanvasElement()).not.toBeNull();
+});
+
+it('survives a container resize: same canvas instance, placed objects untouched', async () => {
+  // Regression for the resize-wipes-artwork bug: a dims change used to
+  // dispose() and rebuild the fabric canvas, dropping every placed object
+  // while the parent's hasLogo/price state kept advertising a logo that no
+  // longer existed on the canvas.
+  const { default: DesignerCanvas } = await import('./DesignerCanvas');
+  const countBefore = created.length;
+  const { rerender } = render(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} width={500} height={380} />
+    </ThemeProvider>,
+  );
+
+  expect(created.length).toBe(countBefore + 1);
+  const canvas = lastCanvas();
+  const img = new FakeImage();
+  canvas.objects.push(img);
+
+  // Simulate a container/orientation resize (the real ResizeObserver path
+  // recomputes `dims` from the container width; changing the `width` prop
+  // drives the exact same measure()-then-setDims code path in jsdom, where
+  // clientWidth is always 0).
+  rerender(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} width={300} height={228} />
+    </ThemeProvider>,
+  );
+
+  // No new fabric canvas was constructed, and the old one was never disposed.
+  expect(created.length).toBe(countBefore + 1);
+  expect(canvas.dispose).not.toHaveBeenCalled();
+  // The resize is applied via setDimensions, not a dispose+recreate.
+  expect(canvas.setDimensions).toHaveBeenCalledWith({ width: 300, height: 228 });
+  // Crucially, the previously-placed object is still there.
+  expect(canvas.getObjects()).toContain(img);
+  expect(canvas.getObjects().length).toBe(1);
+});
+
+it('rescales a placed object proportionally on resize instead of leaving it at stale pixel coords', async () => {
+  const { default: DesignerCanvas } = await import('./DesignerCanvas');
+  const { rerender } = render(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} width={500} height={380} />
+    </ThemeProvider>,
+  );
+  const canvas = lastCanvas();
+  const img = new FakeImage();
+  img.left = 250;
+  img.top = 190;
+  img.scaleX = 1;
+  img.scaleY = 1;
+  canvas.objects.push(img);
+
+  rerender(
+    <ThemeProvider>
+      <DesignerCanvas onCapture={() => {}} width={250} height={190} />
+    </ThemeProvider>,
+  );
+
+  // Halving the canvas footprint should halve the object's position/scale so
+  // it stays in the same relative spot rather than sitting at now-oversized
+  // absolute coordinates (or being lost entirely).
+  expect(img.left).toBeCloseTo(125, 0);
+  expect(img.top).toBeCloseTo(95, 0);
+  expect(img.scaleX).toBeCloseTo(0.5, 2);
+  expect(img.scaleY).toBeCloseTo(0.5, 2);
+});
+
+it('has no `multiple` attribute on the artwork file input (single-artwork rule)', async () => {
+  const { container } = await renderCanvas();
+  const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+  expect(input).toBeTruthy();
+  expect(input.multiple).toBe(false);
+});
+
+it('replaces the existing artwork instead of stacking a second upload', async () => {
+  const onLogoChange = vi.fn();
+  const { container } = await renderCanvas({ onLogoChange });
+  const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+  const file1 = new File(['first-logo'], 'logo1.png', { type: 'image/png' });
+  fireEvent.change(input, { target: { files: [file1] } });
+
+  await waitFor(() => {
+    expect(lastCanvas().getObjects().length).toBe(1);
+  });
+  const firstImg = lastCanvas().getObjects()[0];
+
+  const file2 = new File(['second-logo'], 'logo2.png', { type: 'image/png' });
+  fireEvent.change(input, { target: { files: [file2] } });
+
+  // Wait on `remove` specifically (rather than the object count, which is
+  // already 1 from the first upload and would make the wait a no-op) so the
+  // assertion only runs once the second upload's replace-logic has fired.
+  await waitFor(() => {
+    expect(lastCanvas().remove).toHaveBeenCalledTimes(1);
+  });
+  // Still exactly one artwork object, and it's the NEW one - the second
+  // upload replaced the first rather than stacking on top of it.
+  expect(lastCanvas().getObjects().length).toBe(1);
+  expect(lastCanvas().getObjects()[0]).not.toBe(firstImg);
+});
+
+it('selecting two files at once only ever uses the first (native single-file input)', async () => {
+  const { container } = await renderCanvas();
+  const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+  const file1 = new File(['a'], 'a.png', { type: 'image/png' });
+  const file2 = new File(['b'], 'b.png', { type: 'image/png' });
+  fireEvent.change(input, { target: { files: [file1, file2] } });
+
+  await waitFor(() => {
+    expect(lastCanvas().getObjects().length).toBe(1);
+  });
 });
 
 /* ----------------------------- test helpers ------------------------------ */
