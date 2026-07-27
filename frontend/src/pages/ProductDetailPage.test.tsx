@@ -141,6 +141,36 @@ it('renders no strip and claims no discount when the bulk config cannot be fetch
   expect(screen.queryByText(/discount/i)).not.toBeInTheDocument();
 });
 
+it('does not fire the tier-price call for a single-tier product (only the live-price probe)', async () => {
+  // MOQ already clears the bulk threshold -> tierQuantities is [minQty], a
+  // single-tier product. The tier strip never renders for this (gated on
+  // tierQuantities.length > 1), so probing it is pure waste against the
+  // rate-limited /price-estimate endpoint.
+  stubPdp({ minOrderQty: 100, bulk: { bulkQty: 50, discountPct: 10 } });
+  await renderPdp();
+
+  await waitFor(() =>
+    expect(screen.getByText(/bulk pricing is already applied/i)).toBeInTheDocument(),
+  );
+  expect(strip()).not.toBeInTheDocument();
+
+  // Only the live-price probe (for qty=100) should have fired - no separate
+  // tier-price call.
+  await waitFor(() => expect(catalogue.fetchTierPrices).toHaveBeenCalledTimes(1));
+  expect(catalogue.fetchTierPrices).toHaveBeenCalledWith(5, null, [100]);
+});
+
+it('still fetches tier prices (batched) for a multi-tier product, plus the live-price probe', async () => {
+  stubPdp({ minOrderQty: 25, bulk: { bulkQty: 50, discountPct: 10 } });
+  await renderPdp();
+
+  await waitFor(() => expect(tileButtons()).toHaveLength(2));
+  // One batched tier call ([25, 50]) + one live-price call ([25]).
+  await waitFor(() => expect(catalogue.fetchTierPrices).toHaveBeenCalledTimes(2));
+  expect(catalogue.fetchTierPrices).toHaveBeenCalledWith(5, null, [25, 50]);
+  expect(catalogue.fetchTierPrices).toHaveBeenCalledWith(5, null, [25]);
+});
+
 it('probes the derived quantities in a single batched request', async () => {
   stubPdp({ minOrderQty: 25, bulk: { bulkQty: 50, discountPct: 10 } });
   await renderPdp();

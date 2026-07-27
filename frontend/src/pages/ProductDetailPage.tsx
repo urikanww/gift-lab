@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Badge,
@@ -100,6 +100,10 @@ export default function ProductDetailPage() {
 
   const [tiers, setTiers] = useState<TierPrice[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
+  // Mirrors `tiers` for synchronous reads inside the live-price effect below,
+  // so it can reuse an already-fetched tier price without adding `tiers` to
+  // its dependency array (which would refire it on every tier refetch).
+  const tiersRef = useRef<TierPrice[]>([]);
 
   // The engine applies ONE discount at ONE threshold, so the strip has at most
   // two meaningful quantities. `bulk` is product-independent; null means we
@@ -181,18 +185,31 @@ export default function ProductDetailPage() {
 
   // ── Tier pricing - re-fetch when product or selected variant changes. ─────
   // Gated on the offer resolving: the quantities are derived from it, so
-  // probing earlier would price a strip we're about to replace.
+  // probing earlier would price a strip we're about to replace. Also gated on
+  // there being a real second tier: the strip only renders when
+  // tierQuantities.length > 1 (see ~444), so a single-tier product would
+  // otherwise burn a call against the rate-limited /price-estimate endpoint
+  // on a result that's never shown.
   useEffect(() => {
-    if (!product || !bulkResolved) return;
+    // Invalidate any cached tier price from a previous product/variant/tier
+    // set before deciding whether to (re)fetch below - otherwise the
+    // live-price effect could reuse a stale price that happens to share the
+    // same quantity as the new product's.
+    tiersRef.current = [];
+    setTiers([]);
+    if (!product || !bulkResolved || tierQuantities.length <= 1) return;
     let active = true;
     setTiersLoading(true);
     fetchTierPrices(product.id, selectedVariantId, tierQuantities)
       .then((res) => {
         if (!active) return;
         setTiers(res);
+        tiersRef.current = res;
       })
       .catch(() => {
-        if (active) setTiers([]);
+        if (!active) return;
+        setTiers([]);
+        tiersRef.current = [];
       })
       .finally(() => {
         if (active) setTiersLoading(false);
@@ -203,8 +220,15 @@ export default function ProductDetailPage() {
   }, [product?.id, selectedVariantId, bulkResolved, tierQuantities]);
 
   // ── Live price for the chosen quantity (reuses the tier-price endpoint). ──
+  // If the tier strip already priced this exact quantity, reuse that result
+  // instead of firing a second POST for the same line item.
   useEffect(() => {
     if (!product) return;
+    const cached = tiersRef.current.find((t) => t.qty === qty);
+    if (cached) {
+      setLivePrice({ unit: cached.unitPrice, currency: cached.currency });
+      return;
+    }
     let active = true;
     fetchTierPrices(product.id, selectedVariantId, [qty])
       .then((res) => {
