@@ -39,6 +39,7 @@ class ProductionJob extends Model
         'artwork_refs',
         'consignment_ref',
         'carrier',
+        'label_url',
         'print_method',
         'qty',
         'created_by',

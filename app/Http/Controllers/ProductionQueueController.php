@@ -192,6 +192,7 @@ class ProductionQueueController extends Controller
                 'carrier' => $job->carrier?->value,
                 'consignment_ref' => $job->consignment_ref,
                 'tracking_url' => $job->carrier?->trackingUrl((string) $job->consignment_ref),
+                'label_url' => $job->label_url,
             ],
         ]);
     }

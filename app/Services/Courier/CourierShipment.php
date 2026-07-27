@@ -21,5 +21,6 @@ final readonly class CourierShipment
         public int $parcelCount,
         public string $requestedTrackingNumber, // merchant-supplied AWB (NinjaVan requires it); we generate + store it
         public string $deliveryStartDate,       // 'Y-m-d'; from quote needed_by, or today + lead-days
+        public ?float $weightKg = null,         // real parcel weight; null means "unknown" - client falls back to config default_weight_kg
     ) {}
 }

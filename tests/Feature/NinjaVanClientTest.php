@@ -168,6 +168,174 @@ it('throws a CourierException when the order call stays 401 after the re-auth re
     )))->toThrow(\App\Exceptions\CourierException::class);
 });
 
+it('persists NinjaVan\'s own tracking_number from the response, not the requested one, when they differ', function (): void {
+    // NinjaVan prepends/rewrites the merchant-supplied requested_tracking_number
+    // into its own account-prefixed value - the response's tracking_number is
+    // the ONLY value the inbound webhook will ever correlate on, so it must win
+    // over what we sent whenever the two differ.
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['tracking_number' => 'NVSGGL1AB9', 'requested_tracking_number' => 'GL1AB']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    $result = $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    expect($result->trackingRef)->toBe('NVSGGL1AB9')
+        ->and($result->trackingRef)->not->toBe('GL1AB');
+});
+
+it('falls back to the requested tracking number when the response omits tracking_number', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['requested_tracking_number' => 'GL1AB']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    $result = $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    expect($result->trackingRef)->toBe('GL1AB');
+});
+
+it('persists the label_url from the order response', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['tracking_number' => 'GL1AB', 'label_url' => 'https://ninjavan.test/labels/GL1AB.pdf']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    $result = $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    expect($result->labelUrl)->toBe('https://ninjavan.test/labels/GL1AB.pdf');
+});
+
+it('sends the shipment weightKg when supplied, instead of the config default', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['tracking_number' => 'GL1AB']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.default_weight_kg', 1);
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+        weightKg: 2.75,
+    ));
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/4.1/orders')
+        && data_get($request->data(), 'parcel_job.dimensions.weight') === 2.75);
+});
+
+it('falls back to the config default weight when the shipment has no weightKg', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['tracking_number' => 'GL1AB']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.default_weight_kg', 3);
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/4.1/orders')
+        && data_get($request->data(), 'parcel_job.dimensions.weight') === 3.0);
+});
+
+it('recovers on retry when NinjaVan reports the requested tracking number already exists, instead of throwing', function (): void {
+    // Simulates: a prior attempt booked successfully with NinjaVan but our local
+    // DB write failed afterward, leaving the job un-shipped. A retry re-sends
+    // the SAME deterministic requested_tracking_number; NinjaVan now rejects it
+    // as a duplicate. That must be treated as "already booked", not a failure,
+    // so the retry can complete the SHIPPED transition instead of piling up 502s.
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['message' => 'Duplicate requested_tracking_number'], 400),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    $result = $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    expect($result->trackingRef)->toBe('GL1AB')
+        ->and($result->carrier)->toBe('NINJAVAN');
+});
+
+it('still throws a CourierException on a 400 that is not a duplicate-order response', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['message' => 'Invalid postcode'], 400),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+
+    $client = app(HttpNinjaVanClient::class);
+    expect(fn () => $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    )))->toThrow(\App\Exceptions\CourierException::class);
+});
+
 it('caches the OAuth token across shipments', function (): void {
     $oauthHits = 0;
     Http::fake([

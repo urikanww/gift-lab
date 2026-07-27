@@ -228,6 +228,7 @@ final class QueueService
         JobState $target,
         ?string $consignmentRef = null,
         ?Carrier $carrier = null,
+        ?string $labelUrl = null,
     ): ProductionJob {
         $from = $job->state->value;
 
@@ -236,6 +237,9 @@ final class QueueService
             $job->consignment_ref = $consignmentRef;
             if ($carrier !== null) {
                 $job->carrier = $carrier;
+            }
+            if ($labelUrl !== null) {
+                $job->label_url = $labelUrl;
             }
         }
 
