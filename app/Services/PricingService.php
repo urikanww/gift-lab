@@ -184,10 +184,39 @@ final class PricingService
     }
 
     /**
+     * Singapore GST rate, as a FRACTION of 1 (e.g. a configured 9% reads back
+     * as 0.09) - the convention every caller in this class uses when
+     * multiplying against a money base. The default is hardcoded to 9% (not
+     * 0%) so a missing/deleted config row can never silently zero-rate a
+     * quote; the owner-facing pct is edited via tax.gst_pct in the pricing
+     * config screen.
+     */
+    public function gstRate(): float
+    {
+        return (float) PricingConfig::value('tax', 'gst_pct', 9) / 100;
+    }
+
+    /**
+     * GST amount on a given money base, at a given rate (fraction of 1, e.g.
+     * 0.09 - see gstRate()). Rounded once, at the boundary, like every other
+     * money figure in this service.
+     */
+    public function gstAmount(float $base, float $rate): float
+    {
+        return round($base * $rate, 2);
+    }
+
+    /**
      * Compute a full quote total from resolved line specs.
      *
+     * Rounding order is load-bearing: lines -> subtotal (line totals + the
+     * flat setup fee), + delivery, then GST on the fee-inclusive
+     * (subtotal + delivery) base - never on the raw unit/line figures - and
+     * finally the grand total. Each stage is rounded to 2dp before the next
+     * uses it, matching every other money computation in this service.
+     *
      * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
-     * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float, delivery_reliable: bool}
+     * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, gst: float, gst_rate: float, total: float, delivery_reliable: bool}
      */
     public function quoteTotals(array $lines): array
     {
@@ -228,12 +257,17 @@ final class PricingService
 
         $subtotal = round($subtotal + $this->setupFee(), 2);
         $delivery = $this->deliveryFor($totalWeightG);
-        $total = round($subtotal + $delivery, 2);
+
+        $rate = $this->gstRate();
+        $gst = $this->gstAmount($subtotal + $delivery, $rate);
+        $total = round($subtotal + $delivery + $gst, 2);
 
         return [
             'lines' => $priced,
             'subtotal' => $subtotal,
             'delivery' => $delivery,
+            'gst' => $gst,
+            'gst_rate' => round($rate * 100, 2),
             'total' => $total,
             'delivery_reliable' => $deliveryReliable,
         ];
@@ -317,6 +351,9 @@ final class PricingService
         $subtotal = round($subtotal + $setupFee, 2);
         $delivery = $this->deliveryFor($totalWeightG);
 
+        $rate = $this->gstRate();
+        $gst = $this->gstAmount($subtotal + $delivery, $rate);
+
         return [
             'currency' => 'SGD',
             'lines' => $priced,
@@ -324,7 +361,9 @@ final class PricingService
             'subtotal' => $subtotal,
             'delivery_weight_g' => round($totalWeightG, 1),
             'delivery' => $delivery,
-            'total' => round($subtotal + $delivery, 2),
+            'gst' => $gst,
+            'gst_rate' => round($rate * 100, 2),
+            'total' => round($subtotal + $delivery + $gst, 2),
         ];
     }
 

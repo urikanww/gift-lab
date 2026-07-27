@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\DB;
  * @property QuoteState $state
  * @property string $subtotal
  * @property string $delivery
+ * @property string $gst_amount
+ * @property string $gst_rate
  * @property string $total
  */
 class Quote extends Model
@@ -60,6 +62,8 @@ class Quote extends Model
         'subtotal',
         'delivery',
         'adjustments',
+        'gst_amount',
+        'gst_rate',
         'total',
         'price_snapshot_at',
         'accepted_at',
@@ -82,6 +86,8 @@ class Quote extends Model
             'subtotal' => 'decimal:2',
             'delivery' => 'decimal:2',
             'adjustments' => 'array',
+            'gst_amount' => 'decimal:2',
+            'gst_rate' => 'decimal:2',
             'total' => 'decimal:2',
             'price_snapshot_at' => 'datetime',
             'accepted_at' => 'datetime',

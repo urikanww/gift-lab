@@ -32,6 +32,7 @@ export interface FieldMeta {
 export const GROUP_ORDER = [
   'margin',
   'fee',
+  'tax',
   'print_cost',
   'threshold',
   'delivery',
@@ -43,6 +44,7 @@ export const GROUP_ORDER = [
 export const GROUP_LABELS: Record<string, string> = {
   margin: 'Margins & profit',
   fee: 'Fees',
+  tax: 'Tax',
   print_cost: 'Print costs',
   threshold: 'Bulk discount',
   delivery: 'Delivery',
@@ -108,6 +110,12 @@ export const CONFIG_META: Record<string, FieldMeta> = {
     label: 'Printer running cost per minute',
     help: 'What running the 3D printer costs per minute.',
     editor: 'money',
+  },
+
+  'tax.gst_pct': {
+    label: 'GST rate',
+    help: 'Singapore GST %, added as its own line on top of the fee-inclusive subtotal and delivery.',
+    editor: 'percent',
   },
 
   'threshold.bulk_qty': {

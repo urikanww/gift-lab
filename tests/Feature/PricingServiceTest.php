@@ -54,6 +54,43 @@ it('computes delivery from the weight table', function (): void {
         ->and($this->pricing->deliveryFor(999999.0))->toBe(60.00);
 });
 
+// Singapore GST (spec: configurable rate, default 9%, never silently 0).
+it('defaults the GST rate to 9% when no config row is seeded', function (): void {
+    // No seedPricing() here - the row is genuinely absent.
+    expect($this->pricing->gstRate())->toBe(0.09);
+});
+
+it('reads an edited tax.gst_pct config row as the GST rate', function (): void {
+    \App\Models\PricingConfig::updateOrCreate(
+        ['group' => 'tax', 'key' => 'gst_pct'],
+        ['value' => 8, 'label' => 'Singapore GST %', 'is_money' => false, 'currency' => 'SGD'],
+    );
+    \App\Models\PricingConfig::flushMemo();
+
+    expect($this->pricing->gstRate())->toBe(0.08);
+});
+
+it('rounds the GST amount to 2dp', function (): void {
+    expect($this->pricing->gstAmount(100.0, 0.09))->toBe(9.00)
+        // 100.005 * 0.09 = 9.00045 -> rounds to 9.00.
+        ->and($this->pricing->gstAmount(100.005, 0.09))->toBe(9.00);
+});
+
+it('itemises GST in quoteTotals on the fee-inclusive subtotal + delivery base', function (): void {
+    $product = Product::factory()->create(['base_cost' => 10, 'print_method' => 'UV', 'weight' => 0, 'dimensions' => null]);
+
+    $totals = $this->pricing->quoteTotals([[
+        'product' => $product, 'variant' => null, 'qty' => 1,
+        'has_customization' => false,
+    ]]);
+
+    $expectedGst = round(($totals['subtotal'] + $totals['delivery']) * 0.09, 2);
+
+    expect($totals['gst_rate'])->toBe(9.0)
+        ->and($totals['gst'])->toBe($expectedGst)
+        ->and($totals['total'])->toBe(round($totals['subtotal'] + $totals['delivery'] + $expectedGst, 2));
+});
+
 it('enforces the margin floor over landed cost', function (): void {
     // floor 12% over landed 10.00 => 11.20 minimum.
     expect($this->pricing->isAboveMarginFloor(11.20, 10.00))->toBeTrue()
@@ -193,10 +230,14 @@ it('uses the override in a full quote total while still charging dynamic deliver
 
     // 4.00 × 10 = 40.00 line (override, no bulk); delivery is dynamic on weight
     // and stacks on the subtotal (which also carries the flat setup fee).
+    // Total is GST-inclusive: GST applies to the fee-inclusive
+    // (subtotal + delivery) base, never to the raw line/unit figures.
     $delivery = $this->pricing->deliveryFor(0.0);
+    $gst = $this->pricing->gstAmount($totals['subtotal'] + $delivery, $this->pricing->gstRate());
     expect($totals['lines'][0]['line_total'])->toBe(40.00)
         ->and($totals['delivery'])->toBe($delivery)
-        ->and($totals['total'])->toBe(round($totals['subtotal'] + $delivery, 2));
+        ->and($totals['gst'])->toBe($gst)
+        ->and($totals['total'])->toBe(round($totals['subtotal'] + $delivery + $gst, 2));
 });
 
 it('flags the delivery estimate unreliable when a line has placeholder weight and dimensions', function (): void {

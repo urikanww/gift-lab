@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $terms
  * @property PaymentState $payment_state
  * @property string $amount
+ * @property string $gst_amount
+ * @property string $gst_rate
  * @property string $currency
  * @property int|null $issued_by
  * @property \Illuminate\Support\Carbon|null $issued_at
@@ -33,6 +35,8 @@ class Invoice extends Model
         'terms',
         'payment_state',
         'amount',
+        'gst_amount',
+        'gst_rate',
         'currency',
         'issued_by',
         'issued_at',
@@ -43,6 +47,8 @@ class Invoice extends Model
         return [
             'payment_state' => PaymentState::class,
             'amount' => 'decimal:2',
+            'gst_amount' => 'decimal:2',
+            'gst_rate' => 'decimal:2',
             'issued_at' => 'datetime',
         ];
     }

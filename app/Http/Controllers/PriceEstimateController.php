@@ -74,6 +74,8 @@ class PriceEstimateController extends Controller
             'lines' => $totals['lines'],
             'subtotal' => $totals['subtotal'],
             'delivery' => $totals['delivery'],
+            'gst' => $totals['gst'],
+            'gst_rate' => $totals['gst_rate'],
             'total' => $totals['total'],
             'delivery_reliable' => $totals['delivery_reliable'],
         ]);

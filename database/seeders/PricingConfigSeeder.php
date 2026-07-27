@@ -44,6 +44,9 @@ class PricingConfigSeeder extends Seeder
             ['lead_time', 'rush_fee', 40.00, 'Flat rush fee', true],
             ['threshold', 'bulk_qty', 50, 'Quantity at/above which bulk pricing applies', false],
             ['threshold', 'bulk_discount_pct', 10, 'Discount % applied at bulk quantity', false],
+            // Singapore GST (spec: configurable rate, default 9%, itemised on
+            // every quote/invoice - never hardcoded, never silently 0).
+            ['tax', 'gst_pct', 9, 'Singapore GST %', false],
             ['delivery', 'table', [
                 ['max_weight_g' => 1000, 'price' => 5.00],
                 ['max_weight_g' => 5000, 'price' => 12.00],

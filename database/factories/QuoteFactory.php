@@ -23,6 +23,13 @@ class QuoteFactory extends Factory
             'currency' => 'SGD',
             'subtotal' => 0,
             'delivery' => 0,
+            // Matches the migration's column default (spec: GST rate is
+            // configurable but must never silently read as 0%), so an
+            // unrelated test creating a bare Quote::factory() still gets a
+            // realistic, non-zero rate rather than one that happens to depend
+            // on the DB default alone.
+            'gst_amount' => 0,
+            'gst_rate' => 9,
             'total' => 0,
             'price_snapshot_at' => null,
             'amendment_log' => null,
