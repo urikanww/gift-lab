@@ -18,6 +18,7 @@ import ShippingFields, {
 import NeedByField from '../components/checkout/NeedByField';
 import { useLeadTimeEstimate } from '../lib/useLeadTimeEstimate';
 import { useSavedAddressStore } from '../stores/savedAddressStore';
+import { DELIVERY_NOTE_RELIABLE, DELIVERY_NOTE_UNRELIABLE } from '../lib/deliveryCopy';
 import type { Quote, SavedAddress, ShippingAddressInput, CompanySummary, Product } from '../types';
 
 /** Prefill the shipping form from the company's stored default address. */
@@ -61,11 +62,6 @@ function toShippingInput(v: ShippingFieldsValue): ShippingAddressInput {
     notes: v.notes?.trim() || null,
   };
 }
-
-const DELIVERY_NOTE_RELIABLE =
-  'Rough estimate only. Many items fold or stack to shrink the parcel, so our production team confirms the actual delivery fee on your formal quote — it may be lower, and you won’t be charged more without seeing it first.';
-const DELIVERY_NOTE_UNRELIABLE =
-  'We can’t estimate delivery for these items yet — our production team confirms the actual fee on your formal quote, before any payment. Nothing is charged until you’ve seen it.';
 
 /**
  * Storefront-styled checkout: a thin, celebratory wrapper over the existing B2B

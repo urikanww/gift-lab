@@ -1,4 +1,4 @@
-import { expect, it, afterEach } from 'vitest';
+import { expect, it, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
@@ -7,11 +7,26 @@ import { useCartStore } from '../stores/cartStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSavedAddressStore } from '../stores/savedAddressStore';
 import { useQuoteStore } from '../stores/quoteStore';
+import api from '../lib/api';
+import { DELIVERY_NOTE_RELIABLE, DELIVERY_NOTE_UNRELIABLE } from '../lib/deliveryCopy';
 
 // Captured once so createQuote can be restored after tests that stub it out.
 const originalCreateQuote = useQuoteStore.getState().createQuote;
 
+// Every render mounts CheckoutPage's own refreshEstimate() effect, which hits
+// the real axios instance. Left unmocked, that's a real network attempt per
+// test whose eventual (slow, real-clock) rejection can land during a *later*
+// test and clobber its store state via the shared cartStore singleton. Stub
+// it to a harmless default so no test leaves a stray network promise behind;
+// individual tests may override the resolved value as needed.
+beforeEach(() => {
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { currency: 'SGD', lines: [], subtotal: 0, delivery: 0, total: 0, delivery_reliable: true },
+  } as any);
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   useCartStore.setState({ lines: [], estimate: null, estimateError: null });
   useQuoteStore.setState({ actionError: null, createQuote: originalCreateQuote });
 });
@@ -162,4 +177,33 @@ it('falls back to the generic message when the store has no specific reason', as
   expect(
     await screen.findByText(/could not place your order\. please review your cart and try again/i),
   ).toBeInTheDocument();
+});
+
+// The delivery disclaimer comes from the shared frontend/src/lib/deliveryCopy
+// module (also used by CartPage) so the two surfaces can't drift apart. The
+// page's mount effect fires the store's real refreshEstimate() against the
+// axios instance, so api.post is stubbed rather than hand-setting the store -
+// letting the natural flow populate `estimate` avoids racing an unmocked
+// network rejection that would otherwise clobber it with an error state.
+it('renders the shared delivery disclaimer from lib/deliveryCopy when expanded', async () => {
+  const reliableEstimate = {
+    currency: 'SGD',
+    lines: [{ unit_price: 10, line_total: 10 }],
+    subtotal: 10,
+    delivery: 5,
+    total: 15,
+    delivery_reliable: true,
+  };
+  const postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: reliableEstimate } as any);
+
+  renderCheckoutAsBuyer();
+
+  fireEvent.click(await screen.findByRole('button', { name: /delivery/i }));
+  expect(await screen.findByText(DELIVERY_NOTE_RELIABLE)).toBeInTheDocument();
+
+  const unreliableEstimate = { ...reliableEstimate, delivery: 0, total: 10, delivery_reliable: false };
+  postSpy.mockResolvedValue({ data: unreliableEstimate } as any);
+  await useCartStore.getState().refreshEstimate();
+
+  expect(await screen.findByText(DELIVERY_NOTE_UNRELIABLE)).toBeInTheDocument();
 });

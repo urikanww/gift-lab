@@ -11,6 +11,7 @@ import {
 } from '../components/cart/CartSummary';
 import CustomizationPreview from '../components/CustomizationPreview';
 import ProductThumb from '../components/product/ProductThumb';
+import { DELIVERY_NOTE_RELIABLE, DELIVERY_NOTE_UNRELIABLE } from '../lib/deliveryCopy';
 import {
   Motion,
   fadeInUp,
@@ -170,9 +171,7 @@ export default function CartPage() {
                     }
                   />
                   <p className="-mt-1 text-2xs leading-snug text-fg-subtle">
-                    {estimate.delivery_reliable
-                      ? 'Rough estimate only. Many items fold or stack to shrink the parcel, so our production team confirms the actual delivery fee on your formal quote — it may be lower, and you won’t be charged more without seeing it first.'
-                      : 'We can’t estimate delivery for these items yet — our production team confirms the actual fee on your formal quote, before any payment. Nothing is charged until you’ve seen it.'}
+                    {estimate.delivery_reliable ? DELIVERY_NOTE_RELIABLE : DELIVERY_NOTE_UNRELIABLE}
                   </p>
                   <div className="my-1 border-t border-border" />
                   <div className="flex items-baseline justify-between">
