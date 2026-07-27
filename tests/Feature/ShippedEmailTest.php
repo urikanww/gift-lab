@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Enums\OrderMilestone;
 use App\Exceptions\InvalidStateTransitionException;
@@ -15,6 +16,7 @@ use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
 use App\Services\QueueService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -70,13 +72,62 @@ function shippedMilestoneMailCount(): int
 it('emails the buyer the Shipped milestone with tracking when a job ships', function (): void {
     $job = shippableJob();
 
-    $this->queue->advance($job, JobState::Shipped, consignmentRef: 'SP123456789SG');
+    $this->queue->advance($job, JobState::Shipped, consignmentRef: 'SP123456789SG', carrier: Carrier::NinjaVan);
 
     Mail::assertQueued(
         OrderMilestoneMail::class,
         fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::Shipped
             && $mail->hasTo($this->buyer->email),
     );
+
+    $mail = Mail::queued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::Shipped,
+    )->first();
+
+    $trackingUrl = Carrier::NinjaVan->trackingUrl('SP123456789SG');
+
+    // In the mailable's own data...
+    expect($mail->consignmentRef)->toBe('SP123456789SG');
+    expect($mail->trackingUrl)->toBe($trackingUrl);
+
+    // ...and in what actually renders.
+    $mail->assertSeeInHtml('SP123456789SG');
+    $mail->assertSeeInHtml($trackingUrl, false);
+});
+
+it('renders the ref as plain text with no tracking link for Carrier::Other', function (): void {
+    $job = shippableJob();
+
+    $this->queue->advance($job, JobState::Shipped, consignmentRef: 'RAWREF999', carrier: Carrier::Other);
+
+    $mail = Mail::queued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::Shipped,
+    )->first();
+
+    expect($mail->consignmentRef)->toBe('RAWREF999');
+    expect($mail->trackingUrl)->toBeNull();
+
+    $mail->assertSeeInHtml('RAWREF999');
+    // No self-serve tracking page for Carrier::Other, so no tracking link/href.
+    $mail->assertDontSeeInHtml('Track your parcel');
+});
+
+it('queues no Shipped email when the shipping transaction rolls back', function (): void {
+    $job = shippableJob();
+
+    try {
+        DB::transaction(function () use ($job): void {
+            $this->queue->advance($job, JobState::Shipped, consignmentRef: 'SP555555555SG');
+
+            throw new RuntimeException('simulated failure after the state change, before commit');
+        });
+    } catch (RuntimeException) {
+        // expected - proves the surrounding transaction really rolled back
+    }
+
+    expect(shippedMilestoneMailCount())->toBe(0);
 });
 
 it('does not double-send the Shipped email on a second advance to SHIPPED', function (): void {

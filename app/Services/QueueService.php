@@ -292,8 +292,31 @@ final class QueueService
         // SHIPPED on an already-shipped job throws before reaching here - one
         // send per job, guaranteed by the state machine rather than a separate
         // "already notified" flag.
+        //
+        // Deferred via DB::afterCommit: this is the ONLY milestone send site
+        // that isn't reached through stateChangedAfterCommit, and advance() is
+        // itself sometimes called inside a caller's own DB::transaction (see
+        // ShipmentService::createForJob). Sending eagerly here would let an
+        // async queue worker pick the mail up before the SHIPPED state/
+        // consignment_ref actually commits (null tracking in the email), or
+        // send a "your order shipped" email for a shipment whose transaction
+        // then rolls back. afterCommit is a safe no-op when advance() is
+        // called outside any transaction (e.g. the plain /advance endpoint) -
+        // Laravel runs the callback immediately in that case.
+        //
+        // Context is captured as scalars right now, not the $job model itself:
+        // OrderMilestoneMail is ShouldQueue + SerializesModels, and by the time
+        // a worker dequeues it the job row may have moved on.
         if ($target === JobState::Shipped && $job->quote !== null) {
-            $this->notifier->send($job->quote, OrderMilestone::Shipped);
+            $quote = $job->quote;
+            $consignmentRef = $job->consignment_ref;
+            $context = [
+                'consignment_ref' => $consignmentRef,
+                'carrier_label' => $job->carrier?->label(),
+                'tracking_url' => $consignmentRef !== null ? $job->carrier?->trackingUrl($consignmentRef) : null,
+            ];
+
+            DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::Shipped, $context));
         }
 
         if ($target === JobState::Closed

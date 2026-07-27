@@ -24,9 +24,20 @@ class OrderMilestoneMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
+    /**
+     * Shipped-only tracking context, threaded in from QueueService at the one
+     * send site that has a consignment ref. Scalars only, never a Carrier enum
+     * or the ProductionJob model: this mailable is ShouldQueue + SerializesModels,
+     * so anything richer would either fail to serialize cleanly or reserialize
+     * a job that may have moved on by the time a worker picks the job up. Every
+     * other milestone leaves these null and the blade renders unchanged.
+     */
     public function __construct(
         public Quote $quote,
         public OrderMilestone $milestone,
+        public ?string $consignmentRef = null,
+        public ?string $carrierLabel = null,
+        public ?string $trackingUrl = null,
     ) {}
 
     public function envelope(): Envelope
@@ -56,6 +67,9 @@ class OrderMilestoneMail extends Mailable implements ShouldQueue
                 'quoteUrl' => rtrim((string) config('app.frontend_url', config('app.url')), '/')
                     .'/orders/'.$this->quote->reference,
                 'greetingName' => optional($this->quote->creator)->name,
+                'consignmentRef' => $this->consignmentRef,
+                'carrierLabel' => $this->carrierLabel,
+                'trackingUrl' => $this->trackingUrl,
             ],
         );
     }

@@ -74,7 +74,13 @@ class OrderNotifier
         $this->send($quote, $milestone);
     }
 
-    public function send(Quote $quote, OrderMilestone $milestone): void
+    /**
+     * @param  array{consignment_ref?: ?string, carrier_label?: ?string, tracking_url?: ?string}  $context
+     *         Shipped-only tracking context (scalars only - see
+     *         OrderMilestoneMail). Every other milestone passes none, so the
+     *         mail's tracking fields default null and the blade is unchanged.
+     */
+    public function send(Quote $quote, OrderMilestone $milestone, array $context = []): void
     {
         if (! $this->isEnabled($milestone)) {
             return;
@@ -94,7 +100,13 @@ class OrderNotifier
         }
 
         try {
-            Mail::to($recipient->email)->queue(new OrderMilestoneMail($quote, $milestone));
+            Mail::to($recipient->email)->queue(new OrderMilestoneMail(
+                $quote,
+                $milestone,
+                consignmentRef: $context['consignment_ref'] ?? null,
+                carrierLabel: $context['carrier_label'] ?? null,
+                trackingUrl: $context['tracking_url'] ?? null,
+            ));
         } catch (\Throwable $e) {
             Log::error('Order milestone email failed to queue.', [
                 'quote_id' => $quote->id,
