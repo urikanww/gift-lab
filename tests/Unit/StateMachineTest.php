@@ -26,7 +26,7 @@ it('rejects illegal quote transitions', function (): void {
         ->and(QuoteState::ProofApproved->canTransitionTo(QuoteState::Draft))->toBeFalse();
 });
 
-it('allows cancellation from any pre-production stage but not once ready', function (): void {
+it('allows cancellation from any pre-production stage, and - narrowly, for the returned-parcel resolution only - once ready', function (): void {
     expect(QuoteState::Draft->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
         ->and(QuoteState::Sent->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
         ->and(QuoteState::Accepted->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
@@ -34,7 +34,13 @@ it('allows cancellation from any pre-production stage but not once ready', funct
         ->and(QuoteState::ProofApproved->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
         ->and(QuoteState::Confirmed->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
         ->and(QuoteState::Procuring->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
-        ->and(QuoteState::Ready->canTransitionTo(QuoteState::Cancelled))->toBeFalse()
+        // READY -> CANCELLED exists on the enum ONLY for
+        // QueueService::resolveReturn's 'cancel_credit' disposition (a
+        // returned/failed parcel the buyer doesn't want reshipped), which
+        // calls QuoteService::cancel() directly. The general staff cancel
+        // endpoint (QuoteController::cancel) explicitly refuses a READY
+        // quote regardless of this edge - see ReturnResolutionTest.
+        ->and(QuoteState::Ready->canTransitionTo(QuoteState::Cancelled))->toBeTrue()
         ->and(QuoteState::Closed->canTransitionTo(QuoteState::Cancelled))->toBeFalse();
 });
 
@@ -67,11 +73,20 @@ it('makes an approved proof terminal (immutable)', function (): void {
         ->and(ProofState::Approved->canTransitionTo(ProofState::ChangesRequested))->toBeFalse();
 });
 
-it('advances jobs forward only', function (): void {
+it('advances jobs forward only, plus the narrow reship-only exception back to production', function (): void {
     expect(JobState::Ready->canTransitionTo(JobState::InProduction))->toBeTrue()
         ->and(JobState::InProduction->canTransitionTo(JobState::Shipped))->toBeTrue()
         ->and(JobState::Shipped->canTransitionTo(JobState::Closed))->toBeTrue()
-        ->and(JobState::Shipped->canTransitionTo(JobState::Ready))->toBeFalse();
+        ->and(JobState::Shipped->canTransitionTo(JobState::Ready))->toBeFalse()
+        // Closed MUST stay nextStates()[0] - advanceNext() and the webhook's
+        // delivered-idempotency both depend on that ordering.
+        ->and(JobState::Shipped->nextStates()[0])->toBe(JobState::Closed)
+        // The reship edge exists on the enum ONLY for
+        // QueueService::resolveReturn's 'reship' disposition - QueueService::
+        // advance()/advanceBatch() explicitly refuse it (isReshipOnlyTransition)
+        // so a plain/batch advance can never silently bounce a shipped job
+        // back to production with its old courier footprint still attached.
+        ->and(JobState::Shipped->canTransitionTo(JobState::InProduction))->toBeTrue();
 });
 
 it('gates 3D licences to commercial-ok only', function (): void {

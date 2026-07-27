@@ -13,6 +13,14 @@ namespace App\Services\Courier;
  * JobState. `known` is false only for a status string NinjaVanStatusMapper
  * has never seen before; the raw string is still stored (never dropped) and
  * a warning is logged so an unmapped wording doesn't silently disappear.
+ *
+ * `needsAttention` is true for the delivery-attempt-failed and
+ * returned/cancelled families - the two families that leave a job stuck
+ * SHIPPED with no courier retry coming. NinjaVanWebhookController uses it to
+ * decide whether to fire StaffNotifier::parcelReturned(); QueueService's
+ * staff resolution flow (resolveReturn) uses the equivalent
+ * NinjaVanStatusMapper::isNeedsAttentionLabel() check against the persisted
+ * label to gate which jobs may be resolved.
  */
 final class NinjaVanStatusMapping
 {
@@ -20,5 +28,6 @@ final class NinjaVanStatusMapping
         public readonly string $label,
         public readonly bool $deliver,
         public readonly bool $known,
+        public readonly bool $needsAttention = false,
     ) {}
 }

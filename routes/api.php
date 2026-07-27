@@ -189,6 +189,10 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // ...or all of a batched job's per-line files at once, as a labelled ZIP.
     Route::get('/production-jobs/{job}/print-files.zip', [ProductionQueueController::class, 'printFileZip'])->middleware('permission:production.view');
     Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment'])->middleware('permission:production.manage');
+    // Staff resolve a job NinjaVan reported returned/failed: close (write
+    // off) / reship (re-queue) / cancel_credit (cancel + void invoice +
+    // credit note). 422 when the job isn't flagged returned/failed.
+    Route::post('/production-jobs/{job}/resolve-return', [ProductionQueueController::class, 'resolveReturn'])->middleware('permission:production.manage');
 
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
     Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index'])->middleware('permission:products.view');

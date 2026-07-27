@@ -17,6 +17,17 @@ namespace App\Services\Courier;
  */
 final class NinjaVanStatusMapper
 {
+    /**
+     * Labels for the two "needs staff attention" families - the single
+     * source of truth for both the mapping below (needsAttention: true) and
+     * isNeedsAttentionLabel() (which re-derives the same flag from an
+     * already-persisted production_jobs.last_courier_status label, since the
+     * NinjaVanStatusMapping object itself is never stored).
+     */
+    public const LABEL_ATTEMPT_FAILED = 'Delivery attempt failed';
+
+    public const LABEL_RETURNED = 'Delivery unsuccessful — returned';
+
     public static function map(string $rawStatus): NinjaVanStatusMapping
     {
         $normalized = strtolower(trim($rawStatus));
@@ -44,12 +55,26 @@ final class NinjaVanStatusMapper
             // Failed", ... - match the common suffix rather than enumerating
             // every ordinal NinjaVan might send.
             str_ends_with($normalized, 'attempt failed') || $normalized === 'pending reschedule'
-                => new NinjaVanStatusMapping('Delivery attempt failed', deliver: false, known: true),
+                => new NinjaVanStatusMapping(self::LABEL_ATTEMPT_FAILED, deliver: false, known: true, needsAttention: true),
 
             in_array($normalized, ['returned to sender', 'returned', 'cancelled'], true)
-                => new NinjaVanStatusMapping('Delivery unsuccessful — returned', deliver: false, known: true),
+                => new NinjaVanStatusMapping(self::LABEL_RETURNED, deliver: false, known: true, needsAttention: true),
 
             default => new NinjaVanStatusMapping($rawStatus, deliver: false, known: false),
         };
+    }
+
+    /**
+     * Re-derive the needsAttention flag from an already-persisted
+     * production_jobs.last_courier_status label (the mapping object itself
+     * is never stored - only its ->label is). Used by
+     * QueueService::resolveReturn to gate which SHIPPED jobs are eligible
+     * for staff resolution: a job whose last known status isn't one of these
+     * two labels (e.g. still in transit, or never received any courier
+     * event) is refused rather than silently resolved.
+     */
+    public static function isNeedsAttentionLabel(?string $label): bool
+    {
+        return in_array($label, [self::LABEL_ATTEMPT_FAILED, self::LABEL_RETURNED], true);
     }
 }

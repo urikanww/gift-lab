@@ -6,6 +6,8 @@ use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Enums\QuoteState;
 use App\Events\OrderTrackingUpdated;
+use App\Events\ParcelReturned;
+use App\Mail\ParcelReturnedMail;
 use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
@@ -18,6 +20,7 @@ use App\Models\User;
 use App\Services\QueueService;
 use App\Services\ShipmentService;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 
 /**
@@ -373,6 +376,76 @@ it('enforces a unique consignment_ref at the database level', function (): void 
 
     expect(fn () => ProductionJob::factory()->create(['consignment_ref' => 'GLDUPTEST']))
         ->toThrow(\Illuminate\Database\QueryException::class);
+});
+
+/**
+ * ParcelReturned is the staff alert fired when a webhook event flags a
+ * SHIPPED job returned/failed (NinjaVanStatusMapper's needsAttention
+ * family) - the gap this task closes: a returned job used to sit SHIPPED
+ * with nothing telling staff to act on it.
+ */
+it('fires ParcelReturned and emails staff on a Returned to Sender event', function (): void {
+    Event::fake([ParcelReturned::class]);
+    Mail::fake();
+    $staff = User::factory()->staffAdmin()->create();
+
+    $job = ninjaVanShippedJob('NVSGNEXGE000ALERT1');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ALERT1',
+        'status' => 'Returned to Sender',
+    ])->assertOk();
+
+    Event::assertDispatched(
+        ParcelReturned::class,
+        fn (ParcelReturned $event): bool => $event->job->id === $job->id,
+    );
+    Mail::assertQueued(ParcelReturnedMail::class, fn (ParcelReturnedMail $mail): bool => $mail->hasTo($staff->email));
+});
+
+it('fires ParcelReturned on an attempt-failed event', function (): void {
+    Event::fake([ParcelReturned::class]);
+
+    $job = ninjaVanShippedJob('NVSGNEXGE000ALERT2');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ALERT2',
+        'status' => 'First Attempt Failed',
+    ])->assertOk();
+
+    Event::assertDispatched(
+        ParcelReturned::class,
+        fn (ParcelReturned $event): bool => $event->job->id === $job->id,
+    );
+});
+
+it('does not fire ParcelReturned on a benign status change', function (): void {
+    $job = ninjaVanShippedJob('NVSGNEXGE000ALERT3');
+
+    Event::fake([ParcelReturned::class]);
+    Mail::fake();
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ALERT3',
+        'status' => 'Out for Delivery',
+    ])->assertOk();
+
+    Event::assertNotDispatched(ParcelReturned::class);
+    Mail::assertNotQueued(ParcelReturnedMail::class);
+    expect($job->fresh()->state)->toBe(JobState::Shipped);
+});
+
+it('does not fire ParcelReturned on a Delivered event', function (): void {
+    Event::fake([ParcelReturned::class]);
+
+    ninjaVanShippedJob('NVSGNEXGE000ALERT4');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ALERT4',
+        'status' => 'Delivered',
+    ])->assertOk();
+
+    Event::assertNotDispatched(ParcelReturned::class);
 });
 
 it('ignores events for jobs that have not shipped yet', function (): void {

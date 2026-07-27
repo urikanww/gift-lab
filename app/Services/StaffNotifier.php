@@ -6,9 +6,12 @@ namespace App\Services;
 
 use App\Enums\UserRole;
 use App\Events\JobFailedAlert;
+use App\Events\ParcelReturned;
 use App\Events\ProofChangesRequested;
 use App\Mail\JobFailedAlertMail;
+use App\Mail\ParcelReturnedMail;
 use App\Mail\ProofChangesRequestedMail;
+use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\User;
 use App\Support\Broadcasting;
@@ -70,6 +73,72 @@ class StaffNotifier
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    /**
+     * Announce that NinjaVan reported a shipped parcel returned-to-sender or
+     * an attempt-failed/pending-reschedule status (NinjaVanStatusMapper's
+     * needsAttention family). Called from NinjaVanWebhookController right
+     * after the webhook's own DB::transaction commits the job's updated
+     * last_courier_status - there is no JobState for "needs staff
+     * resolution", so this alert is the only thing telling staff to act
+     * (via QueueService::resolveReturn) instead of the parcel silently
+     * sitting SHIPPED.
+     *
+     * MUST NEVER THROW: called directly from the webhook request path (not a
+     * queued job), so an exception here would turn an already-persisted,
+     * successfully-processed webhook event into a 500 - the whole body is
+     * wrapped as a last-resort safety net, mirroring jobFailed().
+     */
+    public function parcelReturned(ProductionJob $job): void
+    {
+        try {
+            $job->loadMissing('quote');
+
+            Log::warning('Courier reported a returned/failed parcel; needs staff resolution.', [
+                'job_id' => $job->id,
+                'quote_id' => $job->quote_id,
+                'consignment_ref' => $job->consignment_ref,
+                'last_courier_status' => $job->last_courier_status,
+            ]);
+
+            // Push (live) to the staff console. Swallows transport failures so a
+            // Reverb outage can't turn a committed webhook write into a 500.
+            Broadcasting::dispatch(fn () => ParcelReturned::dispatch($job));
+
+            // Email every internal operator with an address on file.
+            $recipients = User::query()
+                ->whereIn('role', [UserRole::StaffAdmin->value, UserRole::Superadmin->value])
+                ->whereNotNull('email')
+                ->pluck('email')
+                ->all();
+
+            if ($recipients === []) {
+                Log::info('Parcel-returned alert: no staff recipient to email.', [
+                    'job_id' => $job->id,
+                    'quote_id' => $job->quote_id,
+                ]);
+
+                return;
+            }
+
+            foreach ($recipients as $email) {
+                try {
+                    Mail::to($email)->queue(new ParcelReturnedMail($job));
+                } catch (Throwable $e) {
+                    Log::error('Parcel-returned staff email failed to queue.', [
+                        'job_id' => $job->id,
+                        'email' => $email,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        } catch (Throwable $unexpected) {
+            Log::error('StaffNotifier::parcelReturned encountered an unexpected error; alert suppressed.', [
+                'job_id' => $job->id ?? null,
+                'error' => $unexpected->getMessage(),
+            ]);
         }
     }
 

@@ -18,6 +18,7 @@ use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
 use App\Models\ProductionJob;
 use App\Models\Quote;
+use App\Services\Courier\NinjaVanStatusMapper;
 use App\Support\Broadcasting;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -163,7 +164,7 @@ final class QueueService
         $skipped = [];
 
         foreach (ProductionJob::query()->whereIn('id', $jobIds)->get() as $job) {
-            if ($job->state->canTransitionTo($target)) {
+            if ($job->state->canTransitionTo($target) && ! $this->isReshipOnlyTransition($job, $target)) {
                 $this->advance($job, $target);
                 $advanced[] = $job->id;
             } else {
@@ -230,6 +231,20 @@ final class QueueService
         ?Carrier $carrier = null,
         ?string $labelUrl = null,
     ): ProductionJob {
+        // Shipped -> InProduction exists on the enum ONLY for
+        // resolveReturn()'s 'reship' disposition, which mutates the job
+        // directly (clearing the stale consignment_ref/carrier/label_url/
+        // courier-status fields first) rather than calling this method. A
+        // plain advance (or a batch advance) must never be able to silently
+        // bounce a job that's actually in transit back to production with
+        // its old courier footprint still attached - that transition is
+        // gated behind resolveReturn's own needsAttention guard instead.
+        if ($this->isReshipOnlyTransition($job, $target)) {
+            throw new DomainRuleException(
+                'A shipped job can only return to production through the returned-parcel resolution, not a direct advance.'
+            );
+        }
+
         $from = $job->state->value;
 
         // Persisted in the same save as the state change (transitionTo saves).
@@ -314,5 +329,141 @@ final class QueueService
         }
 
         return $job;
+    }
+
+    /**
+     * True only for the SHIPPED -> IN_PRODUCTION move - legal on the JobState
+     * enum solely so resolveReturn()'s 'reship' disposition can use it, never
+     * for a plain/batch advance. See advance()'s and advanceBatch()'s use of
+     * this guard.
+     */
+    private function isReshipOnlyTransition(ProductionJob $job, JobState $target): bool
+    {
+        return $job->state === JobState::Shipped && $target === JobState::InProduction;
+    }
+
+    /**
+     * Staff resolution for a job NinjaVan reported returned/failed (see
+     * NinjaVanStatusMapper's needsAttention family) - the gap this closes: a
+     * returned job used to sit SHIPPED forever with no way for staff to move
+     * it forward. Three dispositions:
+     *
+     *  - close: the parcel is written off/abandoned. Advances the job to
+     *    CLOSED via the normal advance() path (audits, broadcasts, and
+     *    closes the quote once every job on it is CLOSED - same as a
+     *    delivered job).
+     *  - reship: the courier's footprint is cleared (consignment_ref,
+     *    carrier, label_url, last_courier_status/_at, delivered_at) and the
+     *    job goes back to IN_PRODUCTION to re-queue; a later ship books a
+     *    FRESH per-job NinjaVan number (NinjaVanTrackingNumber::forJob) -
+     *    the old consignment_ref must be cleared first, since it is
+     *    unique-indexed.
+     *  - cancel_credit: routes through QuoteService::cancel() (Task 13),
+     *    which voids any live invoice and mints a credit note for what was
+     *    collected. The job itself is left SHIPPED - this disposition means
+     *    "the order is cancelled", not "the job continues" - the quote's own
+     *    Closed state (unreachable once Cancelled) is what stops it
+     *    re-appearing anywhere active.
+     *
+     * Guarded to only ever act on a job that is both still SHIPPED and whose
+     * last_courier_status is one of NinjaVanStatusMapper's needsAttention
+     * labels - a normal in-transit job (or one with no courier event at all)
+     * throws DomainRuleException (422) rather than silently no-opping.
+     *
+     * QuoteService is resolved from the container rather than constructor-
+     * injected: QuoteService itself depends on QueueService (it drives
+     * production-job queuing), so a constructor dependency the other way
+     * would be circular.
+     */
+    public function resolveReturn(ProductionJob $job, string $disposition, ?string $note = null): ProductionJob
+    {
+        if ($job->state !== JobState::Shipped || ! NinjaVanStatusMapper::isNeedsAttentionLabel($job->last_courier_status)) {
+            throw new DomainRuleException(
+                'This job is not flagged as a returned/failed parcel awaiting resolution.'
+            );
+        }
+
+        return match ($disposition) {
+            'close' => $this->resolveReturnClose($job, $note),
+            'reship' => $this->resolveReturnReship($job, $note),
+            'cancel_credit' => $this->resolveReturnCancelCredit($job, $note),
+            default => throw new DomainRuleException("Unknown return disposition: {$disposition}."),
+        };
+    }
+
+    private function resolveReturnClose(ProductionJob $job, ?string $note): ProductionJob
+    {
+        return DB::transaction(function () use ($job, $note): ProductionJob {
+            $lastCourierStatus = $job->last_courier_status;
+
+            $job = $this->advance($job, JobState::Closed);
+
+            $this->audit->log($job, 'production_job.return_resolved', [
+                'last_courier_status' => $lastCourierStatus,
+            ], [
+                'disposition' => 'close',
+                'note' => $note,
+                'state' => $job->state->value,
+            ]);
+
+            return $job;
+        });
+    }
+
+    private function resolveReturnReship(ProductionJob $job, ?string $note): ProductionJob
+    {
+        return DB::transaction(function () use ($job, $note): ProductionJob {
+            $lastCourierStatus = $job->last_courier_status;
+
+            // Clear the old courier footprint FIRST - consignment_ref is
+            // unique-indexed, so a later ship() booking a fresh
+            // NinjaVanTrackingNumber::forJob() value must not collide with
+            // this now-abandoned one.
+            $job->consignment_ref = null;
+            $job->carrier = null;
+            $job->label_url = null;
+            $job->last_courier_status = null;
+            $job->last_courier_status_at = null;
+            $job->delivered_at = null;
+
+            // transitionTo() saves the model - every dirty attribute above
+            // (plus the state change) lands in one write.
+            $job->transitionTo(JobState::InProduction);
+
+            $this->audit->log($job, 'production_job.return_resolved', [
+                'last_courier_status' => $lastCourierStatus,
+            ], [
+                'disposition' => 'reship',
+                'note' => $note,
+                'state' => $job->state->value,
+            ]);
+
+            Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($job, 'started'));
+
+            return $job;
+        });
+    }
+
+    private function resolveReturnCancelCredit(ProductionJob $job, ?string $note): ProductionJob
+    {
+        return DB::transaction(function () use ($job, $note): ProductionJob {
+            $lastCourierStatus = $job->last_courier_status;
+
+            $job->loadMissing('quote');
+
+            if ($job->quote !== null) {
+                app(QuoteService::class)->cancel($job->quote, $note);
+            }
+
+            $this->audit->log($job, 'production_job.return_resolved', [
+                'last_courier_status' => $lastCourierStatus,
+            ], [
+                'disposition' => 'cancel_credit',
+                'note' => $note,
+                'state' => $job->state->value,
+            ]);
+
+            return $job->fresh() ?? $job;
+        });
     }
 }

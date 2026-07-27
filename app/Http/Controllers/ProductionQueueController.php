@@ -9,6 +9,7 @@ use App\Enums\JobState;
 use App\Exceptions\CourierException;
 use App\Http\Requests\AdvanceBatchRequest;
 use App\Http\Requests\AdvanceJobRequest;
+use App\Http\Requests\ResolveReturnRequest;
 use App\Http\Resources\ProductionJobResource;
 use App\Models\ProductionJob;
 use App\Models\Quote;
@@ -195,5 +196,25 @@ class ProductionQueueController extends Controller
                 'label_url' => $job->label_url,
             ],
         ]);
+    }
+
+    /**
+     * Staff resolve a job NinjaVan reported returned/failed: close (write
+     * off), reship (re-queue for a fresh shipment), or cancel_credit (cancel
+     * the order, void any live invoice, mint a credit note). Refused with a
+     * 422 (DomainRuleException) when the job isn't actually flagged
+     * returned/failed - see QueueService::resolveReturn.
+     */
+    public function resolveReturn(ResolveReturnRequest $request, ProductionJob $job): ProductionJobResource
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        $job = $this->queue->resolveReturn(
+            $job,
+            $request->string('disposition')->toString(),
+            $request->input('note'),
+        );
+
+        return new ProductionJobResource($job);
     }
 }

@@ -9,6 +9,7 @@ use App\Events\OrderTrackingUpdated;
 use App\Models\ProductionJob;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Services\QueueService;
+use App\Services\StaffNotifier;
 use App\Support\Broadcasting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,7 +64,7 @@ use Illuminate\Support\Facades\Log;
  */
 class NinjaVanWebhookController extends Controller
 {
-    public function handle(Request $request, QueueService $queue): JsonResponse
+    public function handle(Request $request, QueueService $queue, StaffNotifier $staffNotifier): JsonResponse
     {
         $secret = (string) config('services.ninjavan.webhook_secret');
 
@@ -132,7 +133,13 @@ class NinjaVanWebhookController extends Controller
         // takes the "not SHIPPED" no-op path below instead of throwing
         // InvalidStateTransitionException (mirrors QuoteService::issueInvoice's
         // lockForUpdate TOCTOU guard).
-        $outcome = DB::transaction(function () use ($job, $mapping, $statusAt, $queue): string {
+        // Set inside the transaction below when a SHIPPED job actually gets
+        // processed under a needsAttention status (returned/attempt-failed) -
+        // read afterwards, once the write is safely committed, to decide
+        // whether to fire the staff alert.
+        $needsAttentionAlert = false;
+
+        $outcome = DB::transaction(function () use ($job, $mapping, $statusAt, $queue, &$needsAttentionAlert): string {
             $locked = ProductionJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
 
             // Only an already-SHIPPED job may move: a job that hasn't shipped
@@ -164,6 +171,13 @@ class NinjaVanWebhookController extends Controller
 
             $locked->save();
 
+            // Returned/attempt-failed leaves the job stuck SHIPPED with no
+            // JobState of its own - flag it for the staff alert fired below,
+            // once this transaction has safely committed.
+            if ($mapping->needsAttention) {
+                $needsAttentionAlert = true;
+            }
+
             return 'updated';
         });
 
@@ -178,6 +192,15 @@ class NinjaVanWebhookController extends Controller
             if ($job->quote !== null) {
                 Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($job->quote));
             }
+        }
+
+        // Fired after the transaction commits (never inside it): staff must
+        // never be alerted about a write that could still roll back.
+        // StaffNotifier::parcelReturned() never throws, so no try/catch is
+        // needed at this call site (mirrors StaffNotifier::proofChangesRequested's
+        // call sites).
+        if ($needsAttentionAlert) {
+            $staffNotifier->parcelReturned($job->fresh() ?? $job);
         }
 
         return response()->json(['received' => true]);

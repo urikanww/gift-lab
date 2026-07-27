@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\PaymentState;
+use App\Enums\QuoteState;
+use App\Exceptions\DomainRuleException;
 use App\Http\Requests\AmendQuoteRequest;
 use App\Http\Requests\CancelQuoteRequest;
 use App\Http\Requests\IssueInvoiceRequest;
@@ -328,6 +330,18 @@ class QuoteController extends Controller
     public function cancel(CancelQuoteRequest $request, Quote $quote): QuoteResource
     {
         $this->authorize('manageProduction', $quote);
+
+        // QuoteState::Ready now has a Cancelled edge (added for
+        // QueueService::resolveReturn's 'cancel_credit' disposition, which
+        // calls QuoteService::cancel() directly on a returned/failed
+        // parcel), but this general endpoint must NOT gain the ability to
+        // cancel an order already on the production floor - that stays a
+        // returned-parcel-resolution-only action.
+        if ($quote->state === QuoteState::Ready) {
+            throw new DomainRuleException(
+                'An order already on the production floor can only be cancelled through the returned-parcel resolution on its job, not a general cancel.'
+            );
+        }
 
         return new QuoteResource($this->quotes->cancel($quote, $request->input('reason')));
     }

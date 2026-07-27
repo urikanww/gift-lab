@@ -56,8 +56,13 @@ enum QuoteState: string
             self::Invoiced => [self::Confirmed, self::Cancelled],
             self::Confirmed => [self::Procuring, self::Cancelled],
             self::Procuring => [self::Ready, self::Cancelled],
-            // Once on the floor (READY) the order is in production - no cancel edge.
-            self::Ready => [self::Closed],
+            // Once on the floor (READY) the order is in production - general
+            // staff cancel still has no edge here (QuoteController::cancel
+            // explicitly refuses a READY quote). This edge exists ONLY for
+            // QueueService::resolveReturn's 'cancel_credit' disposition - a
+            // returned/failed parcel the buyer doesn't want reshipped - which
+            // calls QuoteService::cancel() directly, bypassing that guard.
+            self::Ready => [self::Closed, self::Cancelled],
             self::Closed, self::Cancelled => [],
         };
     }
