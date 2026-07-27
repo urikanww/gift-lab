@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // The page only ever needs apiError() to turn a rejection into displayable
@@ -10,6 +10,13 @@ vi.mock('../lib/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
   apiError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
+
+// The camera scanner module is dynamically imported on demand
+// (`await import('../lib/scan')`); mock it so tests can capture the callback
+// the page registers with `startCameraScan` and invoke it directly, the same
+// way a decoded QR frame would.
+const scanMock = vi.hoisted(() => ({ startCameraScan: vi.fn() }));
+vi.mock('../lib/scan', () => scanMock);
 
 import { ThemeProvider, ToastProvider } from '../ui';
 import ProductionQueuePage from './ProductionQueuePage';
@@ -117,4 +124,36 @@ it('explains why the create-shipment button is disabled before the address panel
   const button = screen.getByRole('button', { name: /create ninjavan shipment/i });
   expect(button).toBeDisabled();
   expect(screen.getByText(/open delivery address to confirm before booking/i)).toBeInTheDocument();
+});
+
+// Bug: the camera scan callback was registered once, when the camera turned
+// on (`startCameraScan('qr-reader', (v) => void onScan(v))`), closing over
+// that render's `onScan` - and thus that render's `jobs` snapshot. A job that
+// arrived via realtime AFTER the camera started was then wrongly rejected as
+// "not on the queue" by the stale array. onScan must consult the store's live
+// jobs, not the array captured at camera-start time.
+it('accepts a job that arrives via realtime after the camera starts (no stale jobs snapshot)', async () => {
+  let cameraCallback: ((v: string) => void) | null = null;
+  scanMock.startCameraScan.mockImplementation(async (_id: string, cb: (v: string) => void) => {
+    cameraCallback = cb;
+    return async () => {};
+  });
+  const advanceNext = vi.fn().mockResolvedValue(undefined);
+  seed({ advanceNext });
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: /scan with camera/i }));
+  await waitFor(() => expect(cameraCallback).not.toBeNull());
+
+  // A new job (#99) arrives on the shared queue via realtime AFTER the camera
+  // was already turned on - i.e. after `onScan` was captured by the callback.
+  const arrivedJob = { ...job, id: 99, quote_reference: 'ORDER-99' };
+  act(() => {
+    useQueueStore.setState({ jobs: [job, arrivedJob] });
+  });
+
+  cameraCallback!('99');
+
+  await waitFor(() => expect(advanceNext).toHaveBeenCalledWith(99));
+  expect(screen.queryByText(/not on the queue/i)).not.toBeInTheDocument();
 });

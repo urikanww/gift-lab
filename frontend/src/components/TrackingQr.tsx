@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 
 /**
@@ -8,13 +8,30 @@ import QRCode from 'qrcode';
  */
 export default function TrackingQr({ link, size = 160 }: { link: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    setFailed(false);
     const absolute = new URL(link, window.location.origin).toString();
-    void QRCode.toCanvas(canvas, absolute, { width: size, margin: 1 });
+    QRCode.toCanvas(canvas, absolute, { width: size, margin: 1 }).catch(() => {
+      // A rejected generation used to be an unhandled promise rejection with
+      // no fallback for the buyer. Keep the canvas mounted (so a later retry
+      // via `link`/`size` changing still has a ref to draw into) and show a
+      // small text fallback in its place.
+      setFailed(true);
+    });
   }, [link, size]);
 
-  return <canvas ref={canvasRef} aria-label="Order tracking QR code" />;
+  return (
+    <>
+      <canvas ref={canvasRef} aria-label="Order tracking QR code" className={failed ? 'hidden' : undefined} />
+      {failed && (
+        <p role="status" className="text-xs text-fg-subtle">
+          Could not generate QR code.
+        </p>
+      )}
+    </>
+  );
 }

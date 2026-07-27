@@ -120,10 +120,18 @@ export default function ProductionQueuePage() {
   // now re-throws on failure (the 422 SHIPPED-guard, a 500, etc.) instead of
   // parking the message in store.error - fetchQueue's post-mutation refetch
   // would have reset that field to null before this function ever read it.
+  //
+  // The camera scanner registers its callback once, when the operator turns
+  // the camera on (`startCameraScan(..., (v) => void onScan(v))`), which
+  // closes over whichever `onScan` existed at that render - and thus over
+  // that render's `jobs` snapshot. A job that arrives via realtime afterwards
+  // would then be wrongly rejected as "not on the queue" by the stale array.
+  // Read the store's live snapshot instead of the closed-over `jobs` so this
+  // guard is always current, no matter how stale the calling closure is.
   const onScan = async (raw: string) => {
     const id = Number(String(raw).trim());
     if (!Number.isInteger(id) || id <= 0) return;
-    if (!jobs.some((j) => j.id === id)) {
+    if (!useQueueStore.getState().jobs.some((j) => j.id === id)) {
       toast({ title: `Job #${id} not on the queue`, tone: 'warning' });
       return;
     }
@@ -703,9 +711,13 @@ function JobLineDetail({ line }: { line: JobLineItem }) {
       setArtworkUrl(null);
       return;
     }
-    void fetchArtworkPreviewUrl(ref).then((url) => {
-      if (active) setArtworkUrl(url);
-    });
+    void fetchArtworkPreviewUrl(ref)
+      .then((url) => {
+        if (active) setArtworkUrl(url);
+      })
+      .catch(() => {
+        if (active) setArtworkUrl(null);
+      });
     return () => {
       active = false;
     };
