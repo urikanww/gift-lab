@@ -173,6 +173,16 @@ export default function CartPage() {
                   <p className="-mt-1 text-2xs leading-snug text-fg-subtle">
                     {estimate.delivery_reliable ? DELIVERY_NOTE_RELIABLE : DELIVERY_NOTE_UNRELIABLE}
                   </p>
+                  {/* GST is computed on subtotal+delivery, so it defers exactly
+                      like the delivery line does when the weight/dims are
+                      untrustworthy - showing a figure here would not match the
+                      subtotal-only total shown below. */}
+                  {estimate.delivery_reliable && (
+                    <SummaryRow
+                      label={`GST (${estimate.gst_rate}%)`}
+                      value={`${estimate.currency} ${estimate.gst.toFixed(2)}`}
+                    />
+                  )}
                   <div className="my-1 border-t border-border" />
                   <div className="flex items-baseline justify-between">
                     <dt className="font-medium text-fg">

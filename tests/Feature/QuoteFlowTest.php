@@ -47,6 +47,17 @@ it('lets a buyer create a draft quote priced from config', function (): void {
     $response->assertCreated()->assertJsonPath('data.state', 'DRAFT');
     expect((float) $response->json('data.total'))->toBeGreaterThan(0.0);
     $this->assertDatabaseCount('line_items', 1);
+
+    // GST is surfaced on the resource as its own itemised amount + the
+    // snapshot rate (PricingConfigSeeder seeds tax.gst_pct=9), and it is
+    // already folded into `total` (never re-add it client-side).
+    expect((float) $response->json('data.gst'))->toBeGreaterThan(0.0);
+    expect((float) $response->json('data.gst_rate'))->toBe(9.0);
+    $subtotal = (float) $response->json('data.subtotal');
+    $delivery = (float) $response->json('data.delivery');
+    $gst = (float) $response->json('data.gst');
+    $total = (float) $response->json('data.total');
+    expect(round($subtotal + $delivery + $gst, 2))->toBe($total);
 });
 
 it('rejects a line below the product minimum order quantity', function (): void {

@@ -165,7 +165,16 @@ export function PricingSummary({ quote }: { quote: Quote }) {
             {quote.currency} {quote.delivery}
           </dd>
         </div>
-        {/* Staff adjustments after delivery (discount/tax/fee). Buyer-visible -
+        {/* GST, already folded into Total below - this row is informational
+            only, never re-summed client-side. gst_rate arrives as a decimal
+            string ("9.00"), so parseFloat it for the label. */}
+        <div className="flex justify-between text-sm">
+          <dt className="text-fg-muted">GST ({parseFloat(quote.gst_rate)}%)</dt>
+          <dd className="tabular-nums text-fg">
+            {quote.currency} {quote.gst}
+          </dd>
+        </div>
+        {/* Staff adjustments after delivery (discount/surcharge). Buyer-visible -
             they move what is owed, so the total is never unexplained. */}
         {(quote.adjustments ?? []).map((adj, i) => (
           <div key={`${adj.label}-${i}`} className="flex justify-between gap-3 text-sm">

@@ -20,6 +20,10 @@ export interface Invoice {
   amount: string;
   currency: string;
   payment_state: PaymentState;
+  /** GST already folded into `amount`; surfaced separately for its own line. */
+  gst: string;
+  /** GST %, e.g. "9.00" - a decimal string over the wire; parseFloat for display. */
+  gst_rate: string;
 }
 
 export type QuoteState =
@@ -355,9 +359,17 @@ export interface Quote {
   subtotal: string;
   delivery: string;
   /**
-   * Free-form staff adjustments applied after delivery (discount/tax/fee).
+   * GST amount, already folded into `total`. Snapshotted at create/amend time
+   * from the pricing config's tax.gst_pct - see PricingService::quoteTotals().
+   */
+  gst: string;
+  /** GST %, e.g. "9.00" - a decimal string over the wire; parseFloat for display. */
+  gst_rate: string;
+  /**
+   * Free-form staff adjustments applied after delivery (discount/surcharge).
    * Signed: negative pulls the total down, positive pushes it up. Buyer-visible
-   * - always an array, possibly empty.
+   * - always an array, possibly empty. GST is computed automatically and must
+   * never be entered here (it would double the tax) - see `gst` above.
    */
   adjustments?: Adjustment[];
   total: string;
@@ -524,10 +536,20 @@ export interface PriceEstimate {
   lines: PriceEstimateLine[];
   subtotal: number;
   delivery: number;
+  /**
+   * GST amount, already folded into `total`. Computed on the fee-inclusive
+   * (subtotal + delivery) base - so it is only meaningful where delivery is
+   * shown; see `delivery_reliable`.
+   */
+  gst: number;
+  /** GST %, e.g. 9 - already a number here (unlike the Quote's decimal string). */
+  gst_rate: number;
   total: number;
   // False when a line is missing trustworthy weight/dimensions, so the derived
   // delivery fee would understate the real cost. The storefront then hides the
-  // number and defers to the staff-confirmed quote.
+  // number and defers to the staff-confirmed quote. Since GST is computed on
+  // subtotal+delivery, the GST figure is equally untrustworthy here and must
+  // be deferred alongside delivery.
   delivery_reliable: boolean;
 }
 

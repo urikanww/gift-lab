@@ -308,7 +308,10 @@ export default function QuoteLineEditor({
       </div>
 
       {/* Free-form adjustments after delivery. Signed amount: a discount is a
-          negative number, a tax or surcharge a positive one. */}
+          negative number, a surcharge a positive one. GST is NOT an
+          adjustment - it's computed automatically from subtotal+delivery
+          (PricingService::quoteTotals) and shown as its own line, so a manual
+          "GST" row here would double-count the tax. */}
       <div className="flex flex-col gap-3 border-t border-border pt-4">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-fg">Adjustments</span>
@@ -318,7 +321,8 @@ export default function QuoteLineEditor({
         </div>
         {adjustments.length === 0 ? (
           <p className="text-xs text-fg-subtle">
-            Add a discount, tax or fee. Use a negative amount for a discount.
+            Add a discount or surcharge only - GST is applied automatically, so don&rsquo;t add it here.
+            Use a negative amount for a discount.
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
@@ -327,7 +331,7 @@ export default function QuoteLineEditor({
                 <div className="min-w-0 flex-1">
                   <Input
                     label="Label"
-                    placeholder="e.g. Loyalty discount, GST"
+                    placeholder="e.g. Loyalty discount, Rush surcharge"
                     value={adj.label}
                     error={adjustmentErrorFor(adj, 'label')}
                     onChange={(e) => patchAdjustment(adj.key, { label: e.target.value })}

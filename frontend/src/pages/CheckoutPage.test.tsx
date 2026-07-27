@@ -21,7 +21,16 @@ const originalCreateQuote = useQuoteStore.getState().createQuote;
 // individual tests may override the resolved value as needed.
 beforeEach(() => {
   vi.spyOn(api, 'post').mockResolvedValue({
-    data: { currency: 'SGD', lines: [], subtotal: 0, delivery: 0, total: 0, delivery_reliable: true },
+    data: {
+      currency: 'SGD',
+      lines: [],
+      subtotal: 0,
+      delivery: 0,
+      gst: 0,
+      gst_rate: 9,
+      total: 0,
+      delivery_reliable: true,
+    },
   } as any);
 });
 
@@ -191,7 +200,9 @@ it('renders the shared delivery disclaimer from lib/deliveryCopy when expanded',
     lines: [{ unit_price: 10, line_total: 10 }],
     subtotal: 10,
     delivery: 5,
-    total: 15,
+    gst: 1.35,
+    gst_rate: 9,
+    total: 16.35,
     delivery_reliable: true,
   };
   const postSpy = vi.spyOn(api, 'post').mockResolvedValue({ data: reliableEstimate } as any);
@@ -201,9 +212,53 @@ it('renders the shared delivery disclaimer from lib/deliveryCopy when expanded',
   fireEvent.click(await screen.findByRole('button', { name: /delivery/i }));
   expect(await screen.findByText(DELIVERY_NOTE_RELIABLE)).toBeInTheDocument();
 
-  const unreliableEstimate = { ...reliableEstimate, delivery: 0, total: 10, delivery_reliable: false };
+  const unreliableEstimate = { ...reliableEstimate, delivery: 0, gst: 0.9, total: 10, delivery_reliable: false };
   postSpy.mockResolvedValue({ data: unreliableEstimate } as any);
   await useCartStore.getState().refreshEstimate();
 
   expect(await screen.findByText(DELIVERY_NOTE_UNRELIABLE)).toBeInTheDocument();
+});
+
+// Total is already GST-inclusive from the backend; the GST row here is purely
+// informational and must never be re-summed client-side.
+it('shows a GST row with the rate when delivery is shown', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: {
+      currency: 'SGD',
+      lines: [{ unit_price: 10, line_total: 10 }],
+      subtotal: 10,
+      delivery: 5,
+      gst: 1.35,
+      gst_rate: 9,
+      total: 16.35,
+      delivery_reliable: true,
+    },
+  } as any);
+
+  renderCheckoutAsBuyer();
+
+  expect(await screen.findByText('GST (9%)')).toBeInTheDocument();
+  expect(await screen.findByText('SGD 1.35')).toBeInTheDocument();
+});
+
+// GST is computed on subtotal+delivery; when delivery is deferred (unreliable
+// weight/dims) the GST row defers alongside it, exactly like the delivery line.
+it('hides the GST row when delivery is deferred (unreliable estimate)', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: {
+      currency: 'SGD',
+      lines: [{ unit_price: 10, line_total: 10 }],
+      subtotal: 10,
+      delivery: 0,
+      gst: 0.9,
+      gst_rate: 9,
+      total: 10,
+      delivery_reliable: false,
+    },
+  } as any);
+
+  renderCheckoutAsBuyer();
+
+  await screen.findByText('Confirmed on quote');
+  expect(screen.queryByText(/^GST/)).not.toBeInTheDocument();
 });

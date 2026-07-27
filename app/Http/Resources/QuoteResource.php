@@ -37,7 +37,15 @@ class QuoteResource extends JsonResource
             'currency' => $this->currency,
             'subtotal' => $this->subtotal,
             'delivery' => $this->delivery,
-            // Free-form staff adjustments after delivery (discount/tax/fee).
+            // GST amount + rate (pct, e.g. "9.00") snapshotted at create/amend
+            // time by QuoteService - see PricingService::quoteTotals(). Rate is
+            // frozen per-quote, so a later config edit never reprices a past
+            // order.
+            'gst' => $this->gst_amount,
+            'gst_rate' => $this->gst_rate,
+            // Free-form staff adjustments after delivery (discount/surcharge).
+            // GST is computed automatically (see the gst/gst_rate keys above)
+            // and must never be added here - it would double the tax.
             // Buyer-visible on purpose: they move what is owed and appear on the
             // invoice, so hiding them would leave an unexplained total. Always an
             // array (never null) so the client renders it without a guard.
@@ -104,7 +112,7 @@ class QuoteResource extends JsonResource
     }
 
     /**
-     * @return array{id: int, po_ref: string, invoice_ref: ?string, amount: string, currency: string, payment_state: string}|null
+     * @return array{id: int, po_ref: string, invoice_ref: ?string, amount: string, currency: string, payment_state: string, gst: string, gst_rate: string}|null
      */
     private function invoiceSummary(): ?array
     {
@@ -130,6 +138,11 @@ class QuoteResource extends JsonResource
             'amount' => $invoice->amount,
             'currency' => $invoice->currency,
             'payment_state' => $invoice->payment_state->value,
+            // GST already folded into `amount` (see Invoice::gst_amount/gst_rate
+            // in QuoteService::issueInvoice); surfaced separately so the invoice
+            // panel can show it as its own line, same as the quote breakdown.
+            'gst' => $invoice->gst_amount,
+            'gst_rate' => $invoice->gst_rate,
         ];
     }
 

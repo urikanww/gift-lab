@@ -384,6 +384,16 @@ export default function CheckoutPage() {
                       </p>
                     )}
                   </div>
+                  {/* GST is computed on subtotal+delivery, so it defers exactly
+                      like the delivery line does when the weight/dims are
+                      untrustworthy - showing a figure here would not match the
+                      subtotal-only total shown below. */}
+                  {estimate.delivery_reliable && (
+                    <SummaryRow
+                      label={`GST (${estimate.gst_rate}%)`}
+                      value={`${estimate.currency} ${estimate.gst.toFixed(2)}`}
+                    />
+                  )}
                   <div className="my-1 border-t border-border" />
                   <div className="flex items-baseline justify-between">
                     <dt className="font-medium text-fg">

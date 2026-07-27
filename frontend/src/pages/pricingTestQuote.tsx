@@ -26,6 +26,8 @@ interface Breakdown {
   subtotal: number;
   delivery_weight_g: number;
   delivery: number;
+  gst: number;
+  gst_rate: number;
   total: number;
 }
 
@@ -382,11 +384,20 @@ export default function TestQuoteCard({ onEditConfig }: { onEditConfig?: (key: s
                         onJump={onEditConfig}
                       />
                       <Row
+                        label={`GST (${estimate.gst_rate}%)`}
+                        value={estimate.gst}
+                        currency={c}
+                        sign="+"
+                        info="Singapore GST, applied automatically to the fee-inclusive subtotal plus delivery."
+                        target="tax.gst_pct"
+                        onJump={onEditConfig}
+                      />
+                      <Row
                         label="Total"
                         value={estimate.total}
                         currency={c}
                         strong
-                        info="Subtotal plus delivery."
+                        info="Subtotal plus delivery plus GST."
                       />
                     </div>
                   </dl>
