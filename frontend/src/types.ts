@@ -4,6 +4,24 @@ export type UserRole = 'buyer' | 'staff_admin' | 'superadmin';
 export type ProductClass = 'CORE' | 'SCRAPED_UV' | 'MODEL_3D';
 export type PrintMethod = 'UV' | 'FDM' | 'RESIN';
 
+/**
+ * B2B invoice reconciliation state. UNPAID is where `issueInvoice` starts
+ * every invoice; staff move it to PAID/PARTIAL/VOID via `reconcilePayment` -
+ * there is no B2B Stripe path, so this is recorded manually against bank
+ * transfer / cheque / cash evidence held elsewhere. VOID is terminal.
+ */
+export type PaymentState = 'UNPAID' | 'PARTIAL' | 'PAID' | 'VOID';
+
+/** Staff-only: mirrors the invoice row exposed on `Quote.invoice`. */
+export interface Invoice {
+  id: number;
+  po_ref: string;
+  invoice_ref: string | null;
+  amount: string;
+  currency: string;
+  payment_state: PaymentState;
+}
+
 export type QuoteState =
   | 'DRAFT'
   | 'SENT'
@@ -370,6 +388,12 @@ export interface Quote {
    * from buyer payloads. Drives the staff notification panel.
    */
   reminder?: QuoteReminder;
+  /**
+   * Staff-only: the B2B invoice raised against this order (once
+   * `issueInvoice` has fired), null/absent until then. Drives the payment
+   * reconciliation control on the order page.
+   */
+  invoice?: Invoice | null;
 }
 
 /** The buyer email tied to a state; keyed like the backend OrderMilestone enum. */

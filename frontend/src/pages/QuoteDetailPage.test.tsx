@@ -1341,3 +1341,167 @@ it('shows the order state badge once, not duplicated between the header and the 
   // "Sent" is the humanized label for the SENT state.
   expect(screen.getAllByText('Sent')).toHaveLength(1);
 });
+
+// B2B invoice payment reconciliation: staff manually record a bank transfer /
+// cheque / cash outcome against the invoice raised by `issueInvoice`. There is
+// no Stripe path for B2B, so before this the invoice sat UNPAID forever.
+function seedInvoice(paymentState: 'UNPAID' | 'PARTIAL' | 'PAID' | 'VOID' = 'UNPAID') {
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      invoice: {
+        id: 1,
+        po_ref: 'PO-42',
+        invoice_ref: null,
+        amount: '105.00',
+        currency: 'SGD',
+        payment_state: paymentState,
+      },
+    },
+  } as any);
+}
+
+it('shows the Unpaid badge and Mark paid/partial/void controls for staff when an invoice exists', () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  renderPage();
+
+  expect(screen.getByText('Invoice payment')).toBeInTheDocument();
+  expect(screen.getByText('Unpaid')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Mark paid' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Mark partial' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Void invoice' })).toBeInTheDocument();
+});
+
+it('never shows the invoice payment control to a buyer', () => {
+  asBuyer();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  renderPage();
+
+  expect(screen.queryByText('Invoice payment')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark paid' })).not.toBeInTheDocument();
+});
+
+it('hides the invoice payment control for staff when the order has no invoice yet', () => {
+  asStaff();
+  seedQuote('PROOF_APPROVED');
+  renderPage();
+
+  expect(screen.queryByText('Invoice payment')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark paid' })).not.toBeInTheDocument();
+});
+
+it('clicking Mark paid calls reconcilePayment with PAID, and the badge reflects Paid after success', async () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  const reconcilePayment = vi.fn(async (_id: number, paymentState: string) => {
+    useQuoteStore.setState((s) => ({
+      current: s.current
+        ? { ...s.current, invoice: { ...s.current.invoice!, payment_state: paymentState as never } }
+        : s.current,
+    }) as any);
+    return true;
+  });
+  useQuoteStore.setState({ reconcilePayment } as any);
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Mark paid' }));
+
+  expect(reconcilePayment).toHaveBeenCalledWith(42, 'PAID');
+  await waitFor(() => expect(screen.getByText('Paid')).toBeInTheDocument());
+  expect(screen.queryByText('Unpaid')).not.toBeInTheDocument();
+});
+
+it('clicking Mark partial calls reconcilePayment with PARTIAL', async () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  const reconcilePayment = vi.fn(async () => true);
+  useQuoteStore.setState({ reconcilePayment } as any);
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Mark partial' }));
+
+  expect(reconcilePayment).toHaveBeenCalledWith(42, 'PARTIAL');
+});
+
+// Voiding is terminal (the backend refuses to reconcile a VOID invoice to any
+// other state), so - like cancelling the order - it is confirmed rather than
+// fired straight from the button.
+it('requires confirmation before voiding an invoice, and sends the trimmed note', async () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  const reconcilePayment = vi.fn(async () => true);
+  useQuoteStore.setState({ reconcilePayment } as any);
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Void invoice' }));
+  expect(reconcilePayment).not.toHaveBeenCalled();
+
+  const dialog = await screen.findByRole('dialog', { name: /void this invoice/i });
+  await userEvent.type(within(dialog).getByLabelText(/note/i), '  Buyer disputed the charge.  ');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Void invoice' }));
+
+  expect(reconcilePayment).toHaveBeenCalledWith(42, 'VOID', 'Buyer disputed the charge.');
+});
+
+it('disables all reconciliation controls once the invoice is Void', () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('VOID');
+  renderPage();
+
+  expect(screen.getByText('Void')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark paid' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark partial' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Void invoice' })).not.toBeInTheDocument();
+});
+
+// A rejected write (illegal transition, or the backend's 422 for "no invoice
+// yet" on a race) must surface inline, not blank the page - same contract as
+// every other staff write on this page (see issueInvoice's actionError tests).
+it('surfaces a 422 from reconcilePayment as an inline error, keeping the order on screen', async () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  useQuoteStore.setState({
+    reconcilePayment: async () => {
+      useQuoteStore.setState({ actionError: 'This invoice is VOID and cannot be reconciled to another state.' } as any);
+      return false;
+    },
+  } as any);
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Mark paid' }));
+
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('This invoice is VOID and cannot be reconciled to another state.');
+  expect(screen.getByRole('heading', { name: /Order 9BWVKWCDXH/i })).toBeInTheDocument();
+  // Still Unpaid: the rejected write never landed, so the badge did not move.
+  expect(screen.getByText('Unpaid')).toBeInTheDocument();
+});
+
+// Same failure via the Void confirm modal: the modal itself must show the
+// rejection (mirrors the commit modal's own 422 test), not only the page banner.
+it('shows the void-reconciliation error inside the still-open modal', async () => {
+  asStaff();
+  seedQuote('CONFIRMED');
+  seedInvoice('UNPAID');
+  useQuoteStore.setState({
+    reconcilePayment: async () => {
+      useQuoteStore.setState({ actionError: 'This order has no invoice to reconcile yet.' } as any);
+      return false;
+    },
+  } as any);
+  renderPage();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Void invoice' }));
+  const dialog = await screen.findByRole('dialog', { name: /void this invoice/i });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Void invoice' }));
+
+  expect(within(dialog).getByText('This order has no invoice to reconcile yet.')).toBeInTheDocument();
+});

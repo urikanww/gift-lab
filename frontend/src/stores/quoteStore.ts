@@ -4,6 +4,7 @@ import { joinSharedPrivate, leaveSharedPrivate, onEchoReconnect } from '../lib/e
 import type {
   CartLine,
   Paginated,
+  PaymentState,
   Proof,
   Quote,
   QuoteState,
@@ -138,6 +139,13 @@ interface QuoteStoreState {
   /** Staff re-send the buyer's proof-review email. Resolves true on success. */
   resendProof: (proofId: number) => Promise<boolean>;
   issueInvoice: (id: number, poRef: string, terms: string | null) => Promise<void>;
+  /**
+   * Staff manually reconcile a B2B invoice against real-world payment
+   * evidence (bank transfer, cheque, cash) - there is no Stripe path for
+   * B2B. Resolves true on success so a confirm modal (Void) only closes
+   * when the write actually landed, mirroring cancelQuote.
+   */
+  reconcilePayment: (id: number, paymentState: PaymentState, note?: string) => Promise<boolean>;
   /**
    * Staff confirm the goods are in hand, releasing the order to the floor.
    * Production no longer starts on the system's own say-so.
@@ -358,6 +366,19 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await get().fetchQuote(id);
     } catch (err) {
       set({ actionError: apiError(err) });
+    }
+  },
+
+  reconcilePayment: async (id, paymentState, note) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/quotes/${id}/payment`, { payment_state: paymentState, note });
+      await get().fetchQuote(id);
+      return true;
+    } catch (err) {
+      set({ actionError: apiError(err) });
+      return false;
     }
   },
 

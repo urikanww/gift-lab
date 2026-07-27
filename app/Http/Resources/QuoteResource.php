@@ -92,7 +92,44 @@ class QuoteResource extends JsonResource
                 (bool) ($request->user()?->isStaff() ?? false),
                 fn (): array => $this->reminderSummary(),
             ),
+            // Staff-only: the B2B invoice raised against this order (once
+            // issueInvoice has fired), driving the payment-reconciliation
+            // control on the order page. Null until an invoice exists.
+            'invoice' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn (): ?array => $this->invoiceSummary(),
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array{id: int, po_ref: string, invoice_ref: ?string, amount: string, currency: string, payment_state: string}|null
+     */
+    private function invoiceSummary(): ?array
+    {
+        // Only meaningful once purchaseOrders is eager-loaded (the show()
+        // action does this); other actions that return a QuoteResource
+        // without it simply omit the invoice rather than firing an N+1 query.
+        if (! $this->relationLoaded('purchaseOrders')) {
+            return null;
+        }
+
+        // At most one invoice per quote today - issueInvoice's TOCTOU guard
+        // returns the existing row rather than minting a second - so the
+        // latest is THE invoice.
+        $invoice = $this->purchaseOrders->last();
+        if ($invoice === null) {
+            return null;
+        }
+
+        return [
+            'id' => $invoice->id,
+            'po_ref' => $invoice->po_ref,
+            'invoice_ref' => $invoice->invoice_ref,
+            'amount' => $invoice->amount,
+            'currency' => $invoice->currency,
+            'payment_state' => $invoice->payment_state->value,
         ];
     }
 

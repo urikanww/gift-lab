@@ -6,7 +6,7 @@ import { Badge, Button, Card, Input, Modal, Skeleton, Textarea, useToast } from 
 import { EmptyState as LegacyEmpty, ErrorState } from '../components/ui/States';
 import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
-import { isStaffRole } from '../lib/roles';
+import { hasPermission, isStaffRole } from '../lib/roles';
 import { humanizeState, proofStateTone } from '../lib/quoteStatus';
 import TrackingQr from '../components/TrackingQr';
 import Breadcrumb from '../components/Breadcrumb';
@@ -19,7 +19,7 @@ import ArtworkPicker, { type ArtworkOption } from '../components/quote/ArtworkPi
 import LineProofRow from '../components/quote/LineProofRow';
 import BuyerProofItem from '../components/quote/BuyerProofItem';
 import BuyerNotifications from '../components/quote/BuyerNotifications';
-import type { LineItem, Proof, QuoteState } from '../types';
+import type { LineItem, PaymentState, Proof, QuoteState } from '../types';
 
 /**
  * Passive "what happens next" copy for buyer-facing states that carry no buyer
@@ -38,6 +38,20 @@ const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
   PROCURING: 'Your order is being prepared for production.',
   READY: 'Your order is ready. We’ll be in touch about delivery.',
   CLOSED: 'This order is complete. Thanks for working with us.',
+};
+
+/** Badge tone + label for the B2B invoice payment_state, staff-only. */
+const PAYMENT_STATE_TONE: Record<PaymentState, 'neutral' | 'success' | 'warning' | 'danger'> = {
+  UNPAID: 'neutral',
+  PARTIAL: 'warning',
+  PAID: 'success',
+  VOID: 'danger',
+};
+const PAYMENT_STATE_LABEL: Record<PaymentState, string> = {
+  UNPAID: 'Unpaid',
+  PARTIAL: 'Partial',
+  PAID: 'Paid',
+  VOID: 'Void',
 };
 
 /**
@@ -89,6 +103,7 @@ export default function QuoteDetailPage() {
     approveAllProofs,
     resendProof,
     issueInvoice,
+    reconcilePayment,
     confirmStock,
     payNow,
     cancelQuote,
@@ -96,6 +111,11 @@ export default function QuoteDetailPage() {
   const user = useAuthStore((s) => s.user);
   const isStaff = isStaffRole(user?.role);
   const isSuperadmin = user?.role === 'superadmin';
+  // Mirrors the backend's own gate (route middleware `permission:quotes.edit`
+  // plus the `manageProduction` policy): a staff_admin without this specific
+  // permission would only hit a 403, so the control stays hidden for them
+  // rather than offering a button that always fails.
+  const canReconcilePayment = isStaff && hasPermission(user, 'quotes.edit');
   const { toast } = useToast();
 
   // The order's recorded state trail, fetched ONCE here and shared by both the
@@ -133,6 +153,15 @@ export default function QuoteDetailPage() {
   const [commitError, setCommitError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  // Staff-only invoice payment reconciliation. Void is confirmed (terminal -
+  // no further reconciliation is possible afterwards), same reasoning as the
+  // cancel-order modal; Paid/Partial fire straight from their buttons.
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidNote, setVoidNote] = useState('');
+  // Set only from the void modal's own confirm action, mirroring commitError:
+  // a rejected void should be visible in the modal body itself, not only
+  // behind it on the page banner.
+  const [voidError, setVoidError] = useState<string | null>(null);
   // Tracking link/QR moved out of a full-width card into a header button that
   // opens this modal, keeping the sharing affordance without the page real
   // estate.
@@ -795,6 +824,76 @@ export default function QuoteDetailPage() {
         )}
       </div>
 
+      {/* B2B invoice payment reconciliation - staff-only, and only once an
+          invoice exists (issueInvoice has fired). There is no Stripe path for
+          B2B, so this is how a bank transfer / cheque / cash payment actually
+          gets recorded against the order. Sits outside the per-state block
+          above because the invoice, once raised, persists across every state
+          from INVOICED onward - it is not tied to one step in the flow. */}
+      {isStaff && quote.invoice && (
+        <div className="flex flex-col gap-3 border-t border-border pt-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-fg">Invoice payment</span>
+            <Badge tone={PAYMENT_STATE_TONE[quote.invoice.payment_state]}>
+              {PAYMENT_STATE_LABEL[quote.invoice.payment_state]}
+            </Badge>
+          </div>
+          {canReconcilePayment && quote.invoice.payment_state !== 'VOID' && (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={busy}
+                  disabled={busy || quote.invoice.payment_state === 'PAID'}
+                  onClick={() =>
+                    run(async () => {
+                      await reconcilePayment(quote.id, 'PAID');
+                    }, 'Invoice marked paid')
+                  }
+                >
+                  Mark paid
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={busy}
+                  disabled={busy || quote.invoice.payment_state === 'PARTIAL'}
+                  onClick={() =>
+                    run(async () => {
+                      await reconcilePayment(quote.id, 'PARTIAL');
+                    }, 'Invoice marked partial')
+                  }
+                >
+                  Mark partial
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    setVoidError(null);
+                    setVoidNote('');
+                    setVoidOpen(true);
+                  }}
+                >
+                  Void invoice
+                </Button>
+              </div>
+              <p className="text-xs text-fg-subtle">
+                Records the real-world payment outcome for PO {quote.invoice.po_ref} — there is no
+                automatic B2B payment capture.
+              </p>
+            </div>
+          )}
+          {canReconcilePayment && quote.invoice.payment_state === 'VOID' && (
+            <p className="text-xs text-fg-subtle">
+              This invoice is void and cannot be reconciled to another state.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Superadmin-only, and only while a proof is open (awaiting the buyer):
           nudge them by resending the review email, or sign the proof off on
           their behalf. The approval is recorded against the superadmin. */}
@@ -1183,6 +1282,70 @@ export default function QuoteDetailPage() {
                 {commitError}
               </p>
             )}
+          </Modal>
+        )}
+
+        {/* Voiding an invoice is terminal - it can never be reconciled to
+            another state afterwards - so it is confirmed, like cancelling the
+            order itself. */}
+        {isStaff && quote.invoice && (
+          <Modal
+            open={voidOpen}
+            onClose={() => {
+              setVoidOpen(false);
+              setVoidError(null);
+              setVoidNote('');
+            }}
+            title="Void this invoice?"
+            description="This marks the invoice void. It can no longer be reconciled to Paid or Partial afterwards — this cannot be undone."
+            footer={
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setVoidOpen(false);
+                    setVoidError(null);
+                  }}
+                  disabled={busy}
+                >
+                  Keep invoice
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={busy}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const ok = await reconcilePayment(quote.id, 'VOID', voidNote.trim() || undefined);
+                      if (ok) {
+                        setVoidOpen(false);
+                        setVoidError(null);
+                        setVoidNote('');
+                      } else {
+                        setVoidError(useQuoteStore.getState().actionError);
+                      }
+                    }, 'Invoice voided')
+                  }
+                >
+                  Void invoice
+                </Button>
+              </>
+            }
+          >
+            {voidError && (
+              <p className="rounded-md border border-danger/30 bg-danger-bg p-3 text-sm text-fg">
+                {voidError}
+              </p>
+            )}
+            <Textarea
+              label="Note"
+              hint="Optional — recorded in the audit trail."
+              rows={3}
+              maxLength={500}
+              value={voidNote}
+              onChange={(e) => setVoidNote(e.target.value)}
+              placeholder="e.g. Buyer disputed the charge."
+            />
           </Modal>
         )}
 
