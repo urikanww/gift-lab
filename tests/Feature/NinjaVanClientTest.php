@@ -76,6 +76,72 @@ it('creates an order and returns the merchant tracking number', function (): voi
         && data_get($request->data(), 'to.address.postcode') === '018989');
 });
 
+it('sends the pickup_* parcel_job fields NinjaVan v4.1 requires when pickup is enabled', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['requested_tracking_number' => 'GL1AB']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+    config()->set('services.ninjavan.pickup_service_type', 'Parcel');
+    config()->set('services.ninjavan.pickup_service_level', 'Standard');
+    config()->set('services.ninjavan.pickup_date', null);
+    config()->set('services.ninjavan.pickup_timeslot_start', '10:00');
+    config()->set('services.ninjavan.pickup_timeslot_end', '17:00');
+    config()->set('services.ninjavan.timezone', 'Asia/Singapore');
+
+    $client = app(HttpNinjaVanClient::class);
+    $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/4.1/orders')
+        && data_get($request->data(), 'parcel_job.is_pickup_required') === true
+        && data_get($request->data(), 'parcel_job.pickup_service_type') === 'Parcel'
+        && data_get($request->data(), 'parcel_job.pickup_service_level') === 'Standard'
+        // pickup_date falls back to the delivery_start_date when unconfigured.
+        && data_get($request->data(), 'parcel_job.pickup_date') === '2026-07-20'
+        && data_get($request->data(), 'parcel_job.pickup_timeslot.start_time') === '10:00'
+        && data_get($request->data(), 'parcel_job.pickup_timeslot.end_time') === '17:00'
+        && data_get($request->data(), 'parcel_job.pickup_timeslot.timezone') === 'Asia/Singapore');
+});
+
+it('uses a configured pickup_date override and service type/level over the delivery-date fallback', function (): void {
+    Http::fake([
+        '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+        '*/4.1/orders' => Http::response(['requested_tracking_number' => 'GL1AB']),
+    ]);
+
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
+    config()->set('services.ninjavan.pickup_service_type', 'Marketplace');
+    config()->set('services.ninjavan.pickup_service_level', 'Express');
+    config()->set('services.ninjavan.pickup_date', '2026-07-19');
+
+    $client = app(HttpNinjaVanClient::class);
+    $client->createShipment(new CourierShipment(
+        reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
+        line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
+        postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+    ));
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/4.1/orders')
+        && data_get($request->data(), 'parcel_job.pickup_service_type') === 'Marketplace'
+        && data_get($request->data(), 'parcel_job.pickup_service_level') === 'Express'
+        // Distinct pickup_date is honoured; delivery_start_date stays independent.
+        && data_get($request->data(), 'parcel_job.pickup_date') === '2026-07-19'
+        && data_get($request->data(), 'parcel_job.delivery_start_date') === '2026-07-20');
+});
+
 it('throws a CourierException when auth fails', function (): void {
     Http::fake([
         '*/2.0/oauth/access_token' => Http::response(['error' => 'invalid_client'], 401),

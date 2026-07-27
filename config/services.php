@@ -175,6 +175,16 @@ return [
         // when STRIPE_WEBHOOK_SECRET is unset.
         'webhook_secret' => env('NINJAVAN_WEBHOOK_SECRET'),
         'webhook_signature_header' => env('NINJAVAN_WEBHOOK_SIGNATURE_HEADER', 'X-Ninja-Hmac'),
+        // Pickup leg (parcel_job.pickup_*). NinjaVan's v4.1 Orders API requires
+        // these whenever is_pickup_required is true; without them every real
+        // order 400s. pickup_date is an optional fixed override - when unset the
+        // pickup happens on the delivery_start_date (no separate lead window),
+        // matching the delivery timeslot shape/timezone above.
+        'pickup_service_type' => env('NINJAVAN_PICKUP_SERVICE_TYPE', 'Parcel'),
+        'pickup_service_level' => env('NINJAVAN_PICKUP_SERVICE_LEVEL', 'Standard'),
+        'pickup_date' => env('NINJAVAN_PICKUP_DATE'),
+        'pickup_timeslot_start' => env('NINJAVAN_PICKUP_TIMESLOT_START', '09:00'),
+        'pickup_timeslot_end' => env('NINJAVAN_PICKUP_TIMESLOT_END', '18:00'),
         'pickup' => [
             'name' => env('NINJAVAN_PICKUP_NAME', 'Gift Lab'),
             'phone' => env('NINJAVAN_PICKUP_PHONE'),

@@ -156,6 +156,17 @@ final class HttpNinjaVanClient implements CourierClient
                 ],
                 'parcel_job' => [
                     'is_pickup_required' => true,
+                    // NinjaVan v4.1 requires the pickup_* fields whenever
+                    // is_pickup_required is true. pickup_date falls back to the
+                    // delivery start date when no fixed override is configured.
+                    'pickup_service_type' => (string) config('services.ninjavan.pickup_service_type', 'Parcel'),
+                    'pickup_service_level' => (string) config('services.ninjavan.pickup_service_level', 'Standard'),
+                    'pickup_date' => (string) (config('services.ninjavan.pickup_date') ?: $shipment->deliveryStartDate),
+                    'pickup_timeslot' => [
+                        'start_time' => (string) config('services.ninjavan.pickup_timeslot_start', '09:00'),
+                        'end_time' => (string) config('services.ninjavan.pickup_timeslot_end', '18:00'),
+                        'timezone' => (string) config('services.ninjavan.timezone', 'Asia/Singapore'),
+                    ],
                     'delivery_start_date' => $shipment->deliveryStartDate,
                     'delivery_timeslot' => [
                         'start_time' => (string) config('services.ninjavan.timeslot_start', '09:00'),
