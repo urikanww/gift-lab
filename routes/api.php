@@ -143,6 +143,11 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/send', [QuoteController::class, 'send'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
+    // One-click reorder: clone a past order's cloneable lines into a fresh
+    // DRAFT, re-priced at today's config. Buyer's own company or staff (any
+    // company) - the view + create policies gate it, so no permission
+    // middleware here (mirrors accept() above, which is also buyer-reachable).
+    Route::post('/quotes/{quote}/reorder', [QuoteController::class, 'reorder']);
     Route::post('/quotes/{quote}/invoice', [QuoteController::class, 'issueInvoice'])->middleware('permission:quotes.edit');
     // Manual B2B reconciliation: staff record the invoice's real-world payment
     // outcome (paid / partial / voided). No Stripe path exists for B2B.

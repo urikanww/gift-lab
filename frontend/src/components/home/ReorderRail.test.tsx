@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ReorderRail from './ReorderRail';
 import * as quotes from '../../lib/quotes';
+import { useQuoteStore } from '../../stores/quoteStore';
 import type { Quote } from '../../types';
 
 const quote = (id: number): Quote =>
@@ -72,5 +74,29 @@ describe('ReorderRail', () => {
     renderRail();
 
     await waitFor(() => expect(spy).toHaveBeenCalledWith(3));
+  });
+
+  it('reorders a quote and disables the button while the request is in flight', async () => {
+    vi.spyOn(quotes, 'fetchRecentQuotes').mockResolvedValue([quote(7)]);
+    let resolveReorder!: (q: Quote) => void;
+    const reorderQuote = vi.fn(
+      () =>
+        new Promise<Quote>((resolve) => {
+          resolveReorder = resolve;
+        }),
+    );
+    useQuoteStore.setState({ reorderQuote: reorderQuote as unknown as typeof useQuoteStore.getState.prototype.reorderQuote });
+
+    const user = userEvent.setup();
+    renderRail();
+    const button = await screen.findByRole('button', { name: /reorder/i });
+
+    await user.click(button);
+
+    expect(reorderQuote).toHaveBeenCalledWith(7);
+    expect(button).toBeDisabled();
+
+    resolveReorder(quote(99));
+    await waitFor(() => expect(button).not.toBeDisabled());
   });
 });

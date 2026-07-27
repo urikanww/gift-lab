@@ -155,6 +155,14 @@ interface QuoteStoreState {
   payNow: (id: number) => Promise<boolean>;
   /** Resolves true on success so the confirm modal only closes when the cancel actually landed. */
   cancelQuote: (id: number, reason?: string) => Promise<boolean>;
+  /**
+   * Clone a past order's cloneable lines into a fresh DRAFT, re-priced at
+   * today's config (one-click reorder). Resolves the new quote on success so
+   * the caller can navigate straight to it; null (with `actionError` set) on
+   * failure - e.g. every line on the source was dropped/cancelled (422), or
+   * the source isn't this buyer's to reorder (403).
+   */
+  reorderQuote: (sourceId: number) => Promise<Quote | null>;
   subscribeCompany: (companyId: number) => void;
   unsubscribeCompany: () => void;
 }
@@ -424,6 +432,18 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     } catch (err) {
       set({ actionError: apiError(err) });
       return false;
+    }
+  },
+
+  reorderQuote: async (sourceId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ data: Quote }>(`/quotes/${sourceId}/reorder`);
+      return data.data;
+    } catch (err) {
+      set({ actionError: apiError(err) });
+      return null;
     }
   },
 

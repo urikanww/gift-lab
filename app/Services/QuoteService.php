@@ -91,6 +91,55 @@ final class QuoteService
     }
 
     /**
+     * Clone a past order into a fresh DRAFT, re-priced at today's config (GST
+     * threads through create() automatically, same as any other new quote).
+     *
+     * Only line SPECS are cloned - product_id, variant_id, qty, customization
+     * - from lines that are neither Dropped nor Cancelled. Everything else
+     * (proofs, invoice, jobs, shipping address, adjustments, amendment log,
+     * state, subtotal/total) is deliberately left behind: this mints a new
+     * order, not a resurrection of the old one.
+     *
+     * Lines whose product no longer exists (hard-deleted) or was soft-deleted
+     * since the original order are dropped BEFORE calling create(): that
+     * method resolves products via a batched whereIn, so a single stale
+     * product id would 404 the whole reorder instead of just skipping one
+     * line.
+     */
+    public function reorder(Quote $source): Quote
+    {
+        $lines = $source->lineItems()
+            ->whereNotIn('line_state', [LineItemState::Dropped->value, LineItemState::Cancelled->value])
+            ->get();
+
+        $productIds = $lines->pluck('product_id')->unique()->values();
+        // Product uses SoftDeletes, so this whereIn already excludes
+        // soft-deleted rows - exactly the pre-filter create() needs.
+        $survivingProductIds = $productIds->isEmpty()
+            ? collect()
+            : Product::query()->whereIn('id', $productIds)->pluck('id');
+
+        $specs = $lines
+            ->filter(fn (LineItem $line): bool => $survivingProductIds->contains($line->product_id))
+            ->map(fn (LineItem $line): array => [
+                'product_id' => $line->product_id,
+                'variant_id' => $line->variant_id,
+                'qty' => $line->qty,
+                'customization' => $line->customization,
+            ])
+            ->values()
+            ->all();
+
+        if ($specs === []) {
+            throw new DomainRuleException('This order has no lines left to reorder.');
+        }
+
+        // Fresh draft: no notes, needed-by, idempotency key or shipping carried
+        // over - a reorder is a new order, not a resubmission of the old one.
+        return $this->create($source->company_id, $specs, null, null, null, null);
+    }
+
+    /**
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
     private function createFresh(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy, ?string $idempotencyKey, ?array $shipping): Quote

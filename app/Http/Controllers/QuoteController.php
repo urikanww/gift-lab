@@ -267,6 +267,25 @@ class QuoteController extends Controller
         return new QuoteResource($this->quotes->accept($quote));
     }
 
+    /**
+     * Clone a past order into a fresh DRAFT re-priced at today's config
+     * (spec: repeat-purchase business, one-click reorder). Gated on BOTH
+     * viewing the source order (own company, or staff) and being allowed to
+     * create a new one for that same company - a buyer may reorder their own
+     * company's history; staff may reorder any company's.
+     */
+    public function reorder(Request $request, Quote $quote): JsonResponse
+    {
+        $this->authorize('view', $quote);
+        $this->authorize('create', [Quote::class, $quote->company_id]);
+
+        $new = $this->quotes->reorder($quote);
+
+        return (new QuoteResource($new->load('lineItems')))
+            ->response()
+            ->setStatusCode(201);
+    }
+
     public function issueInvoice(IssueInvoiceRequest $request, Quote $quote): JsonResponse
     {
         $this->authorize('manageProduction', $quote);

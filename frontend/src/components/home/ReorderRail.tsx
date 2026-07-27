@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { fetchRecentQuotes } from '../../lib/quotes';
+import { useQuoteStore } from '../../stores/quoteStore';
 import type { Quote } from '../../types';
 
 const MAX_QUOTES = 3;
@@ -14,6 +15,11 @@ const MAX_QUOTES = 3;
  */
 export default function ReorderRail() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  // The id of the card currently reordering, so only THAT card's button
+  // disables - a slow reorder on one card must not freeze the other two.
+  const [reorderingId, setReorderingId] = useState<number | null>(null);
+  const reorderQuote = useQuoteStore((s) => s.reorderQuote);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -28,6 +34,13 @@ export default function ReorderRail() {
       active = false;
     };
   }, []);
+
+  const handleReorder = async (sourceId: number) => {
+    setReorderingId(sourceId);
+    const created = await reorderQuote(sourceId);
+    setReorderingId(null);
+    if (created) navigate(`/orders/${created.reference}`);
+  };
 
   if (quotes.length === 0) return null;
 
@@ -52,16 +65,29 @@ export default function ReorderRail() {
       <ul className="mt-3 flex gap-3 overflow-x-auto pb-1">
         {quotes.map((q) => (
           <li key={q.id} className="w-56 shrink-0">
-            <Link
-              to={`/orders/${q.reference}`}
-              aria-label={`Order ${q.reference}`}
-              className="flex min-h-[44px] flex-col gap-1 rounded-xl border border-border bg-surface p-4 shadow-card transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span className="font-display text-sm text-fg">Order {q.reference}</span>
-              <span className="text-xs text-fg-muted">
-                {q.currency} {q.total}
-              </span>
-            </Link>
+            {/* Card content and the Reorder action are siblings, not nested -
+                a <button> inside this <Link>'s <a> would be invalid HTML and
+                would swallow the button's clicks as a navigation instead. */}
+            <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-4 shadow-card transition-colors hover:border-primary/50">
+              <Link
+                to={`/orders/${q.reference}`}
+                aria-label={`Order ${q.reference}`}
+                className="flex min-h-[44px] flex-col gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="font-display text-sm text-fg">Order {q.reference}</span>
+                <span className="text-xs text-fg-muted">
+                  {q.currency} {q.total}
+                </span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handleReorder(q.id)}
+                disabled={reorderingId === q.id}
+                className="mt-1 inline-flex min-h-[44px] items-center justify-center rounded-lg border border-border text-sm font-medium text-primary transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-[36px]"
+              >
+                {reorderingId === q.id ? 'Reordering…' : 'Reorder'}
+              </button>
+            </div>
           </li>
         ))}
       </ul>
