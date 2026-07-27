@@ -58,7 +58,12 @@ final class ShipmentService
         // opaque 502, instead of a specific, actionable 422.
         $this->assertShipToComplete($addr);
 
-        $trackingNumber = NinjaVanTrackingNumber::forQuote((int) $quote->id);
+        // Per-JOB, not per-quote: a multi-job quote (one UV job + one per 3D
+        // line) books one NinjaVan order per job, so a number derived from the
+        // quote id alone would collide across a quote's own jobs (NinjaVan
+        // rejects the second as a duplicate, and only one job's webhook would
+        // ever find a match). See NinjaVanTrackingNumber::forJob.
+        $trackingNumber = NinjaVanTrackingNumber::forJob((int) $quote->id, (int) $job->id);
         $deliveryStartDate = $quote->needed_by?->toDateString()
             ?? now()->addDays((int) config('services.ninjavan.lead_days', 2))->toDateString();
 

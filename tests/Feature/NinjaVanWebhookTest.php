@@ -6,14 +6,17 @@ use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Enums\QuoteState;
 use App\Events\OrderTrackingUpdated;
+use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
+use App\Models\ShippingAddress;
 use App\Models\User;
 use App\Services\QueueService;
+use App\Services\ShipmentService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 
@@ -219,6 +222,157 @@ it('stores an unrecognised status string verbatim without crashing', function ()
     $job->refresh();
     expect($job->state)->toBe(JobState::Shipped)
         ->and($job->last_courier_status)->toBe('Some Brand New Courier Status');
+});
+
+it('books a distinct consignment_ref per job on a multi-job quote, and two Delivered webhooks close both jobs then the quote', function (): void {
+    // One CORE (UV-track) line + one MODEL_3D line -> QueueService::buildJobsForQuote
+    // makes two jobs for this quote (one UV job, one per 3D line). Each must book
+    // under its own NinjaVan requested_tracking_number (NinjaVanTrackingNumber::forJob),
+    // or the second booking collides with the first and only one job ever closes.
+    $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
+    $threeDProduct = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROCURING',
+        'created_by' => $this->buyer->id,
+    ]);
+    $uvLine = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $uvProduct->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
+    ]);
+    Proof::factory()->forLine($uvLine)->approved()->create();
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $threeDProduct->id,
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png'],
+    ]);
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+
+    $queue = app(QueueService::class);
+    $jobs = $queue->buildJobsForQuote($quote->load('lineItems.product'));
+    expect($jobs)->toHaveCount(2);
+
+    $shipmentService = app(ShipmentService::class);
+    $shippedJobs = $jobs->map(function (ProductionJob $job) use ($queue, $shipmentService): ProductionJob {
+        $queue->advance($job, JobState::InProduction);
+
+        return $shipmentService->createForJob($job->fresh());
+    });
+
+    $refs = $shippedJobs->pluck('consignment_ref');
+    expect($refs->filter())->toHaveCount(2)
+        ->and($refs->unique())->toHaveCount(2);
+
+    foreach ($shippedJobs as $job) {
+        postNinjaVanWebhook([
+            'tracking_number' => $job->consignment_ref,
+            'status' => 'Delivered',
+        ])->assertOk()->assertJson(['received' => true]);
+    }
+
+    foreach ($shippedJobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Closed);
+    }
+
+    expect($quote->fresh()->state)->toBe(QuoteState::Closed);
+});
+
+it('matches a recovered (un-prefixed) consignment_ref against NinjaVan\'s prefixed webhook tracking_number', function (): void {
+    // Simulates ShipmentService::createForJob having recovered via
+    // HttpNinjaVanClient's duplicate-order path, which (until NinjaVan's
+    // canonical number can be resolved) persists the un-prefixed value we
+    // requested rather than NinjaVan's own prefixed tracking_number. The
+    // webhook must still match: NinjaVan's tracking_number ends with the
+    // exact value we stored as consignment_ref.
+    $job = ninjaVanShippedJob('GLJOB01');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGGLJOB01',
+        'status' => 'Delivered',
+    ])->assertOk()->assertJson(['received' => true]);
+
+    $job->refresh();
+    expect($job->state)->toBe(JobState::Closed)
+        ->and($job->last_courier_status)->toBe('Delivered');
+});
+
+it('locks the job row so two concurrent Delivered events cannot both close it or double the audit trail', function (): void {
+    $job = ninjaVanShippedJob('NVSGNEXGE000LOCK01');
+
+    // Simulated concurrency: the handler is invoked twice in sequence. The
+    // lockForUpdate + re-read-under-lock means the second call sees the job
+    // already CLOSED and becomes a clean no-op instead of throwing
+    // InvalidStateTransitionException (which would otherwise surface as a 500).
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000LOCK01',
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:00:00+08:00',
+    ])->assertOk()->assertJson(['received' => true]);
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000LOCK01',
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:00:01+08:00',
+    ])->assertOk()->assertJson(['received' => true]);
+
+    $job->refresh();
+    expect($job->state)->toBe(JobState::Closed);
+
+    $closeAudits = AuditLog::query()
+        ->where('auditable_type', ProductionJob::class)
+        ->where('auditable_id', $job->id)
+        ->where('event', 'production_job.advanced')
+        ->get()
+        ->filter(fn (AuditLog $log): bool => ($log->new_values['state'] ?? null) === JobState::Closed->value);
+
+    expect($closeAudits)->toHaveCount(1);
+});
+
+it('does not regress last_courier_status when an older event arrives after a newer one', function (): void {
+    $job = ninjaVanShippedJob('NVSGNEXGE000ORD001');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ORD001',
+        'status' => 'Out for Delivery',
+        'timestamp' => '2026-07-27T12:00:00+08:00',
+    ])->assertOk();
+
+    $job->refresh();
+    expect($job->last_courier_status)->toBe('Out for delivery');
+
+    // A stale "In transit" event, timestamped BEFORE the "Out for Delivery"
+    // event above, arrives late (retry/out-of-order delivery). It must not
+    // overwrite the newer status and regress the public tracker.
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ORD001',
+        'status' => 'In Transit',
+        'timestamp' => '2026-07-27T09:00:00+08:00',
+    ])->assertOk();
+
+    $job->refresh();
+    expect($job->last_courier_status)->toBe('Out for delivery');
+
+    // A genuinely newer event still updates it.
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000ORD001',
+        'status' => 'In Transit',
+        'timestamp' => '2026-07-27T13:00:00+08:00',
+    ])->assertOk();
+
+    $job->refresh();
+    expect($job->last_courier_status)->toBe('In transit');
+});
+
+it('enforces a unique consignment_ref at the database level', function (): void {
+    ProductionJob::factory()->create(['consignment_ref' => 'GLDUPTEST']);
+
+    expect(fn () => ProductionJob::factory()->create(['consignment_ref' => 'GLDUPTEST']))
+        ->toThrow(\Illuminate\Database\QueryException::class);
 });
 
 it('ignores events for jobs that have not shipped yet', function (): void {

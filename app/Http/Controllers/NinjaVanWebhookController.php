@@ -13,6 +13,7 @@ use App\Support\Broadcasting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -30,6 +31,35 @@ use Illuminate\Support\Facades\Log;
  * NinjaVan retries non-2xx responses and because "not SHIPPED" legitimately
  * covers a duplicate delivered event on an already-CLOSED job (idempotency)
  * and an event that races ahead of our own booking.
+ *
+ * Matching is prefix/suffix-tolerant, not a strict equality-only lookup:
+ * ShipmentService normally stores NinjaVan's own canonical (possibly
+ * account-prefixed) tracking_number, so the common case is an exact match.
+ * But HttpNinjaVanClient's duplicate-order recovery path (a retry after a
+ * booking that succeeded remotely but failed to persist locally) can only
+ * fall back to the un-prefixed value we requested - NinjaVan doesn't hand
+ * the canonical number back on that error path. Rather than add a second,
+ * unconfirmed NinjaVan API call (an order-lookup-by-reference endpoint) to
+ * resolve it up front, this webhook tolerates the mismatch on the read side:
+ * a job whose stored consignment_ref is an exact match, or a trailing
+ * substring, of the incoming tracking_number still resolves. That keeps the
+ * fix confined to code this test suite can exercise directly (no sandbox
+ * dependency) while guaranteeing every booked job - recovered or not - can
+ * still be correlated when NinjaVan reports it delivered.
+ *
+ * The lookup->check->advance sequence for closing a job runs inside a
+ * DB::transaction with lockForUpdate on the matched row (mirrors
+ * QuoteService::issueInvoice's TOCTOU guard): two Delivered events for the
+ * same job serialize on the lock, and the second re-reads CLOSED under the
+ * lock and no-ops instead of throwing InvalidStateTransitionException.
+ *
+ * last_courier_status/_at is written under a monotonic guard: an incoming
+ * event only overwrites it when the event's own timestamp is >= what's
+ * already stored, so a stale/out-of-order retry (e.g. "In transit" arriving
+ * after "Out for delivery") can't regress the public tracker. NinjaVan's
+ * payload doesn't reliably carry a trustworthy timestamp field, so when one
+ * is absent this falls back to "now" (received-order) - a real limitation:
+ * two events with no timestamp are compared by arrival order only.
  */
 class NinjaVanWebhookController extends Controller
 {
@@ -72,7 +102,7 @@ class NinjaVanWebhookController extends Controller
             return response()->json(['received' => true]);
         }
 
-        $job = ProductionJob::query()->where('consignment_ref', $trackingNumber)->first();
+        $job = $this->findJobForTrackingNumber($trackingNumber);
 
         if ($job === null) {
             Log::info('NinjaVan webhook for unknown tracking number.', [
@@ -80,14 +110,6 @@ class NinjaVanWebhookController extends Controller
                 'status' => $rawStatus,
             ]);
 
-            return response()->json(['received' => true]);
-        }
-
-        // Only an already-SHIPPED job may move: a job that hasn't shipped yet
-        // has no business receiving courier events, and a job already CLOSED
-        // means this is a duplicate/late delivered webhook - either way,
-        // never regress production state.
-        if ($job->state !== JobState::Shipped) {
             return response()->json(['received' => true]);
         }
 
@@ -102,39 +124,90 @@ class NinjaVanWebhookController extends Controller
 
         $statusAt = $this->parseEventTime($eventTime);
 
-        $job->last_courier_status = $mapping->label;
-        $job->last_courier_status_at = $statusAt;
+        // Lock the job row for the duration of the check-then-advance so two
+        // concurrent Delivered events for the same job (courier webhook
+        // senders commonly retry) can't both observe SHIPPED and both attempt
+        // the SHIPPED->CLOSED transition - the second blocks here until the
+        // first commits, then re-reads the now-CLOSED row under the lock and
+        // takes the "not SHIPPED" no-op path below instead of throwing
+        // InvalidStateTransitionException (mirrors QuoteService::issueInvoice's
+        // lockForUpdate TOCTOU guard).
+        $outcome = DB::transaction(function () use ($job, $mapping, $statusAt, $queue): string {
+            $locked = ProductionJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
 
-        if ($mapping->deliver) {
-            // Idempotency guard: canTransitionTo is false once the job is no
-            // longer SHIPPED, but we've already checked that above - this
-            // second check is the belt-and-braces one the spec calls for, so
-            // a duplicate Delivered event in the same request window (e.g. a
-            // stale in-memory $job) still can't double-close.
-            if ($job->state->canTransitionTo(JobState::Closed)) {
-                $job->delivered_at = $statusAt;
+            // Only an already-SHIPPED job may move: a job that hasn't shipped
+            // yet has no business receiving courier events, and a job already
+            // CLOSED means this is a duplicate/late delivered webhook - either
+            // way, never regress production state.
+            if ($locked->state !== JobState::Shipped) {
+                return 'ignored';
+            }
+
+            // Monotonic guard: only overwrite last_courier_status/_at when
+            // this event is at least as new as what's already stored, so a
+            // stale/out-of-order event (e.g. a retried "In transit" arriving
+            // after "Out for delivery") can't regress the public tracker.
+            if ($locked->last_courier_status_at === null || $statusAt->greaterThanOrEqualTo($locked->last_courier_status_at)) {
+                $locked->last_courier_status = $mapping->label;
+                $locked->last_courier_status_at = $statusAt;
+            }
+
+            if ($mapping->deliver) {
+                $locked->delivered_at = $statusAt;
                 // advance() saves the model (state + whatever's dirty, i.e.
                 // last_courier_status/_at and delivered_at above) in one go,
                 // then drives the quote close + OrderMilestone + broadcast.
-                $queue->advance($job, JobState::Closed);
+                $queue->advance($locked, JobState::Closed);
+
+                return 'closed';
             }
 
-            return response()->json(['received' => true]);
-        }
+            $locked->save();
 
-        $job->save();
+            return 'updated';
+        });
 
         // Job stays SHIPPED for an intermediate status (out-for-delivery,
         // returned, etc.) - QueueService::advance's own broadcast only fires
-        // on a state transition, so without this the public tracker would sit
+        // on a state transition (handled inside the transaction above for the
+        // 'closed' outcome), so without this the public tracker would sit
         // stale until the job is later closed. Mirrors the QuoteStateChanged
         // listener's fire-and-forget broadcast pattern.
-        $job->loadMissing('quote');
-        if ($job->quote !== null) {
-            Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($job->quote));
+        if ($outcome === 'updated') {
+            $job->loadMissing('quote');
+            if ($job->quote !== null) {
+                Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($job->quote));
+            }
         }
 
         return response()->json(['received' => true]);
+    }
+
+    /**
+     * Resolve the job a webhook event belongs to. Exact match on
+     * consignment_ref is the common/fast path (indexed, unique). When that
+     * misses, fall back to a prefix/suffix-tolerant match: a job recovered
+     * via HttpNinjaVanClient's duplicate-order path may have persisted the
+     * un-prefixed requested_tracking_number instead of NinjaVan's canonical
+     * one, so the webhook's tracking_number can legitimately just be that
+     * stored value with NinjaVan's own prefix in front of it. The fallback
+     * scan is bounded to SHIPPED jobs - only a job still awaiting a courier
+     * event can possibly be the match - so it stays small regardless of how
+     * many historical jobs the table holds.
+     */
+    private function findJobForTrackingNumber(string $trackingNumber): ?ProductionJob
+    {
+        $job = ProductionJob::query()->where('consignment_ref', $trackingNumber)->first();
+        if ($job !== null) {
+            return $job;
+        }
+
+        return ProductionJob::query()
+            ->where('state', JobState::Shipped->value)
+            ->whereNotNull('consignment_ref')
+            ->where('consignment_ref', '!=', '')
+            ->get()
+            ->first(fn (ProductionJob $candidate): bool => str_ends_with($trackingNumber, (string) $candidate->consignment_ref));
     }
 
     private function signatureValid(string $body, string $signature, string $secret): bool
@@ -160,6 +233,15 @@ class NinjaVanWebhookController extends Controller
         return null;
     }
 
+    /**
+     * Normalises to UTC (not just parses) because Eloquent's datetime cast
+     * does not convert a Carbon instance's offset before storing it - it
+     * formats whatever wall-clock/offset the instance currently holds, so a
+     * '+08:00' timestamp saved as-is round-trips back as that same wall-clock
+     * time misread as UTC (8 hours off). Converting here, before the value is
+     * ever compared or persisted, keeps every stored/compared instant
+     * unambiguous regardless of what offset NinjaVan sends.
+     */
     private function parseEventTime(?string $eventTime): Carbon
     {
         if ($eventTime === null) {
@@ -167,7 +249,7 @@ class NinjaVanWebhookController extends Controller
         }
 
         try {
-            return Carbon::parse($eventTime);
+            return Carbon::parse($eventTime)->utc();
         } catch (\Throwable) {
             return now();
         }

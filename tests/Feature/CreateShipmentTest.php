@@ -32,7 +32,7 @@ it('creates a NinjaVan shipment and marks the job shipped', function (): void {
     expect($job->state->value)->toBe('SHIPPED')
         ->and($job->carrier->value)->toBe('NINJAVAN')
         ->and($job->consignment_ref)->not->toBeNull()
-        ->and($job->consignment_ref)->toBe(NinjaVanTrackingNumber::forQuote($quote->id));
+        ->and($job->consignment_ref)->toBe(NinjaVanTrackingNumber::forJob($quote->id, $job->id));
 });
 
 it('refuses to re-ship a job that already has a consignment', function (): void {
@@ -122,10 +122,10 @@ it('persists the label_url returned by the courier', function (): void {
 
     $this->postJson("/api/production-jobs/{$job->id}/create-shipment")
         ->assertOk()
-        ->assertJsonPath('data.label_url', 'https://ninjavan.test/labels/'.NinjaVanTrackingNumber::forQuote($quote->id).'.pdf');
+        ->assertJsonPath('data.label_url', 'https://ninjavan.test/labels/'.NinjaVanTrackingNumber::forJob($quote->id, $job->id).'.pdf');
 
     expect($job->fresh()->label_url)
-        ->toBe('https://ninjavan.test/labels/'.NinjaVanTrackingNumber::forQuote($quote->id).'.pdf');
+        ->toBe('https://ninjavan.test/labels/'.NinjaVanTrackingNumber::forJob($quote->id, $job->id).'.pdf');
 });
 
 it('computes and sends the real parcel weight from the job line items', function (): void {
