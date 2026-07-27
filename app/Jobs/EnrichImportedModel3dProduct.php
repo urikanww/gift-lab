@@ -12,6 +12,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Converge an imported MODEL_3D product onto the shared enrichment
@@ -31,6 +33,16 @@ final class EnrichImportedModel3dProduct implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    // The enrich upsert (Model3dCatalogueService::enrichImportedProduct) is
+    // idempotent on (source, source_id) - re-running it links the same Model3D
+    // row rather than duplicating it - so retrying a transient failure (a
+    // thumbnail HTTP fetch blip, a momentary DB contention) is safe. 3
+    // attempts with a short then longer backoff gives a transient fault time
+    // to clear without hammering the source.
+    public int $tries = 3;
+
+    public array $backoff = [60, 300];
+
     public function __construct(
         public readonly int $productId,
         public readonly string $source,
@@ -45,5 +57,19 @@ final class EnrichImportedModel3dProduct implements ShouldQueue
 
         $source = Model3dSource::tryFrom($this->source) ?? Model3dSource::Owned;
         $service->enrichImportedProduct($product, $source);
+    }
+
+    /**
+     * All retries exhausted. Log only - the global Queue::failing() hook
+     * (AppServiceProvider::boot() -> StaffNotifier::jobFailed()) owns the one
+     * staff alert; a per-job handler that also notified would double-alert.
+     */
+    public function failed(Throwable $e): void
+    {
+        Log::error('Enrich imported MODEL_3D product job failed after retries.', [
+            'product_id' => $this->productId,
+            'source' => $this->source,
+            'error' => $e->getMessage(),
+        ]);
     }
 }

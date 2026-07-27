@@ -96,4 +96,24 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => 'We couldn’t reach the payment provider just now. No charge was made - please try again in a moment.',
             ], 502);
         });
+
+        // Sentry seam: inert until a Sentry package is installed and binds
+        // 'sentry' into the container (no sentry/sentry-laravel dependency is
+        // added here). Guarded with app()->bound() so this is a no-op today -
+        // exceptions are still logged normally via the framework's default
+        // reporting, this only ADDS a forward to Sentry once one exists.
+        $exceptions->report(function (Throwable $e): void {
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
+        });
+
+        // These are expected domain guards (already mapped to friendly 4xx
+        // responses above), not faults - don't send them to an external
+        // error tracker once one is wired up.
+        $exceptions->dontReport([
+            DomainRuleException::class,
+            InvalidStateTransitionException::class,
+            FeatureNotEnabledException::class,
+        ]);
     })->create();

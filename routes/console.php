@@ -74,3 +74,13 @@ Schedule::command('quotes:chase')
     ->dailyAt('09:00')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Prune the failed_jobs dead-letter table: every failure is already alerted
+// on (StaffNotifier::jobFailed, wired via Queue::failing in
+// AppServiceProvider::boot()), so the row itself only needs to stick around
+// long enough for someone to investigate. 168h = 7 days. onOneServer so the
+// multi-node deploy prunes exactly once.
+Schedule::command('queue:prune-failed', ['--hours' => 168])
+    ->dailyAt('02:30')
+    ->onOneServer()
+    ->withoutOverlapping();

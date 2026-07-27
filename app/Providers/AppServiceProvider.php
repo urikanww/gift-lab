@@ -29,12 +29,15 @@ use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\FixtureScraperClient;
 use App\Services\Scraper\HttpLazadaAffiliateClient;
 use App\Services\Scraper\HttpShopeeAffiliateClient;
+use App\Services\StaffNotifier;
 use App\Support\Broadcasting;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
@@ -253,6 +256,16 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(JobProcessing::class, static function (): void {
             PricingConfig::flushMemo();
         });
+
+        // Global dead-letter alert: fires exactly ONCE per job that exhausts
+        // its retries and lands in failed_jobs, regardless of which job class
+        // it was. This is the single place a failed-job staff alert is sent
+        // from - per-job failed() handlers (e.g.
+        // EnrichImportedModel3dProduct::failed()) must only log, never also
+        // notify staff, or every failure would double-alert. StaffNotifier::
+        // jobFailed() never throws, so this can't turn a failed job into a
+        // broken failure handler.
+        Queue::failing(fn (JobFailed $event) => app(StaffNotifier::class)->jobFailed($event));
     }
 
     /**

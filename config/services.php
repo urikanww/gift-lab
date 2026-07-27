@@ -35,6 +35,15 @@ return [
         ],
     ],
 
+    // Error-tracking seam (inert until a Sentry package is installed - no
+    // sentry/sentry-laravel dependency is added by this config alone). An
+    // empty DSN is the safe default: bootstrap/app.php only calls into
+    // app('sentry') when something has actually bound it, so with no package
+    // installed this block does nothing.
+    'sentry' => [
+        'dsn' => env('SENTRY_LARAVEL_DSN', ''),
+    ],
+
     // 3D model source APIs (spec 6.5). When a token is present the live client
     // is used; otherwise the stub serves fixtures (AppServiceProvider decides).
     'thingiverse' => [
