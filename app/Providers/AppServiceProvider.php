@@ -178,6 +178,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('catalogue', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('tracking', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('stripe-webhook', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip()));
+        RateLimiter::for('ninjavan-webhook', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip()));
         RateLimiter::for('proof-image', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('authenticated', fn (Request $request): Limit => Limit::perMinute(120)->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
         RateLimiter::for('quote-store', fn (Request $request): Limit => Limit::perMinute(8)->by($request->user()?->getAuthIdentifier() ?? $request->ip()));

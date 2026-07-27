@@ -43,6 +43,9 @@ class ProductionJob extends Model
         'print_method',
         'qty',
         'created_by',
+        'last_courier_status',
+        'last_courier_status_at',
+        'delivered_at',
     ];
 
     protected function casts(): array
@@ -55,6 +58,8 @@ class ProductionJob extends Model
             'print_method' => PrintMethod::class,
             'qty' => 'integer',
             'artwork_refs' => 'array',
+            'last_courier_status_at' => 'datetime',
+            'delivered_at' => 'datetime',
         ];
     }
 

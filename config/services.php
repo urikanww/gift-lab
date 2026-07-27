@@ -139,6 +139,15 @@ return [
         'timezone' => env('NINJAVAN_TIMEZONE', 'Asia/Singapore'),
         'timeslot_start' => env('NINJAVAN_TIMESLOT_START', '09:00'),
         'timeslot_end' => env('NINJAVAN_TIMESLOT_END', '18:00'),
+        // Inbound status webhook (push-only; NinjaVan has no poll API). The
+        // dashboard's Developer > Webhooks screen shows the per-account HMAC
+        // secret and the exact header it signs with - both are configurable
+        // here rather than hardcoded, since NinjaVan lets the operator pick
+        // the header name. Empty secret => NinjaVanWebhookController fails
+        // closed (401) and makes no state change, same as the Stripe webhook
+        // when STRIPE_WEBHOOK_SECRET is unset.
+        'webhook_secret' => env('NINJAVAN_WEBHOOK_SECRET'),
+        'webhook_signature_header' => env('NINJAVAN_WEBHOOK_SIGNATURE_HEADER', 'X-Ninja-Hmac'),
         'pickup' => [
             'name' => env('NINJAVAN_PICKUP_NAME', 'Gift Lab'),
             'phone' => env('NINJAVAN_PICKUP_PHONE'),

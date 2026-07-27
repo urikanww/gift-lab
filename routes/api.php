@@ -15,6 +15,7 @@ use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GiftIdeasController;
 use App\Http\Controllers\LeadTimeEstimateController;
+use App\Http\Controllers\NinjaVanWebhookController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
@@ -103,6 +104,11 @@ Route::get('/track/view', [TrackingController::class, 'view'])
 
 // Stripe webhook - unauthenticated, verified by signature (see controller).
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:stripe-webhook');
+
+// NinjaVan inbound status webhook - unauthenticated (external caller), verified
+// by HMAC signature (see controller). NinjaVan is push-only: this is the only
+// path shipment status/delivery updates ever reach the app.
+Route::post('/ninjavan/webhook', [NinjaVanWebhookController::class, 'handle'])->middleware('throttle:ninjavan-webhook');
 
 // Sessionless, signature-authenticated proof thumbnail for buyer emails
 // (email clients can't send cookies, so the signature is the auth).
