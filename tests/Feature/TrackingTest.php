@@ -28,8 +28,8 @@ it('returns order status for a matching code and email prefix', function (): voi
         ->assertOk()
         ->assertJson([
             'reference' => $quote->tracking_code,
-            'stage' => 'REVIEW',
-            'stage_label' => 'In review',
+            'stage' => 'ACTION_REQUIRED',
+            'stage_label' => 'Awaiting your approval',
         ])
         // Status only - no pricing or line detail may leak on the public page.
         ->assertJsonMissing(['total'])

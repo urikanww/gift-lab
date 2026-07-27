@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Enums\QuoteState;
+use App\Events\OrderTrackingUpdated;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
@@ -13,6 +14,7 @@ use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
 use App\Services\QueueService;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 
 /**
@@ -125,6 +127,23 @@ it('records Out for Delivery without closing the job', function (): void {
         ->and($job->last_courier_status)->toBe('Out for delivery')
         ->and($job->last_courier_status_at)->not->toBeNull()
         ->and($job->delivered_at)->toBeNull();
+});
+
+it('fires OrderTrackingUpdated for the job\'s quote on an intermediate status change', function (): void {
+    Event::fake([OrderTrackingUpdated::class]);
+
+    $job = ninjaVanShippedJob('NVSGNEXGE000EVT001');
+    $quoteId = $job->quote_id;
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000EVT001',
+        'status' => 'Out for Delivery',
+    ])->assertOk();
+
+    Event::assertDispatched(
+        OrderTrackingUpdated::class,
+        fn (OrderTrackingUpdated $event): bool => $event->quote->id === $quoteId,
+    );
 });
 
 it('flags Returned to Sender for staff without regressing job state', function (): void {

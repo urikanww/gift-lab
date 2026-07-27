@@ -54,6 +54,10 @@ export interface Shipment {
   carrier_label: string | null;
   tracking_url: string | null;
   ref: string;
+  /** Live courier status (e.g. "Out for delivery"), humanized, null until the courier reports one. */
+  status: string | null;
+  status_at: string | null;
+  delivered_at: string | null;
 }
 
 /**

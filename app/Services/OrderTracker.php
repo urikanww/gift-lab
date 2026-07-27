@@ -79,7 +79,10 @@ final class OrderTracker
 
     /**
      * Carrier + consignment ref for each shipped/closed job, with a tracking URL
-     * where the carrier offers one. PII-free (carrier + parcel ref only).
+     * where the carrier offers one, plus the live courier status the NinjaVan
+     * webhook keeps updated (in-transit/out-for-delivery/delivered) - the detail
+     * a buyer needs between the coarse SHIPPED and DELIVERED stages. PII-free
+     * (carrier + parcel ref + status/dates only).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -100,6 +103,9 @@ final class OrderTracker
                     'carrier_label' => $carrier?->label(),
                     'tracking_url' => $carrier?->trackingUrl($ref),
                     'ref' => $ref,
+                    'status' => $job->last_courier_status,
+                    'status_at' => $job->last_courier_status_at?->toIso8601String(),
+                    'delivered_at' => $job->delivered_at?->toIso8601String(),
                 ];
             })
             ->values()

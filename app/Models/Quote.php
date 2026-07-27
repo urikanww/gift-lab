@@ -43,6 +43,7 @@ class Quote extends Model
     /** Ordered, buyer-facing tracking stages (CANCELLED handled separately). */
     public const TRACKING_STAGE_LABELS = [
         'REVIEW' => 'In review',
+        'ACTION_REQUIRED' => 'Awaiting your approval',
         'CONFIRMED' => 'Confirmed',
         'IN_PRODUCTION' => 'In production',
         'SHIPPED' => 'Shipped',
@@ -431,7 +432,13 @@ class Quote extends Model
         return match ($this->state) {
             QuoteState::ProofApproved, QuoteState::Invoiced,
             QuoteState::Confirmed, QuoteState::Procuring => 'CONFIRMED',
-            default => 'REVIEW',
+            // The BUYER is the one who has to act next in these four states
+            // (respond to a sent quote, review a proof, or address requested
+            // changes) - distinct from Draft/Accepted, where staff/the system
+            // are driving. A passive "In review" hid whose turn it was.
+            QuoteState::Sent, QuoteState::Proofing,
+            QuoteState::ArtworkApproved, QuoteState::ChangesRequested => 'ACTION_REQUIRED',
+            default => 'REVIEW', // Draft, Accepted
         };
     }
 

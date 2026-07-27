@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\JobState;
+use App\Events\OrderTrackingUpdated;
 use App\Models\ProductionJob;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Services\QueueService;
+use App\Support\Broadcasting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -121,6 +123,16 @@ class NinjaVanWebhookController extends Controller
         }
 
         $job->save();
+
+        // Job stays SHIPPED for an intermediate status (out-for-delivery,
+        // returned, etc.) - QueueService::advance's own broadcast only fires
+        // on a state transition, so without this the public tracker would sit
+        // stale until the job is later closed. Mirrors the QuoteStateChanged
+        // listener's fire-and-forget broadcast pattern.
+        $job->loadMissing('quote');
+        if ($job->quote !== null) {
+            Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($job->quote));
+        }
 
         return response()->json(['received' => true]);
     }
