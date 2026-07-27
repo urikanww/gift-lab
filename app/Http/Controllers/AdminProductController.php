@@ -287,6 +287,57 @@ class AdminProductController extends Controller
     }
 
     /**
+     * Bulk-archive a batch of products (soft delete). Reuses the same
+     * $product->delete() + audit path as destroy() per item - the model
+     * cascades the soft-delete to variants - so each row drops out of the
+     * storefront and order spine but stays recoverable via restore().
+     * Per-item results mirror bulkPublish() so a partial batch is reportable.
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'max:200'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $results = [];
+        $deleted = 0;
+        $failed = 0;
+
+        foreach ($validated['ids'] as $id) {
+            try {
+                // find() skips soft-deleted rows, so an already-archived id
+                // reports "not found" rather than double-archiving.
+                $product = Product::find($id);
+
+                if ($product === null) {
+                    $results[] = ['id' => $id, 'ok' => false, 'error' => 'not found'];
+                    $failed++;
+
+                    continue;
+                }
+
+                $publishState = $product->publish_state->value;
+                $product->delete();
+                $this->audit->log($product, 'product.archived', ['publish_state' => $publishState], null);
+
+                $results[] = ['id' => $id, 'ok' => true];
+                $deleted++;
+            } catch (Throwable $e) {
+                $results[] = ['id' => $id, 'ok' => false, 'error' => $e->getMessage()];
+                $failed++;
+            }
+        }
+
+        return response()->json([
+            'data' => $results,
+            'meta' => ['deleted' => $deleted, 'failed' => $failed],
+        ]);
+    }
+
+    /**
      * Upload/replace a product's photo. Stored on the public disk under a
      * deterministic name so re-uploads simply overwrite the previous file
      * (same pattern the seeder uses for CORE product photography).

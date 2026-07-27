@@ -257,6 +257,54 @@ it('blocks non-staff from bulk-publish', function (): void {
     $this->postJson('/api/admin/products/bulk-publish', ['ids' => [$product->id]])->assertForbidden();
 });
 
+it('bulk-deletes (archives) products and reports per-item results', function (): void {
+    $a = Product::factory()->create(['publish_state' => 'PUBLISHED']);
+    $b = Product::factory()->create(['publish_state' => 'PENDING']);
+    $alreadyArchived = Product::factory()->create();
+    $alreadyArchived->delete();
+
+    Sanctum::actingAs($this->staff);
+    $response = $this->postJson('/api/admin/products/bulk-delete', [
+        'ids' => [$a->id, $b->id, $alreadyArchived->id, 999999],
+    ])->assertOk();
+
+    $data = collect($response->json('data'));
+    expect($data->firstWhere('id', $a->id)['ok'])->toBeTrue()
+        ->and($data->firstWhere('id', $b->id)['ok'])->toBeTrue()
+        ->and($data->firstWhere('id', $alreadyArchived->id)['ok'])->toBeFalse()
+        ->and($data->firstWhere('id', $alreadyArchived->id)['error'])->toBe('not found')
+        ->and($data->firstWhere('id', 999999)['ok'])->toBeFalse();
+
+    expect($response->json('meta.deleted'))->toBe(2)
+        ->and($response->json('meta.failed'))->toBe(2);
+
+    // Soft-deleted, not gone: the rows still exist withTrashed.
+    expect(Product::find($a->id))->toBeNull()
+        ->and(Product::withTrashed()->find($a->id))->not->toBeNull()
+        ->and(Product::find($b->id))->toBeNull();
+
+    // Each archive is audited, mirroring the single destroy() path.
+    expect(AuditLog::where('event', 'product.archived')->count())->toBe(2);
+});
+
+it('rejects bulk-delete without ids or with a non-array/oversized payload', function (): void {
+    Sanctum::actingAs($this->staff);
+
+    $this->postJson('/api/admin/products/bulk-delete', [])->assertStatus(422);
+    $this->postJson('/api/admin/products/bulk-delete', ['ids' => 'not-an-array'])->assertStatus(422);
+    $this->postJson('/api/admin/products/bulk-delete', ['ids' => range(1, 201)])->assertStatus(422);
+});
+
+it('blocks non-staff from bulk-delete', function (): void {
+    $product = Product::factory()->create(['publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->buyer);
+    $this->postJson('/api/admin/products/bulk-delete', ['ids' => [$product->id]])->assertForbidden();
+
+    // Untouched: the buyer's blocked call never soft-deleted it.
+    expect(Product::find($product->id))->not->toBeNull();
+});
+
 it('uploads a product image, storing the file and setting image_url', function (): void {
     Storage::fake('public');
     $product = Product::factory()->create(['image_url' => null]);

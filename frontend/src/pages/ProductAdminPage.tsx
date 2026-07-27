@@ -76,6 +76,14 @@ export default function ProductAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Multi-select for bulk archive. Selection is by product id and is reset
+  // whenever the list reloads (filter/page/tab change) so ids never leak
+  // across a page the user can no longer see.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+
   // Write a single param. Any filter change (not page itself) resets to page 1.
   // Defaults are written empty (deleted) to keep the URL clean.
   const setParam = useCallback(
@@ -142,8 +150,54 @@ export default function ProductAdminPage() {
   }, [page, perPage, status, classFilter, publishState, licenseTier, category, q, sort, dir]);
 
   useEffect(() => {
+    // A new list (filters/page/tab) invalidates any prior selection.
+    setSelected(new Set());
+    setBulkNotice(null);
     void load();
   }, [load]);
+
+  const archivedView = status === 'archived';
+
+  // Bulk archive only applies to live rows; archived rows are already deleted.
+  const selectable = !archivedView;
+  const allSelected = selectable && products.length > 0 && products.every((p) => selected.has(p.id));
+
+  const toggleRow = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelected((prev) => (prev.size === products.length ? new Set() : new Set(products.map((p) => p.id))));
+  };
+
+  const runBulkDelete = async () => {
+    if (bulkBusy || selected.size === 0) return;
+    setBulkBusy(true);
+    setBulkNotice(null);
+    try {
+      const { data } = await api.post<{ meta: { deleted: number; failed: number } }>(
+        '/admin/products/bulk-delete',
+        { ids: [...selected] },
+      );
+      const { deleted, failed } = data.meta;
+      setBulkNotice({
+        tone: failed > 0 ? 'danger' : 'success',
+        text: failed > 0 ? `Archived ${deleted}, ${failed} skipped.` : `Archived ${deleted} product${deleted === 1 ? '' : 's'}.`,
+      });
+      setSelected(new Set());
+      setConfirmDelete(false);
+      await load();
+    } catch (err) {
+      setBulkNotice({ tone: 'danger', text: apiError(err) });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const [gateCount, setGateCount] = useState<number | null>(null);
 
@@ -161,8 +215,6 @@ export default function ProductAdminPage() {
       cancelled = true;
     };
   }, []);
-
-  const archivedView = status === 'archived';
 
   const rangeLabel = useMemo(() => {
     if (!meta) return '';
@@ -405,6 +457,40 @@ export default function ProductAdminPage() {
         </div>
       </Modal>
 
+      {/* Bulk archive bar. Live rows only - archived rows are already deleted.
+          Shows a select-all toggle plus the destructive action once anything
+          is picked, and surfaces the last batch outcome inline. */}
+      {selectable && (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex cursor-pointer select-none items-center gap-2 text-sm text-fg-muted">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[var(--color-primary)]"
+              aria-label="Select all products on this page"
+              checked={allSelected}
+              disabled={products.length === 0}
+              onChange={toggleAll}
+            />
+            {selected.size > 0 ? `${selected.size} selected` : 'Select all'}
+          </label>
+          {selected.size > 0 && (
+            <Button
+              size="sm"
+              variant="danger"
+              loading={bulkBusy}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Archive selected ({selected.size})
+            </Button>
+          )}
+          {bulkNotice && (
+            <span className={'text-sm ' + (bulkNotice.tone === 'danger' ? 'text-danger' : 'text-success')}>
+              {bulkNotice.text}
+            </span>
+          )}
+        </div>
+      )}
+
       <AsyncBoundary
         loading={loading}
         error={error}
@@ -417,6 +503,17 @@ export default function ProductAdminPage() {
             <ul className="flex min-w-[40rem] flex-col divide-y divide-border">
               {products.map((p) => (
                 <li key={p.id} className="flex items-center">
+                  {selectable && (
+                    <div className="flex shrink-0 items-center pl-4">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-[var(--color-primary)]"
+                        aria-label={`Select ${p.name}`}
+                        checked={selected.has(p.id)}
+                        onChange={() => toggleRow(p.id)}
+                      />
+                    </div>
+                  )}
                   {/* Thumb is a SIBLING of the navigate button (never nested):
                       clicking it zooms the photo in place, not opens the row. */}
                   <div className="shrink-0 pl-4">
@@ -476,6 +573,29 @@ export default function ProductAdminPage() {
         isSuperadmin={isSuperadmin}
         onClose={() => setQuickViewId(null)}
       />
+
+      {/* Confirm bulk archive. Soft-delete is recoverable (Status → Archived
+          → restore), so the copy says "archive", not "permanently delete". */}
+      <Modal
+        open={confirmDelete}
+        onClose={() => (bulkBusy ? undefined : setConfirmDelete(false))}
+        title={`Archive ${selected.size} product${selected.size === 1 ? '' : 's'}?`}
+        footer={
+          <>
+            <Button variant="ghost" disabled={bulkBusy} onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={bulkBusy} onClick={() => void runBulkDelete()}>
+              Archive {selected.size}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-muted">
+          They drop out of the storefront and can no longer be ordered. This is reversible — find
+          them under Filters → Status → Archived and restore.
+        </p>
+      </Modal>
         </>
       )}
     </Motion>
