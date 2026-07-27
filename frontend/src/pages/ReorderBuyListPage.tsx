@@ -5,15 +5,28 @@ import { Badge, Button, Card, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
 import type { AdminReorder } from '../types';
 
+interface ReorderMeta {
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
 /**
  * The buy-list: open supplier reorder drafts raised when a variant falls below
  * threshold or a backorder drives on-hand negative. Staff buy the blank from the
  * affiliate source, then mark it received (which restocks through the ledger).
+ *
+ * The backend paginates this (it's an unbounded, ever-growing backlog until
+ * items are received), so this page loads page 1 then appends further pages on
+ * demand - same data+meta envelope and "Load more" pattern as the product
+ * history panel (ProductAdminDetailPage's HistorySection).
  */
 export default function ReorderBuyListPage() {
   const { toast } = useToast();
   const [reorders, setReorders] = useState<AdminReorder[] | null>(null);
+  const [meta, setMeta] = useState<ReorderMeta | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receiving, setReceiving] = useState<number | null>(null);
 
@@ -21,14 +34,31 @@ export default function ReorderBuyListPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.get<{ data: AdminReorder[] }>('/admin/supplier-reorders');
+      const { data } = await api.get<{ data: AdminReorder[]; meta: ReorderMeta }>('/admin/supplier-reorders');
       setReorders(data.data);
+      setMeta(data.meta);
     } catch (err) {
       setError(apiError(err));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const loadMore = async () => {
+    if (!meta || meta.current_page >= meta.last_page || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { data } = await api.get<{ data: AdminReorder[]; meta: ReorderMeta }>('/admin/supplier-reorders', {
+        params: { page: meta.current_page + 1 },
+      });
+      setReorders((prev) => [...(prev ?? []), ...data.data]);
+      setMeta(data.meta);
+    } catch (err) {
+      toast({ title: 'Could not load more', description: apiError(err), tone: 'danger' });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -54,7 +84,7 @@ export default function ReorderBuyListPage() {
       <Motion variants={fadeInUp} initial="hidden" animate="visible">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-display text-3xl text-fg sm:text-4xl">Buy-list</h1>
-          {reorders && reorders.length > 0 && <Badge tone="warning">{reorders.length} open</Badge>}
+          {meta && meta.total > 0 && <Badge tone="warning">{meta.total} open</Badge>}
         </div>
         <p className="mt-1 text-sm text-fg-muted">
           Blanks to reorder - raised when stock falls below threshold or a backorder sells at zero.
@@ -142,6 +172,13 @@ export default function ReorderBuyListPage() {
               </li>
           ))}
         </ul>
+        {meta && meta.last_page > 1 && meta.current_page < meta.last_page && (
+          <div className="mt-3">
+            <Button variant="outline" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
+              Load more
+            </Button>
+          </div>
+        )}
       </AsyncBoundary>
     </section>
   );

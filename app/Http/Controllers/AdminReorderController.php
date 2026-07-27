@@ -27,20 +27,29 @@ class AdminReorderController extends Controller
 
     /**
      * Open reorders (everything not yet received), newest first. These are the
-     * blanks/filament someone needs to actually buy.
+     * blanks/filament someone needs to actually buy. Paginated - the backlog is
+     * auto-drafted per under-threshold variant and only clears on RECEIVED, so
+     * it grows unbounded with an idle buy-list. Same per_page default/cap and
+     * data+meta envelope as AdminProductController::history().
      */
     public function index(Request $request): JsonResponse
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        $reorders = SupplierReorder::query()
+        $paginator = SupplierReorder::query()
             ->with(['variant.product', 'filament'])
             ->where('state', '!=', ReorderState::Received->value)
             ->latest()
-            ->get()
-            ->map(fn (SupplierReorder $r): array => $this->serialize($r));
+            ->paginate(max(1, min((int) $request->integer('per_page', 20), 100)));
 
-        return response()->json(['data' => $reorders]);
+        return response()->json([
+            'data' => collect($paginator->items())->map(fn (SupplierReorder $r): array => $this->serialize($r)),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'total' => $paginator->total(),
+            ],
+        ]);
     }
 
     /**

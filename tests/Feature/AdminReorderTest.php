@@ -46,6 +46,21 @@ it('lists open reorders with the affiliate source and hides received ones', func
         ->assertJsonPath('data.0.kind', 'variant');
 });
 
+it('paginates the buy-list instead of returning every open reorder', function (): void {
+    Sanctum::actingAs($this->staff);
+    foreach (range(1, 25) as $_) {
+        makeReorder(stock: -1, qty: 5);
+    }
+
+    $res = $this->getJson('/api/admin/supplier-reorders')->assertOk();
+
+    $data = $res->json('data');
+    expect(count($data))->toBeLessThanOrEqual(20)
+        ->and($res->json('meta.total'))->toBe(25)
+        ->and($res->json('meta.last_page'))->toBe(2)
+        ->and($res->json('meta.current_page'))->toBe(1);
+});
+
 it('marks a reorder received and restocks the variant through the ledger', function (): void {
     Sanctum::actingAs($this->staff);
     $reorder = makeReorder(stock: -3, qty: 10);
