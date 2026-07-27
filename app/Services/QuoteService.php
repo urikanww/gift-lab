@@ -244,6 +244,16 @@ final class QuoteService
         }
 
         return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes, $removedLineIds, $adjustments, $remark): Quote {
+            // Lock the quote row before any read of subtotal/delivery/total that
+            // this transaction will delta against. Without this, two concurrent
+            // amends (or an amend racing retotalAfterReconfirm()'s own
+            // lockForUpdate()) can both read the same pre-transaction subtotal
+            // and both add their delta on top of it, silently losing one of the
+            // two updates. Re-fetched (not just $quote->refresh()) to match the
+            // lockForUpdate() idiom retotalAfterReconfirm() already uses, and
+            // every read/write below operates on this same locked instance.
+            $quote = Quote::query()->lockForUpdate()->findOrFail($quote->id);
+
             $before = ['subtotal' => $quote->subtotal, 'delivery' => $quote->delivery, 'total' => $quote->total];
             $log = $quote->amendment_log ?? [];
             // Subtotal is adjusted by DELTA, never rebuilt from a bare

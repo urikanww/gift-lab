@@ -368,6 +368,44 @@ it('does not re-add a dropped lines amount to the subtotal, even if the payload 
     expect((float) $quote->fresh()->subtotal)->toBe(60.00);
 });
 
+// Concurrency guard: amend() locks the quote row (Quote::query()->lockForUpdate()
+// ->findOrFail()) before reading the subtotal it deltas against, mirroring the
+// lockForUpdate() retotalAfterReconfirm() already used. Without the lock, amend()
+// would delta against whatever subtotal happened to be sitting on the $quote
+// instance the caller passed in - which goes stale the moment another writer
+// (a concurrent amend, or a reconfirm/drop) commits a change to the same row
+// first. This test forces exactly that staleness (a raw update to the DB row
+// that never touches the in-memory $quote object) and proves amend() still
+// deltas against the CURRENT database value, not the caller's stale copy - the
+// lost-update race the lock closes.
+it('deltas against the current database subtotal, not a stale in-memory copy, once locked', function (): void {
+    Sanctum::actingAs($this->staff);
+    [$quote, $line] = draftWithLine(); // subtotal 40 (4 x 10), delivery 5
+
+    // Simulate a concurrent writer that already committed +60 to this quote's
+    // subtotal (e.g. another amend or a retotalAfterReconfirm) via a raw query
+    // that never touches this test's in-memory $quote object - so $quote->subtotal
+    // is still 40 here, exactly like a second request holding a pre-transaction
+    // read.
+    Quote::whereKey($quote->id)->update(['subtotal' => 100, 'total' => 105]);
+    expect((float) $quote->subtotal)->toBe(40.0); // still stale in memory, as intended
+
+    // This amend's own delta: qty 4 -> 6 at unit_price 10 = (10*6) - (10*4) = +20.
+    app(QuoteService::class)->amend(
+        $quote,
+        [['id' => $line->id, 'unit_price' => 10.0, 'qty' => 6]],
+        null,
+        null,
+    );
+
+    // Locked-and-refetched: 100 (the other writer's committed value) + 20 (this
+    // amend's own delta) = 120. A stale read would have produced 40 + 20 = 60,
+    // silently losing the concurrent writer's +60.
+    $fresh = $quote->fresh();
+    expect((float) $fresh->subtotal)->toBe(120.0)
+        ->and((float) $fresh->total)->toBe(125.0); // 120 subtotal + 5 delivery
+});
+
 it('leaves the fee-inclusive subtotal unchanged when an amend touches only a non-line field', function (): void {
     seedPricing();
     Sanctum::actingAs($this->staff);

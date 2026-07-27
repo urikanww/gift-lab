@@ -166,6 +166,10 @@ final class PricingService
         $textPerUnit = $hasText ? $customizationPerUnit : 0.0;
         $decorPerUnit = $product->class === ProductClass::Model3d ? $uvDecorPerUnit : 0.0;
 
+        // Rounds internally to 2dp; a caller that also rounds its own sum (e.g.
+        // amend()'s subtotal delta) double-rounds. Inert today because every fee
+        // config value is already clean to 2dp, but keep this in mind if a future
+        // config value (or its per-unit multiple) lands off-cent.
         return round($customizationFee + ($textPerUnit + $sizeSurcharge + $decorPerUnit) * $qty, 2);
     }
 
