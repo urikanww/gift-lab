@@ -120,7 +120,13 @@ return [
         'client_id' => env('NINJAVAN_CLIENT_ID'),
         'client_secret' => env('NINJAVAN_CLIENT_SECRET'),
         // Full host + country segment, e.g. https://api-sandbox.ninjavan.co/sg.
-        // Switch to the production host (https://api.ninjavan.co/sg) when going live.
+        // REQUIRED to be the production host (https://api.ninjavan.co/sg) when
+        // going live: this defaults to the SANDBOX host, and AppServiceProvider
+        // refuses to bind the live client (fails closed) if creds are set but
+        // this is still a sandbox host outside local/testing - the sandbox
+        // returns 2xx and echoes back the tracking number, so a forgotten
+        // NINJAVAN_BASE_URL would otherwise silently mark orders SHIPPED without
+        // ever booking a real parcel.
         'base_url' => env('NINJAVAN_BASE_URL', 'https://api-sandbox.ninjavan.co/sg'),
         // Prefix for the merchant-supplied requested_tracking_number (1-9 chars,
         // no account prefix - NinjaVan prepends that). Lead days is the fallback

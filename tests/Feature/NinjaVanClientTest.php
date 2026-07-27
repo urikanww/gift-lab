@@ -2,13 +2,47 @@
 
 declare(strict_types=1);
 
+use App\Services\Courier\Contracts\CourierClient;
 use App\Services\Courier\CourierShipment;
+use App\Services\Courier\FixtureNinjaVanClient;
 use App\Services\Courier\HttpNinjaVanClient;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(fn () => Cache::flush());
+
+afterEach(function (): void {
+    // Restore the "testing" env for every other test in the suite - tests
+    // below flip it to simulate a real deploy environment.
+    app()->instance('env', 'testing');
+});
+
+it('fails closed resolving the courier client when creds are set but base_url is still the sandbox host outside local/testing', function (): void {
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+    app()->instance('env', 'production');
+
+    expect(fn () => app(CourierClient::class))->toThrow(RuntimeException::class);
+});
+
+it('resolves the live NinjaVan client when creds are set and base_url is a production host outside local/testing', function (): void {
+    config()->set('services.ninjavan.client_id', 'id');
+    config()->set('services.ninjavan.client_secret', 'secret');
+    config()->set('services.ninjavan.base_url', 'https://api.ninjavan.co/sg');
+    app()->instance('env', 'production');
+
+    expect(app(CourierClient::class))->toBeInstanceOf(HttpNinjaVanClient::class);
+});
+
+it('still uses the fixture in local/testing when creds are absent, regardless of the sandbox guard', function (): void {
+    config()->set('services.ninjavan.client_id', null);
+    config()->set('services.ninjavan.client_secret', null);
+    config()->set('services.ninjavan.base_url', 'https://api-sandbox.ninjavan.co/sg');
+
+    expect(app(CourierClient::class))->toBeInstanceOf(FixtureNinjaVanClient::class);
+});
 
 it('creates an order and returns the merchant tracking number', function (): void {
     Http::fake([

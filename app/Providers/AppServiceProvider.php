@@ -124,6 +124,28 @@ class AppServiceProvider extends ServiceProvider
         // than silently binding a fake that never dispatches a real parcel.
         $this->app->singleton(CourierClient::class, function ($app) {
             if (config('services.ninjavan.client_id') && config('services.ninjavan.client_secret')) {
+                $baseUrl = (string) config('services.ninjavan.base_url');
+
+                // Creds present but base_url is still NinjaVan's SANDBOX host (the
+                // config default) outside local/testing: this is a deploy that set
+                // NINJAVAN_CLIENT_ID/SECRET but forgot NINJAVAN_BASE_URL. The sandbox
+                // answers 2xx and echoes back our requested_tracking_number, so the
+                // job would flip to SHIPPED and the buyer would get a "shipped" email
+                // for a tracking number that was never actually booked with a real
+                // parcel - silent fake fulfilment. Fail closed instead of ever
+                // binding the live client against a sandbox host in a real
+                // environment.
+                if (! $app->environment(['local', 'testing']) && self::isNinjaVanSandboxHost($baseUrl)) {
+                    throw new RuntimeException(
+                        'NinjaVan credentials are configured but NINJAVAN_BASE_URL ("'.$baseUrl.'") '
+                        .'is the NinjaVan SANDBOX host in the "'.$app->environment().'" environment. '
+                        .'Refusing to bind the live courier client - this would silently create fake '
+                        .'shipments against the sandbox (2xx responses, real-looking tracking numbers, '
+                        .'no parcel ever booked) instead of dispatching real parcels. Set '
+                        .'NINJAVAN_BASE_URL to the production host (https://api.ninjavan.co/sg).'
+                    );
+                }
+
                 return $app->make(HttpNinjaVanClient::class);
             }
 
@@ -211,5 +233,19 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(QuoteStateChanged::class, function (QuoteStateChanged $event): void {
             Broadcasting::dispatch(fn () => OrderTrackingUpdated::dispatch($event->quote));
         });
+    }
+
+    /**
+     * True when the NinjaVan base_url's host is a sandbox host (NinjaVan's
+     * "api-sandbox.ninjavan.co", or any host someone points NINJAVAN_BASE_URL
+     * at that carries "sandbox" in its hostname). Matches on the parsed host
+     * rather than the raw string so a coincidental "sandbox" elsewhere in the
+     * URL (e.g. a path segment) can't produce a false positive.
+     */
+    private static function isNinjaVanSandboxHost(string $baseUrl): bool
+    {
+        $host = (string) (parse_url($baseUrl, PHP_URL_HOST) ?? '');
+
+        return $host !== '' && str_contains(strtolower($host), 'sandbox');
     }
 }
