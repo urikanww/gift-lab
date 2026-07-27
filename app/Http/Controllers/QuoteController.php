@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\PaymentState;
 use App\Http\Requests\AmendQuoteRequest;
 use App\Http\Requests\CancelQuoteRequest;
 use App\Http\Requests\IssueInvoiceRequest;
+use App\Http\Requests\ReconcilePaymentRequest;
 use App\Http\Requests\SendQuoteRequest;
 use App\Http\Requests\StoreQuoteRequest;
 use App\Http\Resources\QuoteHistoryResource;
@@ -285,6 +287,35 @@ class QuoteController extends Controller
             ],
             'quote' => new QuoteResource($quote->fresh()),
         ], 201);
+    }
+
+    /**
+     * Staff record the real-world outcome of a B2B invoice (paid / partially
+     * paid / voided). There is no Stripe path for B2B - this is the manual
+     * reconciliation the invoicing migration's comment promised but never
+     * shipped.
+     */
+    public function reconcilePayment(ReconcilePaymentRequest $request, Quote $quote): JsonResponse
+    {
+        $this->authorize('manageProduction', $quote);
+
+        $invoice = $this->quotes->reconcilePayment(
+            $quote,
+            PaymentState::from($request->string('payment_state')->toString()),
+            $request->input('note'),
+        );
+
+        return response()->json([
+            'invoice' => [
+                'id' => $invoice->id,
+                'po_ref' => $invoice->po_ref,
+                'invoice_ref' => $invoice->invoice_ref,
+                'amount' => $invoice->amount,
+                'currency' => $invoice->currency,
+                'payment_state' => $invoice->payment_state->value,
+            ],
+            'quote' => new QuoteResource($quote->fresh()),
+        ]);
     }
 
     public function procure(Request $request, Quote $quote): QuoteResource

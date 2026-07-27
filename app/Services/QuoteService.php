@@ -851,24 +851,87 @@ final class QuoteService
         }
 
         return DB::transaction(function () use ($quote, $poRef, $invoiceRef, $terms): Invoice {
+            // Lock the quote row for the duration of the check-then-create so two
+            // concurrent PROOF_APPROVED requests (double-submit / retry) can't
+            // both observe "no invoice yet" and both create one - the second
+            // delivery blocks here until the first commits, then sees the
+            // freshly-created invoice below and returns it instead of minting a
+            // duplicate (mirrors PaymentService::confirmPaid's TOCTOU guard).
+            $locked = Quote::query()
+                ->whereKey($quote->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $existing = $locked->purchaseOrders()->first();
+            if ($existing !== null) {
+                return $existing;
+            }
+
             $invoice = Invoice::create([
-                'quote_id' => $quote->id,
+                'quote_id' => $locked->id,
                 'po_ref' => $poRef,
                 'invoice_ref' => $invoiceRef,
-                'terms' => $terms ?? $quote->company->default_terms,
+                'terms' => $terms ?? $locked->company->default_terms,
                 'payment_state' => PaymentState::Unpaid->value,
-                'amount' => $quote->total,
-                'currency' => $quote->currency,
+                'amount' => $locked->total,
+                'currency' => $locked->currency,
                 'issued_by' => Auth::id(),
                 'issued_at' => now(),
             ]);
 
-            $previous = $quote->state->value;
-            $quote->transitionTo(QuoteState::Invoiced);
-            $quote->transitionTo(QuoteState::Confirmed);
-            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            $previous = $locked->state->value;
+            $locked->transitionTo(QuoteState::Invoiced);
+            $locked->transitionTo(QuoteState::Confirmed);
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($locked, $previous)));
 
-            $this->audit->log($invoice, 'invoice.issued', null, ['po_ref' => $poRef, 'amount' => $quote->total]);
+            $this->audit->log($invoice, 'invoice.issued', null, ['po_ref' => $poRef, 'amount' => $locked->total]);
+
+            return $invoice;
+        });
+    }
+
+    /**
+     * Staff records the real-world outcome of a B2B invoice: there is no
+     * Stripe path for B2B, so payment is reconciled manually against a bank
+     * transfer / cheque / cash receipt staff have evidence of elsewhere.
+     * Mirrors PaymentService::confirmPaid's lock + audit shape. A VOID invoice
+     * is terminal - reconciling it to anything else is refused explicitly
+     * rather than silently allowed. Requesting the state the invoice is
+     * already in is a no-op (idempotent-friendly for retried requests).
+     */
+    public function reconcilePayment(Quote $quote, PaymentState $target, ?string $note = null): Invoice
+    {
+        return DB::transaction(function () use ($quote, $target, $note): Invoice {
+            $locked = Quote::query()
+                ->whereKey($quote->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $invoice = $locked->purchaseOrders()->lockForUpdate()->first();
+            if ($invoice === null) {
+                throw new DomainRuleException('This order has no invoice to reconcile yet.');
+            }
+
+            $current = $invoice->payment_state;
+
+            if ($current === $target) {
+                // Same state requested twice (retry / double-click) - nothing to do.
+                return $invoice;
+            }
+
+            if ($current === PaymentState::Void) {
+                throw new DomainRuleException('This invoice is VOID and cannot be reconciled to another state.');
+            }
+
+            $invoice->payment_state = $target;
+            $invoice->save();
+
+            $this->audit->log($invoice, 'payment.reconciled', [
+                'payment_state' => $current->value,
+            ], [
+                'payment_state' => $target->value,
+                'note' => $note,
+            ]);
 
             return $invoice;
         });
