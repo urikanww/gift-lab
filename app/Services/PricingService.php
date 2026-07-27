@@ -122,13 +122,31 @@ final class PricingService
     }
 
     /**
-     * Compute a full quote total from resolved line specs.
+     * The flat + per-unit decoration fee overlay a customized line carries on
+     * top of its raw unit price × qty: one flat fee per customized line, a
+     * per-unit logo-size surcharge, a per-unit text/personalisation fee, and
+     * (for MODEL_3D) a UV decoration pass (audit G7 - MODEL_3D's per-unit
+     * print fee is skipped in unitPriceBreakdown because its machine time
+     * already sits inside landed cost, so the UV pass is recovered here
+     * instead). Zero for a blank (uncustomized) line.
      *
-     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
-     * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float, delivery_reliable: bool}
+     * This is the SINGLE source of truth for the fee portion of a line total -
+     * quoteTotals() uses it to build a fresh quote, and QuoteService::amend()
+     * uses it to keep an already-baked-in fee alive across an edit without
+     * re-deriving the line's unit price (a staff-set price on amend must
+     * survive; only the fee overlay is re-derived from current config).
      */
-    public function quoteTotals(array $lines): array
-    {
+    public function lineCustomizationFee(
+        Product $product,
+        int $qty,
+        bool $hasCustomization,
+        ?string $logoSize = null,
+        bool $hasText = false,
+    ): float {
+        if (! $hasCustomization) {
+            return 0.0;
+        }
+
         $customizationFee = (float) PricingConfig::value('fee', 'customization_flat', 0);
         // Per-unit component for work repeated on every piece - name/text
         // personalisation (spec 6.1: combinable with logo, priced additively;
@@ -138,13 +156,37 @@ final class PricingService
         // covers more decoration area (more ink / longer pass), so it costs
         // more per piece. Absent size → no surcharge (blank/legacy lines).
         $bySize = (array) PricingConfig::value('fee', 'customization_by_size', []);
-        $setupFee = (float) PricingConfig::value('fee', 'setup_fee', 0);
-        // UV decoration pass on a MODEL_3D part (audit G7): unitPrice skips
-        // the per-unit print fee for MODEL_3D (machine time is in landed
-        // cost), but a customized 3D item still gets a UV pass - recover it.
         $printPerUnit = (array) PricingConfig::value('print_cost', 'per_unit', []);
         $uvDecorPerUnit = (float) ($printPerUnit['UV'] ?? 0);
 
+        $sizeSurcharge = $logoSize !== null ? (float) ($bySize[$logoSize] ?? 0) : 0.0;
+        // Additive fee structure (audit D10): one flat fee per customized
+        // line + per-unit logo-size surcharge + per-unit text fee when a
+        // name/text layer is present.
+        $textPerUnit = $hasText ? $customizationPerUnit : 0.0;
+        $decorPerUnit = $product->class === ProductClass::Model3d ? $uvDecorPerUnit : 0.0;
+
+        return round($customizationFee + ($textPerUnit + $sizeSurcharge + $decorPerUnit) * $qty, 2);
+    }
+
+    /**
+     * One-off, quote-level artwork setup fee (spec: charged once per quote,
+     * not per line). Read from config so quoteTotals() and any caller needing
+     * the same figure (e.g. a full re-price) never hardcode it twice.
+     */
+    public function setupFee(): float
+    {
+        return (float) PricingConfig::value('fee', 'setup_fee', 0);
+    }
+
+    /**
+     * Compute a full quote total from resolved line specs.
+     *
+     * @param  array<int, array{product: Product, variant: ?Variant, qty: int, has_customization: bool, logo_size?: ?string, has_text?: bool}>  $lines
+     * @return array{lines: array<int, array{unit_price: float, line_total: float}>, subtotal: float, delivery: float, total: float, delivery_reliable: bool}
+     */
+    public function quoteTotals(array $lines): array
+    {
         $priced = [];
         $subtotal = 0.0;
         $totalWeightG = 0.0;
@@ -158,18 +200,13 @@ final class PricingService
 
         foreach ($lines as $line) {
             $unit = $this->unitPrice($line['product'], $line['variant'], $line['qty'], $line['has_customization']);
-            $lineTotal = $unit * $line['qty'];
-
-            if ($line['has_customization']) {
-                $size = $line['logo_size'] ?? null;
-                $sizeSurcharge = $size !== null ? (float) ($bySize[$size] ?? 0) : 0.0;
-                // Additive fee structure (audit D10): one flat fee per
-                // customized line + per-unit logo-size surcharge + per-unit
-                // text fee when a name/text layer is present.
-                $textPerUnit = ($line['has_text'] ?? false) ? $customizationPerUnit : 0.0;
-                $decorPerUnit = $line['product']->class === ProductClass::Model3d ? $uvDecorPerUnit : 0.0;
-                $lineTotal += $customizationFee + ($textPerUnit + $sizeSurcharge + $decorPerUnit) * $line['qty'];
-            }
+            $lineTotal = $unit * $line['qty'] + $this->lineCustomizationFee(
+                $line['product'],
+                $line['qty'],
+                $line['has_customization'],
+                $line['logo_size'] ?? null,
+                $line['has_text'] ?? false,
+            );
 
             $lineTotal = round($lineTotal, 2);
             $subtotal += $lineTotal;
@@ -185,7 +222,7 @@ final class PricingService
             $priced[] = ['unit_price' => $unit, 'line_total' => $lineTotal];
         }
 
-        $subtotal = round($subtotal + $setupFee, 2);
+        $subtotal = round($subtotal + $this->setupFee(), 2);
         $delivery = $this->deliveryFor($totalWeightG);
         $total = round($subtotal + $delivery, 2);
 

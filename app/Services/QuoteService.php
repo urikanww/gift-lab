@@ -246,7 +246,16 @@ final class QuoteService
         return DB::transaction(function () use ($quote, $lineAmendments, $delivery, $notes, $removedLineIds, $adjustments, $remark): Quote {
             $before = ['subtotal' => $quote->subtotal, 'delivery' => $quote->delivery, 'total' => $quote->total];
             $log = $quote->amendment_log ?? [];
-            $subtotal = 0.0;
+            // Subtotal is adjusted by DELTA, never rebuilt from a bare
+            // unit_price*qty resum (Wave 2 money bug): the quote's frozen
+            // subtotal already carries the quote-level setup fee and each
+            // customized line's flat/per-unit decoration fees (baked in at
+            // create() time via PricingService::quoteTotals, but never stored
+            // per-line), so a full resum silently stripped them. Mirrors the
+            // same delta discipline retotalAfterReconfirm() already uses:
+            // touch only what this save actually changed, leave everything
+            // else - including a no-op save - byte-for-byte alone.
+            $subtotalDelta = 0.0;
 
             // One Save can touch several lines plus delivery and notes. Stamp
             // every entry it produces with a shared batch id, one timestamp and
@@ -296,7 +305,10 @@ final class QuoteService
             // relation - the subtotal is rebuilt from these rows. Product name
             // rides along so an edited/removed line reads as a name in the log,
             // not "Product #12" once the id is all that survives.
-            $lines = $quote->lineItems()->with('product:id,name')->get();
+            // 'class' rides along too - lineSubtotalContribution() needs it to
+            // decide whether a customized line's UV decor fee applies
+            // (MODEL_3D only), without a second query per line.
+            $lines = $quote->lineItems()->with('product:id,name,class')->get();
 
             $unknown = array_diff(array_keys($amendmentsByLineId), $lines->pluck('id')->all());
             if ($unknown !== []) {
@@ -322,6 +334,12 @@ final class QuoteService
                         'to' => null,
                     ]);
 
+                    // Removing a line pulls its whole (fee-inclusive) contribution
+                    // out of the subtotal - computed BEFORE the delete, since a
+                    // DROPPED/CANCELLED line already contributes zero (defect b)
+                    // and must stay at zero, not go negative.
+                    $subtotalDelta -= $this->lineSubtotalContribution($line);
+
                     $line->delete();
 
                     continue;
@@ -330,6 +348,11 @@ final class QuoteService
                 $amendment = $amendmentsByLineId[$line->id] ?? null;
 
                 if ($amendment !== null) {
+                    // Named distinctly from the outer $before (the audit-log
+                    // snapshot array) - reusing that name here would silently
+                    // overwrite it with a float and corrupt the audit entry.
+                    $beforeContribution = $this->lineSubtotalContribution($line);
+
                     $log[] = $entry([
                         'action' => 'edited',
                         'line_item_id' => $line->id,
@@ -341,9 +364,14 @@ final class QuoteService
                     $line->unit_price = $amendment['unit_price'];
                     $line->qty = $amendment['qty'];
                     $line->save();
-                }
 
-                $subtotal += (float) $line->lineTotal();
+                    // Delta only: the line's own (possibly fee-bearing) change,
+                    // not a resum of the whole quote. An untouched line below
+                    // (no amendment, no removal) contributes no delta at all -
+                    // this is what keeps a delivery/notes-only save from
+                    // moving the subtotal by so much as a cent (defect c).
+                    $subtotalDelta += $this->lineSubtotalContribution($line) - $beforeContribution;
+                }
             }
 
             foreach ($additions as $addition) {
@@ -358,7 +386,7 @@ final class QuoteService
                     'to' => ['unit_price' => $line->unit_price, 'qty' => $line->qty],
                 ]);
 
-                $subtotal += (float) $line->lineTotal();
+                $subtotalDelta += $this->lineSubtotalContribution($line);
             }
 
             $newDelivery = $delivery ?? (float) $quote->delivery;
@@ -405,7 +433,7 @@ final class QuoteService
 
             $quote->adjustments = $newAdjustments;
 
-            $quote->subtotal = round($subtotal, 2);
+            $quote->subtotal = round((float) $quote->subtotal + $subtotalDelta, 2);
             $quote->delivery = $newDelivery;
             // Adjustments land after delivery, and can pull the total down (a
             // discount) as well as up (a tax/fee) - see Quote::adjustmentsTotal.
@@ -471,6 +499,37 @@ final class QuoteService
         }
 
         return round($sum, 2);
+    }
+
+    /**
+     * A line's current contribution to the quote subtotal: raw unit_price × qty
+     * plus the SAME per-line decoration fee overlay the canonical pricer
+     * applies at create time (PricingService::lineCustomizationFee - flat +
+     * per-unit size/text/UV), read fresh from the line's own (unchanged by
+     * amend) customization field. This is what amend() deltas against, so a
+     * staff-edited unit_price is preserved verbatim - only the fee overlay is
+     * re-derived, never the price itself.
+     *
+     * A DROPPED/CANCELLED line contributes nothing (defect b): it will not be
+     * fulfilled, so it must not be billed, however its unit_price/qty read.
+     */
+    private function lineSubtotalContribution(LineItem $line): float
+    {
+        if (in_array($line->line_state, [LineItemState::Dropped, LineItemState::Cancelled], true)) {
+            return 0.0;
+        }
+
+        $customization = $line->customization ?? [];
+
+        $fee = $this->pricing->lineCustomizationFee(
+            $line->product,
+            $line->qty,
+            $this->hasCustomization($customization),
+            $customization['logo_size'] ?? null,
+            ! empty($customization['text']),
+        );
+
+        return round((float) $line->lineTotal() + $fee, 2);
     }
 
     private function addAmendedLine(Quote $quote, array $addition): LineItem

@@ -393,12 +393,16 @@ it('keeps untouched lines in the subtotal when only some lines are amended', fun
         'delivery' => 30.00,
         'total' => 80.00,
     ]);
+    // Plain (no customization) so this line-resum test's arithmetic isn't
+    // perturbed by the factory's default logo_size fee - that's covered
+    // separately in QuoteAmendmentLogTest.
     $amended = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'product_id' => $product->id,
         'variant_id' => null,
         'qty' => 2,
         'unit_price' => 15.00,
+        'customization' => null,
     ]);
     $untouched = LineItem::factory()->create([
         'quote_id' => $quote->id,
@@ -406,6 +410,7 @@ it('keeps untouched lines in the subtotal when only some lines are amended', fun
         'variant_id' => null,
         'qty' => 1,
         'unit_price' => 20.00,
+        'customization' => null,
     ]);
 
     // Only the first line is submitted: 2 x 16.00 = 32.00. The untouched line
@@ -441,13 +446,14 @@ function draftQuoteForAmend(Product $product): array
         'total' => 80.00,
     ]);
 
+    // Plain (no customization) - see the note on the sibling test above.
     $first = LineItem::factory()->create([
         'quote_id' => $quote->id, 'product_id' => $product->id, 'variant_id' => null,
-        'qty' => 2, 'unit_price' => 15.00,
+        'qty' => 2, 'unit_price' => 15.00, 'customization' => null,
     ]);
     $second = LineItem::factory()->create([
         'quote_id' => $quote->id, 'product_id' => $product->id, 'variant_id' => null,
-        'qty' => 1, 'unit_price' => 20.00,
+        'qty' => 1, 'unit_price' => 20.00, 'customization' => null,
     ]);
 
     return [$quote, $first, $second];
