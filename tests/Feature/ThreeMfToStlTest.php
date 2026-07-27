@@ -39,13 +39,62 @@ function stlDigest(string $stl): array
     return ['count' => $count, 'min' => $min, 'max' => $max];
 }
 
+/**
+ * Load one of the real, large MakerWorld sample projects out of
+ * `scraper/out/models3d/`. That directory is gitignored (see
+ * `scraper/.gitignore`) - it holds multi-MB scraped samples that are never
+ * committed - so it's present on a developer machine that has run the
+ * scraper, but absent on a fresh checkout and in CI. Skip gracefully rather
+ * than fail when it's missing; {@see sampleThreeMfFixture()} below covers the
+ * same conversion path deterministically with a tiny committed fixture.
+ */
 function sampleThreeMf(string $file): string
 {
     $path = base_path('scraper/out/models3d/'.$file);
-    expect(is_file($path))->toBeTrue("sample .3mf missing: {$file}");
+    if (! is_file($path)) {
+        test()->markTestSkipped("3mf sample not present in scraper/out — skipping conversion smoke test: {$file}");
+    }
 
     return (string) file_get_contents($path);
 }
+
+/**
+ * Load the tiny, committed unit-cube `.3mf` fixture under
+ * tests/Fixtures/model3d/ (NOT gitignored, NOT scraper output) so the
+ * conversion path always has at least one deterministic, real archive to
+ * exercise - even on a fresh checkout with no scraper samples.
+ */
+function sampleThreeMfFixture(): string
+{
+    $path = base_path('tests/Fixtures/model3d/cube.3mf');
+    expect(is_file($path))->toBeTrue("fixture .3mf missing: {$path}");
+
+    return (string) file_get_contents($path);
+}
+
+it('converts a tiny committed unit-cube .3mf fixture into a valid, sanely-bounded binary STL', function (): void {
+    $stl = (new ThreeMfToStl)->convert(sampleThreeMfFixture());
+
+    $digest = stlDigest($stl);
+
+    // Well-formed binary STL container: 80-byte header + uint32 count + records,
+    // and the declared count must match the actual byte length exactly.
+    expect($stl)->toBeString()
+        ->and(strlen($stl))->toBeGreaterThanOrEqual(84)
+        ->and($digest['count'])->toBe(12) // a cube is 6 faces x 2 triangles
+        ->and(strlen($stl))->toBe(84 + $digest['count'] * 50);
+
+    // The 80-byte header is our zero-filled framing (mirrors StlMerger).
+    expect(substr($stl, 0, 80))->toBe(str_repeat("\0", 80));
+
+    // A sane, finite, non-degenerate bounding box (a unit cube: extent 1 on
+    // every axis), proving real geometry was resolved and transformed.
+    foreach ([0, 1, 2] as $axis) {
+        $extent = $digest['max'][$axis] - $digest['min'][$axis];
+        expect(is_finite($extent))->toBeTrue()
+            ->and($extent)->toBe(1.0);
+    }
+});
 
 it('converts a single-object .3mf into a valid, sanely-bounded binary STL', function (): void {
     $stl = (new ThreeMfToStl)->convert(
