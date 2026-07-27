@@ -36,11 +36,20 @@ vi.mock('pusher-js', () => ({
 import { disconnectEcho, getEcho, joinSharedPrivate, leaveSharedPrivate } from './echo';
 
 beforeEach(() => {
+  // Tests that exercise the real (mocked) Echo client need a key present.
+  // Do NOT rely on an ambient .env value (there is none in CI / a fresh
+  // clone) — stub it here so the suite is self-contained. The graceful-
+  // degradation tests override this to '' per-case.
+  vi.stubEnv('VITE_REVERB_APP_KEY', 'test-reverb-key');
   privateMock.mockClear();
   leaveMock.mockClear();
   echoInstances.length = 0;
   echoCtorState.shouldThrow = false;
   disconnectEcho();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('shared private channel refcounting', () => {
