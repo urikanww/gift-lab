@@ -1,6 +1,7 @@
 import { Badge, Button } from '../../ui';
 import { proofStateTone } from '../../lib/quoteStatus';
 import ProductThumb from '../product/ProductThumb';
+import BuyerBrief from './BuyerBrief';
 import ProofFileInput from './ProofFileInput';
 import type { ArtworkOption } from './ArtworkPicker';
 import type { BadgeTone } from '../../ui';
@@ -75,6 +76,10 @@ export default function LineProofRow({
           {badge.label}
         </Badge>
       </div>
+
+      {/* The buyer's brief (reference images + placement notes) when they asked
+          us to do the design - staff produce the proof artwork from this. */}
+      <BuyerBrief customization={line.customization} />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="flex-1">

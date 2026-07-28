@@ -77,7 +77,7 @@ export default function ProductDesignerPage() {
   // pricing path for buyer-uploaded (no size-band) lines exists. The component +
   // backend stay in place; flip this to re-enable the mode toggle. Mode is pinned
   // to 'designer' while disabled, so the buyer_uploaded branches are unreachable.
-  const FINISHED_LOOK_ENABLED = false;
+  const FINISHED_LOOK_ENABLED = true;
   const [mode, setMode] = useState<'designer' | 'buyer_uploaded'>('designer');
   const [finishedLook, setFinishedLook] = useState<FinishedLookValue | null>(null);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
