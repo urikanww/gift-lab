@@ -8,6 +8,8 @@ use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Proof;
 use App\Models\Quote;
+use App\Models\User;
+use App\Services\QuoteService;
 
 function customizedLine(Quote $quote): LineItem
 {
@@ -103,4 +105,35 @@ it('stays in proofing when a customized line has no proof prepared yet', functio
     $quote->recomputeProofState();
 
     expect($quote->fresh()->state)->toBe(QuoteState::Proofing);
+});
+
+// H6: an amend that drops the last unresolved artwork line must re-roll the
+// proof state, not leave the order stranded in PROOFING. amend() previously
+// never called recomputeProofState().
+
+it('re-rolls the proof state when a superadmin amend drops the last unresolved line', function (): void {
+    $superadmin = User::factory()->create(['role' => 'superadmin', 'company_id' => null]);
+    $this->actingAs($superadmin);
+
+    $quote = Quote::factory()->create(['state' => 'PROOFING', 'accepted_at' => now()]);
+    $approved = customizedLine($quote);
+    $awaiting = customizedLine($quote);
+    proofFor($approved, ProofState::Approved);
+    proofFor($awaiting, ProofState::Sent);
+
+    // Before the drop the order is genuinely stuck (one line still awaiting).
+    expect($quote->fresh()->state)->toBe(QuoteState::Proofing);
+
+    app(QuoteService::class)->amend(
+        $quote,
+        [],
+        null,
+        null,
+        [$awaiting->id],
+        null,
+        'Dropping the unresolved line at the buyer request.',
+    );
+
+    // Only the approved line survives, so the order advances.
+    expect($quote->fresh()->state)->toBe(QuoteState::ProofApproved);
 });

@@ -568,6 +568,15 @@ final class QuoteService
                 $this->reanchorInvoices($quote);
             }
 
+            // A drop/amendment changes which proof-needing lines remain, so
+            // re-roll the order's proof state - otherwise dropping the last
+            // unresolved artwork line after its siblings are approved strands
+            // the order in PROOFING (approved proofs are immutable, so no proof
+            // event ever fires again). recomputeProofState() queries fresh and
+            // no-ops when there are no proof-needing lines or the target is not
+            // a legal transition.
+            $quote->recomputeProofState();
+
             return $quote->fresh(['lineItems']);
         });
     }
