@@ -10,12 +10,20 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
-beforeEach(fn () => Cache::flush());
+beforeEach(function (): void {
+    Cache::flush();
+    // Pin "now" before the fixture deliveryStartDate (2026-07-20, a Monday) so
+    // CourierConfig::resolveDispatchDate leaves it unchanged - the dispatch date
+    // (pickup_date + delivery_start_date) is a future, non-weekend, non-blackout
+    // day, so these payload assertions stay deterministic.
+    \Illuminate\Support\Carbon::setTestNow('2026-07-01');
+});
 
 afterEach(function (): void {
     // Restore the "testing" env for every other test in the suite - tests
     // below flip it to simulate a real deploy environment.
     app()->instance('env', 'testing');
+    \Illuminate\Support\Carbon::setTestNow();
 });
 
 it('fails closed resolving the courier client when creds are set but base_url is still the sandbox host outside local/testing', function (): void {
@@ -116,7 +124,7 @@ it('sends the pickup_* parcel_job fields NinjaVan v4.1 requires when pickup is e
         && data_get($request->data(), 'parcel_job.pickup_timeslot.timezone') === 'Asia/Singapore');
 });
 
-it('uses a configured pickup_date override and service type/level over the delivery-date fallback', function (): void {
+it('uses the configured service type/level and one dispatch day (weekday-snapped) for both legs', function (): void {
     Http::fake([
         '*/2.0/oauth/access_token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
         '*/4.1/orders' => Http::response(['requested_tracking_number' => 'GL1AB']),
@@ -128,22 +136,25 @@ it('uses a configured pickup_date override and service type/level over the deliv
     config()->set('services.ninjavan.pickup', ['name' => 'Gift Lab', 'phone' => '+6560000000', 'email' => 'ops@giftlab.test', 'address1' => '1 Depot Rd', 'postcode' => '109679', 'country' => 'SG']);
     config()->set('services.ninjavan.pickup_service_type', 'Marketplace');
     config()->set('services.ninjavan.pickup_service_level', 'Express');
-    config()->set('services.ninjavan.pickup_date', '2026-07-19');
+    // Preferred collection weekday: Wednesday. now() is pinned to 2026-07-01.
+    App\Models\PricingConfig::create(['group' => 'courier', 'key' => 'schedule', 'value' => [
+        'weekday' => 'wednesday', 'blackout_dates' => [],
+    ]]);
 
     $client = app(HttpNinjaVanClient::class);
     $client->createShipment(new CourierShipment(
         reference: 'GL-2041', recipientName: 'Rachel Tan', phone: '+6591234567', email: null,
         line1: '1 Marina Blvd', line2: null, city: 'Singapore', state: null,
         postalCode: '018989', country: 'SG', notes: null, parcelCount: 1,
-        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20',
+        requestedTrackingNumber: 'GL1AB', deliveryStartDate: '2026-07-20', // Monday
     ));
 
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/4.1/orders')
         && data_get($request->data(), 'parcel_job.pickup_service_type') === 'Marketplace'
         && data_get($request->data(), 'parcel_job.pickup_service_level') === 'Express'
-        // Distinct pickup_date is honoured; delivery_start_date stays independent.
-        && data_get($request->data(), 'parcel_job.pickup_date') === '2026-07-19'
-        && data_get($request->data(), 'parcel_job.delivery_start_date') === '2026-07-20');
+        // Both legs snap to the next preferred weekday (Mon 20th -> Wed 22nd).
+        && data_get($request->data(), 'parcel_job.pickup_date') === '2026-07-22'
+        && data_get($request->data(), 'parcel_job.delivery_start_date') === '2026-07-22');
 });
 
 it('throws a CourierException when auth fails', function (): void {

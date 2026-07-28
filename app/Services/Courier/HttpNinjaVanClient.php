@@ -119,6 +119,9 @@ final class HttpNinjaVanClient implements CourierClient
         // "courier"), each falling back to config('services.ninjavan.*').
         $pickup = CourierConfig::pickup();
         $timeslot = CourierConfig::timeslot();
+        // One dispatch day for both legs: snapped to the configured preferred
+        // weekday and rolled past weekends/holidays (courier can't work them).
+        $dispatchDate = CourierConfig::resolveDispatchDate($shipment->deliveryStartDate);
 
         return Http::withToken($token)
             ->connectTimeout(5)->timeout(20)
@@ -161,18 +164,18 @@ final class HttpNinjaVanClient implements CourierClient
                 'parcel_job' => [
                     'is_pickup_required' => true,
                     // NinjaVan v4.1 requires the pickup_* fields whenever
-                    // is_pickup_required is true. pickup_date falls back to the
-                    // delivery start date when no fixed override is configured.
+                    // is_pickup_required is true. pickup + delivery share one
+                    // dispatch day (the configured weekday, past weekends/holidays).
                     'pickup_service_type' => (string) config('services.ninjavan.pickup_service_type', 'Parcel'),
                     'pickup_service_level' => (string) config('services.ninjavan.pickup_service_level', 'Standard'),
-                    'pickup_date' => (string) (config('services.ninjavan.pickup_date') ?: $shipment->deliveryStartDate),
+                    'pickup_date' => $dispatchDate,
                     // Same staff-configured window drives collection and delivery.
                     'pickup_timeslot' => [
                         'start_time' => $timeslot['start'],
                         'end_time' => $timeslot['end'],
                         'timezone' => $timeslot['timezone'],
                     ],
-                    'delivery_start_date' => $shipment->deliveryStartDate,
+                    'delivery_start_date' => $dispatchDate,
                     'delivery_timeslot' => [
                         'start_time' => $timeslot['start'],
                         'end_time' => $timeslot['end'],

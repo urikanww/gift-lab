@@ -91,6 +91,43 @@ it('sends the stored pickup address + collection window to NinjaVan, not the env
         && data_get($r->data(), 'parcel_job.pickup_timeslot.end_time') === '15:00');
 });
 
+it('resolves the dispatch date: future weekday stays, weekend + past roll forward', function (): void {
+    Illuminate\Support\Carbon::setTestNow('2026-07-01'); // Wednesday
+
+    // A future weekday with no preference/blackout is used as-is.
+    expect(CourierConfig::resolveDispatchDate('2026-07-10'))->toBe('2026-07-10'); // Fri
+    // A Saturday rolls to the following Monday.
+    expect(CourierConfig::resolveDispatchDate('2026-07-11'))->toBe('2026-07-13'); // Sat -> Mon
+    // A past date rolls to the earliest bookable day (tomorrow, a weekday here).
+    expect(CourierConfig::resolveDispatchDate('2026-06-15'))->toBe('2026-07-02'); // Thu
+
+    Illuminate\Support\Carbon::setTestNow();
+});
+
+it('snaps to the preferred weekday, then rolls past a blackout (holiday) to the next day', function (): void {
+    Illuminate\Support\Carbon::setTestNow('2026-07-01'); // Wednesday
+
+    // Preferred Monday: a Wednesday request snaps forward to the next Monday.
+    PricingConfig::create(['group' => 'courier', 'key' => 'schedule', 'value' => [
+        'weekday' => 'monday', 'blackout_dates' => [],
+    ]]);
+    expect(CourierConfig::resolveDispatchDate('2026-07-08'))->toBe('2026-07-13'); // Wed -> next Mon
+
+    // With that Monday blacked out, it falls to the next available day.
+    $row = PricingConfig::where('group', 'courier')->where('key', 'schedule')->firstOrFail();
+    $row->value = ['weekday' => 'monday', 'blackout_dates' => ['2026-07-13']];
+    $row->save(); // fires the cache/memo clear
+    expect(CourierConfig::resolveDispatchDate('2026-07-08'))->toBe('2026-07-14'); // Mon blackout -> Tue
+
+    Illuminate\Support\Carbon::setTestNow();
+});
+
+it('exposes valid start times and the dependent end times', function (): void {
+    expect(CourierConfig::startTimes())->toBe(['09:00', '12:00', '15:00', '18:00'])
+        ->and(CourierConfig::endsForStart('09:00'))->toBe(['12:00', '18:00', '22:00'])
+        ->and(CourierConfig::endsForStart('12:00'))->toBe(['15:00']);
+});
+
 it('lets staff read and update the pickup config, and audits it', function (): void {
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
@@ -105,10 +142,14 @@ it('lets staff read and update the pickup config, and audits it', function (): v
             'postcode' => '445566', 'country' => 'sg',
         ],
         'timeslot' => ['start' => '12:00', 'end' => '15:00', 'timezone' => 'Asia/Singapore'],
-    ])->assertOk()->assertJsonPath('pickup.name', 'New Depot')->assertJsonPath('pickup.country', 'SG');
+        'schedule' => ['weekday' => 'tuesday', 'blackout_dates' => ['2026-12-25', '2026-01-01', '2026-01-01']],
+    ])->assertOk()->assertJsonPath('pickup.name', 'New Depot')->assertJsonPath('pickup.country', 'SG')
+        ->assertJsonPath('schedule.weekday', 'tuesday');
 
     expect(CourierConfig::pickup()['name'])->toBe('New Depot')
         ->and(CourierConfig::timeslot()['end'])->toBe('15:00')
+        // Deduped + sorted on save.
+        ->and(CourierConfig::schedule()['blackout_dates'])->toBe(['2026-01-01', '2026-12-25'])
         ->and(\App\Models\AuditLog::where('event', 'courier_config.updated')->count())->toBeGreaterThan(0);
 });
 

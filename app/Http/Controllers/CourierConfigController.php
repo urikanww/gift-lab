@@ -34,10 +34,18 @@ class CourierConfigController extends Controller
 
         // Effective values (stored merged over env), so the form always shows
         // what NinjaVan will actually receive - never a blank that is really a
-        // live env fallback.
+        // live env fallback. `options` drives the dependent time dropdowns + the
+        // weekday picker so the UI never offers an unbookable combination.
         return response()->json([
             'pickup' => CourierConfig::pickup(),
             'timeslot' => CourierConfig::timeslot(),
+            'schedule' => CourierConfig::schedule(),
+            'options' => [
+                'start_times' => CourierConfig::startTimes(),
+                'ends_for_start' => collect(CourierConfig::startTimes())
+                    ->mapWithKeys(fn (string $s): array => [$s => CourierConfig::endsForStart($s)]),
+                'weekdays' => array_keys(CourierConfig::WEEKDAYS),
+            ],
         ]);
     }
 
@@ -59,6 +67,12 @@ class CourierConfigController extends Controller
             'timeslot.start' => ['required', 'string', 'date_format:H:i'],
             'timeslot.end' => ['required', 'string', 'date_format:H:i'],
             'timeslot.timezone' => ['required', 'string', 'timezone', 'max:64'],
+            'schedule' => ['required', 'array'],
+            // 'any' = earliest available; otherwise a Mon-Fri collection weekday.
+            'schedule.weekday' => ['required', 'string', 'in:any,'.implode(',', array_keys(CourierConfig::WEEKDAYS))],
+            // Non-collection dates (public holidays) staff maintain.
+            'schedule.blackout_dates' => ['present', 'array', 'max:60'],
+            'schedule.blackout_dates.*' => ['string', 'date_format:Y-m-d'],
         ]);
 
         // NinjaVan only accepts a fixed set of windows - reject anything else up
@@ -76,7 +90,11 @@ class CourierConfigController extends Controller
         $pickup = $validated['pickup'];
         $pickup['country'] = strtoupper($pickup['country']);
 
-        foreach ([['pickup', $pickup], ['timeslot', $validated['timeslot']]] as [$key, $value]) {
+        // Dedupe + sort the blackout dates so the stored list stays tidy.
+        $schedule = $validated['schedule'];
+        $schedule['blackout_dates'] = collect($schedule['blackout_dates'])->unique()->sort()->values()->all();
+
+        foreach ([['pickup', $pickup], ['timeslot', $validated['timeslot']], ['schedule', $schedule]] as [$key, $value]) {
             $before = PricingConfig::value(CourierConfig::GROUP, $key);
 
             $config = PricingConfig::updateOrCreate(
@@ -90,6 +108,7 @@ class CourierConfigController extends Controller
         return response()->json([
             'pickup' => CourierConfig::pickup(),
             'timeslot' => CourierConfig::timeslot(),
+            'schedule' => CourierConfig::schedule(),
         ]);
     }
 }

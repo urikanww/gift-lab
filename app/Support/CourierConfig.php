@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\PricingConfig;
+use Carbon\CarbonImmutable;
 
 /**
  * Staff-editable courier settings for NinjaVan: the pickup (sender) address and
@@ -50,6 +51,92 @@ final class CourierConfig
         }
 
         return false;
+    }
+
+    /** Distinct start times, for the "start" dropdown. @return list<string> */
+    public static function startTimes(): array
+    {
+        return array_values(array_unique(array_map(static fn (array $s): string => $s['start'], self::VALID_TIMESLOTS)));
+    }
+
+    /** Valid end times for a given start, for the dependent "end" dropdown. @return list<string> */
+    public static function endsForStart(string $start): array
+    {
+        return array_values(array_map(
+            static fn (array $s): string => $s['end'],
+            array_filter(self::VALID_TIMESLOTS, static fn (array $s): bool => $s['start'] === $start),
+        ));
+    }
+
+    /** Preferred-weekday options (Mon-Fri; weekends are never collection days) -> ISO day number. */
+    public const WEEKDAYS = [
+        'monday' => 1, 'tuesday' => 2, 'wednesday' => 3, 'thursday' => 4, 'friday' => 5,
+    ];
+
+    /**
+     * The pickup-day schedule: the preferred collection weekday ('any' = earliest
+     * available) and the non-collection dates (public holidays) staff maintain.
+     *
+     * @return array{weekday: string, blackout_dates: list<string>}
+     */
+    public static function schedule(): array
+    {
+        $stored = PricingConfig::value(self::GROUP, 'schedule', []);
+
+        $weekday = 'any';
+        if (is_array($stored) && isset($stored['weekday']) && array_key_exists($stored['weekday'], self::WEEKDAYS)) {
+            $weekday = $stored['weekday'];
+        }
+
+        $blackout = [];
+        if (is_array($stored) && isset($stored['blackout_dates']) && is_array($stored['blackout_dates'])) {
+            $blackout = array_values(array_filter(
+                $stored['blackout_dates'],
+                static fn ($d): bool => is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1,
+            ));
+        }
+
+        return ['weekday' => $weekday, 'blackout_dates' => $blackout];
+    }
+
+    /**
+     * The dispatch date NinjaVan collects AND delivers on. Both legs share one
+     * day, so this single date fills pickup_date and delivery_start_date.
+     *
+     * Starts from the order's requested date (never today or the past - a
+     * same-day pickup can't be booked), snaps to the configured preferred weekday
+     * when set, then rolls forward over any day the courier can't work: weekends
+     * and the staff-maintained public-holiday (blackout) list. "Selected day not
+     * available -> next day", exactly.
+     */
+    public static function resolveDispatchDate(string $requestedDate): string
+    {
+        $schedule = self::schedule();
+
+        $base = CarbonImmutable::parse($requestedDate)->startOfDay();
+
+        // Never today or in the past.
+        $earliest = CarbonImmutable::now()->startOfDay()->addDay();
+        if ($base->lessThan($earliest)) {
+            $base = $earliest;
+        }
+
+        // Snap to the preferred weekday's next occurrence on/after base.
+        if ($schedule['weekday'] !== 'any') {
+            $target = self::WEEKDAYS[$schedule['weekday']];
+            for ($i = 0; $i < 7 && $base->dayOfWeekIso !== $target; $i++) {
+                $base = $base->addDay();
+            }
+        }
+
+        // Roll forward over weekends + blackout dates (bounded so a bad list
+        // can never spin forever).
+        $blackout = array_flip($schedule['blackout_dates']);
+        for ($i = 0; $i < 60 && ($base->isWeekend() || isset($blackout[$base->toDateString()])); $i++) {
+            $base = $base->addDay();
+        }
+
+        return $base->toDateString();
     }
 
     /**

@@ -35,12 +35,29 @@ class CourierConfigSeeder extends Seeder
                 'end' => '18:00',
                 'timezone' => 'Asia/Singapore',
             ],
+            // 'any' = collect on the earliest available day. blackout_dates are
+            // the fixed-date SG public holidays (the lunar/Islamic ones move each
+            // year, so staff add those on the Courier screen). Weekends are
+            // skipped automatically and are not listed here.
+            'schedule' => [
+                'weekday' => 'any',
+                'blackout_dates' => [
+                    '2026-01-01', '2026-05-01', '2026-08-09', '2026-12-25',
+                    '2027-01-01', '2027-05-01', '2027-08-09', '2027-12-25',
+                ],
+            ],
+        ];
+
+        $labels = [
+            'pickup' => 'NinjaVan pickup address',
+            'timeslot' => 'NinjaVan collection window',
+            'schedule' => 'NinjaVan pickup day + non-collection dates',
         ];
 
         foreach ($defaults as $key => $value) {
             PricingConfig::firstOrCreate(
                 ['group' => CourierConfig::GROUP, 'key' => $key],
-                ['value' => $value, 'label' => $key === 'pickup' ? 'NinjaVan pickup address' : 'NinjaVan collection window'],
+                ['value' => $value, 'label' => $labels[$key] ?? $key],
             );
         }
     }

@@ -28,25 +28,42 @@ interface Timeslot {
   timezone: string;
 }
 
+interface Schedule {
+  weekday: string; // 'any' | 'monday'..'friday'
+  blackout_dates: string[];
+}
+
 interface CourierConfig {
   pickup: PickupAddress;
   timeslot: Timeslot;
+  schedule: Schedule;
 }
 
-/** NinjaVan's accepted collection/delivery windows (mirrors CourierConfig::VALID_TIMESLOTS). */
-const VALID_SLOTS: { start: string; end: string; label: string }[] = [
-  { start: '09:00', end: '12:00', label: '9:00am – 12:00pm' },
-  { start: '12:00', end: '15:00', label: '12:00pm – 3:00pm' },
-  { start: '15:00', end: '18:00', label: '3:00pm – 6:00pm' },
-  { start: '18:00', end: '22:00', label: '6:00pm – 10:00pm' },
-  { start: '09:00', end: '18:00', label: '9:00am – 6:00pm (business hours)' },
-  { start: '09:00', end: '22:00', label: '9:00am – 10:00pm (all day)' },
+/** NinjaVan's accepted windows (mirrors CourierConfig::VALID_TIMESLOTS). */
+const VALID_SLOTS: { start: string; end: string }[] = [
+  { start: '09:00', end: '12:00' },
+  { start: '12:00', end: '15:00' },
+  { start: '15:00', end: '18:00' },
+  { start: '18:00', end: '22:00' },
+  { start: '09:00', end: '18:00' },
+  { start: '09:00', end: '22:00' },
 ];
-const slotKey = (start: string, end: string) => `${start}-${end}`;
+const START_TIMES = [...new Set(VALID_SLOTS.map((s) => s.start))];
+const endsForStart = (start: string) => VALID_SLOTS.filter((s) => s.start === start).map((s) => s.end);
+/** "09:00" -> "9:00am" for the dropdowns. */
+const timeLabel = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  const ap = h < 12 ? 'am' : 'pm';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:${String(m).padStart(2, '0')}${ap}`;
+};
+const WEEKDAYS = ['any', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+const weekdayLabel = (d: string) => (d === 'any' ? 'Any (earliest available)' : d[0].toUpperCase() + d.slice(1));
 
 const EMPTY: CourierConfig = {
   pickup: { name: '', phone: '', email: '', address1: '', city: '', state: '', postcode: '', country: 'SG' },
   timeslot: { start: '09:00', end: '18:00', timezone: 'Asia/Singapore' },
+  schedule: { weekday: 'any', blackout_dates: [] },
 };
 
 export default function CourierConfigPage() {
@@ -55,6 +72,8 @@ export default function CourierConfigPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Blackout dates edited as free text (one YYYY-MM-DD per line), parsed on save.
+  const [blackoutText, setBlackoutText] = useState('');
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -62,7 +81,12 @@ export default function CourierConfigPage() {
     setError(null);
     try {
       const { data } = await api.get<CourierConfig>('/admin/courier-config');
-      setConfig({ pickup: { ...EMPTY.pickup, ...data.pickup }, timeslot: { ...EMPTY.timeslot, ...data.timeslot } });
+      setConfig({
+        pickup: { ...EMPTY.pickup, ...data.pickup },
+        timeslot: { ...EMPTY.timeslot, ...data.timeslot },
+        schedule: { ...EMPTY.schedule, ...data.schedule },
+      });
+      setBlackoutText((data.schedule?.blackout_dates ?? []).join('\n'));
     } catch (err) {
       setError(apiError(err));
     } finally {
@@ -78,14 +102,28 @@ export default function CourierConfigPage() {
     setConfig((c) => ({ ...c, pickup: { ...c.pickup, [key]: value } }));
   const setSlot = (key: keyof Timeslot, value: string) =>
     setConfig((c) => ({ ...c, timeslot: { ...c.timeslot, [key]: value } }));
+  // Changing the start time constrains the end to that start's valid options.
+  const setStart = (start: string) =>
+    setConfig((c) => ({ ...c, timeslot: { ...c.timeslot, start, end: endsForStart(start)[0] } }));
 
   const save = async () => {
     setSaving(true);
     setFieldErrors({});
+    // One date per line (or comma) -> a clean YYYY-MM-DD list.
+    const blackout = blackoutText
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const payload = { ...config, schedule: { ...config.schedule, blackout_dates: blackout } };
     try {
       await ensureCsrf();
-      const { data } = await api.patch<CourierConfig>('/admin/courier-config', config);
-      setConfig({ pickup: { ...EMPTY.pickup, ...data.pickup }, timeslot: { ...EMPTY.timeslot, ...data.timeslot } });
+      const { data } = await api.patch<CourierConfig>('/admin/courier-config', payload);
+      setConfig({
+        pickup: { ...EMPTY.pickup, ...data.pickup },
+        timeslot: { ...EMPTY.timeslot, ...data.timeslot },
+        schedule: { ...EMPTY.schedule, ...data.schedule },
+      });
+      setBlackoutText((data.schedule?.blackout_dates ?? []).join('\n'));
       toast({ title: 'Courier settings saved', tone: 'success' });
     } catch (err: unknown) {
       // Surface Laravel's per-field validation messages inline.
@@ -152,26 +190,81 @@ export default function CourierConfigPage() {
               Collection &amp; delivery times
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-fg-muted">
-              The window NinjaVan collects and delivers within. Only the windows NinjaVan supports are
-              offered — a custom time would be rejected at booking.
+              The window NinjaVan collects and delivers within. Only the start/end times NinjaVan
+              supports are offered — a custom time would be rejected at booking.
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <Select
-                label="Collection window"
-                value={slotKey(config.timeslot.start, config.timeslot.end)}
-                error={fieldErrors['timeslot.end'] ?? fieldErrors['timeslot.start']}
-                onChange={(e) => {
-                  const [start, end] = e.target.value.split('-');
-                  setConfig((c) => ({ ...c, timeslot: { ...c.timeslot, start, end } }));
-                }}
+                label="Start time"
+                value={config.timeslot.start}
+                error={fieldErrors['timeslot.start']}
+                onChange={(e) => setStart(e.target.value)}
               >
-                {VALID_SLOTS.map((s) => (
-                  <option key={slotKey(s.start, s.end)} value={slotKey(s.start, s.end)}>
-                    {s.label}
+                {START_TIMES.map((t) => (
+                  <option key={t} value={t}>
+                    {timeLabel(t)}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                label="End time"
+                value={config.timeslot.end}
+                error={fieldErrors['timeslot.end']}
+                onChange={(e) => setSlot('end', e.target.value)}
+              >
+                {endsForStart(config.timeslot.start).map((t) => (
+                  <option key={t} value={t}>
+                    {timeLabel(t)}
                   </option>
                 ))}
               </Select>
               <Input label="Timezone" hint="e.g. Asia/Singapore" value={config.timeslot.timezone} error={fieldErrors['timeslot.timezone']} onChange={(e) => setSlot('timezone', e.target.value)} />
+            </div>
+          </Card>
+        </Motion>
+
+        <Motion variants={staggerItem}>
+          <Card padding="lg" aria-labelledby="day-heading">
+            <h2 id="day-heading" className="font-display text-xl text-fg">
+              Pickup day
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm text-fg-muted">
+              The day NinjaVan collects. If the chosen day isn’t available — a weekend, a date that’s
+              already passed, or a non-collection date below — pickup rolls to the next available day.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Select
+                label="Preferred collection day"
+                value={config.schedule.weekday}
+                error={fieldErrors['schedule.weekday']}
+                onChange={(e) => setConfig((c) => ({ ...c, schedule: { ...c.schedule, weekday: e.target.value } }))}
+              >
+                {WEEKDAYS.map((d) => (
+                  <option key={d} value={d}>
+                    {weekdayLabel(d)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="mt-4">
+              <label htmlFor="blackout" className="mb-1 block text-sm font-medium text-fg">
+                Non-collection dates (public holidays)
+              </label>
+              <textarea
+                id="blackout"
+                rows={4}
+                className="w-full rounded-md border border-border bg-surface p-2 text-sm text-fg shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder={'One date per line, YYYY-MM-DD\n2026-02-17\n2026-04-03'}
+                value={blackoutText}
+                onChange={(e) => setBlackoutText(e.target.value)}
+              />
+              {fieldErrors['schedule.blackout_dates.0'] && (
+                <p className="mt-1 text-sm text-danger">Use YYYY-MM-DD, one per line.</p>
+              )}
+              <p className="mt-1 text-xs text-fg-subtle">
+                Weekends are skipped automatically. Add the moving holidays (CNY, Good Friday, Hari
+                Raya, Vesak, Deepavali) here each year.
+              </p>
             </div>
           </Card>
         </Motion>
