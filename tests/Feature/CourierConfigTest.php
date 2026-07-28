@@ -40,12 +40,20 @@ it('resolves stored pickup over the env fallback, keeping env for blank fields',
         ->and($pickup['phone'])->toBe('+6500000000'); // env fallback for the blank field
 });
 
-it('resolves stored timeslot over the env fallback', function (): void {
+it('resolves a stored (valid) timeslot over the env fallback', function (): void {
     PricingConfig::create(['group' => 'courier', 'key' => 'timeslot', 'value' => [
-        'start' => '10:00', 'end' => '16:00', 'timezone' => 'Asia/Singapore',
+        'start' => '12:00', 'end' => '15:00', 'timezone' => 'Asia/Singapore',
     ]]);
 
-    expect(CourierConfig::timeslot())->toMatchArray(['start' => '10:00', 'end' => '16:00']);
+    expect(CourierConfig::timeslot())->toMatchArray(['start' => '12:00', 'end' => '15:00']);
+});
+
+it('falls back to business hours when a stored timeslot is not a NinjaVan-accepted window', function (): void {
+    PricingConfig::create(['group' => 'courier', 'key' => 'timeslot', 'value' => [
+        'start' => '10:00', 'end' => '16:00', 'timezone' => 'Asia/Singapore', // not a valid slot
+    ]]);
+
+    expect(CourierConfig::timeslot())->toMatchArray(['start' => '09:00', 'end' => '18:00']);
 });
 
 it('sends the stored pickup address + collection window to NinjaVan, not the env values', function (): void {
@@ -55,7 +63,7 @@ it('sends the stored pickup address + collection window to NinjaVan, not the env
         'postcode' => '654321', 'country' => 'SG',
     ]]);
     PricingConfig::create(['group' => 'courier', 'key' => 'timeslot', 'value' => [
-        'start' => '11:00', 'end' => '15:00', 'timezone' => 'Asia/Singapore',
+        'start' => '12:00', 'end' => '15:00', 'timezone' => 'Asia/Singapore',
     ]]);
 
     Http::fake([
@@ -76,8 +84,11 @@ it('sends the stored pickup address + collection window to NinjaVan, not the env
     Http::assertSent(fn (Request $r): bool => str_contains($r->url(), '/4.1/orders')
         && data_get($r->data(), 'from.name') === 'Stored HQ'
         && data_get($r->data(), 'from.address.postcode') === '654321'
-        && data_get($r->data(), 'parcel_job.delivery_timeslot.start_time') === '11:00'
-        && data_get($r->data(), 'parcel_job.delivery_timeslot.end_time') === '15:00');
+        // Same configured window drives both the pickup and delivery legs.
+        && data_get($r->data(), 'parcel_job.delivery_timeslot.start_time') === '12:00'
+        && data_get($r->data(), 'parcel_job.delivery_timeslot.end_time') === '15:00'
+        && data_get($r->data(), 'parcel_job.pickup_timeslot.start_time') === '12:00'
+        && data_get($r->data(), 'parcel_job.pickup_timeslot.end_time') === '15:00');
 });
 
 it('lets staff read and update the pickup config, and audits it', function (): void {
@@ -93,22 +104,22 @@ it('lets staff read and update the pickup config, and audits it', function (): v
             'address1' => '5 New Road', 'city' => 'Singapore', 'state' => 'SG',
             'postcode' => '445566', 'country' => 'sg',
         ],
-        'timeslot' => ['start' => '10:00', 'end' => '14:00', 'timezone' => 'Asia/Singapore'],
+        'timeslot' => ['start' => '12:00', 'end' => '15:00', 'timezone' => 'Asia/Singapore'],
     ])->assertOk()->assertJsonPath('pickup.name', 'New Depot')->assertJsonPath('pickup.country', 'SG');
 
     expect(CourierConfig::pickup()['name'])->toBe('New Depot')
-        ->and(CourierConfig::timeslot()['end'])->toBe('14:00')
+        ->and(CourierConfig::timeslot()['end'])->toBe('15:00')
         ->and(\App\Models\AuditLog::where('event', 'courier_config.updated')->count())->toBeGreaterThan(0);
 });
 
-it('rejects an invalid time window (end before start) and a bad country code', function (): void {
+it('rejects a collection window NinjaVan does not accept, and a bad country code', function (): void {
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     $this->patchJson('/api/admin/courier-config', [
         'pickup' => [
             'name' => 'X', 'phone' => '+65', 'address1' => 'X', 'postcode' => '1', 'country' => 'SGP',
         ],
-        'timeslot' => ['start' => '18:00', 'end' => '09:00', 'timezone' => 'Asia/Singapore'],
+        'timeslot' => ['start' => '10:00', 'end' => '14:00', 'timezone' => 'Asia/Singapore'],
     ])->assertStatus(422)
         ->assertJsonValidationErrors(['timeslot.end', 'pickup.country']);
 });

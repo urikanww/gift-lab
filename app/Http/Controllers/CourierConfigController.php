@@ -45,7 +45,7 @@ class CourierConfigController extends Controller
     {
         abort_unless($request->user()?->isStaff(), 403);
 
-        $validated = $request->validate([
+        $validator = validator($request->all(), [
             'pickup' => ['required', 'array'],
             'pickup.name' => ['required', 'string', 'max:255'],
             'pickup.phone' => ['required', 'string', 'max:32'],
@@ -56,11 +56,21 @@ class CourierConfigController extends Controller
             'pickup.postcode' => ['required', 'string', 'max:20'],
             'pickup.country' => ['required', 'string', 'size:2'],
             'timeslot' => ['required', 'array'],
-            // 24h HH:MM; end must be after start so the window is real.
             'timeslot.start' => ['required', 'string', 'date_format:H:i'],
-            'timeslot.end' => ['required', 'string', 'date_format:H:i', 'after:timeslot.start'],
+            'timeslot.end' => ['required', 'string', 'date_format:H:i'],
             'timeslot.timezone' => ['required', 'string', 'timezone', 'max:64'],
         ]);
+
+        // NinjaVan only accepts a fixed set of windows - reject anything else up
+        // front rather than letting the booking 400 later with "Invalid timeslot".
+        $validator->after(function ($v) use ($request): void {
+            $slot = (array) $request->input('timeslot');
+            if (! CourierConfig::isValidTimeslot($slot['start'] ?? null, $slot['end'] ?? null)) {
+                $v->errors()->add('timeslot.end', 'Pick one of the supported collection windows.');
+            }
+        });
+
+        $validated = $validator->validate();
 
         // Normalise the country to uppercase (NinjaVan expects an ISO-2 code).
         $pickup = $validated['pickup'];

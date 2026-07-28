@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiError, ensureCsrf } from '../lib/api';
-import { Button, Card, Input, Skeleton, useToast } from '../ui';
+import { Button, Card, Input, Select, Skeleton, useToast } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { Motion, staggerContainer, staggerItem } from '../motion';
 
@@ -32,6 +32,17 @@ interface CourierConfig {
   pickup: PickupAddress;
   timeslot: Timeslot;
 }
+
+/** NinjaVan's accepted collection/delivery windows (mirrors CourierConfig::VALID_TIMESLOTS). */
+const VALID_SLOTS: { start: string; end: string; label: string }[] = [
+  { start: '09:00', end: '12:00', label: '9:00am – 12:00pm' },
+  { start: '12:00', end: '15:00', label: '12:00pm – 3:00pm' },
+  { start: '15:00', end: '18:00', label: '3:00pm – 6:00pm' },
+  { start: '18:00', end: '22:00', label: '6:00pm – 10:00pm' },
+  { start: '09:00', end: '18:00', label: '9:00am – 6:00pm (business hours)' },
+  { start: '09:00', end: '22:00', label: '9:00am – 10:00pm (all day)' },
+];
+const slotKey = (start: string, end: string) => `${start}-${end}`;
 
 const EMPTY: CourierConfig = {
   pickup: { name: '', phone: '', email: '', address1: '', city: '', state: '', postcode: '', country: 'SG' },
@@ -138,14 +149,28 @@ export default function CourierConfigPage() {
         <Motion variants={staggerItem}>
           <Card padding="lg" aria-labelledby="window-heading">
             <h2 id="window-heading" className="font-display text-xl text-fg">
-              Collection window
+              Collection &amp; delivery times
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-fg-muted">
-              The daily time window (24-hour) NinjaVan can collect and deliver within.
+              The window NinjaVan collects and delivers within. Only the windows NinjaVan supports are
+              offered — a custom time would be rejected at booking.
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <Input label="Start (HH:MM)" value={config.timeslot.start} error={fieldErrors['timeslot.start']} onChange={(e) => setSlot('start', e.target.value)} />
-              <Input label="End (HH:MM)" value={config.timeslot.end} error={fieldErrors['timeslot.end']} onChange={(e) => setSlot('end', e.target.value)} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Select
+                label="Collection window"
+                value={slotKey(config.timeslot.start, config.timeslot.end)}
+                error={fieldErrors['timeslot.end'] ?? fieldErrors['timeslot.start']}
+                onChange={(e) => {
+                  const [start, end] = e.target.value.split('-');
+                  setConfig((c) => ({ ...c, timeslot: { ...c.timeslot, start, end } }));
+                }}
+              >
+                {VALID_SLOTS.map((s) => (
+                  <option key={slotKey(s.start, s.end)} value={slotKey(s.start, s.end)}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
               <Input label="Timezone" hint="e.g. Asia/Singapore" value={config.timeslot.timezone} error={fieldErrors['timeslot.timezone']} onChange={(e) => setSlot('timezone', e.target.value)} />
             </div>
           </Card>

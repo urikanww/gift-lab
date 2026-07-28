@@ -44,7 +44,8 @@ it('loads the current pickup address + window and saves edits', async () => {
 
   const address = await screen.findByLabelText('Address');
   expect(address).toHaveValue('71 Ayer Rajah Crescent');
-  expect(screen.getByLabelText('Start (HH:MM)')).toHaveValue('09:00');
+  // Collection window is a fixed-list select; the seeded 09:00-18:00 is selected.
+  expect(screen.getByLabelText('Collection window')).toHaveValue('09:00-18:00');
 
   await userEvent.clear(address);
   await userEvent.type(address, '5 New Depot Road');
