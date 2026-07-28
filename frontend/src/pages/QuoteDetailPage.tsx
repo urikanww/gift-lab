@@ -343,6 +343,34 @@ export default function QuoteDetailPage() {
     .filter(Boolean)
     .join(' · ');
 
+  // Buyer_uploaded lines where staff haven't sent a proof yet (no proof, or one
+  // still in DRAFT). The buyer briefed us and is now waiting on our artwork, so
+  // tell them a proof is coming - otherwise the order looks stalled between
+  // checkout and the first proof landing.
+  const buyerDesignPending =
+    !isStaff &&
+    quote.state !== 'CANCELLED' &&
+    (quote.line_items ?? []).some((li) => {
+      if (li.line_state === 'DROPPED') return false;
+      if (li.customization?.mode !== 'buyer_uploaded') return false;
+      const p = latestProofByLine.get(li.id);
+      return !p || p.state === 'DRAFT';
+    });
+
+  const buyerDesignPendingNotice = buyerDesignPending && (
+    <Motion variants={staggerItem}>
+      <Card padding="lg" aria-labelledby="design-pending-heading">
+        <h2 id="design-pending-heading" className="font-display text-xl text-fg">
+          Design in progress
+        </h2>
+        <p className="mt-1 text-sm text-fg-muted">
+          Our design team is preparing your proof from the references you sent. You’ll review and
+          approve it here before we print — nothing needed from you yet.
+        </p>
+      </Card>
+    </Motion>
+  );
+
   const buyerProofReview = !isStaff && buyerActionableLines.length > 0 && (
     <Motion variants={staggerItem}>
       <Card padding="lg" aria-labelledby="proof-review-heading">
@@ -1068,6 +1096,7 @@ export default function QuoteDetailPage() {
         {/* Buyer proof sign-off - the page's primary action when a proof is
             open, so it sits right under the status glance with the artwork shown
             inline. See `buyerProofReview` above. */}
+        {buyerDesignPendingNotice}
         {buyerProofReview}
 
         {/* Line items */}

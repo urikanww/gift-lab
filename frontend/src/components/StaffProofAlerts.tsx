@@ -18,6 +18,12 @@ interface ProofChangesRequestedPush {
   notes?: string | null;
 }
 
+interface DesignRequestedPush {
+  quote_reference?: string | null;
+  line_count?: number;
+  products?: string[];
+}
+
 export default function StaffProofAlerts() {
   const { toast } = useToast();
 
@@ -35,10 +41,25 @@ export default function StaffProofAlerts() {
       });
     };
 
+    // A buyer checked out a "Upload finished look" line - the team owes them
+    // artwork before the proof loop can run.
+    const onDesignRequested = (e: DesignRequestedPush) => {
+      const ref = e.quote_reference ?? 'an order';
+      const count = e.line_count ?? e.products?.length ?? 1;
+      toast({
+        title: `New design request on ${ref}`,
+        description: `${count} ${count === 1 ? 'item needs' : 'items need'} artwork from the team — open the order to start the proof.`,
+        tone: 'info',
+        duration: 10000,
+      });
+    };
+
     channel.listen('.proof.changes-requested', onChangesRequested);
+    channel.listen('.design.requested', onDesignRequested);
 
     return () => {
       channel.stopListening('.proof.changes-requested', onChangesRequested);
+      channel.stopListening('.design.requested', onDesignRequested);
       leaveSharedPrivate('staff.queue');
     };
   }, [toast]);

@@ -244,6 +244,11 @@ final class QuoteService
                 ]);
             }
 
+            // Lines where the buyer asked staff to do the design (they uploaded
+            // references + notes rather than laying it out). Collected here so a
+            // single staff alert fires per order once the transaction commits.
+            $designRequestLines = [];
+
             foreach ($resolved as $index => $r) {
                 LineItem::create([
                     'quote_id' => $quote->id,
@@ -262,6 +267,19 @@ final class QuoteService
                         'frozen_at' => now()->toIso8601String(),
                     ],
                 ]);
+
+                if (($r['customization']['mode'] ?? null) === 'buyer_uploaded') {
+                    $designRequestLines[] = [
+                        'product_name' => $r['product']->name,
+                        'qty' => (int) $r['qty'],
+                    ];
+                }
+            }
+
+            // Tell staff a human needs to produce artwork for these lines. After
+            // commit so the quote + lines are settled before the alert lands.
+            if ($designRequestLines !== []) {
+                DB::afterCommit(fn () => $this->staffNotifier->designRequested($quote, $designRequestLines));
             }
 
             return $quote->fresh(['lineItems']);

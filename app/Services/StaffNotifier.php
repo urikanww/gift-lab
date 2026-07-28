@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\UserRole;
+use App\Events\DesignRequested;
 use App\Events\JobFailedAlert;
 use App\Events\ParcelReturned;
 use App\Events\ProofChangesRequested;
+use App\Mail\DesignRequestedMail;
 use App\Mail\JobFailedAlertMail;
 use App\Mail\ParcelReturnedMail;
 use App\Mail\ProofChangesRequestedMail;
 use App\Models\ProductionJob;
 use App\Models\Proof;
+use App\Models\Quote;
 use App\Models\User;
 use App\Support\Broadcasting;
 use Illuminate\Queue\Events\JobFailed;
@@ -69,6 +72,58 @@ class StaffNotifier
             } catch (\Throwable $e) {
                 Log::error('Proof changes-requested staff email failed to queue.', [
                     'proof_id' => $proof->id,
+                    'email' => $email,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Announce that a buyer checked out one or more lines that ask the team to
+     * do the design (customization.mode === 'buyer_uploaded'). Unlike the
+     * self-serve designer, these lines arrive with only reference images +
+     * placement notes, so a human must produce the artwork before the proof
+     * loop can run. Call AFTER the surrounding transaction has committed (the
+     * quote + its lines must be persisted before staff are told to act).
+     *
+     * Mirrors proofChangesRequested(): a live push to the shared staff.queue
+     * console plus an email to every operator. Never throws - a mail/broadcast
+     * failure must not roll back the buyer's committed order.
+     *
+     * @param  array<int, array{product_name: string, qty: int}>  $lines
+     */
+    public function designRequested(Quote $quote, array $lines): void
+    {
+        if ($lines === []) {
+            return;
+        }
+
+        // Push (live) to the staff console. Swallows transport failures so a
+        // Reverb outage can't turn a committed checkout into a 500.
+        Broadcasting::dispatch(fn () => DesignRequested::dispatch($quote, $lines));
+
+        // Email every internal operator with an address on file.
+        $recipients = User::query()
+            ->whereIn('role', [UserRole::StaffAdmin->value, UserRole::Superadmin->value])
+            ->whereNotNull('email')
+            ->pluck('email')
+            ->all();
+
+        if ($recipients === []) {
+            Log::info('Design-requested alert: no staff recipient to email.', [
+                'quote_id' => $quote->id,
+            ]);
+
+            return;
+        }
+
+        foreach ($recipients as $email) {
+            try {
+                Mail::to($email)->queue(new DesignRequestedMail($quote, $lines));
+            } catch (\Throwable $e) {
+                Log::error('Design-requested staff email failed to queue.', [
+                    'quote_id' => $quote->id,
                     'email' => $email,
                     'error' => $e->getMessage(),
                 ]);
