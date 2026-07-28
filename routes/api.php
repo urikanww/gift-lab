@@ -16,6 +16,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GiftIdeasController;
 use App\Http\Controllers\LeadTimeEstimateController;
 use App\Http\Controllers\NinjaVanWebhookController;
+use App\Http\Controllers\CourierConfigController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
@@ -284,6 +285,10 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::get('/admin/notification-settings', [NotificationSettingsController::class, 'index'])->middleware('permission:notifications.view');
     Route::patch('/admin/notification-settings', [NotificationSettingsController::class, 'update'])->middleware('permission:notifications.manage');
     Route::patch('/admin/notification-settings/cadence', [NotificationSettingsController::class, 'updateCadence'])->middleware('permission:notifications.manage');
+
+    // Courier (NinjaVan) pickup address + collection time window.
+    Route::get('/admin/courier-config', [CourierConfigController::class, 'index'])->middleware('permission:courier.view');
+    Route::patch('/admin/courier-config', [CourierConfigController::class, 'update'])->middleware('permission:courier.manage');
 
     Route::get('/admin/pricing-configs', [PricingConfigController::class, 'index'])->middleware('permission:pricing.view');
     Route::patch('/admin/pricing-configs/{pricingConfig}', [PricingConfigController::class, 'update'])->middleware('permission:pricing.manage');

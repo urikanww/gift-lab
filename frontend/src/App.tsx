@@ -43,6 +43,7 @@ const ProductAdminCreatePage = lazy(() => import('./pages/ProductAdminCreatePage
 const ProductAdminDetailPage = lazy(() => import('./pages/ProductAdminDetailPage'));
 const PricingAdminPage = lazy(() => import('./pages/PricingAdminPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/NotificationSettingsPage'));
+const CourierConfigPage = lazy(() => import('./pages/CourierConfigPage'));
 const UserAdminPage = lazy(() => import('./pages/UserAdminPage'));
 const UserAdminCreatePage = lazy(() => import('./pages/UserAdminCreatePage'));
 const UserAdminDetailPage = lazy(() => import('./pages/UserAdminDetailPage'));
@@ -194,6 +195,7 @@ export default function App() {
               {/* Staff-level, unlike Pricing: this is an operational setting about
                   what clients hear, not a financial constant. */}
               <Route path="notification-settings" element={<ProtectedRoute permission="notifications.view"><NotificationSettingsPage /></ProtectedRoute>} />
+              <Route path="courier-config" element={<ProtectedRoute permission="courier.view"><CourierConfigPage /></ProtectedRoute>} />
               {/* Users is sensitive but delegable: superadmin, or a staff_admin
                   granted users.view. Write actions behind these pages need
                   users.manage, enforced by the backend route middleware. */}

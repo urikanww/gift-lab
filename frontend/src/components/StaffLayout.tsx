@@ -39,6 +39,7 @@ function useStaffNav(): NavItem[] {
     // Products awaiting catalogue approval before they can go live.
     { to: '/product-admin', label: 'Products', badge: q?.cataloguePending, permission: 'products.view' },
     { to: '/notification-settings', label: 'Notifications', permission: 'notifications.view' },
+    { to: '/courier-config', label: 'Courier', permission: 'courier.view' },
     // Pricing and Users are sensitive: superadmin always, or a staff_admin a
     // superadmin has explicitly granted. Not part of the grandfather default.
     { to: '/pricing-admin', label: 'Pricing', permission: 'pricing.view' },

@@ -7,6 +7,7 @@ namespace App\Services\Courier;
 use App\Enums\Carrier;
 use App\Exceptions\CourierException;
 use App\Services\Courier\Contracts\CourierClient;
+use App\Support\CourierConfig;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
@@ -114,7 +115,10 @@ final class HttpNinjaVanClient implements CourierClient
 
     private function postOrder(string $base, string $token, CourierShipment $shipment): \Illuminate\Http\Client\Response
     {
-        $pickup = (array) config('services.ninjavan.pickup');
+        // Staff-editable pickup address + collection window (PricingConfig group
+        // "courier"), each falling back to config('services.ninjavan.*').
+        $pickup = CourierConfig::pickup();
+        $timeslot = CourierConfig::timeslot();
 
         return Http::withToken($token)
             ->connectTimeout(5)->timeout(20)
@@ -169,9 +173,9 @@ final class HttpNinjaVanClient implements CourierClient
                     ],
                     'delivery_start_date' => $shipment->deliveryStartDate,
                     'delivery_timeslot' => [
-                        'start_time' => (string) config('services.ninjavan.timeslot_start', '09:00'),
-                        'end_time' => (string) config('services.ninjavan.timeslot_end', '18:00'),
-                        'timezone' => (string) config('services.ninjavan.timezone', 'Asia/Singapore'),
+                        'start_time' => $timeslot['start'],
+                        'end_time' => $timeslot['end'],
+                        'timezone' => $timeslot['timezone'],
                     ],
                     'dimensions' => [
                         'weight' => $shipment->weightKg ?? (float) config('services.ninjavan.default_weight_kg', 1),

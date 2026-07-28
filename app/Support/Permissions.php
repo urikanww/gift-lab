@@ -81,6 +81,13 @@ final class Permissions
                 'manage' => 'Change notification settings',
             ],
         ],
+        'courier' => [
+            'label' => 'Courier',
+            'actions' => [
+                'view' => 'View courier & pickup settings',
+                'manage' => 'Edit the pickup address & collection window',
+            ],
+        ],
         // Sensitive - see SENSITIVE_SECTIONS. Grantable, but never by default and
         // only by a superadmin.
         'pricing' => [
