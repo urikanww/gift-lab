@@ -89,8 +89,11 @@ it('sends the pickup_* parcel_job fields NinjaVan v4.1 requires when pickup is e
     config()->set('services.ninjavan.pickup_service_type', 'Parcel');
     config()->set('services.ninjavan.pickup_service_level', 'Standard');
     config()->set('services.ninjavan.pickup_date', null);
-    config()->set('services.ninjavan.pickup_timeslot_start', '10:00');
-    config()->set('services.ninjavan.pickup_timeslot_end', '17:00');
+    // The pickup + delivery WINDOW now comes from the courier config
+    // (CourierConfig::timeslot), which falls back to these delivery-timeslot
+    // config keys when no "courier" row is stored - so both legs share it.
+    config()->set('services.ninjavan.timeslot_start', '15:00');
+    config()->set('services.ninjavan.timeslot_end', '18:00');
     config()->set('services.ninjavan.timezone', 'Asia/Singapore');
 
     $client = app(HttpNinjaVanClient::class);
@@ -107,8 +110,9 @@ it('sends the pickup_* parcel_job fields NinjaVan v4.1 requires when pickup is e
         && data_get($request->data(), 'parcel_job.pickup_service_level') === 'Standard'
         // pickup_date falls back to the delivery_start_date when unconfigured.
         && data_get($request->data(), 'parcel_job.pickup_date') === '2026-07-20'
-        && data_get($request->data(), 'parcel_job.pickup_timeslot.start_time') === '10:00'
-        && data_get($request->data(), 'parcel_job.pickup_timeslot.end_time') === '17:00'
+        // Pickup window mirrors the configured collection window (both legs).
+        && data_get($request->data(), 'parcel_job.pickup_timeslot.start_time') === '15:00'
+        && data_get($request->data(), 'parcel_job.pickup_timeslot.end_time') === '18:00'
         && data_get($request->data(), 'parcel_job.pickup_timeslot.timezone') === 'Asia/Singapore');
 });
 
