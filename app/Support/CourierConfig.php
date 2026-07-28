@@ -24,6 +24,35 @@ final class CourierConfig
     public const PICKUP_FIELDS = ['name', 'phone', 'email', 'address1', 'city', 'state', 'postcode', 'country'];
 
     /**
+     * The collection/delivery windows NinjaVan accepts (SG). NinjaVan validates
+     * the timeslot against a fixed list - an arbitrary window (e.g. 10:00-18:00)
+     * is rejected with "Invalid timeslot" and the whole booking 400s - so the
+     * config is constrained to these rather than free HH:MM.
+     *
+     * @var list<array{start: string, end: string, label: string}>
+     */
+    public const VALID_TIMESLOTS = [
+        ['start' => '09:00', 'end' => '12:00', 'label' => '9:00am – 12:00pm'],
+        ['start' => '12:00', 'end' => '15:00', 'label' => '12:00pm – 3:00pm'],
+        ['start' => '15:00', 'end' => '18:00', 'label' => '3:00pm – 6:00pm'],
+        ['start' => '18:00', 'end' => '22:00', 'label' => '6:00pm – 10:00pm'],
+        ['start' => '09:00', 'end' => '18:00', 'label' => '9:00am – 6:00pm (business hours)'],
+        ['start' => '09:00', 'end' => '22:00', 'label' => '9:00am – 10:00pm (all day)'],
+    ];
+
+    /** Whether (start, end) is one of NinjaVan's accepted windows. */
+    public static function isValidTimeslot(?string $start, ?string $end): bool
+    {
+        foreach (self::VALID_TIMESLOTS as $slot) {
+            if ($slot['start'] === $start && $slot['end'] === $end) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The pickup (sender) address, stored value merged over the env fallback.
      *
      * @return array{name: string, phone: string, email: string, address1: string, city: string, state: string, postcode: string, country: string}
@@ -75,6 +104,13 @@ final class CourierConfig
                     $out[$field] = trim($v);
                 }
             }
+        }
+
+        // Never hand NinjaVan a window it rejects: if the resolved start/end is
+        // not one of its accepted slots, fall back to business hours.
+        if (! self::isValidTimeslot($out['start'], $out['end'])) {
+            $out['start'] = '09:00';
+            $out['end'] = '18:00';
         }
 
         return $out;
