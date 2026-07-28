@@ -753,10 +753,31 @@ final class QuoteService
                     ? QuoteState::ProofApproved
                     : QuoteState::Accepted,
             );
+
+            // A plain-stock order (nothing to proof) has no proofing step: the
+            // price is its only approval, so it is ready to invoice. Advance
+            // ACCEPTED -> PROOF_APPROVED directly rather than stranding it in
+            // ACCEPTED, whose only other forward exit needs a staged proof.
+            if ($quote->state === QuoteState::Accepted && ! $this->hasProofNeedingLines($quote)) {
+                $quote->transitionTo(QuoteState::ProofApproved);
+            }
+
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
 
             return $quote;
         });
+    }
+
+    /**
+     * Whether the order has any line that still needs a proof (customized and
+     * not dropped). Used to tell a plain-stock order - which has no proofing
+     * step - apart from one that must go through proof sign-off.
+     */
+    private function hasProofNeedingLines(Quote $quote): bool
+    {
+        return $quote->lineItems()->get()->contains(
+            fn (LineItem $line): bool => $line->needsProof()
+        );
     }
 
     /**

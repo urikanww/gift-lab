@@ -45,7 +45,12 @@ enum QuoteState: string
             // had to be cancelled and rebuilt.
             // per-line proof rollup: order can reach this once every line is resolved
             self::ChangesRequested => [self::Draft, self::Proofing, self::ArtworkApproved, self::ProofApproved, self::Cancelled],
-            self::Accepted => [self::Proofing, self::Cancelled],
+            // ProofApproved is the plain-stock exit: an order with no
+            // proof-needing lines has nothing to proof, so accepting the price
+            // is its only approval and it is ready to invoice. accept()
+            // auto-advances such an order here instead of stranding it (its
+            // only other forward exit, Proofing, has nothing to send).
+            self::Accepted => [self::Proofing, self::ProofApproved, self::Cancelled],
             // Two exits by design. ProofApproved when the price was agreed first
             // (price-first route); ArtworkApproved when it was not, so the price
             // still has to be put to the buyer.
