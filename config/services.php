@@ -175,6 +175,11 @@ return [
         // when STRIPE_WEBHOOK_SECRET is unset.
         'webhook_secret' => env('NINJAVAN_WEBHOOK_SECRET'),
         'webhook_signature_header' => env('NINJAVAN_WEBHOOK_SIGNATURE_HEADER', 'X-Ninja-Hmac'),
+        // Last-resort fallback ONLY. The live pickup address + collection window
+        // are staff-editable in-app (Staff > Courier), stored in the config table
+        // (group "courier") and read through App\Support\CourierConfig, which
+        // falls back to these values per-field when a row is blank. Leave the
+        // NINJAVAN_PICKUP_* env unset and edit the Courier screen instead.
         'pickup' => [
             'name' => env('NINJAVAN_PICKUP_NAME', 'Gift Lab'),
             'phone' => env('NINJAVAN_PICKUP_PHONE'),
