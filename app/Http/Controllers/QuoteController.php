@@ -16,6 +16,7 @@ use App\Http\Requests\StoreQuoteRequest;
 use App\Http\Resources\QuoteHistoryResource;
 use App\Http\Resources\QuoteResource;
 use App\Models\AuditLog;
+use App\Models\PricingConfig;
 use App\Models\Quote;
 use App\Services\QuoteService;
 use Illuminate\Http\JsonResponse;
@@ -111,7 +112,19 @@ class QuoteController extends Controller
             ->groupBy('state')
             ->pluck('c', 'state');
 
-        $awaitingStates = ['SENT', 'PROOFING', 'INVOICED'];
+        // States where the BUYER must act: accept the quote (SENT), accept the
+        // price after signing off artwork (ARTWORK_APPROVED), review the proof
+        // (PROOFING). PROOF_APPROVED is the buyer's turn only when pay-now is on
+        // (they pay); on the B2B path it waits on staff to invoice, so it is not
+        // "awaiting you". INVOICED is a transient pass-through but kept for
+        // completeness.
+        $awaitingStates = ['SENT', 'ARTWORK_APPROVED', 'PROOFING', 'INVOICED'];
+        $payNowEnabled = (bool) (
+            ((array) PricingConfig::value('config', 'pay_now_cutoff', ['b2c_enabled' => false]))['b2c_enabled'] ?? false
+        );
+        if ($payNowEnabled) {
+            $awaitingStates[] = 'PROOF_APPROVED';
+        }
         $inProductionStates = ['CONFIRMED', 'PROCURING', 'READY'];
         $sum = static fn (array $states): int => array_sum(
             array_map(static fn (string $s): int => (int) ($counts[$s] ?? 0), $states),

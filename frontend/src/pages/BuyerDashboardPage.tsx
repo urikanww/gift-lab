@@ -11,7 +11,9 @@ import type { QuoteState } from '../types';
 /** What a buyer must do next for an order that's waiting on them. */
 const AWAITING_ACTION: Partial<Record<QuoteState, { note: string; cta: string }>> = {
   SENT: { note: 'quote sent, awaiting your OK', cta: 'View quote' },
+  ARTWORK_APPROVED: { note: 'pricing ready — accept to confirm', cta: 'Review pricing' },
   PROOFING: { note: 'proof ready to approve', cta: 'Review proof' },
+  PROOF_APPROVED: { note: 'ready to pay', cta: 'Pay now' },
   INVOICED: { note: 'invoice ready', cta: 'Pay invoice' },
 };
 
