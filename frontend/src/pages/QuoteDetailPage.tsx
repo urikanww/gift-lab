@@ -33,7 +33,7 @@ const BUYER_STATUS_NOTE: Partial<Record<QuoteState, string>> = {
   ACCEPTED: 'Quote accepted. Our team is preparing your first proof - we’ll let you know when it’s ready to review.',
   CHANGES_REQUESTED: 'We’ve received your change request and will send a revised proof shortly.',
   PROOFING: 'Your proof is being prepared. We’ll notify you as soon as it’s ready to review.',
-  INVOICED: 'Payment received and an invoice has been issued. We’re confirming your order for production.',
+  INVOICED: 'Your invoice has been issued. We’re confirming your order for production.',
   CONFIRMED: 'Your order is confirmed. It will be scheduled for production shortly.',
   PROCURING: 'Your order is being prepared for production.',
   READY: 'Your order is ready. We’ll be in touch about delivery.',
@@ -105,6 +105,7 @@ export default function QuoteDetailPage() {
     issueInvoice,
     reconcilePayment,
     confirmStock,
+    markJobDelivered,
     payNow,
     cancelQuote,
   } = useQuoteStore();
@@ -850,6 +851,37 @@ export default function QuoteDetailPage() {
         ].includes(quote.state) && (
           <p className="text-sm text-fg-muted">No staff action available for this state.</p>
         )}
+
+        {/* Shipment visibility on the order page: after a parcel ships, staff
+            can see the carrier + consignment and confirm delivery here without
+            hunting for the production queue's awaiting-delivery panel. */}
+        {quote.shipments && quote.shipments.some((s) => s.state === 'SHIPPED') && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-fg">Shipments</h3>
+            <p className="text-xs text-fg-subtle">
+              Delivery normally closes automatically from the courier — use “Mark delivered” only if
+              that update doesn’t arrive.
+            </p>
+            {quote.shipments
+              .filter((s) => s.state === 'SHIPPED')
+              .map((s) => (
+                <div key={s.job_id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm text-fg-muted">
+                    {s.carrier ?? 'Carrier'} · {s.consignment_ref ?? '—'}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={busy}
+                    disabled={busy}
+                    onClick={() => run(() => markJobDelivered(quote.id, s.job_id), 'Marked delivered')}
+                  >
+                    Mark delivered
+                  </Button>
+                </div>
+              ))}
+          </div>
+        )}
       </div>
 
       {/* B2B invoice payment reconciliation - staff-only, and only once an
@@ -1181,12 +1213,22 @@ export default function QuoteDetailPage() {
 
         {/* Buyer actions */}
         {!isStaff &&
-          (quote.state === 'SENT' ||
+          (quote.state === 'DRAFT' ||
+            quote.state === 'SENT' ||
             quote.state === 'ARTWORK_APPROVED' ||
             quote.state === 'PROOF_APPROVED') && (
           <Motion variants={staggerItem}>
             <Card padding="lg">
               <h2 className="font-display text-xl text-fg">Next step</h2>
+              {/* A buyer can land on a DRAFT after reordering a past order. They
+                  can't action it themselves - staff review and send a quote - so
+                  tell them what happens next rather than leaving them guessing. */}
+              {quote.state === 'DRAFT' && (
+                <p className="mt-4 text-sm text-fg-muted">
+                  This is a draft order. Our team will review it and send you a quote to approve —
+                  we’ll email you when it’s ready.
+                </p>
+              )}
               {quote.state === 'SENT' && (
                 <div className="mt-4">
                   <p className="mb-3 text-sm text-fg-muted">
@@ -1217,7 +1259,7 @@ export default function QuoteDetailPage() {
                     disabled={busy}
                     onClick={() => run(() => accept(quote.id), 'Quote accepted')}
                   >
-                    Accept quote
+                    Accept pricing
                   </Button>
                 </div>
               )}

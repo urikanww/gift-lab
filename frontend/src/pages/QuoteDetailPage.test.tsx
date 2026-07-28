@@ -1011,7 +1011,7 @@ it('asks the buyer to agree the price after they approve artwork', async () => {
   renderPage();
 
   expect(screen.getByText(/Your artwork is approved/i)).toBeInTheDocument();
-  await userEvent.setup().click(screen.getByRole('button', { name: 'Accept quote' }));
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Accept pricing' }));
 
   expect(accept).toHaveBeenCalledWith(42);
 });
