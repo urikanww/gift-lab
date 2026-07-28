@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             AdminUserSeeder::class,
             PricingConfigSeeder::class,
+            CourierConfigSeeder::class,
             FilamentSeeder::class,
         ]);
     }

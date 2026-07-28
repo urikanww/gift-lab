@@ -98,7 +98,7 @@ class DemoBuyerUploadedOrderSeeder extends Seeder
 
             // A stocked variant so the product is quotable from the storefront
             // designer too (CORE items need ≥1 variant). Demo-only direct write.
-            Variant::create([
+            $variant = Variant::create([
                 'product_id' => $product->id,
                 'attributes' => ['finish' => 'Gloss'],
                 'sku' => 'DEMO-FL-GLOSS',
@@ -123,9 +123,23 @@ class DemoBuyerUploadedOrderSeeder extends Seeder
                 'created_by' => $buyer->id,
             ]);
 
+            // Ship-to so the order can go all the way to a NinjaVan booking
+            // without a manual fix-up. Pickup comes from the courier config
+            // (CourierConfigSeeder), so a real shipment has both legs.
+            $quote->shippingAddress()->create([
+                'recipient_name' => 'Finished Look Buyer',
+                'phone' => '+6591234567',
+                'email' => self::BUYER_EMAIL,
+                'line1' => '1 Marina Boulevard, #20-01',
+                'city' => 'Singapore',
+                'postal_code' => '018989',
+                'country' => 'SG',
+            ]);
+
             LineItem::create([
                 'quote_id' => $quote->id,
                 'product_id' => $product->id,
+                'variant_id' => $variant->id,
                 'qty' => 100,
                 'unit_price' => 6.50,
                 'currency' => 'SGD',
