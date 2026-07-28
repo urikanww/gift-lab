@@ -478,3 +478,62 @@ it('lets staff toggle the public 3D preview flag and exposes it publicly', funct
         ->assertOk()
         ->assertJsonPath('data.model_preview_verified', true);
 });
+
+// H2: the general product update must not be a back door around the publish
+// gate (products.approve) or the completeness checks.
+
+it('forbids publishing via the general product update without products.approve', function (): void {
+    $editor = User::factory()->create([
+        'role' => 'staff_admin', 'company_id' => null,
+        'permissions' => ['products.view', 'products.edit'],
+    ]);
+    $product = Product::factory()->create(['publish_state' => 'PENDING']);
+
+    Sanctum::actingAs($editor);
+    $this->patchJson("/api/admin/products/{$product->id}", [
+        'publish_state' => 'PUBLISHED',
+    ])->assertForbidden();
+
+    expect(Product::find($product->id)->publish_state->value)->toBe('PENDING');
+});
+
+it('blocks publishing an incomplete scraped product through the general update', function (): void {
+    $product = Product::factory()->create([
+        'class' => 'SCRAPED_UV',
+        'publish_state' => 'CANNOT_PUBLISH',
+        'base_cost' => 0,
+    ]);
+
+    Sanctum::actingAs($this->superadmin);
+    $this->patchJson("/api/admin/products/{$product->id}", [
+        'publish_state' => 'PUBLISHED',
+    ])->assertStatus(422);
+
+    expect(Product::find($product->id)->publish_state->value)->not->toBe('PUBLISHED');
+});
+
+it('still lets an approver publish a complete product via the general update', function (): void {
+    $product = Product::factory()->create(['publish_state' => 'PENDING']);
+
+    Sanctum::actingAs($this->superadmin);
+    $this->patchJson("/api/admin/products/{$product->id}", [
+        'publish_state' => 'PUBLISHED',
+    ])->assertOk();
+
+    expect(Product::find($product->id)->publish_state->value)->toBe('PUBLISHED');
+});
+
+it('still lets a products.edit staff edit a product without publishing', function (): void {
+    $editor = User::factory()->create([
+        'role' => 'staff_admin', 'company_id' => null,
+        'permissions' => ['products.view', 'products.edit'],
+    ]);
+    $product = Product::factory()->create(['publish_state' => 'PENDING', 'name' => 'Old Name']);
+
+    Sanctum::actingAs($editor);
+    $this->patchJson("/api/admin/products/{$product->id}", [
+        'name' => 'New Name',
+    ])->assertOk();
+
+    expect(Product::find($product->id)->name)->toBe('New Name');
+});

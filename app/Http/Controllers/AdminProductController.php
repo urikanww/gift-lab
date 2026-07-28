@@ -16,6 +16,7 @@ use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\Variant;
 use App\Services\AuditLogger;
+use App\Services\Catalogue\CompletenessGate;
 use App\Services\PricingService;
 use App\Services\StockLedger;
 use Illuminate\Http\JsonResponse;
@@ -789,6 +790,28 @@ class AdminProductController extends Controller
             'publish_state' => $product->publish_state->value,
         ];
         $product->fill($validated);
+
+        // Publishing through the general editor is gated exactly like the
+        // dedicated publish route: it needs approval rights (not merely edit),
+        // and a scraped blank is re-checked for completeness so an incomplete
+        // item cannot bypass the catalogue gate. CORE completeness is enforced
+        // at create (PRODUCT_RULES); MODEL_3D prices dynamically (base_cost 0),
+        // so neither is run through the scraped completeness gate here.
+        if ($product->publish_state === PublishState::Published
+            && $before['publish_state'] !== PublishState::Published->value) {
+            abort_unless($request->user()->hasPermission('products.approve'), 403);
+
+            if ($product->class === ProductClass::ScrapedUv) {
+                $gate = app(CompletenessGate::class);
+                if (! $gate->isComplete($product)) {
+                    return response()->json([
+                        'message' => 'Product is incomplete and cannot be published.',
+                        'cannot_publish_reasons' => $gate->reasons($product),
+                    ], 422);
+                }
+            }
+        }
+
         $product->save();
 
         $this->audit->log($product, 'product.updated', $before, [
