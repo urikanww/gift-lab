@@ -185,6 +185,9 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
 
     // Shared production queue
     Route::get('/production-queue', [ProductionQueueController::class, 'index'])->middleware('permission:production.view');
+    // Jobs in transit (SHIPPED, awaiting delivery confirmation). Registered
+    // before the /{job} wildcards so "in-transit" is never read as a job id.
+    Route::get('/production-jobs/in-transit', [ProductionQueueController::class, 'inTransit'])->middleware('permission:production.view');
     Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance'])->middleware('permission:production.manage');
     Route::post('/production-jobs/advance-batch', [ProductionQueueController::class, 'advanceBatch'])->middleware('permission:production.manage');
     Route::post('/production-jobs/{job}/advance-next', [ProductionQueueController::class, 'advanceNext'])->middleware('permission:production.manage');
@@ -198,6 +201,10 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // off) / reship (re-queue) / cancel_credit (cancel + void invoice +
     // credit note). 422 when the job isn't flagged returned/failed.
     Route::post('/production-jobs/{job}/resolve-return', [ProductionQueueController::class, 'resolveReturn'])->middleware('permission:production.manage');
+    // Staff manually confirm delivery when the courier's delivery webhook is
+    // silent: closes the job (and the order when it's the last one). 422 when
+    // the job isn't SHIPPED or is flagged returned/failed.
+    Route::post('/production-jobs/{job}/mark-delivered', [ProductionQueueController::class, 'markDelivered'])->middleware('permission:production.manage');
 
     // Admin catalogue gate (staff; auto-publish toggle is superadmin-only)
     Route::get('/admin/catalogue', [AdminCatalogueController::class, 'index'])->middleware('permission:products.view');

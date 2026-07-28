@@ -29,6 +29,14 @@ class ProductionJobResource extends JsonResource
             'ready_at' => $this->ready_at?->toIso8601String(),
             'artwork_refs' => $this->artwork_refs ?? [],
             'consignment_ref' => $this->consignment_ref,
+            // Courier context for the in-transit / awaiting-delivery panel.
+            'carrier' => $this->carrier?->value,
+            'carrier_label' => $this->carrier?->label(),
+            'tracking_url' => $this->consignment_ref !== null
+                ? $this->carrier?->trackingUrl($this->consignment_ref)
+                : null,
+            'last_courier_status' => $this->last_courier_status,
+            'last_courier_status_at' => $this->last_courier_status_at?->toIso8601String(),
             'print_method' => $this->print_method?->value,
             'qty' => $this->qty,
             // Per-line saved customization + the product's model/zone, so the floor

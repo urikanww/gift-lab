@@ -31,6 +31,9 @@ interface QueueStoreState {
   loading: boolean;
   error: string | null;
   subscribed: boolean;
+  /** Jobs SHIPPED but not yet delivered - the awaiting-delivery panel. */
+  inTransit: ProductionJob[];
+  inTransitLoading: boolean;
   fetchQueue: (opts?: { silent?: boolean }) => Promise<void>;
   advance: (jobId: number, state: JobState, consignmentRef?: string, carrier?: string) => Promise<void>;
   advanceBatch: (jobIds: number[], state: 'IN_PRODUCTION' | 'CLOSED') => Promise<{ advanced: number[]; skipped: number[] }>;
@@ -38,6 +41,10 @@ interface QueueStoreState {
   fetchShippingAddress: (quoteId: number) => Promise<{ address: ShippingAddress; saved: boolean }>;
   saveShippingAddress: (quoteId: number, payload: ShippingAddressInput) => Promise<ShippingAddress>;
   createShipment: (jobId: number) => Promise<ShipmentResult>;
+  /** SHIPPED jobs awaiting delivery confirmation (webhook-silent fallback). */
+  fetchInTransit: (opts?: { silent?: boolean }) => Promise<void>;
+  /** Staff manually confirm delivery when the courier webhook never arrived. */
+  markDelivered: (jobId: number, note?: string) => Promise<boolean>;
   subscribe: () => void;
   unsubscribe: () => void;
 }
@@ -63,6 +70,8 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
   loading: false,
   error: null,
   subscribed: false,
+  inTransit: [],
+  inTransitLoading: false,
 
   fetchQueue: async (opts) => {
     set({ loading: opts?.silent ? get().loading : true, error: null });
@@ -163,7 +172,34 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       `/production-jobs/${jobId}/create-shipment`,
     );
     await get().fetchQueue({ silent: true });
+    // A newly-shipped job leaves the FCFS board and joins the in-transit list.
+    await get().fetchInTransit({ silent: true });
     return data.data;
+  },
+
+  fetchInTransit: async (opts) => {
+    if (!opts?.silent) set({ inTransitLoading: true });
+    try {
+      const { data } = await api.get<{ data: ProductionJob[] }>('/production-jobs/in-transit');
+      set({ inTransit: data.data });
+    } catch {
+      // Non-critical: the panel just stays as-is. The FCFS board is unaffected.
+    } finally {
+      set({ inTransitLoading: false });
+    }
+  },
+
+  markDelivered: async (jobId, note) => {
+    await ensureCsrf();
+    try {
+      await api.post(`/production-jobs/${jobId}/mark-delivered`, note ? { note } : {});
+      // Drop it from the in-transit list; the closed job also leaves the board.
+      set((s) => ({ inTransit: s.inTransit.filter((j) => j.id !== jobId) }));
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
   },
 
   subscribe: () => {
@@ -182,6 +218,12 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
         // only source of truth for a job that appears after initial load.
         void get().fetchQueue({ silent: true });
         return;
+      }
+      // A job that ships leaves the FCFS board and joins the in-transit list;
+      // one that closes (delivered) leaves both. Refresh the panel so it tracks
+      // realtime without a manual reload.
+      if (e.action === 'shipped' || e.action === 'closed') {
+        void get().fetchInTransit({ silent: true });
       }
       set((s) => {
         if (e.action === 'closed') {

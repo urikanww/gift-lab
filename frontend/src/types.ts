@@ -494,6 +494,11 @@ export interface ProductionJob {
   artwork_refs?: { line_item_id: number; product_name: string | null; ref: string }[];
   consignment_ref?: string | null;
   carrier?: Carrier | null;
+  /** Human carrier name + a ready tracking link + last courier status (in-transit panel). */
+  carrier_label?: string | null;
+  tracking_url?: string | null;
+  last_courier_status?: string | null;
+  last_courier_status_at?: string | null;
   print_method: PrintMethod | null;
   qty: number;
   /**
