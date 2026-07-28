@@ -398,6 +398,80 @@ final class QueueService
      * production-job queuing), so a constructor dependency the other way
      * would be circular.
      */
+    /**
+     * Human marker written to last_courier_status when a staff member confirms
+     * delivery by hand. Distinct from any NinjaVan status label so the tracker
+     * and status history read honestly: this delivery was staff-confirmed, not
+     * courier-reported.
+     */
+    public const MANUAL_DELIVERED_STATUS = 'Delivered (confirmed by staff)';
+
+    /**
+     * Staff fallback for a delivery that really happened but whose NinjaVan
+     * webhook never arrived (or the account has no webhook configured): mark the
+     * SHIPPED job delivered, which closes it and - if it's the order's last job -
+     * closes the quote, firing the buyer's "delivered" milestone exactly as the
+     * webhook path would. A parcel the courier flagged as returned/failed is NOT
+     * eligible here (that's a different outcome) - it routes to resolveReturn().
+     */
+    public function markDelivered(ProductionJob $job, ?string $note = null): ProductionJob
+    {
+        if ($job->state !== JobState::Shipped) {
+            throw new DomainRuleException(
+                'Only a shipped job can be marked delivered.'
+            );
+        }
+
+        if (NinjaVanStatusMapper::isNeedsAttentionLabel($job->last_courier_status)) {
+            throw new DomainRuleException(
+                'This parcel is flagged as returned/failed by the courier; resolve it through the returned-parcel resolution instead of marking it delivered.'
+            );
+        }
+
+        return DB::transaction(function () use ($job, $note): ProductionJob {
+            $previousCourierStatus = $job->last_courier_status;
+
+            // Stamp the manual-confirmation marker BEFORE advancing, so the row
+            // the tracker reads reflects a staff-confirmed delivery.
+            $job->last_courier_status = self::MANUAL_DELIVERED_STATUS;
+            $job->last_courier_status_at = now();
+            $job->save();
+
+            // Same close path the webhook uses: closes the job, closes the quote
+            // when it's the last one, and fires the delivered milestone email.
+            $job = $this->advance($job, JobState::Closed);
+
+            $this->audit->log($job, 'production_job.manually_delivered', [
+                'last_courier_status' => $previousCourierStatus,
+                'state' => JobState::Shipped->value,
+            ], [
+                'note' => $note,
+                'state' => $job->state->value,
+            ]);
+
+            return $job;
+        });
+    }
+
+    /**
+     * Jobs in transit: SHIPPED but not yet delivered/closed, newest first. Not
+     * part of the FCFS production board (those are READY/IN_PRODUCTION) - this
+     * is the "awaiting delivery" list staff use to manually confirm delivery
+     * when the courier webhook is silent. Soft-deleted/cancelled quotes are
+     * excluded via whereHas (respects the parent SoftDeletes scope).
+     *
+     * @return Collection<int, ProductionJob>
+     */
+    public function inTransit(): Collection
+    {
+        return ProductionJob::query()
+            ->where('state', JobState::Shipped->value)
+            ->whereHas('quote')
+            ->with(['quote', 'lineItems.product'])
+            ->orderByDesc('updated_at')
+            ->get();
+    }
+
     public function resolveReturn(ProductionJob $job, string $disposition, ?string $note = null): ProductionJob
     {
         if ($job->state !== JobState::Shipped || ! NinjaVanStatusMapper::isNeedsAttentionLabel($job->last_courier_status)) {

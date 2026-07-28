@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { printFilePath, printFilesZipPath, useQueueStore } from '../stores/queueStore';
 import JobLabel from '../components/JobLabel';
+import AwaitingDeliveryPanel from '../components/production/AwaitingDeliveryPanel';
 import api, { apiError } from '../lib/api';
 import { Badge, Button, Card, EmptyState, Input, Skeleton, Textarea, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
@@ -257,6 +258,11 @@ export default function ProductionQueuePage() {
         </Button>
       </div>
       {cameraOn && <div id="qr-reader" className="w-full max-w-xs" />}
+
+      {/* Shipped-but-not-yet-delivered parcels: the manual "mark delivered"
+          fallback for when the courier's delivery webhook is silent. Renders
+          nothing when there are none. */}
+      <AwaitingDeliveryPanel />
 
       {/* Loading - animated skeletons on first load only */}
       {loading && jobs.length === 0 && <QueueSkeleton />}

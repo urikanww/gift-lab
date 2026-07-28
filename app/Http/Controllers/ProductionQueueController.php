@@ -9,6 +9,7 @@ use App\Enums\JobState;
 use App\Exceptions\CourierException;
 use App\Http\Requests\AdvanceBatchRequest;
 use App\Http\Requests\AdvanceJobRequest;
+use App\Http\Requests\MarkDeliveredRequest;
 use App\Http\Requests\ResolveReturnRequest;
 use App\Http\Resources\ProductionJobResource;
 use App\Models\ProductionJob;
@@ -214,6 +215,35 @@ class ProductionQueueController extends Controller
             $request->string('disposition')->toString(),
             $request->input('note'),
         );
+
+        return new ProductionJobResource($job);
+    }
+
+    /**
+     * Jobs in transit (SHIPPED, not yet delivered) - the "awaiting delivery"
+     * list staff use to confirm delivery by hand when the courier webhook is
+     * silent. Read-only; separate from the FCFS production board (index()).
+     */
+    public function inTransit(Request $request): AnonymousResourceCollection
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        return ProductionJobResource::collection($this->queue->inTransit());
+    }
+
+    /**
+     * Staff manually confirm a shipped parcel was delivered - the fallback for
+     * when NinjaVan's delivery webhook never arrives. Closes the job (and the
+     * quote when it's the last one), firing the buyer's delivered milestone,
+     * exactly as the webhook would. Refused with a 422 (DomainRuleException)
+     * when the job isn't SHIPPED, or is flagged returned/failed (that routes to
+     * resolveReturn instead) - see QueueService::markDelivered.
+     */
+    public function markDelivered(MarkDeliveredRequest $request, ProductionJob $job): ProductionJobResource
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        $job = $this->queue->markDelivered($job, $request->input('note'));
 
         return new ProductionJobResource($job);
     }
