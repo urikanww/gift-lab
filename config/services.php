@@ -178,13 +178,19 @@ return [
         // Pickup leg (parcel_job.pickup_*). NinjaVan's v4.1 Orders API requires
         // these whenever is_pickup_required is true; without them every real
         // order 400s. pickup_date is an optional fixed override - when unset the
-        // pickup happens on the delivery_start_date (no separate lead window),
-        // matching the delivery timeslot shape/timezone above.
+        // pickup happens on the delivery_start_date. The pickup/delivery time
+        // WINDOW is now the staff-configured courier setting (CourierConfig),
+        // not pickup_timeslot_start/end - these remain only as inert fallback.
         'pickup_service_type' => env('NINJAVAN_PICKUP_SERVICE_TYPE', 'Parcel'),
         'pickup_service_level' => env('NINJAVAN_PICKUP_SERVICE_LEVEL', 'Standard'),
         'pickup_date' => env('NINJAVAN_PICKUP_DATE'),
         'pickup_timeslot_start' => env('NINJAVAN_PICKUP_TIMESLOT_START', '09:00'),
         'pickup_timeslot_end' => env('NINJAVAN_PICKUP_TIMESLOT_END', '18:00'),
+        // Last-resort fallback ONLY. The live pickup address + collection window
+        // are staff-editable in-app (Staff > Courier), stored in the config table
+        // (group "courier") and read through App\Support\CourierConfig, which
+        // falls back to these values per-field when a row is blank. Leave the
+        // NINJAVAN_PICKUP_* env unset and edit the Courier screen instead.
         'pickup' => [
             'name' => env('NINJAVAN_PICKUP_NAME', 'Gift Lab'),
             'phone' => env('NINJAVAN_PICKUP_PHONE'),
