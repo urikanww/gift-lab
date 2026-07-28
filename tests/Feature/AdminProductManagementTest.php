@@ -537,3 +537,18 @@ it('still lets a products.edit staff edit a product without publishing', functio
 
     expect(Product::find($product->id)->name)->toBe('New Name');
 });
+
+// LT1/P1: the admin list flags a published-but-unsellable CORE product so staff
+// can add a variant, instead of it silently reading as a normal live product.
+
+it('flags a variant-less CORE product as not orderable in the admin list', function (): void {
+    $noVariant = Product::factory()->create(['name' => 'No Variant Cap', 'publish_state' => 'PUBLISHED']);
+    $withVariant = Product::factory()->create(['name' => 'Has Variant Mug', 'publish_state' => 'PUBLISHED']);
+    Variant::factory()->create(['product_id' => $withVariant->id]);
+
+    Sanctum::actingAs($this->staff);
+    $data = collect($this->getJson('/api/admin/products')->assertOk()->json('data'));
+
+    expect($data->firstWhere('name', 'No Variant Cap')['orderable'])->toBeFalse()
+        ->and($data->firstWhere('name', 'Has Variant Mug')['orderable'])->toBeTrue();
+});

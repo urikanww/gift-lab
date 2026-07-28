@@ -611,6 +611,8 @@ export interface AdminProduct {
   image_url: string | null;
   is_printable: boolean;
   publish_state: string;
+  /** Whether the product can actually be ordered as-is (a CORE blank needs a variant). */
+  orderable: boolean;
   license_tier: LicenseTier;
   archived: boolean;
   variants: AdminVariant[] | null;

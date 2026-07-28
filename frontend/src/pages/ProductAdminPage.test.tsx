@@ -29,7 +29,7 @@ function product(id: number, name: string): AdminProduct {
     id, name, description: null, class: 'CORE', base_cost: '5.00', price_override: null,
     selling_price: '10.00', currency: 'SGD', dimensions: null, weight: null, print_method: null,
     stock_mode: null, allow_backorder: false, category: null, image_url: null, is_printable: false,
-    publish_state: 'PUBLISHED', license_tier: 'standard', archived: false, variants: null,
+    publish_state: 'PUBLISHED', orderable: true, license_tier: 'standard', archived: false, variants: null,
     sold_count: 0, stock_total: 0,
   };
 }

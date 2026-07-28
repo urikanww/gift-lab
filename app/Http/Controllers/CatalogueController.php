@@ -31,7 +31,7 @@ class CatalogueController extends Controller
         $sort = $request->string('sort')->toString();
 
         $query = Product::query()
-            ->published()
+            ->buyable()
             ->when(
                 $request->filled('class'),
                 fn ($q) => $q->where('class', $request->string('class')->toString())
@@ -71,7 +71,7 @@ class CatalogueController extends Controller
             $product = Product::find((int) $key);
         }
 
-        if ($product === null || ! $product->publish_state->isPublic()) {
+        if ($product === null || ! $product->isBuyable()) {
             return response()->json(['message' => 'Product not available.'], 404);
         }
 
@@ -93,7 +93,7 @@ class CatalogueController extends Controller
         $product = Product::query()->where('slug', $key)->first()
             ?? (ctype_digit($key) ? Product::find((int) $key) : null);
 
-        if ($product === null || ! $product->publish_state->isPublic()) {
+        if ($product === null || ! $product->isBuyable()) {
             return ProductResource::collection(collect());
         }
 
@@ -102,7 +102,7 @@ class CatalogueController extends Controller
         $complements = CategoryClassifier::COMPLEMENTS[$category] ?? [];
 
         $base = fn () => Product::query()
-            ->published()
+            ->buyable()
             ->whereKeyNot($product->id)
             ->with('variants');
 

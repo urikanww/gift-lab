@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Quote;
+use App\Models\Variant;
 
 /**
  * The public PDP "You might also like" endpoint and its relevance tiers:
@@ -13,7 +14,12 @@ use App\Models\Quote;
  */
 function publishedProduct(array $attrs = []): Product
 {
-    return Product::factory()->create(array_merge(['publish_state' => 'PUBLISHED'], $attrs));
+    // A CORE product needs a variant to be orderable and therefore visible on
+    // the storefront (buyable scope); related products flow through the same
+    // gate, so give each one a variant.
+    return Product::factory()
+        ->has(Variant::factory(), 'variants')
+        ->create(array_merge(['publish_state' => 'PUBLISHED'], $attrs));
 }
 
 function quoteWithLines(int ...$productIds): void

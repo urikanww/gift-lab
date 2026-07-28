@@ -531,6 +531,9 @@ export default function ProductAdminPage() {
                           {classLabel(p.class)}
                         </Badge>
                         <PublishBadge state={p.publish_state} />
+                        {p.publish_state === 'PUBLISHED' && !p.orderable && (
+                          <Badge tone="warning" size="sm">Not orderable — add a variant</Badge>
+                        )}
                         <IpRiskBadge product={p} />
                         {isSuperadmin && <LicenseTierBadge tier={p.license_tier} />}
                       </div>

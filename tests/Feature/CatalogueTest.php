@@ -6,8 +6,16 @@ use App\Models\Product;
 use App\Models\Variant;
 use Database\Seeders\CoreCatalogueSeeder;
 
+// A CORE product is only on the storefront once it is orderable (has a
+// variant). Visibility tests use this so they exercise the buyable scope
+// rather than a published-but-unsellable row.
+function buyableCore(array $attrs = []): Product
+{
+    return Product::factory()->has(Variant::factory(), 'variants')->create($attrs);
+}
+
 it('exposes only published products on the public catalogue', function (): void {
-    Product::factory()->create(['name' => 'Published Mug', 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Published Mug', 'publish_state' => 'PUBLISHED']);
     Product::factory()->create(['name' => 'Draft Mug', 'publish_state' => 'PENDING']);
 
     $response = $this->getJson('/api/catalogue');
@@ -50,9 +58,31 @@ it('404s an unpublished product detail', function (): void {
     $this->getJson("/api/catalogue/{$product->id}")->assertNotFound();
 });
 
+// LT1: a published CORE product with no sellable variant must not reach the
+// storefront (a buyer would only discover it can't be ordered at checkout).
+it('hides a published CORE product that has no variant from the catalogue', function (): void {
+    Product::factory()->create(['name' => 'Unsellable Cap', 'publish_state' => 'PUBLISHED']);
+
+    $names = collect($this->getJson('/api/catalogue')->assertOk()->json('data'))->pluck('name');
+    expect($names)->not->toContain('Unsellable Cap');
+});
+
+it('404s a variant-less CORE product detail on the storefront', function (): void {
+    $product = Product::factory()->create(['publish_state' => 'PUBLISHED']);
+
+    $this->getJson("/api/catalogue/{$product->id}")->assertNotFound();
+});
+
+it('still shows a published SCRAPED_UV product without a variant (orderable via scrape)', function (): void {
+    Product::factory()->scrapedUv()->create(['name' => 'Scraped Blank', 'publish_state' => 'PUBLISHED']);
+
+    $names = collect($this->getJson('/api/catalogue')->assertOk()->json('data'))->pluck('name');
+    expect($names)->toContain('Scraped Blank');
+});
+
 it('generates a stable, unique slug and resolves the detail page by it', function (): void {
-    $first = Product::factory()->create(['name' => 'Ceramic Mug 350ml', 'publish_state' => 'PUBLISHED']);
-    $second = Product::factory()->create(['name' => 'Ceramic Mug 350ml', 'publish_state' => 'PUBLISHED']);
+    $first = buyableCore(['name' => 'Ceramic Mug 350ml', 'publish_state' => 'PUBLISHED']);
+    $second = buyableCore(['name' => 'Ceramic Mug 350ml', 'publish_state' => 'PUBLISHED']);
 
     expect($first->slug)->toBe('ceramic-mug-350ml')
         ->and($second->slug)->toBe('ceramic-mug-350ml-2');
@@ -68,7 +98,7 @@ it('generates a stable, unique slug and resolves the detail page by it', functio
 });
 
 it('still resolves a product detail by numeric id (legacy links)', function (): void {
-    $product = Product::factory()->create(['publish_state' => 'PUBLISHED']);
+    $product = buyableCore(['publish_state' => 'PUBLISHED']);
 
     $this->getJson("/api/catalogue/{$product->id}")
         ->assertOk()
@@ -112,6 +142,7 @@ it('reports availability made-to-order for a make-to-order product', function ()
     $p = Product::factory()->create([
         'class' => 'CORE', 'stock_mode' => 'MAKE_TO_ORDER', 'publish_state' => 'PUBLISHED',
     ]);
+    Variant::factory()->create(['product_id' => $p->id]);
 
     $this->getJson("/api/catalogue/{$p->id}")->assertOk()->assertJsonPath('data.availability', 'made_to_order');
 });
@@ -150,8 +181,8 @@ it('keeps an explicitly set category instead of reclassifying', function (): voi
 });
 
 it('filters the catalogue by marketplace category', function (): void {
-    Product::factory()->create(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
-    Product::factory()->create(['name' => 'Canvas Tote Bag', 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Canvas Tote Bag', 'publish_state' => 'PUBLISHED']);
 
     $response = $this->getJson('/api/catalogue?category=drinkware');
 
@@ -162,7 +193,7 @@ it('filters the catalogue by marketplace category', function (): void {
 });
 
 it('exposes the marketplace category on the product resource', function (): void {
-    Product::factory()->create(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Ceramic Mug 11oz', 'publish_state' => 'PUBLISHED']);
 
     $this->getJson('/api/catalogue')
         ->assertOk()
@@ -170,8 +201,8 @@ it('exposes the marketplace category on the product resource', function (): void
 });
 
 it('sorts the catalogue by newest first when requested', function (): void {
-    Product::factory()->create(['name' => 'Old Mug', 'publish_state' => 'PUBLISHED', 'created_at' => now()->subDay()]);
-    Product::factory()->create(['name' => 'New Mug', 'publish_state' => 'PUBLISHED', 'created_at' => now()]);
+    buyableCore(['name' => 'Old Mug', 'publish_state' => 'PUBLISHED', 'created_at' => now()->subDay()]);
+    buyableCore(['name' => 'New Mug', 'publish_state' => 'PUBLISHED', 'created_at' => now()]);
 
     $response = $this->getJson('/api/catalogue?sort=newest');
 
@@ -181,9 +212,9 @@ it('sorts the catalogue by newest first when requested', function (): void {
 it('sorts the catalogue by price', function (): void {
     // Names chosen so alphabetical order disagrees with price order - a
     // regression to name-only ordering fails this test.
-    Product::factory()->create(['name' => 'Aardvark Mug', 'base_cost' => 50, 'publish_state' => 'PUBLISHED']);
-    Product::factory()->create(['name' => 'Middling Mug', 'base_cost' => 20, 'publish_state' => 'PUBLISHED']);
-    Product::factory()->create(['name' => 'Zebra Mug', 'base_cost' => 1, 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Aardvark Mug', 'base_cost' => 50, 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Middling Mug', 'base_cost' => 20, 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Zebra Mug', 'base_cost' => 1, 'publish_state' => 'PUBLISHED']);
 
     expect(collect($this->getJson('/api/catalogue?sort=price_asc')->json('data'))->pluck('name')->all())
         ->toBe(['Zebra Mug', 'Middling Mug', 'Aardvark Mug'])
@@ -192,8 +223,8 @@ it('sorts the catalogue by price', function (): void {
 });
 
 it('falls back to name order for an unknown sort value', function (): void {
-    Product::factory()->create(['name' => 'Zebra Mug', 'publish_state' => 'PUBLISHED']);
-    Product::factory()->create(['name' => 'Aardvark Mug', 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Zebra Mug', 'publish_state' => 'PUBLISHED']);
+    buyableCore(['name' => 'Aardvark Mug', 'publish_state' => 'PUBLISHED']);
 
     expect(collect($this->getJson('/api/catalogue?sort=garbage')->json('data'))->pluck('name')->all())
         ->toBe(['Aardvark Mug', 'Zebra Mug']);

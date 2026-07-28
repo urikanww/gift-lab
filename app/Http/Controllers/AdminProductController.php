@@ -1018,6 +1018,14 @@ class AdminProductController extends Controller
             'source_product_id' => $product->source_product_id,
             'is_printable' => (bool) $product->is_printable,
             'publish_state' => $product->publish_state->value,
+            // Whether the product can actually be ordered as-is: a CORE blank
+            // needs a variant (checkout rejects a variant-less CORE line), other
+            // classes order without one. Lets the list flag a "live but not
+            // buyable" row so staff know to add a variant before it can sell.
+            'orderable' => $product->class !== ProductClass::Core
+                || ($product->relationLoaded('variants')
+                    ? $product->variants->isNotEmpty()
+                    : $product->variants()->exists()),
             // Superadmin-only compliance tier: standard | extended | high_risk.
             // Null licence (e.g. CORE blanks) has no risk → standard.
             'license_tier' => $product->license?->tier() ?? 'standard',

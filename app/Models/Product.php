@@ -236,6 +236,34 @@ class Product extends Model
         return $query->where('publish_state', PublishState::Published->value);
     }
 
+    /**
+     * Publicly browsable AND actually orderable. A CORE product needs at least
+     * one variant to be bought (StoreQuoteRequest rejects a variant-less CORE
+     * line); SCRAPED_UV and MODEL_3D order without a variant. This keeps a
+     * published-but-unsellable product off the storefront, so a buyer never
+     * reaches a dead end at checkout.
+     *
+     * @param  Builder<Product>  $query
+     * @return Builder<Product>
+     */
+    public function scopeBuyable(Builder $query): Builder
+    {
+        return $query->published()->where(function (Builder $q): void {
+            $q->where('class', '!=', ProductClass::Core->value)
+                ->orWhereHas('variants');
+        });
+    }
+
+    /** Whether this single product is publicly browsable and orderable (see scopeBuyable). */
+    public function isBuyable(): bool
+    {
+        if (! $this->publish_state->isPublic()) {
+            return false;
+        }
+
+        return $this->class !== ProductClass::Core || $this->variants()->exists();
+    }
+
     protected static function newFactory(): ProductFactory
     {
         return ProductFactory::new();
