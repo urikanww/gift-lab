@@ -107,8 +107,37 @@ class QuoteResource extends JsonResource
                 (bool) ($request->user()?->isStaff() ?? false),
                 fn (): ?array => $this->invoiceSummary(),
             ),
+            // Staff-only: the order's production jobs and their shipment status,
+            // so the order page can show what has shipped and confirm delivery
+            // without opening the production queue.
+            'shipments' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn (): array => $this->shipmentSummary(),
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Staff-only shipment view: each production job with its state, carrier and
+     * consignment ref. Empty until jobs are built, and only populated when the
+     * jobs relation is loaded (show() eager-loads it) to avoid an N+1.
+     *
+     * @return array<int, array{job_id: int, state: string, carrier: ?string, consignment_ref: ?string, delivered_at: ?string}>
+     */
+    private function shipmentSummary(): array
+    {
+        if (! $this->relationLoaded('jobs')) {
+            return [];
+        }
+
+        return $this->jobs->map(fn ($job): array => [
+            'job_id' => $job->id,
+            'state' => $job->state->value,
+            'carrier' => $job->carrier?->value,
+            'consignment_ref' => $job->consignment_ref,
+            'delivered_at' => $job->delivered_at?->toIso8601String(),
+        ])->values()->all();
     }
 
     /**

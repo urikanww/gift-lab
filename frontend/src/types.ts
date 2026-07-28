@@ -406,6 +406,21 @@ export interface Quote {
    * reconciliation control on the order page.
    */
   invoice?: Invoice | null;
+  /**
+   * Staff-only: the order's production jobs and their shipment status, so the
+   * order page can show what has shipped and confirm delivery without opening
+   * the production queue. Absent for buyers.
+   */
+  shipments?: OrderShipment[];
+}
+
+/** Staff-only shipment view of one of an order's production jobs. */
+export interface OrderShipment {
+  job_id: number;
+  state: string;
+  carrier: string | null;
+  consignment_ref: string | null;
+  delivered_at: string | null;
 }
 
 /** The buyer email tied to a state; keyed like the backend OrderMilestone enum. */

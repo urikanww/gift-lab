@@ -151,6 +151,12 @@ interface QuoteStoreState {
    * Production no longer starts on the system's own say-so.
    */
   confirmStock: (id: number) => Promise<void>;
+  /**
+   * Staff confirm a shipped job delivered from the order page (a fallback when
+   * the courier's delivery webhook is silent). Refreshes the quote so the order
+   * closes once its last job is delivered.
+   */
+  markJobDelivered: (quoteId: number, jobId: number) => Promise<void>;
   /** Resolves true when payment was captured immediately (no redirect). */
   payNow: (id: number) => Promise<boolean>;
   /** Resolves true on success so the confirm modal only closes when the cancel actually landed. */
@@ -396,6 +402,17 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await ensureCsrf();
       await api.post(`/quotes/${id}/confirm-stock`);
       await get().fetchQuote(id);
+    } catch (err) {
+      set({ actionError: apiError(err) });
+    }
+  },
+
+  markJobDelivered: async (quoteId, jobId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.post(`/production-jobs/${jobId}/mark-delivered`);
+      await get().fetchQuote(quoteId);
     } catch (err) {
       set({ actionError: apiError(err) });
     }
