@@ -275,6 +275,15 @@ class AdminUserController extends Controller
         // passes). Sensitive writes carry extra guards below.
         abort_unless($request->user()->isStaff(), 403);
 
+        // A delegated (non-superadmin) user-manager may not reset a superadmin's
+        // password - that would be a full account takeover. Mirrors the
+        // escalation guards on update()/deactivate().
+        if (! $request->user()->isSuperadmin() && $user->role === UserRole::Superadmin) {
+            return response()->json([
+                'message' => 'Only a superadmin can reset a superadmin password.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'password' => ['required', 'string', 'min:8'],
         ]);

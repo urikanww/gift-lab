@@ -221,3 +221,38 @@ it('blocks staff and buyer from store/update/deactivate', function (): void {
     $this->patchJson("/api/admin/users/{$this->staffAdmin->id}", ['name' => 'X'])->assertForbidden();
     $this->deleteJson("/api/admin/users/{$this->staffAdmin->id}")->assertForbidden();
 });
+
+it('forbids a delegated user-manager from resetting a superadmin password (privilege escalation)', function (): void {
+    // A staff_admin explicitly granted users.manage (so the route middleware
+    // passes) must still not be able to hijack a superadmin account.
+    $manager = User::factory()->create([
+        'role' => 'staff_admin',
+        'company_id' => null,
+        'permissions' => ['users.view', 'users.manage'],
+    ]);
+    $target = User::factory()->create(['role' => 'superadmin', 'company_id' => null]);
+
+    Sanctum::actingAs($manager);
+
+    $this->postJson("/api/admin/users/{$target->id}/password", [
+        'password' => 'hijacked-pass1',
+    ])->assertForbidden();
+
+    expect(Hash::check('hijacked-pass1', User::find($target->id)->password))->toBeFalse();
+});
+
+it('still lets a delegated user-manager reset a non-superadmin password', function (): void {
+    $manager = User::factory()->create([
+        'role' => 'staff_admin',
+        'company_id' => null,
+        'permissions' => ['users.view', 'users.manage'],
+    ]);
+
+    Sanctum::actingAs($manager);
+
+    $this->postJson("/api/admin/users/{$this->buyer->id}/password", [
+        'password' => 'new-buyer-pass1',
+    ])->assertOk();
+
+    expect(Hash::check('new-buyer-pass1', User::find($this->buyer->id)->password))->toBeTrue();
+});
