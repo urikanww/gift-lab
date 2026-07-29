@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Mail\QuoteReadyMail;
 use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
+use App\Services\QuoteService;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 
@@ -127,4 +129,30 @@ it('hides unsent DRAFT proofs from the buyer but shows them to staff', function 
     Sanctum::actingAs($this->staff);
     $staffProofs = $this->getJson("/api/quotes/{$quote->reference}")->assertOk()->json('data.proofs');
     expect(collect($staffProofs)->pluck('state')->sort()->values()->all())->toBe(['DRAFT', 'SENT']);
+});
+
+// M13: resending a specific proof must email THAT proof's artwork. It used to
+// pick the highest-version proof on the whole order (versions are per-line), so
+// on a multi-line order it could send a different line's artwork.
+it('resends the specific proof artwork, not the highest-version proof on the order', function (): void {
+    Mail::fake();
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
+    $lineA = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/a.png'], 'line_state' => 'PENDING',
+    ]);
+    $lineB = LineItem::factory()->create([
+        'quote_id' => $quote->id, 'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/b.png'], 'line_state' => 'PENDING',
+    ]);
+    $proofA = Proof::factory()->create([
+        'quote_id' => $quote->id, 'line_item_id' => $lineA->id, 'version' => 1, 'state' => 'SENT', 'artwork_version_ref' => 'artwork/a.png',
+    ]);
+    // A higher-version proof on the OTHER line - the old bug would email this one.
+    Proof::factory()->create([
+        'quote_id' => $quote->id, 'line_item_id' => $lineB->id, 'version' => 3, 'state' => 'SENT', 'artwork_version_ref' => 'artwork/b.png',
+    ]);
+
+    $this->actingAs($this->staff);
+    app(QuoteService::class)->resendProof($proofA->fresh());
+
+    Mail::assertQueued(QuoteReadyMail::class, fn ($mail) => str_contains((string) $mail->proofImageUrl, "proofs/{$proofA->id}/"));
 });

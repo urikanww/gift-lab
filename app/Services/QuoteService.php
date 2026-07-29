@@ -811,8 +811,9 @@ final class QuoteService
             'quote_reference' => $proof->quote?->reference,
         ]);
 
-        // emailQuoteReady picks the latest proof version, which is this open one.
-        $this->emailQuoteReady($proof->quote, true);
+        // Email THIS proof's artwork specifically - not the quote-wide latest
+        // version, which on a multi-line order can be a different line (M13).
+        $this->emailQuoteReady($proof->quote, true, $proof);
     }
 
     /**
@@ -1582,7 +1583,7 @@ final class QuoteService
      * the enclosing transaction commits, so a rolled-back send never emails.
      * No-ops silently if no buyer recipient can be resolved for the company.
      */
-    private function emailQuoteReady(Quote $quote, bool $hasProof): void
+    private function emailQuoteReady(Quote $quote, bool $hasProof, ?Proof $specificProof = null): void
     {
         $recipient = $this->resolveBuyerRecipient($quote);
         if ($recipient === null) {
@@ -1590,7 +1591,10 @@ final class QuoteService
         }
 
         $proofImageUrl = null;
-        if ($hasProof && ($proof = $quote->proofs()->latest('version')->first()) !== null) {
+        // Resend targets ONE proof (versions are per-line, so the quote-wide
+        // "latest version" can be a different line's artwork - M13). Fall back
+        // to the latest only when no specific proof is given (the send() path).
+        if ($hasProof && ($proof = $specificProof ?? $quote->proofs()->latest('version')->first()) !== null) {
             // PROOF_IMAGE_URL_TTL_DAYS (the presigned-URL ceiling on S3/Spaces),
             // shared with QuoteReadyMail's batched builder so the two proof paths
             // sign for the same lifetime. On a local dev disk this still resolves
