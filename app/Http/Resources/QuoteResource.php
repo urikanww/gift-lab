@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Enums\ProofState;
 use App\Models\PricingConfig;
 use App\Models\Quote;
 use App\Services\OrderNotifier;
@@ -86,9 +87,16 @@ class QuoteResource extends JsonResource
                 ))
             ),
             'proofs' => ProofResource::collection(
-                $this->whenLoaded('proofs', fn () => $this->proofs->each(
-                    fn ($proof) => $proof->setRelation('quote', $this->resource)
-                ))
+                $this->whenLoaded('proofs', function () use ($request) {
+                    $isStaff = (bool) ($request->user()?->isStaff() ?? false);
+
+                    // Buyers must not see unsent DRAFT proofs (staged, not yet
+                    // sent). Staff do - staging happens on DRAFTs. M12.
+                    return $this->proofs
+                        ->filter(fn ($proof): bool => $isStaff || $proof->state !== ProofState::Draft)
+                        ->each(fn ($proof) => $proof->setRelation('quote', $this->resource))
+                        ->values();
+                })
             ),
             // Staff-only buyer-notification picture for this order: which milestone
             // email the buyer was sent on reaching the current state (paired with

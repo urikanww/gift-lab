@@ -107,3 +107,24 @@ it('no longer exposes the order-level proof-issue route', function (): void {
         'artwork_version_ref' => 'artwork/v1.png',
     ])->assertStatus(404);
 });
+
+// M12: unsent DRAFT proofs are staff-only (staging). A buyer viewing the order
+// must not see them - only sent/decided proofs.
+it('hides unsent DRAFT proofs from the buyer but shows them to staff', function (): void {
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/a.png'],
+        'line_state' => 'PENDING',
+    ]);
+    Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'version' => 1, 'state' => 'SENT']);
+    Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'version' => 2, 'state' => 'DRAFT']);
+
+    Sanctum::actingAs($this->buyer);
+    $buyerProofs = $this->getJson("/api/quotes/{$quote->reference}")->assertOk()->json('data.proofs');
+    expect(collect($buyerProofs)->pluck('state')->all())->toBe(['SENT']);
+
+    Sanctum::actingAs($this->staff);
+    $staffProofs = $this->getJson("/api/quotes/{$quote->reference}")->assertOk()->json('data.proofs');
+    expect(collect($staffProofs)->pluck('state')->sort()->values()->all())->toBe(['DRAFT', 'SENT']);
+});
