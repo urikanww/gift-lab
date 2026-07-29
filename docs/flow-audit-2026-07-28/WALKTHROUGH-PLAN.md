@@ -70,7 +70,8 @@ php artisan db:seed --class=DemoProofOrderSeeder       # orders across proof sta
 php artisan db:seed --class=DemoBuyerUploadedOrderSeeder
 ```
 - **Staff login (local):** `superadmin@giftlab.local` / `ChangeMe!123` (superadmin), `ops@giftlab.local` / `ChangeMe!123` (staff_admin). Override with `ADMIN_SEED_PASSWORD` if desired.
-- **Demo buyer:** `buyer@nexgen.com.sg` (company NexGen Pte Ltd). For email-click steps, **register a fresh buyer with an inbox the human controls** (see B1).
+- **Buyer — use a REAL inbox the human opens.** The human is verifying that notifications actually arrive AND that the content reads well. Register the walkthrough buyer with the human's real email (ask for it up front, e.g. `admin@nexgen.com.sg`). Every buyer-facing email in this run lands there for review — see **§2.5**.
+- **Staff alert inbox:** staff/ops emails (proof-changes, design-request, parcel-returned, job-failed) go to the staff user's address — point `ops@giftlab.local` (or a staff account) at a real inbox too if the human wants to review those, or read them from the mail log.
 
 ### 1c. Catalogue has products (REQUIRED — the seeder ships NO products)
 The storefront is empty until products exist. Two options:
@@ -117,6 +118,43 @@ Useful `status` values: `Out for Delivery`, `Delivered`, `Returned to Sender`. E
 | **B9** | Pay-now (optional) | Only if B2C pay-now enabled. Stripe test card; 3DS may need the human. Confirm PO/paid. | maybe |
 | **B10** | Track order | Public tracker: honest stage, shipments (carrier + consignment + live status), **names+qty only** (no PII/price); a returned parcel is NOT shown as "shipped/done" (L14). | — |
 | **B11** | Reorder | From a past order → fresh draft, re-priced; product images shown; a since-unpublished line is skipped silently-safely (L21). Rapid double-click doesn't mint duplicates (L22). | — |
+
+---
+
+## 2.5. Notifications & email content — verify EVERY email (real inbox)
+
+The human is watching a real inbox, so each email is a checkpoint for **delivery** *and* **content quality**. At **every** email below: 🙋 pause, have the human confirm it arrived, then review it against this checklist and log anything off.
+
+**Per-email content checklist:**
+- ☐ Arrived (and within seconds, since `QUEUE=sync`) — not in spam.
+- ☐ **Sender** name + from-address look right (not `no-reply@giftlab.local` placeholder in a real send).
+- ☐ **Subject** is clear and specific (mentions the order where useful).
+- ☐ Greeting/personalisation correct (buyer name, company, **order reference**).
+- ☐ Body copy is honest + plain (no internal jargon like "PROCURING"; no "payment received" while unpaid, H4).
+- ☐ **Primary CTA button** goes to the right page and the link actually resolves (click it) — signed track links load without login (PII-free).
+- ☐ No broken images, no raw `{{ placeholder }}`, no empty sections, no dev URLs (`localhost` links are expected in this test run — note them but they're not a bug here).
+- ☐ Renders on mobile (narrow width) — check in the email client's mobile view or the human's phone.
+
+**Coverage — trigger and review each of these during the run:**
+
+| Email | Trigger (which step) | To | Notes to check |
+|-------|----------------------|-----|----------------|
+| **Quote ready** (`QuoteReadyMail`) | S3 Send to buyer | Buyer | The first "your quote is ready" — CTA opens the order to accept. |
+| **Proof ready** (`QuoteReadyMail`, proof round) | S4 Send proofs | Buyer | Shows the round's artwork thumbnail(s); resend targets the right line (M13). |
+| **Milestone: Accepted** | B7 buyer accepts | Buyer | Confirms price agreed, sets next expectation. |
+| **Milestone: Committed** | S5 commit | Buyer | Order confirmed / into production. |
+| **Milestone: In production** | S8 start production | Buyer | (If enabled.) |
+| **Milestone: Shipped** | S8 mark shipped | Buyer | Carrier + tracking; **one per order**, not per parcel (M19). |
+| **Milestone: Delivered** | S9 delivered webhook | Buyer | Fires once; a duplicate webhook does NOT re-send (L10). |
+| **Milestone: Cancelled** | cancel an order | Buyer | Honest reason/refund note. |
+| **Chase: price reminder** | scheduler `quotes:chase` on a stale SENT order | Buyer | Per-phase count, honours the disable toggle (M16/M17). Force via `php artisan quotes:chase`. |
+| **Chase: proof reminder** | `quotes:chase` on a stale PROOFING order | Buyer | As above. |
+| **Staff: proof changes requested** (`ProofChangesRequestedMail`) | B8 buyer requests changes | Staff | Alerts staff to re-issue a proof; includes the buyer's note + any reference images. |
+| **Staff: design requested** (`DesignRequestedMail`) | buyer submits a design-request line | Staff | New work landed. |
+| **Staff: parcel returned** (`ParcelReturnedMail`) | S10 returned webhook | Staff | Which parcel/order needs resolution. |
+| **Staff: job failed** (`JobFailedAlertMail`) | a queue job fails (hard to force; note if seen) | Staff/ops | Ops visibility. |
+
+> To review a milestone that's toggled OFF by default, a superadmin enables it in the notification settings first. To force the chase reminders without waiting for 09:00, run `php artisan quotes:chase` after setting an order's timestamps back.
 
 ---
 
