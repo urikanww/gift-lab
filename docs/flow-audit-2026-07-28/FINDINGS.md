@@ -152,3 +152,19 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 | L23-confirmed | 🟡 Low | **Create-shipment button shows "Open delivery address to confirm before booking"** even when ready — must expand the address panel first. | Live. |
 
 **Env caveat:** NinjaVan credentials are set, so "Create NinjaVan shipment" calls the real courier API (unreachable here) — used manual "Mark shipped" instead. Same finding class as LT10/LT11: external calls (courier, storage, mail) sit in synchronous request paths.
+
+---
+
+## Fix log
+
+**Batch 1 — 2026-07-28 (no-hanging MVP):** H1, H2, H5, H6, M5/M6, LT1 (P1 guard), LT13, P2, H4. Shipped to `master`.
+
+**Batch 2 — 2026-07-29 (pre-production code fixes):**
+- **M2** — accept-as-is now re-totals fee-inclusively (no decoration charge on un-made units).
+- **M3** — 3D filament is returned on cancel and restocked on filament-reorder receive (new `line_items.consumed_grams`).
+- **LT7** — fake product reviews + rating removed.
+- **LT6** — dead footer About/Help links removed; footer Account links reflect sign-in state.
+- **LT10** — proof composite no longer generated on the synchronous page path (cached-only lookup; generation stays on the queued email path). Note: the dramatic *hang* was a single-threaded dev-server self-call artifact; production needs a multi-worker server + reachable storage regardless.
+- **LT11 — corrected, not a bug.** All mailables already implement `ShouldQueue` and send via `->queue()`, so emails are already async. The hang observed when clicking "Send" was LT10's composite self-call on the next page load, not a synchronous email send.
+
+**Still parked (post-production):** H3 (credit-note over-refund — needs partial-amount capture), the remaining Med/Low findings, and UX P3–P8. Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
