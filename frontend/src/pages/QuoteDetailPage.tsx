@@ -1000,6 +1000,90 @@ export default function QuoteDetailPage() {
     </div>
   ) : undefined;
 
+  // Buyer "Next step" action card, pinned above the Items list (P4) so a buyer
+  // never has to scroll past the order detail to find what to do next.
+  const buyerActionsCard = !isStaff &&
+    (quote.state === 'DRAFT' ||
+      quote.state === 'SENT' ||
+      quote.state === 'ARTWORK_APPROVED' ||
+      quote.state === 'PROOF_APPROVED') && (
+    <Motion variants={staggerItem}>
+      <Card padding="lg">
+        <h2 className="font-display text-xl text-fg">Next step</h2>
+        {/* A buyer can land on a DRAFT after reordering a past order. They
+            can't action it themselves - staff review and send a quote - so
+            tell them what happens next rather than leaving them guessing. */}
+        {quote.state === 'DRAFT' && (
+          <p className="mt-4 text-sm text-fg-muted">
+            This is a draft order. Our team will review it and send you a quote to approve —
+            we’ll email you when it’s ready.
+          </p>
+        )}
+        {quote.state === 'SENT' && (
+          <div className="mt-4">
+            <p className="mb-3 text-sm text-fg-muted">
+              Review the pricing on this page, then accept to move into proofing.
+            </p>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy}
+              onClick={() => run(() => accept(quote.id), 'Quote accepted')}
+            >
+              Accept quote
+            </Button>
+          </div>
+        )}
+        {/* Artwork-first route: artwork is signed off, the price is not.
+            Approving artwork no longer implies agreeing the price, so this is
+            the second of the two approvals. */}
+        {quote.state === 'ARTWORK_APPROVED' && (
+          <div className="mt-4">
+            <p className="mb-3 text-sm text-fg-muted">
+              Your artwork is approved. Review the pricing on this page and accept it to confirm
+              your order.
+            </p>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy}
+              onClick={() => run(() => accept(quote.id), 'Quote accepted')}
+            >
+              Accept pricing
+            </Button>
+          </div>
+        )}
+        {/* Payment is off for this tenant: say what happens instead, rather
+            than offering a button that always fails. */}
+        {quote.state === 'PROOF_APPROVED' && !quote.pay_now_enabled && (
+          <p className="mt-4 text-sm text-fg-muted">
+            Your proof is approved. We’ll send your invoice and confirm your order for production.
+          </p>
+        )}
+        {quote.state === 'PROOF_APPROVED' && quote.pay_now_enabled && (
+          <div className="mt-4">
+            <p className="mb-3 text-sm text-fg-muted">Your proof is approved. Pay now to confirm production.</p>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  const paid = await payNow(quote.id);
+                  if (paid && !useQuoteStore.getState().actionError) {
+                    toast({ title: 'Payment received', tone: 'success' });
+                  }
+                })
+              }
+            >
+              Pay now
+            </Button>
+          </div>
+        )}
+      </Card>
+    </Motion>
+  );
+
   return (
     <Motion variants={staggerContainer} initial="hidden" animate="visible">
       <section className="flex flex-col gap-6" aria-labelledby="quote-heading">
@@ -1130,6 +1214,8 @@ export default function QuoteDetailPage() {
             inline. See `buyerProofReview` above. */}
         {buyerDesignPendingNotice}
         {buyerProofReview}
+        {/* Buyer next-step actions pinned above the order detail (P4). */}
+        {buyerActionsCard}
 
         {/* Line items */}
         <Motion variants={staggerItem}>
@@ -1211,91 +1297,7 @@ export default function QuoteDetailPage() {
             card near the top of the page. See `proofsCard`/`buyerProofReview`. */}
         {!isStaff && !buyerProofReview && quote.proofs && quote.proofs.length > 0 && proofsCard}
 
-        {/* Buyer actions */}
-        {!isStaff &&
-          (quote.state === 'DRAFT' ||
-            quote.state === 'SENT' ||
-            quote.state === 'ARTWORK_APPROVED' ||
-            quote.state === 'PROOF_APPROVED') && (
-          <Motion variants={staggerItem}>
-            <Card padding="lg">
-              <h2 className="font-display text-xl text-fg">Next step</h2>
-              {/* A buyer can land on a DRAFT after reordering a past order. They
-                  can't action it themselves - staff review and send a quote - so
-                  tell them what happens next rather than leaving them guessing. */}
-              {quote.state === 'DRAFT' && (
-                <p className="mt-4 text-sm text-fg-muted">
-                  This is a draft order. Our team will review it and send you a quote to approve —
-                  we’ll email you when it’s ready.
-                </p>
-              )}
-              {quote.state === 'SENT' && (
-                <div className="mt-4">
-                  <p className="mb-3 text-sm text-fg-muted">
-                    Review the pricing above, then accept to move into proofing.
-                  </p>
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() => run(() => accept(quote.id), 'Quote accepted')}
-                  >
-                    Accept quote
-                  </Button>
-                </div>
-              )}
-              {/* Artwork-first route: artwork is signed off, the price is not.
-                  Approving artwork no longer implies agreeing the price, so
-                  this is the second of the two approvals. */}
-              {quote.state === 'ARTWORK_APPROVED' && (
-                <div className="mt-4">
-                  <p className="mb-3 text-sm text-fg-muted">
-                    Your artwork is approved. Review the pricing above and accept it to confirm your
-                    order.
-                  </p>
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() => run(() => accept(quote.id), 'Quote accepted')}
-                  >
-                    Accept pricing
-                  </Button>
-                </div>
-              )}
-              {/* Payment is off for this tenant: say what happens instead,
-                  rather than offering a button that always fails. */}
-              {quote.state === 'PROOF_APPROVED' && !quote.pay_now_enabled && (
-                <p className="mt-4 text-sm text-fg-muted">
-                  Your proof is approved. We’ll send your invoice and confirm your order for
-                  production.
-                </p>
-              )}
-              {quote.state === 'PROOF_APPROVED' && quote.pay_now_enabled && (
-                <div className="mt-4">
-                  <p className="mb-3 text-sm text-fg-muted">Your proof is approved. Pay now to confirm production.</p>
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() =>
-                      run(async () => {
-                        // Only toast on immediate capture - the Stripe path
-                        // redirects away, so feedback there would be lost.
-                        const paid = await payNow(quote.id);
-                        if (paid && !useQuoteStore.getState().actionError) {
-                          toast({ title: 'Payment received', tone: 'success' });
-                        }
-                      })
-                    }
-                  >
-                    Pay now
-                  </Button>
-                </div>
-              )}
-            </Card>
-          </Motion>
-        )}
+        {/* Buyer next-step actions render above Items (P4) - see buyerActionsCard. */}
 
         {/* Proofs (staff slot) - reference material for staff, so it follows the
             merged status/actions card. See `proofsCard`/`staffPanel` above. */}
