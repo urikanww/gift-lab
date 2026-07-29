@@ -71,7 +71,7 @@ export interface PrintZone {
 }
 
 export type JobTrack = 'UV' | '3D';
-export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED';
+export type JobState = 'READY' | 'IN_PRODUCTION' | 'SHIPPED' | 'CLOSED' | 'RETURNED';
 export type ProofState = 'DRAFT' | 'SENT' | 'CHANGES_REQUESTED' | 'APPROVED';
 
 export type Carrier = 'SINGPOST' | 'NINJAVAN' | 'JNT' | 'QXPRESS' | 'DHL' | 'FEDEX' | 'OTHER';

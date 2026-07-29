@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\JobState;
 use App\Enums\LineItemState;
 use App\Enums\OrderMilestone;
 use App\Enums\PaymentState;
@@ -20,6 +21,7 @@ use App\Models\Filament;
 use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
+use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\StockMovement;
@@ -1239,6 +1241,92 @@ final class QuoteService
     }
 
     /**
+     * M15: cancel & credit ONE returned parcel of a multi-parcel order without
+     * disturbing its delivered siblings. Restocks only this parcel's lines,
+     * reduces the invoice by the parcel's proportional share, and credits only
+     * that share of what was actually collected (proportional to the deposit,
+     * so a part-paid order never refunds more than it received). The order stays
+     * live; the parcel's job moves to the terminal RETURNED state.
+     *
+     * The parcel's share is by line value (unit*qty + decoration fee) over the
+     * whole order, so the GST + delivery folded into the invoice total are
+     * allocated pro-rata rather than needing a separate per-parcel breakdown.
+     *
+     * The caller (QueueService::resolveReturnCancelCredit) decides this vs a
+     * whole-order cancel by whether any sibling parcel is still live, and owns
+     * the broadcast/audit around it - this method only moves money + stock.
+     */
+    public function returnParcel(Quote $quote, ProductionJob $job, ?string $reason): void
+    {
+        DB::transaction(function () use ($quote, $job, $reason): void {
+            $job->loadMissing('lineItems.variant', 'lineItems.product');
+            $quote->loadMissing('lineItems');
+
+            $allLinesValue = 0.0;
+            foreach ($quote->lineItems as $line) {
+                $allLinesValue += $this->lineSubtotalContribution($line);
+            }
+
+            $parcelLinesValue = 0.0;
+            foreach ($job->lineItems as $line) {
+                $parcelLinesValue += $this->lineSubtotalContribution($line);
+            }
+
+            $fraction = $allLinesValue > 0.0 ? min(1.0, $parcelLinesValue / $allLinesValue) : 0.0;
+
+            // Restock only this parcel's lines - siblings' stock stays consumed.
+            $this->returnConsumedStockForLines($job->lineItems);
+            $this->returnConsumedFilamentForLines($job->lineItems);
+
+            foreach ($quote->purchaseOrders()->lockForUpdate()->get() as $invoice) {
+                if ($invoice->payment_state === PaymentState::Void) {
+                    continue;
+                }
+
+                $parcelInvoiceValue = round((float) $invoice->amount * $fraction, 2);
+                $refund = round($invoice->collectedAmount() * $fraction, 2);
+
+                // Credit only the parcel's proportional slice of money actually
+                // collected - never the full parcel value on a part-paid order.
+                if ($refund > 0.0) {
+                    $creditNote = CreditNote::create([
+                        'quote_id' => $quote->id,
+                        'invoice_id' => $invoice->id,
+                        'amount' => $refund,
+                        'reason' => $reason,
+                        'issued_by' => Auth::id(),
+                        'issued_at' => now(),
+                    ]);
+
+                    $this->audit->log($creditNote, 'credit_note.issued', null, [
+                        'invoice_id' => $invoice->id,
+                        'amount' => $refund,
+                        'scope' => 'parcel',
+                        'job_id' => $job->id,
+                    ]);
+                }
+
+                // The order now bills only the retained goods: drop the parcel's
+                // share off the invoice total, and off amount collected (the
+                // refund left the wallet, so it is no longer "paid").
+                $invoice->amount = max(0.0, round((float) $invoice->amount - $parcelInvoiceValue, 2));
+                if ($invoice->amount_paid !== null) {
+                    $invoice->amount_paid = max(0.0, round((float) $invoice->amount_paid - $refund, 2));
+                }
+                $invoice->save();
+
+                $this->audit->log($invoice, 'invoice.parcel_returned', null, [
+                    'job_id' => $job->id,
+                    'reduced_by' => $parcelInvoiceValue,
+                    'new_amount' => $invoice->amount,
+                ]);
+            }
+
+            $job->transitionTo(JobState::Returned);
+        });
+    }
+
+    /**
      * Reverse the stock each line consumed, as compensating RETURN movements.
      * Reads the ledger (SALE movements referencing the line) rather than trusting
      * procured_qty, so it stays correct across partial/backorder consumption and
@@ -1247,8 +1335,20 @@ final class QuoteService
     private function returnConsumedStock(Quote $quote): void
     {
         $quote->loadMissing('lineItems.variant');
+        $this->returnConsumedStockForLines($quote->lineItems);
+    }
 
-        foreach ($quote->lineItems as $line) {
+    /**
+     * Line-scoped stock return. The quote-level cancel returns every line; a
+     * single returned parcel (M15) returns only that parcel's lines, leaving
+     * the delivered siblings' stock consumed.
+     *
+     * @param  iterable<int, LineItem>  $lines
+     */
+    private function returnConsumedStockForLines(iterable $lines): void
+    {
+        foreach ($lines as $line) {
+            $line->loadMissing('variant');
             if ($line->variant === null) {
                 continue;
             }
@@ -1281,8 +1381,19 @@ final class QuoteService
     private function returnConsumedFilament(Quote $quote): void
     {
         $quote->loadMissing('lineItems.product');
+        $this->returnConsumedFilamentForLines($quote->lineItems);
+    }
 
-        foreach ($quote->lineItems as $line) {
+    /**
+     * Line-scoped filament return. Same split as returnConsumedStockForLines:
+     * a returned parcel gives back only its own lines' filament (M15).
+     *
+     * @param  iterable<int, LineItem>  $lines
+     */
+    private function returnConsumedFilamentForLines(iterable $lines): void
+    {
+        foreach ($lines as $line) {
+            $line->loadMissing('product');
             $grams = (float) ($line->consumed_grams ?? 0);
             if ($grams <= 0 || $line->product === null) {
                 continue;

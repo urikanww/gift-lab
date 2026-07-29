@@ -560,9 +560,27 @@ final class QueueService
             $lastCourierStatus = $job->last_courier_status;
 
             $job->loadMissing('quote');
+            $quote = $job->quote;
 
-            if ($job->quote !== null) {
-                app(QuoteService::class)->cancel($job->quote, $note);
+            if ($quote !== null) {
+                // M15: does any SIBLING parcel still stand (delivered or in
+                // flight, i.e. not itself already returned)? If so, cancel &
+                // credit ONLY this parcel and leave the order live. If this is
+                // the only/last live parcel, fall back to the whole-order cancel.
+                $siblingStillLive = $quote->jobs()
+                    ->whereKeyNot($job->getKey())
+                    ->where('state', '!=', JobState::Returned->value)
+                    ->exists();
+
+                if ($siblingStillLive) {
+                    app(QuoteService::class)->returnParcel($quote, $job, $note);
+                } else {
+                    // Mark the parcel returned before the whole-order cancel so
+                    // it leaves the awaiting-delivery board and isn't faked as
+                    // delivered; cancel() then closes the money loop.
+                    $job->transitionTo(JobState::Returned);
+                    app(QuoteService::class)->cancel($quote, $note);
+                }
             }
 
             $this->audit->log($job, 'production_job.return_resolved', [
@@ -570,10 +588,17 @@ final class QueueService
             ], [
                 'disposition' => 'cancel_credit',
                 'note' => $note,
-                'state' => $job->state->value,
+                'state' => $job->fresh()?->state->value ?? $job->state->value,
             ]);
 
-            return $job->fresh() ?? $job;
+            $fresh = $job->fresh() ?? $job;
+
+            $fresh->loadMissing('quote');
+            if ($fresh->quote !== null) {
+                Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($fresh, 'returned'));
+            }
+
+            return $fresh;
         });
     }
 }

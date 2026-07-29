@@ -27,6 +27,10 @@ const STATE_META: Record<JobState, { label: string; tone: BadgeTone }> = {
   IN_PRODUCTION: { label: 'In production', tone: 'warning' },
   SHIPPED: { label: 'Shipped', tone: 'brand' },
   CLOSED: { label: 'Delivered', tone: 'success' },
+  // M15: a returned parcel that staff cancelled & credited - terminal, and
+  // off the board (inTransit lists SHIPPED only), but its badge is shown
+  // wherever the order's shipments are listed.
+  RETURNED: { label: 'Returned', tone: 'danger' },
 };
 
 function QueueSkeleton() {

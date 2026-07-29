@@ -13,6 +13,12 @@ enum JobState: string
     case InProduction = 'IN_PRODUCTION';
     case Shipped = 'SHIPPED';
     case Closed = 'CLOSED';
+    // A shipped parcel the courier returned that staff chose to cancel & credit
+    // (M15). Terminal and distinct from Closed so a returned box is never faked
+    // as delivered: on a multi-parcel order only THIS parcel is voided/restocked
+    // while its siblings continue. Also drops the job off the awaiting-delivery
+    // board (which lists SHIPPED only).
+    case Returned = 'RETURNED';
 
     /**
      * @return array<int, self>
@@ -29,8 +35,12 @@ enum JobState: string
             // (QueueService::resolveReturn's 'reship' disposition) goes back
             // to IN_PRODUCTION to re-queue for a fresh shipment, rather than
             // being stuck unable to leave SHIPPED.
-            self::Shipped => [self::Closed, self::InProduction],
+            // Returned appended last so it never shifts index [0] (Closed) that
+            // advanceNext()/the webhook rely on. Shipped→Returned is the
+            // cancel-&-credit-this-parcel edge (M15).
+            self::Shipped => [self::Closed, self::InProduction, self::Returned],
             self::Closed => [],
+            self::Returned => [],
         };
     }
 
