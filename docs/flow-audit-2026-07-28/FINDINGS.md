@@ -176,4 +176,8 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 - **M15** (cancel_credit voids the whole order for one returned parcel on a multi-job order) — rides with **H3**: both need the partial-credit / partial-restock machinery. Deferred to post-production. Money-critical.
 - Cosmetic: **M4** (INVOICED dead UI), **M18** (ProofIssued enum copy unused).
 
-**Still parked (post-production):** H3 (credit-note over-refund — needs partial-amount capture) + M15/M21 which depend on it, the remaining Low findings, and UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
+**Batch 4 — 2026-07-29 (partial-money cluster, quick-map bucket 1):** H3, M21, M15. Each with tests. *(Owner lifted the post-production freeze on this cluster.)*
+- **H3 + M21** — invoices now record `amount_paid`; reconciling to PARTIAL requires the collected amount (> 0, < total), PAID stamps the full amount. Cancel credits `Invoice::collectedAmount()` (only what was received), never the full invoice. `balance_owed` exposed; staff page shows "X collected / Y owed" and a partial-amount input.
+- **M15** — new terminal `JobState::Returned`; `QuoteService::returnParcel()` cancels & credits ONLY the returned parcel of a multi-parcel order (restocks its lines, reduces the invoice by the parcel's proportional share, credits only that share of the deposit — proportional, never > collected). Whole-order cancel only when it's the last live parcel. Owner decisions: proportional refund; add a real "Returned" parcel state.
+
+**Still parked (post-production):** the remaining Low findings and UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
