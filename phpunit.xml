@@ -32,6 +32,13 @@
         <env name="STRIPE_KEY" value=""/>
         <env name="STRIPE_SECRET" value=""/>
         <env name="STRIPE_WEBHOOK_SECRET" value=""/>
+        <!-- NinjaVan: blank creds force the FixtureNinjaVanClient binding (see
+             AppServiceProvider), so the courier tests never reach the live
+             sandbox. Without these, real creds in a developer's local .env leak
+             in and the shipment/return tests fail with a CourierException. -->
+        <env name="NINJAVAN_CLIENT_ID" value=""/>
+        <env name="NINJAVAN_CLIENT_SECRET" value=""/>
+        <env name="NINJAVAN_WEBHOOK_SECRET" value=""/>
         <env name="THINGIVERSE_TOKEN" value=""/>
         <env name="CULTS3D_TOKEN" value=""/>
         <env name="SHOPEE_AFFILIATE_APP_ID" value=""/>
