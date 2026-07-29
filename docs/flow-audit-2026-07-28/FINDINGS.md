@@ -180,4 +180,21 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 - **H3 + M21** — invoices now record `amount_paid`; reconciling to PARTIAL requires the collected amount (> 0, < total), PAID stamps the full amount. Cancel credits `Invoice::collectedAmount()` (only what was received), never the full invoice. `balance_owed` exposed; staff page shows "X collected / Y owed" and a partial-amount input.
 - **M15** — new terminal `JobState::Returned`; `QuoteService::returnParcel()` cancels & credits ONLY the returned parcel of a multi-parcel order (restocks its lines, reduces the invoice by the parcel's proportional share, credits only that share of the deposit — proportional, never > collected). Whole-order cancel only when it's the last live parcel. Owner decisions: proportional refund; add a real "Returned" parcel state.
 
-**Still parked (post-production):** the remaining Low findings and UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
+**Batch 5 — 2026-07-29 (quick-map buckets 2–4).** Each with tests unless noted.
+- **Bucket 2 — LT14:** delivered-but-unpaid orders now surface (dashboard "Delivered · unpaid" count + order-page "payment outstanding" banner).
+- **Bucket 3 — LT16, M4, L1:** personalisation fee shown as its own line so totals reconcile; INVOICED dropped from the buyer step counter (no 5→7 skip); buyer dashboard uses plain-language status. *(M18 left — correctly-dead enum copy the toggle still needs.)*
+- **Bucket 4 — hardening:**
+  - **L25/L26/L27** — new `EnsureSuperadmin` middleware on auto-publish + CSV import; `store()` gates self-publish on `products.approve`.
+  - **L28** — FE `hasPermission` no longer grandfathers sensitive Pricing/Users sections.
+  - **L21/L22** — reorder skips no-longer-buyable products; route throttled against rapid-click duplicate drafts.
+  - **L7/L10/L11** — `processed_webhook_events` idempotency/replay ledger for the Stripe + NinjaVan webhooks.
+  - **L16** — `markDelivered` locks + re-reads under the transaction (TOCTOU with a racing delivered webhook).
+  - **L15** — dispatch-date floor anchored to the courier (Asia/Singapore) timezone.
+  - **L12** — a cancel-&-credit parcel now moves to the terminal RETURNED state (M15), so it drops off the awaiting-delivery board instead of lingering re-resolvable. *(Fixed as a side effect of M15.)*
+
+**Reviewed, left by design (no code change):**
+- **L8** — Stripe unconfigured-secret returns 400 (fail-closed). Returning 2xx to stop the retry storm would silently accept+drop real payment confirmations on a misconfigured deploy — worse than the storm, which is itself the signal to fix the config.
+- **L17** — the signed track link is deliberately permanent + PII-free (name+qty only) so a buyer can bookmark it; adding an expiry would break that UX. True revocation would need tracking-code rotation (a feature, not a fix).
+- **L5, L9** — structural/by-spec (single-tenant registration; GST-in-total when delivery is unreliable) — unchanged as noted in the register.
+
+**Still parked (post-production):** a handful of minor cosmetic/edge Lows outside the quick map (L2 accept guard, L3 return-path on session expiry, L4 stale needed-by banner, L13 reship second-email invariant, L14 returned-parcel buyer-tracker label, L18–L20 proof-copy/validation/refactor, L23/L24 production-queue button polish) and UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
