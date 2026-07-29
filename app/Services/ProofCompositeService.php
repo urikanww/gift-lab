@@ -72,6 +72,39 @@ class ProofCompositeService
     }
 
     /**
+     * The composite URL ONLY if it is already cached - it never generates one.
+     *
+     * Used on the synchronous order-page path (ProofResource): serialising a
+     * proof must not trigger the product-image fetch + GD composite that
+     * signedCompositeUrl() does, or a page with N proofs blocks on N image
+     * round-trips before it renders. Generation belongs to the (queued) email
+     * path; by the time the buyer opens the order the composite is usually
+     * already cached. Falls back to null (caller shows the raw artwork) when it
+     * isn't cached yet or the disk can't presign.
+     */
+    public function cachedCompositeUrl(Proof $proof, \DateTimeInterface $expiry): ?string
+    {
+        $productImageUrl = $this->matchingProductImage($proof);
+        if ($productImageUrl === null) {
+            return null;
+        }
+
+        $disk = (string) config('filesystems.artwork_disk', 'local');
+        $ref = (string) $proof->artwork_version_ref;
+        $compositeRef = 'artwork/composites/'.md5($ref.'|'.$productImageUrl).'.png';
+
+        try {
+            if (! Storage::disk($disk)->exists($compositeRef)) {
+                return null;
+            }
+
+            return Storage::disk($disk)->temporaryUrl($compositeRef, $expiry);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
      * The product photo behind this proof's artwork, when the artwork is a
      * buyer line design. Taken straight from the proof's own line item: a proof
      * belongs to exactly one line, and a designer line names the product to

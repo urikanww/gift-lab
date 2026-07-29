@@ -39,10 +39,15 @@ class ProofResource extends JsonResource
             //
             // A proof issued from the buyer's designer artwork is a transparent
             // design-only PNG; viewed raw it reads as a logo floating on white.
-            // Prefer the flattened design-on-product composite, fall back to
-            // the raw artwork (uploaded proofs, non-presigning local disks).
+            // Prefer the flattened design-on-product composite, but only if it
+            // is ALREADY cached - never generate it here. Generating on this
+            // (synchronous) page path means an image fetch + GD composite per
+            // proof before the page renders; that work belongs to the queued
+            // email path. Falls back to the raw artwork until the composite
+            // exists (uploaded proofs, non-presigning local disks, or a proof
+            // whose email hasn't rendered yet).
             'artwork_url' => app(ProofCompositeService::class)
-                ->signedCompositeUrl($this->resource, now()->addMinutes(30))
+                ->cachedCompositeUrl($this->resource, now()->addMinutes(30))
                 ?? $this->artworkUrl(),
             'state' => $this->state->value,
             'approved_by' => $this->approved_by,

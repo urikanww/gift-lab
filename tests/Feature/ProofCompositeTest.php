@@ -110,16 +110,34 @@ it('reuses the stored composite instead of re-rendering per email', function ():
     expect(Storage::disk('artwork_test')->files('artwork/composites'))->toHaveCount(1);
 });
 
-it('serves the composite through ProofResource artwork_url for designer proofs', function (): void {
+it('serves the already-cached composite through ProofResource artwork_url for designer proofs', function (): void {
     Storage::disk('artwork_test')->put('artwork/design.png', pngBytes(100, 100, [0, 0, 255], true));
     Http::fake(['img.test/*' => Http::response(pngBytes(200, 100, [255, 0, 0]))]);
 
     $proof = seedDesignerProof();
+    // The (queued) email path generates + caches the composite first.
+    app(ProofCompositeService::class)->signedCompositeUrl($proof, now()->addDay());
+
     $data = ProofResource::make($proof)->resolve();
 
-    // "View artwork" (and the version thumbnails) must show the flattened
+    // "View artwork" (and the version thumbnails) show the flattened
     // design-on-product image, not the transparent design-only PNG.
     expect($data['artwork_url'])->toStartWith('https://bucket.test/artwork/composites/');
+});
+
+it('does not generate a composite when serialising a proof (page path stays off the image fetch)', function (): void {
+    Storage::disk('artwork_test')->put('artwork/design.png', pngBytes(100, 100, [0, 0, 255], true));
+    Http::fake(['img.test/*' => Http::response(pngBytes(200, 100, [255, 0, 0]))]);
+
+    $proof = seedDesignerProof();
+    // No prior email/generation, so nothing is cached yet.
+    $data = ProofResource::make($proof)->resolve();
+
+    // The resource must not fetch the product image or write a composite; it
+    // falls back to the raw artwork URL until the composite is cached.
+    Http::assertNothingSent();
+    expect(Storage::disk('artwork_test')->files('artwork/composites'))->toHaveCount(0)
+        ->and($data['artwork_url'])->not->toStartWith('https://bucket.test/artwork/composites/');
 });
 
 it('returns null for an uploaded proof that matches no line design', function (): void {
