@@ -54,29 +54,6 @@ const TRUST = [
   { icon: '🏢', label: 'Bulk & corporate' },
 ];
 
-// Presentational reviews - no backend. Kept static so the PDP reads as a real
-// storefront without inventing data-fetching for content that doesn't exist.
-const REVIEWS = [
-  { name: 'Priya S.', rating: 5, body: 'Beautiful finish and the proof turnaround was fast. Ordered 200 for our launch.' },
-  { name: 'Marcus L.', rating: 5, body: 'The live preview made customising painless. Exactly what we saw got delivered.' },
-  { name: 'Wei Tan', rating: 4, body: 'Great quality for the price. Would have loved more colour options.' },
-];
-const RATING_AVG = 4.8;
-const RATING_COUNT = 128;
-
-/** Static star row. Renders `value` (out of 5) rounded to the nearest whole star. */
-function Stars({ value, className }: { value: number; className?: string }) {
-  return (
-    <span className={cn('inline-flex text-warning', className)} aria-hidden="true">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <span key={i} className={i < Math.round(value) ? 'text-warning' : 'text-fg-subtle/50'}>
-          ★
-        </span>
-      ))}
-    </span>
-  );
-}
-
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useOptionalToast();
@@ -403,13 +380,6 @@ export default function ProductDetailPage() {
           <Motion variants={staggerItem} className="flex flex-col gap-3">
             <h1 className="font-display text-3xl leading-tight text-fg sm:text-4xl">{product.name}</h1>
 
-            {/* Presentational rating summary */}
-            <div className="flex items-center gap-2 text-sm">
-              <Stars value={RATING_AVG} />
-              <span className="font-medium text-fg">{RATING_AVG.toFixed(1)}</span>
-              <span className="text-fg-muted">({RATING_COUNT} reviews)</span>
-            </div>
-
             {/* Price */}
             <p className="flex items-baseline gap-2">
               <span className="text-2xs uppercase tracking-wide text-fg-subtle">from</span>
@@ -609,30 +579,6 @@ export default function ProductDetailPage() {
             <SpecRow label="Availability" value={AVAILABILITY[product.availability].label} />
           </dl>
         </Card>
-      </section>
-
-      {/* ── Reviews (presentational) ──────────────────────────────────────── */}
-      <section aria-labelledby="pdp-reviews" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 id="pdp-reviews" className="font-display text-2xl text-fg">
-            Reviews
-          </h2>
-          <div className="flex items-center gap-2 text-sm text-fg-muted">
-            <Stars value={RATING_AVG} />
-            <span>
-              {RATING_AVG.toFixed(1)} · {RATING_COUNT} reviews
-            </span>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {REVIEWS.map((r) => (
-            <Card key={r.name} padding="md" className="flex flex-col gap-2">
-              <Stars value={r.rating} />
-              <p className="text-sm text-fg-muted">{r.body}</p>
-              <p className="mt-auto pt-2 text-xs font-medium text-fg">{r.name}</p>
-            </Card>
-          ))}
-        </div>
       </section>
 
       {/* ── Related products ──────────────────────────────────────────────── */}

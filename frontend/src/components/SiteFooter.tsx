@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useAuthStore } from '../stores/authStore';
 import { Logo } from '../ui';
 
 const TRUST_BADGES = [
@@ -8,33 +9,34 @@ const TRUST_BADGES = [
   { icon: '🏢', label: 'Bulk & corporate' },
 ];
 
-const LINK_COLUMNS: { heading: string; links: { label: string; to: string }[] }[] = [
-  {
-    heading: 'Shop',
-    links: [
-      { label: 'Products', to: '/products' },
-      { label: 'Gift ideas', to: '/gift-ideas' },
-      { label: 'Track order', to: '/track' },
-      { label: 'Cart', to: '/cart' },
-    ],
-  },
-  {
-    heading: 'Company',
-    links: [
-      { label: 'About', to: '#' },
-      { label: 'Help', to: '#' },
-    ],
-  },
-  {
-    heading: 'Account',
-    links: [
-      { label: 'My Orders', to: '/quotes' },
-      { label: 'Log in', to: '/login' },
-    ],
-  },
+const SHOP_LINKS = [
+  { label: 'Products', to: '/products' },
+  { label: 'Gift ideas', to: '/gift-ideas' },
+  { label: 'Track order', to: '/track' },
+  { label: 'Cart', to: '/cart' },
 ];
 
 export default function SiteFooter() {
+  const user = useAuthStore((s) => s.user);
+
+  // Account column reflects sign-in state: "Log in" must not show to a
+  // signed-in user. The dead "Company / About / Help" column (both links were
+  // `#`) is dropped until those pages exist.
+  const accountLinks = user
+    ? [
+        { label: 'My Orders', to: '/quotes' },
+        { label: 'My account', to: '/account' },
+      ]
+    : [
+        { label: 'Log in', to: '/login' },
+        { label: 'Create account', to: '/register' },
+      ];
+
+  const LINK_COLUMNS = [
+    { heading: 'Shop', links: SHOP_LINKS },
+    { heading: 'Account', links: accountLinks },
+  ];
+
   return (
     <footer className="mt-16 border-t border-border bg-surface text-fg-muted">
       <div className="mx-auto max-w-content px-4 py-10 sm:px-6">
