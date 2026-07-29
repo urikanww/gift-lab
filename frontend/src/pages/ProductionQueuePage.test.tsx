@@ -21,6 +21,7 @@ vi.mock('../lib/scan', () => scanMock);
 import { ThemeProvider, ToastProvider } from '../ui';
 import ProductionQueuePage from './ProductionQueuePage';
 import { useQueueStore } from '../stores/queueStore';
+import api from '../lib/api';
 import type { ProductionJob } from '../types';
 
 const initialQueueStore = useQueueStore.getState();
@@ -28,6 +29,9 @@ const initialQueueStore = useQueueStore.getState();
 afterEach(() => {
   cleanup();
   useQueueStore.setState(initialQueueStore, true);
+  // A per-test api.get resolution must not leak into the next test (which
+  // relies on the bare vi.fn() returning undefined).
+  vi.mocked(api.get).mockReset();
 });
 
 const job: ProductionJob = {
@@ -111,19 +115,26 @@ it('toasts the API error when a button-driven advance fails', async () => {
   expect(advance).toHaveBeenCalledWith(5, 'IN_PRODUCTION', undefined, undefined);
 });
 
-// Bug: the "Create NinjaVan shipment" button is disabled on first load for
-// every job because addressReady only ever gets populated by opening the
-// DeliveryAddressPanel - even a job that already has a saved address renders
-// with an unexplained, permanently-greyed primary action. The production job
-// resource does not expose address-readiness, so the fix is to explain the
-// gate rather than silently leave it disabled.
-it('explains why the create-shipment button is disabled before the address panel is opened', async () => {
-  seed({ jobs: [{ ...job, state: 'IN_PRODUCTION' }] });
+// P6: booking a NinjaVan shipment is billable, so the button opens a confirm
+// modal (which shows the delivery address) rather than firing on one click - and
+// it is no longer disabled behind an opaque address-readiness gate (L23).
+it('confirms in a modal before booking a NinjaVan shipment, then books on confirm', async () => {
+  vi.mocked(api.get).mockResolvedValue({ data: { data: [] } } as any);
+  const createShipment = vi.fn().mockResolvedValue({ consignment_ref: 'SP1', tracking_url: null });
+  seed({ jobs: [{ ...job, state: 'IN_PRODUCTION' }], createShipment });
   renderPage();
 
   const button = screen.getByRole('button', { name: /create ninjavan shipment/i });
-  expect(button).toBeDisabled();
-  expect(screen.getByText(/open delivery address to confirm before booking/i)).toBeInTheDocument();
+  expect(button).toBeEnabled();
+
+  await userEvent.click(button);
+
+  // A confirm dialog appears; nothing is booked until it's confirmed.
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  expect(createShipment).not.toHaveBeenCalled();
+
+  await userEvent.click(screen.getByRole('button', { name: /book shipment/i }));
+  await waitFor(() => expect(createShipment).toHaveBeenCalledWith(5));
 });
 
 // Bug: the camera scan callback was registered once, when the camera turned

@@ -4,7 +4,7 @@ import { printFilePath, printFilesZipPath, useQueueStore } from '../stores/queue
 import JobLabel from '../components/JobLabel';
 import AwaitingDeliveryPanel from '../components/production/AwaitingDeliveryPanel';
 import api, { apiError } from '../lib/api';
-import { Badge, Button, Card, EmptyState, Input, Skeleton, Textarea, useToast } from '../ui';
+import { Badge, Button, Card, EmptyState, Input, Modal, Skeleton, Textarea, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import Model3dDecalPreview from '../components/Model3dDecalPreview';
@@ -77,13 +77,8 @@ export default function ProductionQueuePage() {
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   // Which job's delivery-address panel is expanded (staff editor).
   const [addressPanelId, setAddressPanelId] = useState<number | null>(null);
-  // Quote ids known to have a delivery address (loaded or just saved) - gates the
-  // automated NinjaVan create-shipment button so we don't fire a doomed 422.
-  const [addressReady, setAddressReady] = useState<Set<number>>(new Set());
   // Single-flight guard for the automated NinjaVan shipment booking.
   const [creatingShipmentId, setCreatingShipmentId] = useState<number | null>(null);
-  const markAddressReady = (quoteId: number) =>
-    setAddressReady((prev) => (prev.has(quoteId) ? prev : new Set(prev).add(quoteId)));
   // Shipping is confirm-gated: marking a job shipped requires a consignment ref
   // (that transition fires the buyer's "on the way" signal). This tracks which
   // card is mid-confirmation and its typed reference.
@@ -98,6 +93,10 @@ export default function ProductionQueuePage() {
   const [scanValue, setScanValue] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const [labelJobId, setLabelJobId] = useState<number | null>(null);
+  // P6: booking a NinjaVan shipment is billable, so it goes through a confirm
+  // modal (which also shows/edits the delivery address) rather than firing on a
+  // single click. Holds the job awaiting confirmation.
+  const [confirmShipJobId, setConfirmShipJobId] = useState<number | null>(null);
   const stopCameraRef = useRef<null | (() => Promise<void>)>(null);
   const toggleSelected = (id: number) =>
     setSelected((prev) => {
@@ -431,37 +430,25 @@ export default function ProductionQueuePage() {
                     {addressPanelId === j.id && (
                       <DeliveryAddressPanel
                         quoteId={j.quote_id}
-                        onLoaded={(hasAddress) => hasAddress && markAddressReady(j.quote_id)}
-                        onSaved={() => markAddressReady(j.quote_id)}
+                        onLoaded={() => {}}
+                        onSaved={() => {}}
                       />
                     )}
 
                     {j.state === 'IN_PRODUCTION' && (
-                      <>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          fullWidth
-                          loading={creatingShipmentId === j.id}
-                          disabled={
-                            !addressReady.has(j.quote_id) ||
-                            (creatingShipmentId !== null && creatingShipmentId !== j.id)
-                          }
-                          onClick={() => void onCreateShipment(j.id)}
-                        >
-                          Create NinjaVan shipment
-                        </Button>
-                        {/* addressReady only ever gets set by opening the panel below
-                            (onLoaded/onSaved) - the queue resource doesn't expose
-                            address-readiness, so on first load this button is disabled
-                            for every job, even ones with a saved address. Explain the
-                            gate instead of leaving an unexplained disabled primary action. */}
-                        {!addressReady.has(j.quote_id) && (
-                          <p className="text-xs text-fg-subtle">
-                            Open delivery address to confirm before booking.
-                          </p>
-                        )}
-                      </>
+                      // Opens the confirm modal (which shows the delivery address)
+                      // rather than booking on one click - the button no longer
+                      // depends on the panel below having been opened first (L23).
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        fullWidth
+                        loading={creatingShipmentId === j.id}
+                        disabled={creatingShipmentId !== null && creatingShipmentId !== j.id}
+                        onClick={() => setConfirmShipJobId(j.id)}
+                      >
+                        Create NinjaVan shipment
+                      </Button>
                     )}
 
                     {next && next.to === 'SHIPPED' && shippingId === j.id ? (
@@ -544,6 +531,46 @@ export default function ProductionQueuePage() {
       )}
 
       {labelJobId !== null && <JobLabel jobId={labelJobId} onClose={() => setLabelJobId(null)} />}
+
+      {/* P6: confirm before the billable NinjaVan booking. Shows (and lets staff
+          fix) the delivery address, then books on confirm. */}
+      {(() => {
+        const job = jobs.find((j) => j.id === confirmShipJobId);
+        if (!job) return null;
+        return (
+          <Modal
+            open
+            onClose={() => setConfirmShipJobId(null)}
+            title={`Book NinjaVan shipment — ${job.quote_reference ?? `order #${job.quote_id}`}`}
+            description="This books a billable courier shipment to the delivery address below. Confirm the address is correct first."
+            size="lg"
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setConfirmShipJobId(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  loading={creatingShipmentId === job.id}
+                  onClick={() => {
+                    const id = job.id;
+                    setConfirmShipJobId(null);
+                    void onCreateShipment(id);
+                  }}
+                >
+                  Book shipment
+                </Button>
+              </>
+            }
+          >
+            <DeliveryAddressPanel
+              quoteId={job.quote_id}
+              onLoaded={() => {}}
+              onSaved={() => {}}
+            />
+          </Modal>
+        );
+      })()}
     </section>
   );
 }
