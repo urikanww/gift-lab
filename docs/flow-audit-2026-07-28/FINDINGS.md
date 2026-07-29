@@ -170,9 +170,9 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 **Batch 3 — 2026-07-29 (Med findings sweep):** M22, M20, M12, M13, M16, M17, M11, M9, M19, M14, M10, **M8**. Each with a test.
 - **M8** — upload-finished-look entry point disabled (`FINISHED_LOOK_ENABLED = false`): a finished-look photo has no logo size band, so its decoration fee (keyed on S/M/L) can't be derived and the line would misprice as a flat fee or blank. Component + backend stay in place for when the pricing is built.
 
-**Remaining Med — need an owner decision (NOT fixed):**
-- **M1** (pay-now not gated B2C vs B2B) — blocked: no B2C/B2B marker exists on Company/Quote (`default_terms` is free-text NET30 for all). Safe state: the global `pay_now_cutoff.b2c_enabled` flag defaults **off**. Real fix needs a per-company "pay-now eligible" flag (schema decision).
-- **M7** (artwork-first slim path unreachable from DRAFT UI) — product-flow decision: add a "Send proofs now" action on DRAFT (exposes the built path) **or** remove the dead edge/email. Nobody blocked; lowest urgency.
+**Remaining Med — owner decisions recorded 2026-07-29 (NOT code-fixed):**
+- **M1** (pay-now not gated B2C vs B2B) — **DECISION: keep the global switch OFF for MVP, no code.** Confirmed `PricingConfigSeeder.php:56` seeds `pay_now_cutoff.b2c_enabled => false`, and all three read sites default to false — so card pay-now never renders in real data. Revisit when self-serve card payment is actually wanted; the real fix then needs a per-company "pay-now eligible" flag (no B2C/B2B marker exists today — `default_terms` is free-text NET30 for all).
+- **M7** (artwork-first slim path unreachable from DRAFT UI) — **DECISION: leave as-is, defer.** Nobody's blocked; the built path stays dormant. Revisit post-MVP (add a "Send proofs now" DRAFT action, or delete the dead edge/email).
 - **M15** (cancel_credit voids the whole order for one returned parcel on a multi-job order) — rides with **H3**: both need the partial-credit / partial-restock machinery. Deferred to post-production. Money-critical.
 - Cosmetic: **M4** (INVOICED dead UI), **M18** (ProofIssued enum copy unused).
 
