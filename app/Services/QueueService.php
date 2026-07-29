@@ -442,27 +442,39 @@ final class QueueService
         }
 
         return DB::transaction(function () use ($job, $note): ProductionJob {
-            $previousCourierStatus = $job->last_courier_status;
+            // L16: lock the row and RE-READ its state under the lock, mirroring
+            // the NinjaVan webhook's TOCTOU guard. A delivered webhook racing
+            // this manual confirmation also takes this lock; whichever commits
+            // second re-reads the now-CLOSED job here and no-ops instead of
+            // advancing again (which would fire a second "delivered" email).
+            $locked = ProductionJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($locked->state !== JobState::Shipped) {
+                // The other path already closed it - idempotent no-op.
+                return $locked;
+            }
+
+            $previousCourierStatus = $locked->last_courier_status;
 
             // Stamp the manual-confirmation marker BEFORE advancing, so the row
             // the tracker reads reflects a staff-confirmed delivery.
-            $job->last_courier_status = self::MANUAL_DELIVERED_STATUS;
-            $job->last_courier_status_at = now();
-            $job->save();
+            $locked->last_courier_status = self::MANUAL_DELIVERED_STATUS;
+            $locked->last_courier_status_at = now();
+            $locked->save();
 
             // Same close path the webhook uses: closes the job, closes the quote
             // when it's the last one, and fires the delivered milestone email.
-            $job = $this->advance($job, JobState::Closed);
+            $locked = $this->advance($locked, JobState::Closed);
 
-            $this->audit->log($job, 'production_job.manually_delivered', [
+            $this->audit->log($locked, 'production_job.manually_delivered', [
                 'last_courier_status' => $previousCourierStatus,
                 'state' => JobState::Shipped->value,
             ], [
                 'note' => $note,
-                'state' => $job->state->value,
+                'state' => $locked->state->value,
             ]);
 
-            return $job;
+            return $locked;
         });
     }
 

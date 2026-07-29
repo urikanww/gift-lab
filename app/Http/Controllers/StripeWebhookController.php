@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\ProcessedWebhookEvent;
 use App\Models\Quote;
 use App\Services\Payment\PaymentService;
 use Illuminate\Http\JsonResponse;
@@ -39,12 +40,25 @@ class StripeWebhookController extends Controller
         }
 
         if ($event->type === 'checkout.session.completed') {
+            // L7: event-level idempotency. Stripe redelivers events (at-least-once)
+            // and a rethrown non-unique error would otherwise 500 → retry → risk a
+            // second capture. confirmPaid is already TOCTOU-idempotent, but this
+            // recognises a duplicate up front and skips it cleanly.
+            if (ProcessedWebhookEvent::processed('stripe', $event->id)) {
+                Log::info('Stripe webhook duplicate ignored.', ['event_id' => $event->id]);
+
+                return response()->json(['received' => true]);
+            }
+
             $session = $event->data->object;
             $quoteId = (int) ($session->metadata->quote_id ?? 0);
             $quote = Quote::find($quoteId);
 
             if ($quote !== null) {
                 $payments->confirmPaid($quote, (string) $session->id);
+                // Recorded only after a successful capture: a handler that threw
+                // never records, so Stripe's retry re-processes it.
+                ProcessedWebhookEvent::record('stripe', $event->id);
             } else {
                 // A verified event whose quote can't be resolved means a metadata
                 // regression (missing/renamed quote_id) or a deleted quote - log

@@ -9,9 +9,23 @@ use App\Services\Courier\CourierShipment;
 use App\Services\Courier\HttpNinjaVanClient;
 use App\Support\CourierConfig;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
+
+afterEach(fn () => Carbon::setTestNow());
+
+// L15: the earliest-dispatch floor ("never today/past, so today+1") is computed
+// in the courier timeslot's timezone (Asia/Singapore), not the server's. At
+// 2026-07-27 20:00 UTC it is already 2026-07-28 in Singapore, so a stale
+// requested date floors to the SG day+1 (2026-07-29), never the UTC day+1.
+it('anchors the earliest dispatch date to the courier timezone, not the server (L15)', function (): void {
+    Carbon::setTestNow('2026-07-27 20:00:00'); // UTC → 2026-07-28 04:00 in Singapore
+
+    // A long-past requested date is floored to "SG today + 1".
+    expect(CourierConfig::resolveDispatchDate('2026-01-01'))->toBe('2026-07-29');
+});
 
 beforeEach(function (): void {
     Cache::flush();

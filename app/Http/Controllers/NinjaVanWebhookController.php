@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\JobState;
 use App\Events\OrderTrackingUpdated;
+use App\Models\ProcessedWebhookEvent;
 use App\Models\ProductionJob;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Services\QueueService;
@@ -87,6 +88,20 @@ class NinjaVanWebhookController extends Controller
         $payload = json_decode($body, true);
         if (! is_array($payload)) {
             Log::warning('NinjaVan webhook payload is not valid JSON.');
+
+            return response()->json(['received' => true]);
+        }
+
+        // L10/L11: event-level idempotency + replay guard. NinjaVan carries no
+        // reliable event id, so the key is a hash of the (already signature-
+        // verified) body: a duplicate retry or a replayed capture hashes the
+        // same and is skipped, so returned/failed events don't re-fire staff
+        // alerts or re-broadcast, and a captured body can't be replayed to
+        // repeat side effects. Recorded only after successful handling below, so
+        // a genuine failure still gets retried.
+        $eventKey = hash('sha256', $body);
+        if (ProcessedWebhookEvent::processed('ninjavan', $eventKey)) {
+            Log::info('NinjaVan webhook duplicate/replay ignored.');
 
             return response()->json(['received' => true]);
         }
@@ -202,6 +217,10 @@ class NinjaVanWebhookController extends Controller
         if ($needsAttentionAlert) {
             $staffNotifier->parcelReturned($job->fresh() ?? $job);
         }
+
+        // Record only now that side effects have committed, so a duplicate/replay
+        // of this exact body is recognised and skipped next time (L10/L11).
+        ProcessedWebhookEvent::record('ninjavan', $eventKey);
 
         return response()->json(['received' => true]);
     }

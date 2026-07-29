@@ -113,10 +113,16 @@ final class CourierConfig
     {
         $schedule = self::schedule();
 
-        $base = CarbonImmutable::parse($requestedDate)->startOfDay();
+        // L15: anchor "today" to the courier timeslot's timezone (Asia/Singapore),
+        // not the server's. On a UTC host, CarbonImmutable::now() near midnight
+        // reads the previous SG day, so the earliest-dispatch floor could land a
+        // day early - previously only masked by the +1-day margin below.
+        $tz = self::timeslot()['timezone'];
 
-        // Never today or in the past.
-        $earliest = CarbonImmutable::now()->startOfDay()->addDay();
+        $base = CarbonImmutable::parse($requestedDate, $tz)->startOfDay();
+
+        // Never today or in the past (in the courier's own timezone).
+        $earliest = CarbonImmutable::now($tz)->startOfDay()->addDay();
         if ($base->lessThan($earliest)) {
             $base = $earliest;
         }

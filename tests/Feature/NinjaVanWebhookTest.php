@@ -165,6 +165,27 @@ it('flags Returned to Sender for staff without regressing job state', function (
         ->and($job->last_courier_status)->toBe('Delivery unsuccessful — returned');
 });
 
+it('skips a replayed identical event so staff are not re-alerted or re-broadcast (L10/L11)', function (): void {
+    $job = ninjaVanShippedJob('NVSGNEXGEREPLAY01');
+
+    // Fake AFTER building the job, so only the webhook's own broadcasts count.
+    Event::fake([OrderTrackingUpdated::class]);
+
+    $payload = [
+        'tracking_number' => 'NVSGNEXGEREPLAY01',
+        'status' => 'Out for Delivery',
+        'timestamp' => '2026-07-27T10:00:00+08:00',
+    ];
+
+    postNinjaVanWebhook($payload)->assertOk();
+    // Exact same signed body again (courier retry / replayed capture).
+    postNinjaVanWebhook($payload)->assertOk();
+
+    // Processed once: the broadcast fires once and the event is recorded once.
+    Event::assertDispatchedTimes(OrderTrackingUpdated::class, 1);
+    expect(App\Models\ProcessedWebhookEvent::where('source', 'ninjavan')->count())->toBe(1);
+});
+
 it('rejects an invalid signature with no state change', function (): void {
     $job = ninjaVanShippedJob('NVSGNEXGE000BAD001');
 
