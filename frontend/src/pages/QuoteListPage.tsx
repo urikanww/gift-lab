@@ -159,6 +159,9 @@ export default function QuoteListPage() {
                       </th>
                     )}
                     <th scope="col" className="px-5 py-3 font-medium">
+                      Items
+                    </th>
+                    <th scope="col" className="px-5 py-3 font-medium">
                       Status
                     </th>
                     <th scope="col" className="px-5 py-3 text-right font-medium">
@@ -252,6 +255,7 @@ function QuoteRow({
           {quote.company_name ?? `Company #${quote.company_id}`}
         </td>
       )}
+      <td className="px-5 py-4 tabular-nums text-fg-muted">{quote.items_preview?.length ?? '—'}</td>
       <td className="px-5 py-4">
         <Badge tone={quoteStateTone(quote.state)} dot>
           {humanizeState(quote.state)}

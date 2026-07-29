@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useQuoteStore } from '../stores/quoteStore';
 import { Badge, Card, LinkButton, Skeleton } from '../ui';
@@ -33,6 +33,7 @@ export default function BuyerDashboardPage() {
   }, [fetchSummary, fetchQuotes]);
 
   const recent = quotes.slice(0, 4);
+  const navigate = useNavigate();
 
   return (
     <section aria-labelledby="dashboard-heading" className="flex flex-col gap-6">
@@ -140,24 +141,46 @@ export default function BuyerDashboardPage() {
             to start your first gift order.
           </p>
         ) : (
-          <ul className="mt-4 flex flex-col divide-y divide-border">
-            {recent.map((q) => (
-              <li key={q.id}>
-                <Link
-                  to={`/orders/${q.reference}`}
-                  className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 hover:opacity-80 focus-visible:outline-none focus-visible:underline"
-                >
-                  <span className="font-medium text-fg">Order {q.reference}</span>
-                  <Badge tone={quoteStateTone(q.state)} dot>
-                    {humanizeState(q.state)}
-                  </Badge>
-                  <span className="tabular-nums text-sm text-fg-muted">
-                    {q.currency} {q.total}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-fg-subtle">
+                  <th scope="col" className="py-2 pr-3 font-medium">Order</th>
+                  <th scope="col" className="py-2 pr-3 font-medium">Items</th>
+                  <th scope="col" className="py-2 pr-3 font-medium">Status</th>
+                  <th scope="col" className="py-2 pl-3 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((q) => (
+                  <tr
+                    key={q.id}
+                    className="cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-surface-2"
+                    onClick={() => navigate(`/orders/${q.reference}`)}
+                  >
+                    <td className="py-3 pr-3">
+                      <Link
+                        to={`/orders/${q.reference}`}
+                        className="font-medium text-fg hover:text-primary focus-visible:outline-none focus-visible:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {q.reference}
+                      </Link>
+                    </td>
+                    <td className="py-3 pr-3 tabular-nums text-fg-muted">{q.items_preview?.length ?? '—'}</td>
+                    <td className="py-3 pr-3">
+                      <Badge tone={quoteStateTone(q.state)} dot>
+                        {humanizeState(q.state)}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pl-3 text-right tabular-nums text-fg">
+                      {q.currency} {q.total}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </section>
