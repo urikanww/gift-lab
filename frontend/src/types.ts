@@ -363,6 +363,9 @@ export interface Quote {
   state: QuoteState;
   currency: string;
   subtotal: string;
+  /** LT16: personalisation/decoration fee folded into subtotal, surfaced as its
+   *  own row so item lines + this = subtotal. Present only when lineItems load. */
+  customization_fee?: string;
   delivery: string;
   /**
    * GST amount, already folded into `total`. Snapshotted at create/amend time

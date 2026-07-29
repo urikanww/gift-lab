@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Enums\LineItemState;
 use App\Enums\ProofState;
 use App\Models\PricingConfig;
 use App\Models\Quote;
@@ -37,6 +38,16 @@ class QuoteResource extends JsonResource
             'state' => $this->state->value,
             'currency' => $this->currency,
             'subtotal' => $this->subtotal,
+            // LT16: the personalisation/decoration fee is folded into subtotal
+            // but has no line of its own, so the item rows (unit*qty) visibly
+            // sum to LESS than subtotal with an unexplained gap. Surface the
+            // aggregate fee (subtotal - sum of active line totals) so the client
+            // can render it as its own row and the numbers reconcile. Only
+            // meaningful once lineItems is loaded; omitted otherwise.
+            'customization_fee' => $this->when(
+                $this->relationLoaded('lineItems'),
+                fn (): string => $this->customizationFeeTotal(),
+            ),
             'delivery' => $this->delivery,
             // GST amount + rate (pct, e.g. "9.00") snapshotted at create/amend
             // time by QuoteService - see PricingService::quoteTotals(). Rate is
@@ -154,6 +165,26 @@ class QuoteResource extends JsonResource
             'consignment_ref' => $job->consignment_ref,
             'delivered_at' => $job->delivered_at?->toIso8601String(),
         ])->values()->all();
+    }
+
+    /**
+     * The aggregate personalisation/decoration fee baked into subtotal: subtotal
+     * minus the sum of active (non dropped/cancelled) line totals. Formatted to
+     * 2dp as a string to match the other money fields. Dropped/cancelled lines
+     * contribute nothing to subtotal, so they're excluded here too, or the fee
+     * would read low (or negative) on an amended order.
+     */
+    private function customizationFeeTotal(): string
+    {
+        $activeLineTotals = $this->lineItems
+            ->reject(fn ($line): bool => in_array(
+                $line->line_state,
+                [LineItemState::Dropped, LineItemState::Cancelled],
+                true,
+            ))
+            ->reduce(fn (float $carry, $line): float => $carry + (float) $line->lineTotal(), 0.0);
+
+        return number_format(max(0.0, round((float) $this->subtotal - $activeLineTotals, 2)), 2, '.', '');
     }
 
     /**

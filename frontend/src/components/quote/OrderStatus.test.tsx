@@ -19,7 +19,7 @@ it('summarises the current state, the next state and the position', () => {
 
   expect(screen.getByText('Proofing')).toBeInTheDocument();
   expect(screen.getByText(/next: Proof approved/i, { exact: false })).toBeInTheDocument();
-  expect(screen.getByText('step 4 of 9')).toBeInTheDocument();
+  expect(screen.getByText('step 4 of 8')).toBeInTheDocument();
 });
 
 it('promises no next step on the last happy-path step', () => {
@@ -27,7 +27,7 @@ it('promises no next step on the last happy-path step', () => {
 
   expect(screen.getByText('Ready')).toBeInTheDocument();
   expect(screen.queryByText(/next:/i)).not.toBeInTheDocument();
-  expect(screen.getByText('step 9 of 9')).toBeInTheDocument();
+  expect(screen.getByText('step 8 of 8')).toBeInTheDocument();
 });
 
 it('reads a closed order as finished, not positioned', () => {

@@ -14,14 +14,19 @@ import type { QuoteState } from '../../types';
  * one that can show loops, off-path hops and the actor behind each change.
  */
 
-/** Ordered happy-path lifecycle, for the glance position only. */
+/**
+ * Ordered happy-path lifecycle, for the glance position only. INVOICED is
+ * deliberately omitted (M4): it's an atomic pass-through the order never rests
+ * in (issueInvoice transitions Invoiced→Confirmed in one step), so listing it
+ * made the buyer's counter jump 5→7 with step 6 never rendering. The remaining
+ * eight are states an order can actually sit in.
+ */
 const TIMELINE: QuoteState[] = [
   'DRAFT',
   'SENT',
   'ACCEPTED',
   'PROOFING',
   'PROOF_APPROVED',
-  'INVOICED',
   'CONFIRMED',
   'PROCURING',
   'READY',

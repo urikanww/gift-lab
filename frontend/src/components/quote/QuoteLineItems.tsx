@@ -153,6 +153,17 @@ export function PricingSummary({ quote }: { quote: Quote }) {
   return (
     <div className="border-t border-border bg-surface-2/50 px-5 py-4">
       <dl className="ml-auto flex max-w-xs flex-col gap-2">
+        {/* LT16: the personalisation fee is folded into subtotal - show it as
+            its own row so the item lines above + this reconcile to Subtotal,
+            instead of an unexplained gap. Hidden when there's no fee. */}
+        {quote.customization_fee !== undefined && Number(quote.customization_fee) > 0 && (
+          <div className="flex justify-between text-sm">
+            <dt className="text-fg-muted">Personalisation</dt>
+            <dd className="tabular-nums text-fg">
+              {quote.currency} {quote.customization_fee}
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between text-sm">
           <dt className="text-fg-muted">Subtotal</dt>
           <dd className="tabular-nums text-fg">
