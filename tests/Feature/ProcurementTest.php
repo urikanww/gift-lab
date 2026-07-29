@@ -698,15 +698,18 @@ it('retotals the quote and invoice when a shortfall is accepted as-is', function
 
     $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'approve'])->assertOk();
 
-    // Bill follows the goods: 60 x 15.00 = 900.00, against an original line of
-    // 1500.00. The line is what will actually be produced, too. Total adds gst
-    // (9% of 950.00 = 85.50).
+    // Bill follows the goods, fee-inclusively (M2): the 40 removed units lose
+    // the unit price AND the 0.40 per-unit decoration fee, not just the bare
+    // price. before = (100 x 15) + 8 flat + (0.40 x 100) = 1548; after =
+    // (60 x 15) + 8 + (0.40 x 60) = 932; delta -616, so subtotal 1500 -> 884
+    // (bare lineTotal would have left it at 900, billing decoration for 40 units
+    // never made). Total adds delivery 50 + gst (9% of 934 = 84.06).
     $quote->refresh();
     expect($line->fresh()->qty)->toBe(60)
         ->and($line->fresh()->line_state->value)->toBe('READY')
-        ->and((float) $quote->subtotal)->toBe(900.00)
-        ->and((float) $quote->total)->toBe(1035.50)
-        ->and((float) $invoice->fresh()->amount)->toBe(1035.50);
+        ->and((float) $quote->subtotal)->toBe(884.00)
+        ->and((float) $quote->total)->toBe(1018.06)
+        ->and((float) $invoice->fresh()->amount)->toBe(1018.06);
 });
 
 // procured_qty 0 means nothing could be sourced at all - no variant, no

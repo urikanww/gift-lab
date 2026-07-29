@@ -1318,7 +1318,13 @@ final class QuoteService
                     // A price jump leaves procured_qty at the ordered figure, so
                     // the delta is zero and the quoted price stands: accepting a
                     // price rise means absorbing it, not passing it on.
-                    $before = (float) $line->lineTotal();
+                    //
+                    // Fee-inclusive (lineSubtotalContribution(), not bare
+                    // lineTotal()), mirroring amend/drop: on a quantity shortfall
+                    // the removed units must lose the per-unit decoration fee too,
+                    // not just the unit price - otherwise the buyer is billed
+                    // decoration for units the floor never made.
+                    $before = $this->lineSubtotalContribution($line);
                     $line->qty = $line->procured_qty;
                     $line->save();
 
@@ -1326,7 +1332,7 @@ final class QuoteService
                     $line->transitionTo(LineItemState::Inbound);
                     $line->transitionTo(LineItemState::Received);
                     $line->transitionTo(LineItemState::Ready);
-                    $totalDelta = (float) $line->lineTotal() - $before;
+                    $totalDelta = $this->lineSubtotalContribution($line) - $before;
                     break;
 
                 case 'drop':
