@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\AuditLog;
 use App\Models\Company;
+use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Proof;
 use App\Models\Quote;
@@ -43,7 +44,36 @@ it('reports pipeline, production, and queue counts', function (): void {
     expect($res->json('pipeline.SENT'))->toBe(2);
     expect($res->json('pipeline.ACCEPTED'))->toBe(1);
     expect($res->json('production'))->toHaveKeys(['byState', 'wip', 'overdue']);
-    expect($res->json('queues'))->toHaveKeys(['proofsPending', 'changesRequested', 'procurementToReconfirm', 'cataloguePending', 'reordersOpen']);
+    expect($res->json('queues'))->toHaveKeys(['proofsPending', 'changesRequested', 'procurementToReconfirm', 'cataloguePending', 'reordersOpen', 'unpaidDelivered']);
+});
+
+it('counts delivered-but-unpaid orders so a completed-yet-unpaid order is never invisible (LT14)', function (): void {
+    Cache::flush();
+    $company = Company::factory()->create();
+
+    // Delivered (CLOSED) with an outstanding invoice - must be flagged.
+    $unpaid = Quote::factory()->create(['company_id' => $company->id, 'state' => 'CLOSED']);
+    Invoice::create(['quote_id' => $unpaid->id, 'po_ref' => 'PO-U', 'payment_state' => 'UNPAID',
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    $partial = Quote::factory()->create(['company_id' => $company->id, 'state' => 'CLOSED']);
+    Invoice::create(['quote_id' => $partial->id, 'po_ref' => 'PO-P', 'payment_state' => 'PARTIAL', 'amount_paid' => 100,
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    // Delivered AND fully paid - not outstanding, must NOT count.
+    $paid = Quote::factory()->create(['company_id' => $company->id, 'state' => 'CLOSED']);
+    Invoice::create(['quote_id' => $paid->id, 'po_ref' => 'PO-K', 'payment_state' => 'PAID', 'amount_paid' => 500,
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    // Unpaid but NOT yet delivered - normal, not chased here.
+    $inFlight = Quote::factory()->create(['company_id' => $company->id, 'state' => 'CONFIRMED']);
+    Invoice::create(['quote_id' => $inFlight->id, 'po_ref' => 'PO-F', 'payment_state' => 'UNPAID',
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/dashboard')->assertOk();
+
+    expect($res->json('queues.unpaidDelivered'))->toBe(2);
 });
 
 it('counts only the latest bounced proof per quote in changesRequested', function (): void {

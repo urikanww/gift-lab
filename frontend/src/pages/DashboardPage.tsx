@@ -43,6 +43,9 @@ export default function DashboardPage() {
         <StatTile label="Procurement to reconfirm" value={data.queues.procurementToReconfirm} to="/procurement" />
         <StatTile label="Catalogue pending" value={data.queues.cataloguePending} to="/catalogue-admin" />
         <StatTile label="At-risk / overdue jobs" value={data.production.overdue} to="/production-queue" />
+        {/* LT14: delivered orders whose invoice is still outstanding - a
+            completed-yet-unpaid order used to have no flag and nothing to chase. */}
+        <StatTile label="Delivered · unpaid" value={data.queues.unpaidDelivered} to="/quotes" />
       </section>
 
       {data.valueBooked && (

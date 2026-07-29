@@ -42,6 +42,8 @@ export interface DashboardPayload {
     procurementToReconfirm: number;
     cataloguePending: number;
     reordersOpen: number;
+    /** LT14: orders delivered (CLOSED) but still UNPAID/PARTIAL - money to chase. */
+    unpaidDelivered: number;
   };
   activity: DashboardActivity[];
   valueBooked: { currency: string; amount: number } | null;

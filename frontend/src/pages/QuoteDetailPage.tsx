@@ -903,6 +903,16 @@ export default function QuoteDetailPage() {
               {PAYMENT_STATE_LABEL[quote.invoice.payment_state]}
             </Badge>
           </div>
+          {/* LT14: a delivered (CLOSED) order whose invoice is still owed is
+              easy to lose - flag it loudly so the money gets chased. */}
+          {quote.state === 'CLOSED' &&
+            quote.invoice.payment_state !== 'PAID' &&
+            quote.invoice.payment_state !== 'VOID' && (
+              <p className="rounded-md bg-danger/10 px-3 py-2 text-sm font-medium text-danger">
+                Delivered — payment outstanding: {quote.invoice.currency}{' '}
+                {(quote.invoice.balance_owed || Number(quote.invoice.amount)).toFixed(2)} still owed.
+              </p>
+            )}
           {/* H3/M21: show what's been collected and what's still owed, so a
               PARTIAL invoice - or a delivered-but-unpaid order (LT14) - reads
               its own outstanding balance instead of just a status word. */}

@@ -42,7 +42,7 @@ class DashboardMetrics
         // queues twice). Only valueBooked differs, so it gets its own key and is
         // computed/cached solely for superadmins.
         $counts = Cache::remember(
-            'dashboard.metrics.v3',
+            'dashboard.metrics.v4',
             45,
             fn (): array => [
                 'pipeline' => $this->pipeline(),
@@ -114,6 +114,14 @@ class DashboardMetrics
             'procurementToReconfirm' => LineItem::query()->where('line_state', 'AWAITING_RECONFIRM')->count(),
             'cataloguePending' => Product::query()->where('publish_state', 'READY_TO_APPROVE')->count(),
             'reordersOpen' => SupplierReorder::query()->where('state', '!=', 'RECEIVED')->count(),
+            // LT14: orders that reached CLOSED (delivered) but whose invoice is
+            // still outstanding (UNPAID or PARTIAL, i.e. not fully PAID and not
+            // VOIDed). A completed-yet-unpaid order otherwise blends in with the
+            // paid ones with no flag and nothing to chase.
+            'unpaidDelivered' => Quote::query()
+                ->where('state', 'CLOSED')
+                ->whereHas('purchaseOrders', fn (Builder $q): Builder => $q->whereIn('payment_state', ['UNPAID', 'PARTIAL']))
+                ->count(),
         ];
     }
 
