@@ -64,6 +64,11 @@ final class Model3dProcurement implements ProcurementStrategy
             $filament->qty_on_hand = (float) $filament->qty_on_hand - $neededGrams;
             $filament->save();
 
+            // Record what this line actually drew so a later cancel can return
+            // exactly this much (filament has no ledger to reconstruct it from).
+            $lineItem->consumed_grams = $neededGrams;
+            $lineItem->save();
+
             if ($filament->isBelowThreshold()) {
                 $this->draftReorder($filament->id, (float) $filament->reorder_threshold * 2);
             }

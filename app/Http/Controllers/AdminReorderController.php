@@ -82,9 +82,19 @@ class AdminReorderController extends Controller
             );
         }
 
+        // Filament reorders have no ledger (filament is a bare counter); add the
+        // received grams straight back so a filament reorder marked received
+        // actually replenishes stock instead of only flipping its state.
+        $filamentGrams = (float) $reorder->qty;
+        if ($reorder->filament !== null && $filamentGrams > 0) {
+            $reorder->filament->qty_on_hand = (float) $reorder->filament->qty_on_hand + $filamentGrams;
+            $reorder->filament->save();
+        }
+
         $this->audit->log($reorder, 'supplier_reorder.received', ['state' => $previous], [
             'state' => $reorder->state->value,
             'restocked_qty' => $reorder->variant !== null ? $qty : 0,
+            'restocked_grams' => $reorder->filament !== null ? $filamentGrams : 0,
         ]);
 
         return response()->json(['data' => $this->serialize($reorder->fresh(['variant.product', 'filament']))]);

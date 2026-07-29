@@ -16,6 +16,7 @@ use App\Events\QuoteStateChanged;
 use App\Exceptions\DomainRuleException;
 use App\Mail\QuoteReadyMail;
 use App\Models\CreditNote;
+use App\Models\Filament;
 use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
@@ -1123,6 +1124,11 @@ final class QuoteService
             // included, which pulls a negative balance back toward zero).
             $this->returnConsumedStock($quote);
 
+            // MODEL_3D lines draw filament (no ledger), so return exactly the
+            // grams each line recorded consuming - otherwise cancelling a 3D
+            // order silently loses that filament from inventory.
+            $this->returnConsumedFilament($quote);
+
             // Close the money loop: a PAID/PARTIAL B2B invoice has no gateway to
             // refund through, so cancelling one voids it and mints a credit note
             // for what was collected. Must run inside this same transaction -
@@ -1222,6 +1228,40 @@ final class QuoteService
                     note: 'quote cancelled',
                 );
             }
+        }
+    }
+
+    /**
+     * Return the filament each MODEL_3D line consumed. Filament is a bare
+     * counter with no ledger, so the grams drawn are read from the line's
+     * recorded consumed_grams (set at procurement time) and added back to the
+     * matching filament, then cleared so a re-run can't double-return.
+     */
+    private function returnConsumedFilament(Quote $quote): void
+    {
+        $quote->loadMissing('lineItems.product');
+
+        foreach ($quote->lineItems as $line) {
+            $grams = (float) ($line->consumed_grams ?? 0);
+            if ($grams <= 0 || $line->product === null) {
+                continue;
+            }
+
+            $filament = Filament::query()
+                ->where('material', $line->product->filament_material)
+                ->where('color', $line->product->filament_color)
+                ->lockForUpdate()
+                ->first();
+
+            if ($filament === null) {
+                continue;
+            }
+
+            $filament->qty_on_hand = (float) $filament->qty_on_hand + $grams;
+            $filament->save();
+
+            $line->consumed_grams = null;
+            $line->save();
         }
     }
 

@@ -41,6 +41,7 @@ class LineItem extends Model
         'line_state',
         'procured_qty',
         'procured_price',
+        'consumed_grams',
         'procurement_note',
         'frozen_snapshot',
         'lead_time_days',
@@ -55,6 +56,7 @@ class LineItem extends Model
             'line_state' => LineItemState::class,
             'procured_qty' => 'integer',
             'procured_price' => 'decimal:2',
+            'consumed_grams' => 'decimal:3',
             'frozen_snapshot' => 'array',
             'lead_time_days' => 'integer',
         ];
