@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -759,6 +760,15 @@ final class QuoteService
      */
     public function accept(Quote $quote): Quote
     {
+        // L2: explicit state guard. Accept only applies to a quote awaiting the
+        // buyer's price agreement (SENT, or ARTWORK_APPROVED on the slim path).
+        // Without this, calling accept on any other state stamped accepted_at
+        // and then bounced off the state machine with a raw transition 422
+        // (rolled back, but an opaque message) - this gives a clean, honest one.
+        if (! in_array($quote->state, [QuoteState::Sent, QuoteState::ArtworkApproved], true)) {
+            throw new DomainRuleException('This order is not awaiting price acceptance.');
+        }
+
         return DB::transaction(function () use ($quote): Quote {
             $previous = $quote->state->value;
             $quote->accepted_at = now();
@@ -903,6 +913,14 @@ final class QuoteService
     private function emailProofsReady(Quote $quote): void
     {
         if (! $this->notifier->isEnabled(OrderMilestone::ProofIssued)) {
+            // L18: respecting the mute is intentional, but a silently email-less
+            // proof round leaves the buyer to discover it in-portal. Log it so
+            // "no proof email went out" is visible to staff/ops rather than
+            // invisible (mirrors the not-fail-silently stance of M11/M17).
+            Log::info('Proof-ready email suppressed: the "Revised proof issued" milestone is disabled.', [
+                'quote_id' => $quote->id,
+            ]);
+
             return;
         }
 

@@ -266,9 +266,12 @@ export default function QuoteDetailPage() {
 
   // A line needs a proof when it carries a real customization (an in-app design,
   // an uploaded artwork ref, or buyer reference photos) and has not been dropped.
-  // Not keyed on `mode` alone: a real designer line can arrive with artwork_ref
-  // set but no mode key (see the order 9BWVKWCDXH regression).
+  // L20: prefer the server's authoritative needs_proof (LineItem::needsProof) so
+  // there is one definition; the local derivation is only a fallback for a
+  // payload that predates the field. Not keyed on `mode` alone: a real designer
+  // line can arrive with artwork_ref set but no mode key (order 9BWVKWCDXH).
   const lineNeedsProof = (li: LineItem): boolean => {
+    if (li.needs_proof !== undefined) return li.needs_proof;
     if (li.line_state === 'DROPPED') return false;
     const c = li.customization;
     if (!c) return false;

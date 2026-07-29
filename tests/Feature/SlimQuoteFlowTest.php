@@ -53,8 +53,10 @@ it('does not stamp acceptance when accept is called on an illegal state', functi
     $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT']);
 
     $this->actingAs($buyer);
+    // L2: an explicit domain guard now rejects accept on a non-acceptable state
+    // (DRAFT here) with a clean message, before the state machine is touched.
     expect(fn () => app(QuoteService::class)->accept($quote))
-        ->toThrow(InvalidStateTransitionException::class);
+        ->toThrow(App\Exceptions\DomainRuleException::class);
 
     $fresh = $quote->fresh();
     expect($fresh->accepted_at)->toBeNull()

@@ -776,10 +776,14 @@ function JobLineDetail({ line }: { line: JobLineItem }) {
   const [dlPart, setDlPart] = useState<number | null>(null);
   const [dlProduction, setDlProduction] = useState(false);
 
-  // The file the floor actually prints: the H2S production file, falling back to
-  // the canonical STL. Both refs are backend-serialized (added separately), so
-  // until they arrive this is null and the button below simply doesn't render.
-  const productionRef = product?.production_file_ref ?? product?.model_file_ref ?? null;
+  // L24: gate the production-file download on production_file_ref ALONE. The
+  // /production-file endpoint isn't built yet (TODO below), but model_file_ref
+  // IS set on every 3D product - the old fallback made this button render and
+  // then 404 on click, promising an STL the route can't serve. Per-part STLs
+  // (downloadPart) use a real, working endpoint and are unaffected. When the
+  // production-file route lands and starts serving production_file_ref, the
+  // button lights up on its own.
+  const productionRef = product?.production_file_ref ?? null;
 
   // Download the print-floor production file (H2S `.3mf`, fallback STL). Staff-
   // gated, so fetch through the authed axios client as a blob then save via a
@@ -914,7 +918,9 @@ function JobLineDetail({ line }: { line: JobLineItem }) {
           loading={dlProduction}
           onClick={() => void downloadProductionFile()}
         >
-          {product?.production_file_ref ? 'Download production file (.3mf)' : 'Download print file (STL)'}
+          {/* productionRef is now production_file_ref only (L24), so the label
+              always names the real file this button serves. */}
+          Download production file (.3mf)
         </Button>
       )}
 

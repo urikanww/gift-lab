@@ -16,6 +16,19 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class DecideProofRequest extends FormRequest
 {
+    /**
+     * L19: trim the change-note BEFORE validation so a whitespace-only note
+     * collapses to '' and the required_if below rejects it. The UI already
+     * blocks a blank note; this closes the same gap on a direct API call, where
+     * a "   " note used to satisfy required_if.
+     */
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->notes)) {
+            $this->merge(['notes' => trim($this->notes)]);
+        }
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();

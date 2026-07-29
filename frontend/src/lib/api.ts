@@ -42,7 +42,12 @@ api.interceptors.response.use(
       const isAuthProbe = url.includes('/user') || url.includes('/login');
       if (!isAuthProbe && !window.location.pathname.startsWith('/login')) {
         csrfInitialized = false;
-        window.location.assign('/login');
+        // L3: carry the page they were on so login can return them there (e.g.
+        // an expiry mid-checkout lands back on /checkout, not /account). This is
+        // a full-page redirect, so the path rides as a query param, not router
+        // state; LoginPage validates it is a same-origin path before using it.
+        const from = window.location.pathname + window.location.search;
+        window.location.assign(`/login?from=${encodeURIComponent(from)}`);
       }
     }
     return Promise.reject(error);

@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Enums\LineItemState;
 use App\Models\Quote;
+use App\Services\Courier\NinjaVanStatusMapper;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
@@ -81,15 +82,26 @@ final class OrderTracker
 
     /**
      * A line item counts as completed once its production job is SHIPPED or
-     * CLOSED. Counts only - never line detail - so the tracker stays PII-free.
+     * CLOSED - but NOT while that shipped parcel is flagged returned/failed by
+     * the courier (L14): a returned parcel that still sits SHIPPED (awaiting
+     * staff resolution) must not read to the buyer as "shipped/done". A resolved
+     * return is already excluded (it moves to the terminal RETURNED state, M15).
+     * Counts only - never line detail - so the tracker stays PII-free.
      */
     private function itemsCompleted(Quote $quote): int
     {
         return $quote->lineItems()
-            ->whereHas('job', fn ($q) => $q->whereIn('state', [
-                \App\Enums\JobState::Shipped->value,
-                \App\Enums\JobState::Closed->value,
-            ]))
+            ->whereHas('job', fn ($q) => $q
+                ->whereIn('state', [
+                    \App\Enums\JobState::Shipped->value,
+                    \App\Enums\JobState::Closed->value,
+                ])
+                ->where(fn ($q2) => $q2
+                    ->whereNull('last_courier_status')
+                    ->orWhereNotIn('last_courier_status', [
+                        NinjaVanStatusMapper::LABEL_ATTEMPT_FAILED,
+                        NinjaVanStatusMapper::LABEL_RETURNED,
+                    ])))
             ->count();
     }
 

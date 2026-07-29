@@ -308,6 +308,8 @@ export interface LineItem {
   currency: string;
   line_total: string;
   customization: Customization | null;
+  /** L20: server-authoritative "needs a proof?" (LineItem::needsProof). */
+  needs_proof?: boolean;
   line_state: LineItemState;
   procured_qty: number | null;
   procured_price: string | null;

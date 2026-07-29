@@ -120,6 +120,20 @@ export default function CheckoutPage() {
     void refreshEstimate();
   }, [lines, refreshEstimate]);
 
+  // L4: a cart persisted from a previous day can carry a now-past "need it by"
+  // date, which the server rejects (after_or_equal:today) - a dead-end the buyer
+  // only met as a flat error banner at submit. Drop the stale date on entry so
+  // the field reads empty and the buyer simply re-picks, instead of being
+  // blocked. Local-date compare (the field itself is a local Y-m-d).
+  useEffect(() => {
+    if (!neededBy) return;
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    if (neededBy < todayStr) setNeededBy('');
+    // Run once on mount - a same-session future date must not be wiped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     void fetchSaved();

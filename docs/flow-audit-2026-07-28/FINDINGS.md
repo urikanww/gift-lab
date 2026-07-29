@@ -197,4 +197,18 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 - **L17** — the signed track link is deliberately permanent + PII-free (name+qty only) so a buyer can bookmark it; adding an expiry would break that UX. True revocation would need tracking-code rotation (a feature, not a fix).
 - **L5, L9** — structural/by-spec (single-tenant registration; GST-in-total when delivery is unreliable) — unchanged as noted in the register.
 
-**Still parked (post-production):** a handful of minor cosmetic/edge Lows outside the quick map (L2 accept guard, L3 return-path on session expiry, L4 stale needed-by banner, L13 reship second-email invariant, L14 returned-parcel buyer-tracker label, L18–L20 proof-copy/validation/refactor, L23/L24 production-queue button polish) and UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
+**Batch 6 — 2026-07-29 (cosmetic/edge Lows tail).** Each with tests unless noted.
+- **L2** — `accept()` has an explicit state guard (clean domain error, no accepted_at stamp, instead of a raw state-machine 422).
+- **L3** — a mid-session 401 carries the current path as `?from=` so login returns the buyer there (e.g. back to /checkout), validated same-origin.
+- **L4** — a persisted cart's now-past "need it by" is cleared on checkout entry, so it no longer dead-ends at submit with a flat banner.
+- **L13** — the stale "one Shipped email per job" comment corrected (a reship legitimately re-notifies; M19 dedupes the parcel-split case). *(Comment only.)*
+- **L14** — a returned-flagged parcel still sitting SHIPPED no longer counts as a completed/shipped item on the buyer tracker.
+- **L18** — a proof-ready email suppressed by a disabled milestone is now logged (not silently email-less). *(Log only.)*
+- **L19** — a whitespace-only proof change-note is rejected on a direct API call (trim before validation), matching the UI.
+- **L20** — `LineItemResource` exposes the authoritative `needs_proof` (LineItem::needsProof); the buyer/staff UI uses it instead of re-deriving from bare `customization`.
+- **L23** — already fixed (create-shipment opens the confirm modal without needing the panel opened first).
+- **L24** — the production-file download gates on `production_file_ref` alone, so it stays hidden until the (unbuilt) endpoint exists instead of 404ing on 3D products.
+
+**Reviewed, left by design (no code change):** L5, L8, L9, L17 (see notes above/in the register).
+
+**Still parked (post-production):** UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.

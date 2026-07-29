@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
 import { Button, Card, Input, Logo } from '../ui';
@@ -13,7 +13,15 @@ export default function LoginPage() {
   const { login, error, user } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as LocationState | null)?.from;
+  const [searchParams] = useSearchParams();
+  // Return path can arrive as router state (a ProtectedRoute bounce) or as a
+  // ?from= query (the api.ts full-page 401 redirect, L3). Only honour a
+  // same-origin path - never "//evil.com" or an absolute URL - so the redirect
+  // can't be turned into an open redirect.
+  const fromQuery = searchParams.get('from');
+  const safeFromQuery =
+    fromQuery && fromQuery.startsWith('/') && !fromQuery.startsWith('//') ? fromQuery : undefined;
+  const from = (location.state as LocationState | null)?.from ?? safeFromQuery;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

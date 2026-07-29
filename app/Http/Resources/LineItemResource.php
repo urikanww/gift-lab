@@ -32,6 +32,11 @@ class LineItemResource extends JsonResource
             'currency' => $this->currency,
             'line_total' => $this->lineTotal(),
             'customization' => $this->customization,
+            // L20: the ONE authoritative "does this line need a proof?" answer,
+            // from LineItem::needsProof(), so the buyer/staff UI stops
+            // re-deriving it from bare customization truthiness (three slightly
+            // different definitions drift apart).
+            'needs_proof' => $this->needsProof(),
             'line_state' => $this->line_state->value,
             'procured_qty' => $this->procured_qty,
             'procured_price' => $this->procured_price,

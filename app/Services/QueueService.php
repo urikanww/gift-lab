@@ -287,11 +287,14 @@ final class QueueService
         // driven off Quote::transitionTo() (there is no QuoteState for a job
         // being shipped), so without this call the milestone's copy and its
         // "enabled by default" flag simply never fire. transitionTo() above
-        // already guarantees this is a genuine ...->SHIPPED move: JobState::
-        // Shipped->canTransitionTo(Shipped) is false, so a second advance() to
-        // SHIPPED on an already-shipped job throws before reaching here - one
-        // send per job, guaranteed by the state machine rather than a separate
-        // "already notified" flag.
+        // already guarantees this is a genuine ...->SHIPPED move (Shipped->
+        // Shipped is not a legal edge, so it throws before reaching here).
+        //
+        // L13: this is NOT a strict once-per-job invariant. A reshipped parcel
+        // legitimately passes SHIPPED again (SHIPPED->IN_PRODUCTION->SHIPPED via
+        // resolveReturnReship), and re-notifying is correct - it really is on its
+        // way again. What we DO dedupe is the parcel-split case just below (M19):
+        // one "on its way" email per ORDER, not one per parcel.
         //
         // Deferred via DB::afterCommit: this is the ONLY milestone send site
         // that isn't reached through stateChangedAfterCommit, and advance() is
