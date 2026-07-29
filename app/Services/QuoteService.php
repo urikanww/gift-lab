@@ -120,8 +120,18 @@ final class QuoteService
             ? collect()
             : Product::query()->whereIn('id', $productIds)->pluck('id');
 
+        // Same for variants (also SoftDeletes): a line whose variant was removed
+        // must be skipped, not re-created variant-less (which would silently
+        // re-price off the base product). Only lines with a variant_id are
+        // checked; a variant-less line is unaffected.
+        $variantIds = $lines->pluck('variant_id')->filter()->unique()->values();
+        $survivingVariantIds = $variantIds->isEmpty()
+            ? collect()
+            : Variant::query()->whereIn('id', $variantIds)->pluck('id');
+
         $specs = $lines
-            ->filter(fn (LineItem $line): bool => $survivingProductIds->contains($line->product_id))
+            ->filter(fn (LineItem $line): bool => $survivingProductIds->contains($line->product_id)
+                && ($line->variant_id === null || $survivingVariantIds->contains($line->variant_id)))
             ->map(fn (LineItem $line): array => [
                 'product_id' => $line->product_id,
                 'variant_id' => $line->variant_id,
