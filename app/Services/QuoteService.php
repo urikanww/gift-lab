@@ -116,11 +116,14 @@ final class QuoteService
             ->get();
 
         $productIds = $lines->pluck('product_id')->unique()->values();
-        // Product uses SoftDeletes, so this whereIn already excludes
-        // soft-deleted rows - exactly the pre-filter create() needs.
+        // L21: only re-order products that are still BUYABLE today (published +
+        // orderable), not merely still-existing. buyable() also excludes
+        // soft-deleted rows, so a product that was unpublished / pulled from sale
+        // since the original order is skipped rather than silently re-priced and
+        // re-ordered off a listing the buyer can no longer reach.
         $survivingProductIds = $productIds->isEmpty()
             ? collect()
-            : Product::query()->whereIn('id', $productIds)->pluck('id');
+            : Product::query()->buyable()->whereIn('id', $productIds)->pluck('id');
 
         // Same for variants (also SoftDeletes): a line whose variant was removed
         // must be skipped, not re-created variant-less (which would silently

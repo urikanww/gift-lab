@@ -183,6 +183,38 @@ it('excludes a line whose variant was deleted since the original order', functio
         ->and($newQuote->lineItems->first()->variant_id)->toBe($keptVariant->id);
 });
 
+// L21: a product that still exists but is no longer buyable (unpublished /
+// pulled from sale since the original order) must be skipped, not silently
+// re-priced and re-ordered off a listing the buyer can't reach anymore.
+it('excludes a line whose product is no longer buyable (unpublished since the order)', function (): void {
+    $unpublished = Product::factory()->create(['base_cost' => 8, 'print_method' => 'UV', 'publish_state' => 'PUBLISHED']);
+    Variant::factory()->create(['product_id' => $unpublished->id]);
+
+    $source = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED']);
+    $source->lineItems()->create([
+        'product_id' => $this->product->id, 'variant_id' => null, 'qty' => 2,
+        'unit_price' => 5, 'currency' => 'SGD', 'customization' => null,
+        'line_state' => LineItemState::Ready->value,
+    ]);
+    $source->lineItems()->create([
+        'product_id' => $unpublished->id, 'variant_id' => null, 'qty' => 1,
+        'unit_price' => 5, 'currency' => 'SGD', 'customization' => null,
+        'line_state' => LineItemState::Ready->value,
+    ]);
+
+    // Pulled from sale after the order was placed.
+    $unpublished->update(['publish_state' => 'PENDING']);
+
+    Sanctum::actingAs($this->buyer);
+
+    $response = $this->postJson("/api/quotes/{$source->id}/reorder");
+
+    $response->assertCreated();
+    $newQuote = Quote::find($response->json('data.id'));
+    expect($newQuote->lineItems)->toHaveCount(1)
+        ->and($newQuote->lineItems->first()->product_id)->toBe($this->product->id);
+});
+
 it('422s reordering an order whose lines are all dropped or cancelled', function (): void {
     $source = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CANCELLED']);
     $source->lineItems()->create([
