@@ -74,10 +74,13 @@ export default function ProductDesignerPage() {
   // Fallback flow: buyers who'd rather hand us a reference of the finished look
   // than lay it out themselves. The designer surface is swapped for an uploader.
   // HIDDEN for now: the upload-finished-look entry point is gated off until the
-  // pricing path for buyer-uploaded (no size-band) lines exists. The component +
-  // backend stay in place; flip this to re-enable the mode toggle. Mode is pinned
-  // to 'designer' while disabled, so the buyer_uploaded branches are unreachable.
-  const FINISHED_LOOK_ENABLED = true;
+  // pricing path for buyer-uploaded (no size-band) lines exists. A finished-look
+  // photo carries no logo size band, so the decoration fee - which is keyed on
+  // size (S/M/L) - can't be derived, and the line would price as a flat fee or a
+  // blank (M8/L6). The component + backend stay in place; flip this to re-enable
+  // the mode toggle once that pricing exists. Mode is pinned to 'designer' while
+  // disabled, so the buyer_uploaded branches are unreachable.
+  const FINISHED_LOOK_ENABLED = false;
   const [mode, setMode] = useState<'designer' | 'buyer_uploaded'>('designer');
   const [finishedLook, setFinishedLook] = useState<FinishedLookValue | null>(null);
   const [estimate, setEstimate] = useState<{ unit: number; lineTotal: number; currency: string } | null>(null);
