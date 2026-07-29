@@ -103,3 +103,20 @@ it('gives the same generic 404 for a wrong email prefix and an unknown code', fu
     expect($wrongEmail->json('message'))->toBe($unknownCode->json('message'))
         ->and($wrongEmail->json('message'))->toBe('No order matches those details.');
 });
+
+// P7: the public tracker lists what's in the order - product name + qty only,
+// never pricing or PII.
+it('lists product name and qty on the tracker, without pricing', function (): void {
+    $company = Company::factory()->create(['billing_email' => 'buyer@acme.com']);
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'SENT']);
+    $product = App\Models\Product::factory()->create(['name' => 'Tote Bag']);
+    App\Models\LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $product->id, 'qty' => 25,
+    ]);
+
+    $this->postJson('/api/track', ['tracking_code' => $quote->tracking_code, 'email' => 'buyer@acme.com'])
+        ->assertOk()
+        ->assertJsonPath('items.0.name', 'Tote Bag')
+        ->assertJsonPath('items.0.qty', 25)
+        ->assertJsonMissing(['total']);
+});

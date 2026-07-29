@@ -61,6 +61,19 @@ export function TrackResultView({ result }: { result: TrackResult }) {
           </p>
         )}
 
+        {result.items?.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <p className="text-2xs uppercase tracking-wide text-fg-subtle">In this order</p>
+            <ul className="flex flex-col gap-0.5">
+              {result.items.map((it, i) => (
+                <li key={i} className="text-sm text-fg-muted">
+                  {it.name ?? 'Item'} × {it.qty}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {result.items_total > 1 &&
           result.items_completed > 0 &&
           result.items_completed < result.items_total && (

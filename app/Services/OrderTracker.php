@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\LineItemState;
 use App\Models\Quote;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -39,6 +40,21 @@ final class OrderTracker
             'needed_by' => $quote->needed_by?->toDateString(),
             'items_total' => $this->itemsTotal($quote),
             'items_completed' => $this->itemsCompleted($quote),
+            // Product name + quantity per line, so the buyer can see WHAT they
+            // ordered on the public tracker. Deliberately name + qty only - no
+            // pricing, no PII - to keep the tracker safe to share via a link.
+            // Dropped/cancelled lines are omitted (they are no longer part of
+            // the order).
+            'items' => $quote->lineItems()
+                ->with('product')
+                ->whereNotIn('line_state', [LineItemState::Dropped->value, LineItemState::Cancelled->value])
+                ->get()
+                ->map(fn ($line): array => [
+                    'name' => $line->product?->name,
+                    'qty' => (int) $line->qty,
+                ])
+                ->values()
+                ->all(),
             'shipments' => $this->shipments($quote),
         ];
     }

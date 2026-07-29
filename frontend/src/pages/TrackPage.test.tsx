@@ -48,6 +48,7 @@ const payload: TrackResult = {
   needed_by: null,
   items_total: 2,
   items_completed: 0,
+    items: [],
   shipments: [],
 };
 

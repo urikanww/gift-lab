@@ -193,6 +193,8 @@ export interface TrackResult {
   needed_by: string | null;
   items_total: number;
   items_completed: number;
+  /** Product name + qty per line (PII-free) so the tracker shows what's ordered. */
+  items: { name: string | null; qty: number }[];
   shipments: Shipment[];
 }
 
