@@ -74,9 +74,42 @@ export default function ReorderRail() {
                 aria-label={`Order ${q.reference}`}
                 className="flex min-h-[44px] flex-col gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="font-display text-sm text-fg">Order {q.reference}</span>
+                {q.items_preview && q.items_preview.length > 0 && (
+                  <div className="mb-1 flex items-center gap-2">
+                    <div className="flex -space-x-2">
+                      {q.items_preview.slice(0, 3).map((it, i) =>
+                        it.image_url ? (
+                          <img
+                            key={i}
+                            src={it.image_url}
+                            alt=""
+                            className="h-9 w-9 rounded-md border border-border bg-surface-2 object-cover"
+                          />
+                        ) : (
+                          <div
+                            key={i}
+                            aria-hidden="true"
+                            className="h-9 w-9 rounded-md border border-border bg-surface-2"
+                          />
+                        ),
+                      )}
+                    </div>
+                    {q.items_preview.length > 3 && (
+                      <span className="text-xs text-fg-muted">+{q.items_preview.length - 3}</span>
+                    )}
+                  </div>
+                )}
+                <span className="truncate font-display text-sm text-fg">
+                  {q.items_preview && q.items_preview.length > 0
+                    ? q.items_preview
+                        .map((it) => it.name)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join(', ') + (q.items_preview.length > 2 ? '…' : '')
+                    : `Order ${q.reference}`}
+                </span>
                 <span className="text-xs text-fg-muted">
-                  {q.currency} {q.total}
+                  Order {q.reference} · {q.currency} {q.total}
                 </span>
               </Link>
               <button

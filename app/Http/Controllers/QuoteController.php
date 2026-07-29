@@ -38,6 +38,9 @@ class QuoteController extends Controller
 
         $quotes = Quote::query()
             ->when(! $user->isStaff(), fn ($q) => $q->where('company_id', $user->company_id))
+            // Light per-line product preview (name + thumbnail) for the list /
+            // reorder rail - eager-loaded so it isn't an N+1 per row.
+            ->with('lineItems.product')
             // Staff see all companies - load the name so the UI can label rows.
             // proofs.lineItem.product is loaded too: QuoteResource's staff-only
             // reminder block reads $quote->proofs (ReminderSchedule::awaitingCount

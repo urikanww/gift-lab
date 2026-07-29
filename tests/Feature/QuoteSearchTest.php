@@ -154,3 +154,23 @@ it('returns the full list when no search term is given', function (): void {
 
     $this->getJson('/api/quotes')->assertOk()->assertJsonCount(3, 'data');
 });
+
+// P8: the quotes list carries a light per-line preview (product name + image +
+// qty) so the reorder rail / order list can show what's in an order.
+it('exposes a per-line items_preview on the quotes list', function (): void {
+    $product = App\Models\Product::factory()->create([
+        'name' => 'Ceramic Mug', 'image_url' => 'http://img.test/mug.jpg',
+    ]);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id]);
+    App\Models\LineItem::factory()->create([
+        'quote_id' => $quote->id, 'product_id' => $product->id, 'qty' => 12,
+    ]);
+
+    Sanctum::actingAs($this->buyer);
+
+    $this->getJson('/api/quotes')
+        ->assertOk()
+        ->assertJsonPath('data.0.items_preview.0.name', 'Ceramic Mug')
+        ->assertJsonPath('data.0.items_preview.0.image_url', 'http://img.test/mug.jpg')
+        ->assertJsonPath('data.0.items_preview.0.qty', 12);
+});

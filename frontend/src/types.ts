@@ -412,6 +412,8 @@ export interface Quote {
    * the production queue. Absent for buyers.
    */
   shipments?: OrderShipment[];
+  /** Light per-line preview (name + thumbnail + qty) for list / reorder cards. */
+  items_preview?: { name: string | null; image_url: string | null; qty: number }[];
 }
 
 /** Staff-only shipment view of one of an order's production jobs. */

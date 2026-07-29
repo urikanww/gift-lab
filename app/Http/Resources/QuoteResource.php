@@ -114,6 +114,14 @@ class QuoteResource extends JsonResource
                 (bool) ($request->user()?->isStaff() ?? false),
                 fn (): array => $this->shipmentSummary(),
             ),
+            // Light per-line preview (product name + thumbnail + qty) for list
+            // and reorder-rail cards, so they can show what's in an order without
+            // the full LineItemResource. Present only when lineItems are loaded.
+            'items_preview' => $this->whenLoaded('lineItems', fn (): array => $this->lineItems->map(fn ($line): array => [
+                'name' => $line->product?->name,
+                'image_url' => $line->product?->image_url,
+                'qty' => (int) $line->qty,
+            ])->values()->all()),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
