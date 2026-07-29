@@ -40,12 +40,17 @@ MAIL_USERNAME=<gmail>  MAIL_PASSWORD=<gmail app password>
 MAIL_FROM_ADDRESS="no-reply@giftlab.local"
 
 # Queue: sync so mail sends inline during the walkthrough (no worker needed).
+# If you keep the database queue instead, you MUST run `php artisan queue:work`
+# for the whole run or NO emails send (every mailable is ShouldQueue).
 QUEUE_CONNECTION=sync
-CACHE_STORE=database   # NOT array (scheduler onOneServer needs a real store)
+CACHE_STORE=file       # any non-array store is fine for a single-node local run
 
-# Artwork storage: local is fine for testing (no Spaces round-trip).
-FILESYSTEM_DISK=local
-ARTWORK_DISK=local
+# Real object storage (DO Spaces). Safe now that the proof composite no longer
+# runs on the page path (LT10 fix) and images are read from Spaces directly.
+# Ensure the Spaces creds are valid + the bucket is reachable; test files WILL
+# write to the real bucket.
+FILESYSTEM_DISK=s3
+ARTWORK_DISK=spaces_private
 
 # Realtime (optional; if off, note that some panels need a manual reload)
 BROADCAST_CONNECTION=reverb   # or `log`/`null` to skip Reverb
@@ -54,7 +59,10 @@ BROADCAST_CONNECTION=reverb   # or `log`/`null` to skip Reverb
 NINJAVAN_CLIENT_ID=<sandbox id>
 NINJAVAN_CLIENT_SECRET=<sandbox secret>
 NINJAVAN_BASE_URL=https://api-sandbox.ninjavan.co/sg
-NINJAVAN_WEBHOOK_SECRET=<any strong string; you'll sign with it below>
+# NOT from NinjaVan - this is the shared secret OUR webhook verifies against.
+# For this LOCAL run you pick it yourself and sign the simulated webhook (§1e)
+# with the same value. (Prod: must match however real NinjaVan actually signs.)
+NINJAVAN_WEBHOOK_SECRET=<any strong string you choose>
 
 # Stripe (only if testing B2C pay-now; else leave blank = fixture gateway)
 STRIPE_SECRET=sk_test_...
@@ -91,7 +99,7 @@ Do S2 early so buyer flows have something orderable.
 - Smoke test: `navigate http://localhost:8000/api/catalogue` returns JSON; `http://localhost:5173` loads the storefront.
 
 ### 1e. Third-party webhook simulation (sandbox can't reach localhost)
-NinjaVan/Stripe won't call your local box, so you POST their webhooks yourself.
+NinjaVan/Stripe **cannot reach `localhost`**, so their dashboard event-subscriptions are irrelevant here — you POST the webhooks yourself. The NinjaVan `NINJAVAN_WEBHOOK_SECRET` is a value YOU chose in §1a; you sign the simulated body with that exact value so our fail-closed endpoint accepts it. (No public tunnel needed. Real NinjaVan → a public endpoint is a separate prod concern — verify NinjaVan's real signing scheme then.)
 
 **NinjaVan status webhook** (HMAC-SHA256 hex of the raw body with `NINJAVAN_WEBHOOK_SECRET`, header `X-Ninja-Hmac`):
 ```bash
