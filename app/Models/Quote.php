@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @property int $id
@@ -373,6 +374,17 @@ class Quote extends Model
         }
 
         if (! $this->state->canTransitionTo($target)) {
+            // The proof set implies a state the order can't legally reach from
+            // here (e.g. a superadmin amend reopened an artwork line on an
+            // already-approved order). Silently returning leaves the order and
+            // its proofs out of step with no trace - log it so staff can catch
+            // the divergence instead of it hiding. M11.
+            Log::warning('Proof rollup target is not a legal transition; order and proof state diverged.', [
+                'quote_id' => $this->id,
+                'from' => $this->state->value,
+                'target' => $target->value,
+            ]);
+
             return;
         }
 

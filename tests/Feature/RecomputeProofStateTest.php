@@ -137,3 +137,19 @@ it('re-rolls the proof state when a superadmin amend drops the last unresolved l
     // Only the approved line survives, so the order advances.
     expect($quote->fresh()->state)->toBe(QuoteState::ProofApproved);
 });
+
+// M11: when the proof set implies a state the order can't legally reach, the
+// rollup returns silently - which hides a real divergence. It must at least log.
+it('logs when the rollup target is not a legal transition', function (): void {
+    Log::spy();
+
+    // PROOF_APPROVED can only go to Invoiced/Cancelled. A still-awaiting proof
+    // computes target PROOFING, which is not reachable - the guard fires.
+    $quote = Quote::factory()->create(['state' => 'PROOF_APPROVED', 'accepted_at' => now()]);
+    proofFor(customizedLine($quote), ProofState::Sent);
+
+    $quote->recomputeProofState();
+
+    expect($quote->fresh()->state)->toBe(QuoteState::ProofApproved);
+    Log::shouldHaveReceived('warning')->once();
+});
