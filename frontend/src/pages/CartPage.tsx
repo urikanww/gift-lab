@@ -29,7 +29,7 @@ const rowVariants = {
 };
 
 export default function CartPage() {
-  const { lines, estimate, estimating, estimateError, updateQty, removeLine, refreshEstimate, clear } =
+  const { lines, estimate, estimating, estimateError, unavailableProductIds, updateQty, removeLine, refreshEstimate, clear } =
     useCartStore();
   const animate = useReducedMotionSafe();
 
@@ -94,7 +94,14 @@ export default function CartPage() {
                     <div className="flex min-w-0 gap-3">
                       <ProductThumb product={l.product} />
                       <div className="min-w-0">
-                        <h2 className="font-display text-lg text-fg">{l.product.name}</h2>
+                        <h2 className="font-display text-lg text-fg">
+                          {l.product.name}
+                          {unavailableProductIds.includes(l.product.id) && (
+                            <span className="ml-2 inline-block rounded bg-danger/10 px-2 py-0.5 align-middle text-xs font-medium text-danger">
+                              Unavailable — please remove
+                            </span>
+                          )}
+                        </h2>
                         <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
                           <div className="flex gap-1">
                             <dt className="text-fg-subtle">Options:</dt>

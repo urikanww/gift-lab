@@ -48,14 +48,29 @@ class PriceEstimateController extends Controller
             ? collect()
             : Variant::query()->whereIn('id', $variantIds)->get()->keyBy('id');
 
+        // M10: report WHICH lines are unavailable (by index + product_id) rather
+        // than failing the whole batch with no signal - a cart holding one
+        // since-unpublished product otherwise dead-ends with no way to tell which
+        // item to remove.
+        $unavailable = [];
+        foreach ($specs as $i => $spec) {
+            $product = $products->get((int) $spec['product_id']);
+            if ($product === null || $product->publish_state !== PublishState::Published) {
+                $unavailable[] = ['index' => $i, 'product_id' => (int) $spec['product_id']];
+            }
+        }
+
+        if ($unavailable !== []) {
+            return response()->json([
+                'message' => 'One or more products are unavailable.',
+                'unavailable' => $unavailable,
+            ], 422);
+        }
+
         $lines = [];
 
         foreach ($specs as $spec) {
             $product = $products->get((int) $spec['product_id']);
-
-            if ($product === null || $product->publish_state !== PublishState::Published) {
-                return response()->json(['message' => 'One or more products are unavailable.'], 422);
-            }
 
             $lines[] = [
                 'product' => $product,

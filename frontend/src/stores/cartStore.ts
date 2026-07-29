@@ -15,6 +15,9 @@ interface CartState {
   estimate: PriceEstimate | null;
   estimating: boolean;
   estimateError: string | null;
+  // M10: product ids the estimate reported as unavailable, so the cart can flag
+  // exactly which line(s) to remove instead of a blanket error.
+  unavailableProductIds: number[];
   addLine: (product: Product, variant: Variant | null, customization: Customization, qty?: number) => void;
   updateQty: (key: string, qty: number) => void;
   removeLine: (key: string) => void;
@@ -34,6 +37,7 @@ export const useCartStore = create<CartState>()(
       estimate: null,
       estimating: false,
       estimateError: null,
+      unavailableProductIds: [],
 
       addLine: (product, variant, customization, qty = 1) => {
         const key = `${product.id}:${variant?.id ?? 0}:${Date.now()}`;
@@ -65,7 +69,7 @@ export const useCartStore = create<CartState>()(
       refreshEstimate: async () => {
         const { lines } = get();
         if (lines.length === 0) {
-          set({ estimate: null, estimateError: null });
+          set({ estimate: null, estimateError: null, unavailableProductIds: [] });
           return;
         }
         set({ estimating: true, estimateError: null });
@@ -83,9 +87,15 @@ export const useCartStore = create<CartState>()(
               has_text: Boolean(l.customization.text),
             })),
           });
-          set({ estimate: data, estimating: false });
+          set({ estimate: data, estimating: false, unavailableProductIds: [] });
         } catch (err) {
-          set({ estimating: false, estimateError: apiError(err) });
+          // M10: pull the per-line unavailable list off the 422 so the cart can
+          // flag exactly which item to remove.
+          const data = (err as { response?: { data?: { unavailable?: { product_id: number }[] } } })?.response?.data;
+          const unavailableProductIds = Array.isArray(data?.unavailable)
+            ? data!.unavailable.map((u) => Number(u.product_id))
+            : [];
+          set({ estimating: false, estimateError: apiError(err), unavailableProductIds });
         }
       },
     }),
