@@ -225,12 +225,19 @@ class NinjaVanWebhookController extends Controller
             return $job;
         }
 
-        return ProductionJob::query()
+        $candidates = ProductionJob::query()
             ->where('state', JobState::Shipped->value)
             ->whereNotNull('consignment_ref')
             ->where('consignment_ref', '!=', '')
             ->get()
-            ->first(fn (ProductionJob $candidate): bool => str_ends_with($trackingNumber, (string) $candidate->consignment_ref));
+            ->filter(fn (ProductionJob $candidate): bool => str_ends_with($trackingNumber, (string) $candidate->consignment_ref));
+
+        // Only accept an UNAMBIGUOUS suffix match. If two shipped jobs' refs are
+        // both trailing substrings of the incoming number (e.g. "GL1" and
+        // "XGL1"), the unordered ->first() used to pick either - risking marking
+        // the wrong parcel delivered/returned. When it's ambiguous, treat the
+        // event as unknown (the caller acks without acting) rather than guess. M14.
+        return $candidates->count() === 1 ? $candidates->first() : null;
     }
 
     private function signatureValid(string $body, string $signature, string $secret): bool

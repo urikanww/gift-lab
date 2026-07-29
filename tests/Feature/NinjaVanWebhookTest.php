@@ -473,3 +473,32 @@ it('ignores events for jobs that have not shipped yet', function (): void {
     $job->refresh();
     expect($job->state)->toBe(JobState::Ready);
 });
+
+// M14: two shipped jobs whose refs are both trailing substrings of the incoming
+// tracking number are ambiguous - the webhook must NOT guess (it could mark the
+// wrong parcel delivered). It acks and leaves both jobs untouched.
+it('does not act on an ambiguous suffix match', function (): void {
+    $jobA = ninjaVanShippedJob('GL1');
+    $jobB = ninjaVanShippedJob('ZGL1');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'ZZGL1', // ends with both "GL1" and "ZGL1"
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:00:00+08:00',
+    ])->assertOk();
+
+    expect($jobA->fresh()->state)->toBe(JobState::Shipped)
+        ->and($jobB->fresh()->state)->toBe(JobState::Shipped);
+});
+
+it('still delivers on a single unambiguous suffix match (courier-prefixed number)', function (): void {
+    $job = ninjaVanShippedJob('GLLEU2');
+
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000GLLEU2', // prefixed; ends with GLLEU2
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:00:00+08:00',
+    ])->assertOk();
+
+    expect($job->fresh()->state)->toBe(JobState::Closed);
+});
