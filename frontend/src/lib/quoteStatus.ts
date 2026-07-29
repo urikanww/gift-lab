@@ -61,3 +61,29 @@ export function humanizeState(state: string): string {
     .replace(/_/g, ' ')
     .replace(/^\w/, (c) => c.toUpperCase());
 }
+
+/**
+ * Buyer-facing plain-language labels (L1). The staff surfaces keep the raw
+ * humanized enum (staff know the pipeline vocabulary), but a buyer shouldn't
+ * meet internal words like "Procuring" or "Invoiced" - they get outcome-focused
+ * wording instead. Anything unmapped falls back to the humanized enum so a new
+ * state never renders blank.
+ */
+const buyerLabelMap: Partial<Record<QuoteState, string>> = {
+  SENT: 'Quote sent',
+  CHANGES_REQUESTED: 'Changes requested',
+  ACCEPTED: 'Accepted — preparing your proof',
+  PROOFING: 'Preparing your proof',
+  ARTWORK_APPROVED: 'Artwork approved',
+  PROOF_APPROVED: 'Approved — next up: payment',
+  INVOICED: 'Invoice issued',
+  CONFIRMED: 'Order confirmed',
+  PROCURING: 'Preparing your order',
+  READY: 'Ready',
+  CLOSED: 'Delivered',
+  CANCELLED: 'Cancelled',
+};
+
+export function buyerStateLabel(state: QuoteState): string {
+  return buyerLabelMap[state] ?? humanizeState(state);
+}

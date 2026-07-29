@@ -5,7 +5,7 @@ import { useQuoteStore } from '../stores/quoteStore';
 import { Badge, Card, LinkButton, Skeleton } from '../ui';
 import Breadcrumb from '../components/Breadcrumb';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
-import { humanizeState, quoteStateTone } from '../lib/quoteStatus';
+import { buyerStateLabel, quoteStateTone } from '../lib/quoteStatus';
 import type { QuoteState } from '../types';
 
 /** What a buyer must do next for an order that's waiting on them. */
@@ -83,7 +83,7 @@ export default function BuyerDashboardPage() {
                   >
                     <span className="text-sm text-fg">
                       Order {o.reference} ·{' '}
-                      <span className="text-fg-muted">{action?.note ?? humanizeState(o.state)}</span>
+                      <span className="text-fg-muted">{action?.note ?? buyerStateLabel(o.state)}</span>
                     </span>
                     <LinkButton to={`/orders/${o.reference}`} variant="secondary" size="sm">
                       {action?.cta ?? 'View order'}
@@ -170,7 +170,7 @@ export default function BuyerDashboardPage() {
                     <td className="py-3 pr-3 tabular-nums text-fg-muted">{q.items_preview?.length ?? '—'}</td>
                     <td className="py-3 pr-3">
                       <Badge tone={quoteStateTone(q.state)} dot>
-                        {humanizeState(q.state)}
+                        {buyerStateLabel(q.state)}
                       </Badge>
                     </td>
                     <td className="py-3 pl-3 text-right tabular-nums text-fg">
