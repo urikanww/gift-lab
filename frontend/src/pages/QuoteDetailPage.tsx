@@ -159,6 +159,11 @@ export default function QuoteDetailPage() {
   // cancel-order modal; Paid/Partial fire straight from their buttons.
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidNote, setVoidNote] = useState('');
+  // H3/M21: PARTIAL now captures the collected amount, so "Mark partial" opens
+  // an amount field rather than firing blind - a later cancel refunds only what
+  // was actually received.
+  const [partialOpen, setPartialOpen] = useState(false);
+  const [partialAmount, setPartialAmount] = useState('');
   // Set only from the void modal's own confirm action, mirroring commitError:
   // a rejected void should be visible in the modal body itself, not only
   // behind it on the page banner.
@@ -898,6 +903,20 @@ export default function QuoteDetailPage() {
               {PAYMENT_STATE_LABEL[quote.invoice.payment_state]}
             </Badge>
           </div>
+          {/* H3/M21: show what's been collected and what's still owed, so a
+              PARTIAL invoice - or a delivered-but-unpaid order (LT14) - reads
+              its own outstanding balance instead of just a status word. */}
+          {quote.invoice.balance_owed > 0 &&
+            quote.invoice.payment_state !== 'VOID' &&
+            quote.invoice.payment_state !== 'UNPAID' && (
+              <p className="text-xs text-warning">
+                {quote.invoice.currency} {Number(quote.invoice.amount_paid ?? 0).toFixed(2)} collected
+                {' · '}
+                <span className="font-medium">
+                  {quote.invoice.currency} {quote.invoice.balance_owed.toFixed(2)} still owed
+                </span>
+              </p>
+            )}
           {canReconcilePayment && quote.invoice.payment_state !== 'VOID' && (
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap gap-2">
@@ -917,15 +936,13 @@ export default function QuoteDetailPage() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  loading={busy}
-                  disabled={busy || quote.invoice.payment_state === 'PARTIAL'}
-                  onClick={() =>
-                    run(async () => {
-                      await reconcilePayment(quote.id, 'PARTIAL');
-                    }, 'Invoice marked partial')
-                  }
+                  disabled={busy}
+                  onClick={() => {
+                    setPartialAmount('');
+                    setPartialOpen((o) => !o);
+                  }}
                 >
-                  Mark partial
+                  {partialOpen ? 'Cancel' : 'Record partial payment'}
                 </Button>
                 <Button
                   variant="danger"
@@ -940,6 +957,48 @@ export default function QuoteDetailPage() {
                   Void invoice
                 </Button>
               </div>
+              {partialOpen && (
+                <div className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface-subtle p-3">
+                  <label className="flex flex-col gap-1 text-xs text-fg-muted">
+                    Amount received ({quote.invoice.currency})
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      max={Number(quote.invoice.amount) - 0.01}
+                      value={partialAmount}
+                      onChange={(e) => setPartialAmount(e.target.value)}
+                      className="h-10 w-40 rounded-md border border-border-strong bg-surface px-2 text-sm text-fg tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="0.00"
+                      aria-label="Partial amount received"
+                    />
+                  </label>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={busy}
+                    disabled={busy || !(Number(partialAmount) > 0 && Number(partialAmount) < Number(quote.invoice.amount))}
+                    onClick={() =>
+                      run(async () => {
+                        const ok = await reconcilePayment(
+                          quote.id,
+                          'PARTIAL',
+                          undefined,
+                          Number(partialAmount),
+                        );
+                        if (ok) setPartialOpen(false);
+                      }, 'Partial payment recorded')
+                    }
+                  >
+                    Record
+                  </Button>
+                  <p className="w-full text-2xs text-fg-subtle">
+                    Enter the amount actually received. Must be less than the invoice total of{' '}
+                    {quote.invoice.currency} {Number(quote.invoice.amount).toFixed(2)} — a full
+                    payment is “Mark paid”. A later cancellation refunds only what was collected.
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-fg-subtle">
                 Records the real-world payment outcome for PO {quote.invoice.po_ref} — there is no
                 automatic B2B payment capture.

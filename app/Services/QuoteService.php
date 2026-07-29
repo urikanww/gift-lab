@@ -1079,9 +1079,9 @@ final class QuoteService
      * rather than silently allowed. Requesting the state the invoice is
      * already in is a no-op (idempotent-friendly for retried requests).
      */
-    public function reconcilePayment(Quote $quote, PaymentState $target, ?string $note = null): Invoice
+    public function reconcilePayment(Quote $quote, PaymentState $target, ?string $note = null, ?float $amountPaid = null): Invoice
     {
-        return DB::transaction(function () use ($quote, $target, $note): Invoice {
+        return DB::transaction(function () use ($quote, $target, $note, $amountPaid): Invoice {
             $locked = Quote::query()
                 ->whereKey($quote->getKey())
                 ->lockForUpdate()
@@ -1094,13 +1094,37 @@ final class QuoteService
 
             $current = $invoice->payment_state;
 
-            if ($current === $target) {
-                // Same state requested twice (retry / double-click) - nothing to do.
-                return $invoice;
-            }
-
             if ($current === PaymentState::Void) {
                 throw new DomainRuleException('This invoice is VOID and cannot be reconciled to another state.');
+            }
+
+            // H3/M21: record HOW MUCH was collected, so a later cancel credits
+            // only the received amount (never the full invoice) and staff can
+            // see the balance owed.
+            //   - PARTIAL: the entered amount, which must be > 0 and strictly
+            //     less than the invoice total (>= total is fully PAID, refused
+            //     so "partial" always means an outstanding balance).
+            //   - PAID: the full invoice amount, stamped automatically.
+            //   - VOID: leaves amount_paid untouched (whatever was collected).
+            if ($target === PaymentState::Partial) {
+                if ($amountPaid === null || $amountPaid <= 0.0) {
+                    throw new DomainRuleException('A partial payment must record the amount collected.');
+                }
+                if ($amountPaid >= (float) $invoice->amount) {
+                    throw new DomainRuleException('A partial amount must be less than the invoice total - use PAID for the full amount.');
+                }
+                $invoice->amount_paid = $amountPaid;
+            } elseif ($target === PaymentState::Paid) {
+                $invoice->amount_paid = $invoice->amount;
+            }
+
+            if ($current === $target) {
+                // Same state requested twice (retry / double-click). For PARTIAL
+                // this still lets staff correct the recorded amount above, so
+                // persist rather than early-returning.
+                $invoice->save();
+
+                return $invoice;
             }
 
             $invoice->payment_state = $target;
@@ -1110,6 +1134,7 @@ final class QuoteService
                 'payment_state' => $current->value,
             ], [
                 'payment_state' => $target->value,
+                'amount_paid' => $invoice->amount_paid,
                 'note' => $note,
             ]);
 
@@ -1178,13 +1203,18 @@ final class QuoteService
         $invoices = $quote->purchaseOrders()->lockForUpdate()->get();
 
         foreach ($invoices as $invoice) {
-            if (in_array($invoice->payment_state, [PaymentState::Paid, PaymentState::Partial], true)) {
-                // Verbatim off the invoice - already GST-inclusive - never
-                // recomputed from the quote (which may itself have moved on).
+            // H3: credit ONLY what was actually collected, never the full
+            // invoice. collectedAmount() is amount_paid for a PARTIAL/PAID
+            // invoice (recorded at reconcile time), falling back to the full
+            // amount only for a legacy PAID invoice with no recorded figure. A
+            // PARTIAL that collected 400 of 1000 credits 400, not 1000.
+            $collected = $invoice->collectedAmount();
+
+            if ($collected > 0.0) {
                 $creditNote = CreditNote::create([
                     'quote_id' => $quote->id,
                     'invoice_id' => $invoice->id,
-                    'amount' => (float) $invoice->amount,
+                    'amount' => $collected,
                     'reason' => $reason,
                     'issued_by' => Auth::id(),
                     'issued_at' => now(),

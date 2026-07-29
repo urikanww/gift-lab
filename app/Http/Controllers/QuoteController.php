@@ -340,6 +340,7 @@ class QuoteController extends Controller
             $quote,
             PaymentState::from($request->string('payment_state')->toString()),
             $request->input('note'),
+            $request->input('amount_paid') !== null ? (float) $request->input('amount_paid') : null,
         );
 
         return response()->json([
@@ -348,6 +349,8 @@ class QuoteController extends Controller
                 'po_ref' => $invoice->po_ref,
                 'invoice_ref' => $invoice->invoice_ref,
                 'amount' => $invoice->amount,
+                'amount_paid' => $invoice->amount_paid,
+                'balance_owed' => $invoice->balanceOwed(),
                 'currency' => $invoice->currency,
                 'payment_state' => $invoice->payment_state->value,
             ],

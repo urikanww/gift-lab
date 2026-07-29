@@ -18,6 +18,10 @@ export interface Invoice {
   po_ref: string;
   invoice_ref: string | null;
   amount: string;
+  /** How much has been collected. null on a legacy/never-reconciled invoice. */
+  amount_paid: string | null;
+  /** amount − collected, never negative. 0 once fully paid. */
+  balance_owed: number;
   currency: string;
   payment_state: PaymentState;
   /** GST already folded into `amount`; surfaced separately for its own line. */

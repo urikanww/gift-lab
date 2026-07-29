@@ -1354,6 +1354,8 @@ function seedInvoice(paymentState: 'UNPAID' | 'PARTIAL' | 'PAID' | 'VOID' = 'UNP
         po_ref: 'PO-42',
         invoice_ref: null,
         amount: '105.00',
+        amount_paid: null,
+        balance_owed: 0,
         currency: 'SGD',
         payment_state: paymentState,
       },
@@ -1370,7 +1372,7 @@ it('shows the Unpaid badge and Mark paid/partial/void controls for staff when an
   expect(screen.getByText('Invoice payment')).toBeInTheDocument();
   expect(screen.getByText('Unpaid')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Mark paid' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Mark partial' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Record partial payment' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Void invoice' })).toBeInTheDocument();
 });
 
@@ -1415,7 +1417,7 @@ it('clicking Mark paid calls reconcilePayment with PAID, and the badge reflects 
   expect(screen.queryByText('Unpaid')).not.toBeInTheDocument();
 });
 
-it('clicking Mark partial calls reconcilePayment with PARTIAL', async () => {
+it('recording a partial payment calls reconcilePayment with PARTIAL and the collected amount (H3/M21)', async () => {
   asStaff();
   seedQuote('CONFIRMED');
   seedInvoice('UNPAID');
@@ -1423,9 +1425,12 @@ it('clicking Mark partial calls reconcilePayment with PARTIAL', async () => {
   useQuoteStore.setState({ reconcilePayment } as any);
   renderPage();
 
-  await userEvent.click(screen.getByRole('button', { name: 'Mark partial' }));
+  // Opens the amount field, then submits the collected figure.
+  await userEvent.click(screen.getByRole('button', { name: 'Record partial payment' }));
+  await userEvent.type(screen.getByLabelText('Partial amount received'), '40');
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }));
 
-  expect(reconcilePayment).toHaveBeenCalledWith(42, 'PARTIAL');
+  expect(reconcilePayment).toHaveBeenCalledWith(42, 'PARTIAL', undefined, 40);
 });
 
 // Voiding is terminal (the backend refuses to reconcile a VOID invoice to any
@@ -1457,7 +1462,7 @@ it('disables all reconciliation controls once the invoice is Void', () => {
 
   expect(screen.getByText('Void')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Mark paid' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Mark partial' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Record partial payment' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Void invoice' })).not.toBeInTheDocument();
 });
 

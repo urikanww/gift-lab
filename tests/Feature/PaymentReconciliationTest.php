@@ -75,12 +75,14 @@ it('supports marking an invoice PARTIAL', function (): void {
     $quote = confirmedQuoteWithInvoice($this->company->id);
 
     Sanctum::actingAs($staff);
-    $this->postJson("/api/quotes/{$quote->id}/payment", ['payment_state' => 'PARTIAL', 'note' => 'Deposit received'])
+    // H3/M21: PARTIAL now requires the collected amount.
+    $this->postJson("/api/quotes/{$quote->id}/payment", ['payment_state' => 'PARTIAL', 'amount_paid' => 50, 'note' => 'Deposit received'])
         ->assertOk();
 
     $this->assertDatabaseHas('invoices', [
         'quote_id' => $quote->id,
         'payment_state' => 'PARTIAL',
+        'amount_paid' => 50.00,
     ]);
 });
 

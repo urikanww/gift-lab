@@ -157,7 +157,7 @@ class QuoteResource extends JsonResource
     }
 
     /**
-     * @return array{id: int, po_ref: string, invoice_ref: ?string, amount: string, currency: string, payment_state: string, gst: string, gst_rate: string}|null
+     * @return array{id: int, po_ref: string, invoice_ref: ?string, amount: string, amount_paid: ?string, balance_owed: float, currency: string, payment_state: string, gst: string, gst_rate: string}|null
      */
     private function invoiceSummary(): ?array
     {
@@ -181,6 +181,11 @@ class QuoteResource extends JsonResource
             'po_ref' => $invoice->po_ref,
             'invoice_ref' => $invoice->invoice_ref,
             'amount' => $invoice->amount,
+            // H3/M21: how much has been collected, and what's still owed - so
+            // staff can see a PARTIAL invoice's outstanding balance, and a
+            // delivered-but-unpaid order (LT14) reads its own gap.
+            'amount_paid' => $invoice->amount_paid,
+            'balance_owed' => $invoice->balanceOwed(),
             'currency' => $invoice->currency,
             'payment_state' => $invoice->payment_state->value,
             // GST already folded into `amount` (see Invoice::gst_amount/gst_rate

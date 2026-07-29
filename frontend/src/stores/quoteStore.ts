@@ -145,7 +145,7 @@ interface QuoteStoreState {
    * B2B. Resolves true on success so a confirm modal (Void) only closes
    * when the write actually landed, mirroring cancelQuote.
    */
-  reconcilePayment: (id: number, paymentState: PaymentState, note?: string) => Promise<boolean>;
+  reconcilePayment: (id: number, paymentState: PaymentState, note?: string, amountPaid?: number) => Promise<boolean>;
   /**
    * Staff confirm the goods are in hand, releasing the order to the floor.
    * Production no longer starts on the system's own say-so.
@@ -383,11 +383,17 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  reconcilePayment: async (id, paymentState, note) => {
+  reconcilePayment: async (id, paymentState, note, amountPaid) => {
     set({ actionError: null });
     try {
       await ensureCsrf();
-      await api.post(`/quotes/${id}/payment`, { payment_state: paymentState, note });
+      // H3/M21: PARTIAL must carry the collected amount so a later refund
+      // credits only what was received.
+      await api.post(`/quotes/${id}/payment`, {
+        payment_state: paymentState,
+        note,
+        ...(amountPaid !== undefined ? { amount_paid: amountPaid } : {}),
+      });
       await get().fetchQuote(id);
       return true;
     } catch (err) {

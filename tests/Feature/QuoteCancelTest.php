@@ -62,7 +62,7 @@ it('validates the reason length', function (): void {
  * refund through, so the correct closure is a credit-note record + invoice
  * VOID - see QuoteService::voidInvoiceAndCredit().
  */
-function invoicedQuote(string $paymentState): Quote
+function invoicedQuote(string $paymentState, ?float $amountPaid = null): Quote
 {
     $quote = Quote::factory()->create([
         'state' => 'CONFIRMED',
@@ -71,6 +71,10 @@ function invoicedQuote(string $paymentState): Quote
         'gst_amount' => 20.70,
     ]);
 
+    // H3/M21: a PAID invoice records the full amount collected; a PARTIAL one
+    // records only what was received (staff enter it at reconcile time).
+    $recordedPaid = $amountPaid ?? ($paymentState === 'PAID' ? 250.75 : null);
+
     Invoice::create([
         'quote_id' => $quote->id,
         'po_ref' => 'PO-'.$quote->id,
@@ -78,6 +82,7 @@ function invoicedQuote(string $paymentState): Quote
         'terms' => null,
         'payment_state' => $paymentState,
         'amount' => 250.75,
+        'amount_paid' => $recordedPaid,
         'gst_amount' => 20.70,
         'gst_rate' => 9,
         'currency' => 'SGD',
@@ -106,8 +111,9 @@ it('voids a PAID invoice and mints exactly one credit note for the GST-inclusive
         ->and($creditNote->invoice_id)->toBe($invoice->id);
 });
 
-it('voids a PARTIAL invoice and mints exactly one credit note for the invoice amount on cancel', function (): void {
-    $quote = invoicedQuote('PARTIAL');
+it('voids a PARTIAL invoice and mints exactly one credit note for the COLLECTED amount on cancel (H3)', function (): void {
+    // Collected 100 of 250.75 - the credit must be 100, never the full invoice.
+    $quote = invoicedQuote('PARTIAL', 100.00);
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     app(QuoteService::class)->cancel($quote, 'Buyer withdrew');
@@ -115,7 +121,7 @@ it('voids a PARTIAL invoice and mints exactly one credit note for the invoice am
     $invoice = Invoice::where('quote_id', $quote->id)->firstOrFail();
     expect($invoice->payment_state->value)->toBe('VOID');
     expect(CreditNote::where('quote_id', $quote->id)->count())->toBe(1);
-    expect((float) CreditNote::where('quote_id', $quote->id)->first()->amount)->toBe(250.75);
+    expect((float) CreditNote::where('quote_id', $quote->id)->first()->amount)->toBe(100.00);
 });
 
 it('voids an UNPAID invoice on cancel without minting any credit note', function (): void {
