@@ -31,7 +31,7 @@ const STATE_META: Record<JobState, { label: string; tone: BadgeTone }> = {
 
 function QueueSkeleton() {
   return (
-    <ul className="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
+    <ul className="flex list-none flex-col gap-3 p-0" aria-hidden="true">
       {Array.from({ length: 6 }).map((_, i) => (
         <li key={i}>
           <Card padding="md" className="flex flex-col gap-3">
@@ -313,7 +313,7 @@ export default function ProductionQueuePage() {
       {jobs.length > 0 && (
         <motion.ul
           layout={animate}
-          className="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3"
+          className="flex list-none flex-col gap-3 p-0"
         >
           <AnimatePresence initial={false} mode="popLayout">
             {jobs.map((j) => {
@@ -329,7 +329,7 @@ export default function ProductionQueuePage() {
                   exit={animate ? { opacity: 0, scale: 0.94 } : undefined}
                   transition={springSoft}
                 >
-                  <Card padding="md" className="flex h-full flex-col gap-3">
+                  <Card padding="md" className="flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-2">
                         <input
@@ -347,19 +347,27 @@ export default function ProductionQueuePage() {
                       <Badge tone={meta.tone}>{meta.label}</Badge>
                     </div>
 
-                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
-                      <dt className="text-fg-subtle">Track</dt>
-                      <dd className="text-right font-medium text-fg">
-                        <Badge tone="neutral" size="sm">
-                          {j.track}
-                        </Badge>
-                      </dd>
-                      <dt className="text-fg-subtle">Qty</dt>
-                      <dd className="text-right font-medium text-fg">{j.qty}</dd>
-                      <dt className="text-fg-subtle">Ready at</dt>
-                      <dd className="text-right font-medium text-fg">
-                        {j.ready_at ? new Date(j.ready_at).toLocaleString() : '-'}
-                      </dd>
+                    {/* Facts laid out horizontally so each full-width row reads
+                        like a table line rather than a stacked card (P5). */}
+                    <dl className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <dt className="text-fg-subtle">Track</dt>
+                        <dd>
+                          <Badge tone="neutral" size="sm">
+                            {j.track}
+                          </Badge>
+                        </dd>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <dt className="text-fg-subtle">Qty</dt>
+                        <dd className="font-medium text-fg">{j.qty}</dd>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <dt className="text-fg-subtle">Ready at</dt>
+                        <dd className="font-medium text-fg">
+                          {j.ready_at ? new Date(j.ready_at).toLocaleString() : '-'}
+                        </dd>
+                      </div>
                     </dl>
 
                     {!!j.line_items?.length && (
