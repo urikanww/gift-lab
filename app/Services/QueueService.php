@@ -309,14 +309,27 @@ final class QueueService
         // a worker dequeues it the job row may have moved on.
         if ($target === JobState::Shipped && $job->quote !== null) {
             $quote = $job->quote;
-            $consignmentRef = $job->consignment_ref;
-            $context = [
-                'consignment_ref' => $consignmentRef,
-                'carrier_label' => $job->carrier?->label(),
-                'tracking_url' => $consignmentRef !== null ? $job->carrier?->trackingUrl($consignmentRef) : null,
-            ];
 
-            DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::Shipped, $context));
+            // M19: one "on its way" email per ORDER, not per parcel. A
+            // parcel-split order builds several jobs; only the first to ship
+            // notifies the buyer. Every other milestone is order-level, so this
+            // one should be too. (This job is already SHIPPED here, so we look
+            // for ANOTHER job on the quote already shipped/closed.)
+            $anotherAlreadyShipped = $quote->jobs()
+                ->whereKeyNot($job->id)
+                ->whereIn('state', [JobState::Shipped->value, JobState::Closed->value])
+                ->exists();
+
+            if (! $anotherAlreadyShipped) {
+                $consignmentRef = $job->consignment_ref;
+                $context = [
+                    'consignment_ref' => $consignmentRef,
+                    'carrier_label' => $job->carrier?->label(),
+                    'tracking_url' => $consignmentRef !== null ? $job->carrier?->trackingUrl($consignmentRef) : null,
+                ];
+
+                DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::Shipped, $context));
+            }
         }
 
         if ($target === JobState::Closed
