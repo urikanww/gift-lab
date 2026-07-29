@@ -73,6 +73,21 @@ describe('cartStore', () => {
     expect(estimate?.total).toBe(50);
   });
 
+  // M9: a text-personalized line is charged the text fee on the final quote, so
+  // the estimate payload must carry has_text or the buyer sees a lower price.
+  it('sends has_text in the estimate payload for a text-personalized line', async () => {
+    post.mockResolvedValue({
+      data: { currency: 'SGD', lines: [{ unit_price: 15, line_total: 45 }], subtotal: 45, delivery: 5, total: 50 },
+    });
+    useCartStore.getState().addLine(product, variant, { text: 'Ada' });
+
+    await useCartStore.getState().refreshEstimate();
+
+    const payload = post.mock.calls[0][1] as { line_items: { has_text: boolean; has_customization: boolean }[] };
+    expect(payload.line_items[0].has_text).toBe(true);
+    expect(payload.line_items[0].has_customization).toBe(true);
+  });
+
   it('clears the estimate when the cart is empty', async () => {
     await useCartStore.getState().refreshEstimate();
     expect(post).not.toHaveBeenCalled();

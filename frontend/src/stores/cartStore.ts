@@ -4,7 +4,7 @@ import api, { apiError } from '../lib/api';
 import type { CartLine, Customization, PriceEstimate, Product, Variant } from '../types';
 
 function hasCustomization(c: Customization): boolean {
-  return Boolean(c.logo_size || c.artwork_ref);
+  return Boolean(c.logo_size || c.artwork_ref || c.text);
 }
 
 interface CartState {
@@ -77,6 +77,10 @@ export const useCartStore = create<CartState>()(
               qty: l.qty,
               has_customization: hasCustomization(l.customization),
               logo_size: l.customization.logo_size ?? null,
+              // M9: the text-personalization fee is charged on the final quote, so
+              // it must be in the estimate too - otherwise the buyer is shown a
+              // lower price than they're billed.
+              has_text: Boolean(l.customization.text),
             })),
           });
           set({ estimate: data, estimating: false });
