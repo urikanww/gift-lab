@@ -69,9 +69,14 @@ php artisan db:seed --class=DemoCompanySeeder          # a B2B buyer + company
 php artisan db:seed --class=DemoProofOrderSeeder       # orders across proof states
 php artisan db:seed --class=DemoBuyerUploadedOrderSeeder
 ```
-- **Staff login (local):** `superadmin@giftlab.local` / `ChangeMe!123` (superadmin), `ops@giftlab.local` / `ChangeMe!123` (staff_admin). Override with `ADMIN_SEED_PASSWORD` if desired.
-- **Buyer — use a REAL inbox the human opens.** The human is verifying that notifications actually arrive AND that the content reads well. Register the walkthrough buyer with the human's real email (ask for it up front, e.g. `admin@nexgen.com.sg`). Every buyer-facing email in this run lands there for review — see **§2.5**.
-- **Staff alert inbox:** staff/ops emails (proof-changes, design-request, parcel-returned, job-failed) go to the staff user's address — point `ops@giftlab.local` (or a staff account) at a real inbox too if the human wants to review those, or read them from the mail log.
+- **Real accounts for THIS run (both inboxes the human controls):**
+  - **Buyer:** `darvinhuang97@gmail.com` — register the walkthrough buyer with this in B1. All buyer-facing emails land here for review (§2.5).
+  - **Internal staff:** `darvin@nexgen.com.sg` — the staff account whose inbox receives staff alerts (proof-changes, design-request, parcel-returned, job-failed).
+- **Staff login (local):** the seeded staff are `superadmin@giftlab.local` / `ChangeMe!123` (superadmin) and `ops@giftlab.local` / `ChangeMe!123` (staff_admin). To make staff alerts reach the real inbox, **repoint a staff account's email to `darvin@nexgen.com.sg`** before testing — either in the admin Users UI (S12) or:
+  ```bash
+  php artisan tinker --execute="App\Models\User::where('email','ops@giftlab.local')->update(['email'=>'darvin@nexgen.com.sg']);"
+  ```
+  Then log in as `darvin@nexgen.com.sg` / `ChangeMe!123` for the staff flows.
 
 ### 1c. Catalogue has products (REQUIRED — the seeder ships NO products)
 The storefront is empty until products exist. Two options:
