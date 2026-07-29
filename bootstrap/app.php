@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Granular per-action access gate for staff_admin (see EnsurePermission).
         $middleware->alias([
             'permission' => \App\Http\Middleware\EnsurePermission::class,
+            'superadmin' => \App\Http\Middleware\EnsureSuperadmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

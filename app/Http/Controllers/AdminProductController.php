@@ -399,6 +399,14 @@ class AdminProductController extends Controller
 
         $validated = $request->validate(self::PRODUCT_RULES);
 
+        // L25: creating a product straight into PUBLISHED is a publish, so it
+        // needs products.approve - same gate update() applies. Without this a
+        // products.edit staff_admin (no approve right) could self-publish a new
+        // blank at create time, bypassing the approval oversight.
+        if (($validated['publish_state'] ?? null) === PublishState::Published->value) {
+            abort_unless($request->user()->hasPermission('products.approve'), 403);
+        }
+
         $product = Product::create([
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,

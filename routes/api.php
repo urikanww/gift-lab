@@ -238,7 +238,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/products/{product}/pull-source', [AdminCatalogueController::class, 'pullFromSource'])->middleware('permission:products.edit');
     // Auto-publish toggle stays superadmin-only (enforced in the controller); it
     // is deliberately NOT a delegable products.* action.
-    Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish']);
+    Route::patch('/admin/settings/auto-publish', [AdminCatalogueController::class, 'setAutoPublish'])->middleware('superadmin');
 
     // CORE product/variant management (staff; audit E4) - ops add a blank or
     // fix stock/price without seeders or DB access.
@@ -248,7 +248,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // "bulk-publish" would be captured as a {product} id.
     Route::post('/admin/products/bulk-publish', [AdminProductController::class, 'bulkPublish'])->middleware('permission:products.approve');
     Route::post('/admin/products/bulk-delete', [AdminProductController::class, 'bulkDestroy'])->middleware('permission:products.edit');
-    Route::post('/admin/products/import', [AdminProductController::class, 'import'])->middleware('permission:products.edit');
+    Route::post('/admin/products/import', [AdminProductController::class, 'import'])->middleware('superadmin');
     // Detail/edit fetch - withTrashed so the editor can open an archived row.
     Route::get('/admin/products/{product}', [AdminProductController::class, 'show'])->withTrashed()->middleware('permission:products.view');
     Route::get('/admin/products/{product}/history', [AdminProductController::class, 'history'])->withTrashed()->middleware('permission:products.view');

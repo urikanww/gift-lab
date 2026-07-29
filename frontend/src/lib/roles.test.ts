@@ -21,11 +21,19 @@ it('checks a restricted staff_admin against their allowlist', () => {
   expect(hasPermission(staff, 'production.manage')).toBe(false);
 });
 
-it('grandfathers a staff_admin whose permissions are missing', () => {
-  // No `permissions` key at all = unrestricted, so the console is never hidden
-  // from an older payload.
+it('grandfathers a staff_admin whose permissions are missing - but NOT sensitive sections (L28)', () => {
+  // No `permissions` key at all grandfathers the OPERATIONAL console so an older
+  // payload never hides it...
   const staff = { role: 'staff_admin' as const };
   expect(hasPermission(staff, 'production.manage')).toBe(true);
+  expect(hasPermission(staff, 'products.approve')).toBe(true);
+  // ...but the sensitive Pricing/Users sections must be granted explicitly, so a
+  // missing array must NOT flash them open (mirrors the backend grandfather).
+  expect(hasPermission(staff, 'pricing.view')).toBe(false);
+  expect(hasPermission(staff, 'pricing.manage')).toBe(false);
+  expect(hasPermission(staff, 'users.manage')).toBe(false);
+  // An explicit grant still works.
+  expect(hasPermission({ role: 'staff_admin' as const, permissions: ['pricing.view'] }, 'pricing.view')).toBe(true);
 });
 
 it('denies buyers and unknown users', () => {
