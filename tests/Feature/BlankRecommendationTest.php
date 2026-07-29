@@ -185,3 +185,23 @@ it('preserves created_by when a feature is updated', function (): void {
     expect($feature->created_by)->toBe($originalCreator->id)
         ->and($feature->name)->toBe('Updated Name');
 });
+
+// M20: a staff_admin whose allowlist excludes products.* must not be able to
+// ingest a blank or mutate the public gift-ideas feed through these routes.
+it('forbids a staff_admin without products.edit from adding a blank or featuring', function (): void {
+    $limited = User::factory()->create([
+        'role' => 'staff_admin', 'company_id' => null,
+        'permissions' => ['quotes.view'], // no products.*
+    ]);
+    Sanctum::actingAs($limited);
+
+    $this->postJson('/api/admin/blank-recommendations/add', [
+        'source_product_id' => '123', 'name' => 'X', 'base_cost' => 5, 'offer_link' => 'https://shopee.test/x',
+    ])->assertForbidden();
+
+    $this->postJson('/api/admin/blank-recommendations/feature', [
+        'source_product_id' => '123', 'name' => 'X', 'offer_link' => 'https://shopee.test/x',
+    ])->assertForbidden();
+
+    $this->getJson('/api/admin/blank-recommendations')->assertForbidden();
+});

@@ -271,11 +271,15 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/blank-candidates/capture', [AdminBlankCaptureController::class, 'store'])->middleware('permission:products.edit');
 
     // Staff blank recommender (affiliate-powered discovery -> gate / gift-ideas).
-    Route::get('/admin/blank-recommendations', [AdminBlankRecommendationController::class, 'index']);
-    Route::post('/admin/blank-recommendations/add', [AdminBlankRecommendationController::class, 'add']);
-    Route::get('/admin/blank-recommendations/featured', [AdminBlankRecommendationController::class, 'featured']);
-    Route::post('/admin/blank-recommendations/feature', [AdminBlankRecommendationController::class, 'feature']);
-    Route::delete('/admin/blank-recommendations/feature/{feature}', [AdminBlankRecommendationController::class, 'unfeature']);
+    // Gated like the rest of the catalogue: reading needs products.view, and
+    // ingesting a blank / mutating the public gift-ideas feed needs products.edit
+    // (M20 - these were only isStaff()-gated, so a staff_admin whose allowlist
+    // excluded products.* could still seed catalogue rows + change public content).
+    Route::get('/admin/blank-recommendations', [AdminBlankRecommendationController::class, 'index'])->middleware('permission:products.view');
+    Route::post('/admin/blank-recommendations/add', [AdminBlankRecommendationController::class, 'add'])->middleware('permission:products.edit');
+    Route::get('/admin/blank-recommendations/featured', [AdminBlankRecommendationController::class, 'featured'])->middleware('permission:products.view');
+    Route::post('/admin/blank-recommendations/feature', [AdminBlankRecommendationController::class, 'feature'])->middleware('permission:products.edit');
+    Route::delete('/admin/blank-recommendations/feature/{feature}', [AdminBlankRecommendationController::class, 'unfeature'])->middleware('permission:products.edit');
 
     // Pricing/config editor (superadmin-only; audit E1/D7/E2) - every quote-time
     // number is editable without a deploy, and every change is audit-logged.
