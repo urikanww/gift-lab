@@ -101,6 +101,28 @@ class ChaseUnansweredOrders extends Command
         AuditLogger $audit,
         string $waitingFor,
     ): array {
+        $milestone = $waitingFor === 'proof'
+            ? OrderMilestone::ReminderProof
+            : OrderMilestone::ReminderPrice;
+
+        // M17: a disabled reminder must not burn ladder rungs or flag "exhausted"
+        // - the setting gates the whole escalation, not just the email. Without
+        // this, turning a reminder off silently marched every order to
+        // "flagged for staff, no further emails".
+        if (! $notifier->isEnabled($milestone)) {
+            return [false, false];
+        }
+
+        // M16: reminders_sent is per-phase. When an order moves from the price
+        // wait to the proof wait (or back), the previous phase's count is stale,
+        // so reset it - otherwise a proof chase inherits the price-chase rungs
+        // and skips (or instantly "exhausts") the early proof reminders.
+        if ($quote->reminded_phase !== $waitingFor) {
+            $quote->reminders_sent = 0;
+            $quote->reminded_phase = $waitingFor;
+            $quote->save();
+        }
+
         $daysWaiting = (int) $since->diffInDays(now());
         $alreadySent = (int) $quote->reminders_sent;
 
@@ -117,9 +139,7 @@ class ChaseUnansweredOrders extends Command
 
         $isFinalRung = $alreadySent === count($ladder) - 1;
 
-        $notifier->send($quote, $waitingFor === 'proof'
-            ? OrderMilestone::ReminderProof
-            : OrderMilestone::ReminderPrice);
+        $notifier->send($quote, $milestone);
 
         $quote->reminders_sent = $alreadySent + 1;
         $quote->last_reminded_at = now();

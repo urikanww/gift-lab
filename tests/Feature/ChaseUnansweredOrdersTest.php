@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Enums\OrderMilestone;
 use App\Mail\OrderMilestoneMail;
 use App\Models\Company;
+use App\Models\LineItem;
+use App\Models\PricingConfig;
 use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\User;
@@ -157,4 +159,51 @@ it('leaves orders that are not waiting on the buyer alone', function (): void {
     $this->artisan('quotes:chase')->assertSuccessful();
 
     Mail::assertNothingQueued();
+});
+
+// M17: a disabled reminder must not burn a ladder rung or flag the order for
+// staff follow-up - the setting gates the whole escalation, not just the email.
+it('does not burn a ladder rung or flag when the reminder is switched off', function (): void {
+    PricingConfig::updateOrCreate(
+        ['group' => 'notifications', 'key' => 'reminder_price'],
+        ['value' => false],
+    );
+    $quote = sentQuoteWaiting(10); // well past the first rung
+
+    $this->artisan('quotes:chase')->assertSuccessful();
+
+    Mail::assertNothingQueued();
+    expect($quote->fresh()->reminders_sent)->toBe(0);
+    $this->assertDatabaseMissing('audit_logs', ['event' => 'quote.chase_exhausted']);
+});
+
+// M16: the reminders_sent counter is per-phase. An order chased on price then
+// advanced to proofing must start the proof ladder fresh, not inherit the
+// price-chase rung count.
+it('resets the reminder count when the order moves from the price wait to the proof wait', function (): void {
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOFING',
+        'created_by' => $this->buyer->id,
+        'reminders_sent' => 2,
+        'reminded_phase' => 'price',
+    ]);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/a.png'],
+        'line_state' => 'PENDING',
+    ]);
+    Proof::factory()->create([
+        'quote_id' => $quote->id, 'line_item_id' => $line->id, 'state' => 'SENT',
+        'created_at' => now()->subDays(5),
+    ]);
+
+    $this->artisan('quotes:chase')->assertSuccessful();
+
+    Mail::assertQueued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $mail): bool => $mail->milestone === OrderMilestone::ReminderProof,
+    );
+    expect($quote->fresh()->reminders_sent)->toBe(1)
+        ->and($quote->fresh()->reminded_phase)->toBe('proof');
 });

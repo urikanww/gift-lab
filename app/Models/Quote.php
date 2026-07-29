@@ -71,6 +71,7 @@ class Quote extends Model
         'stock_confirmed_at',
         'stock_confirmed_by',
         'reminders_sent',
+        'reminded_phase',
         'last_reminded_at',
         'amendment_log',
         'notes',
