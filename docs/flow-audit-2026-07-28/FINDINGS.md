@@ -167,4 +167,13 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 - **LT10** — proof composite no longer generated on the synchronous page path (cached-only lookup; generation stays on the queued email path). Note: the dramatic *hang* was a single-threaded dev-server self-call artifact; production needs a multi-worker server + reachable storage regardless.
 - **LT11 — corrected, not a bug.** All mailables already implement `ShouldQueue` and send via `->queue()`, so emails are already async. The hang observed when clicking "Send" was LT10's composite self-call on the next page load, not a synchronous email send.
 
-**Still parked (post-production):** H3 (credit-note over-refund — needs partial-amount capture), the remaining Med/Low findings, and UX P3–P8. Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
+**Batch 3 — 2026-07-29 (Med findings sweep):** M22, M20, M12, M13, M16, M17, M11, M9, M19, M14, M10, **M8**. Each with a test.
+- **M8** — upload-finished-look entry point disabled (`FINISHED_LOOK_ENABLED = false`): a finished-look photo has no logo size band, so its decoration fee (keyed on S/M/L) can't be derived and the line would misprice as a flat fee or blank. Component + backend stay in place for when the pricing is built.
+
+**Remaining Med — need an owner decision (NOT fixed):**
+- **M1** (pay-now not gated B2C vs B2B) — blocked: no B2C/B2B marker exists on Company/Quote (`default_terms` is free-text NET30 for all). Safe state: the global `pay_now_cutoff.b2c_enabled` flag defaults **off**. Real fix needs a per-company "pay-now eligible" flag (schema decision).
+- **M7** (artwork-first slim path unreachable from DRAFT UI) — product-flow decision: add a "Send proofs now" action on DRAFT (exposes the built path) **or** remove the dead edge/email. Nobody blocked; lowest urgency.
+- **M15** (cancel_credit voids the whole order for one returned parcel on a multi-job order) — rides with **H3**: both need the partial-credit / partial-restock machinery. Deferred to post-production. Money-critical.
+- Cosmetic: **M4** (INVOICED dead UI), **M18** (ProofIssued enum copy unused).
+
+**Still parked (post-production):** H3 (credit-note over-refund — needs partial-amount capture) + M15/M21 which depend on it, the remaining Low findings, and UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
