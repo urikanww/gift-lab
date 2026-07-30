@@ -251,9 +251,10 @@ it('stores an unrecognised status string verbatim without crashing', function ()
 
 it('books a distinct consignment_ref per job on a multi-job quote, and two Delivered webhooks close both jobs then the quote', function (): void {
     // One CORE (UV-track) line + one MODEL_3D line -> QueueService::buildJobsForQuote
-    // makes two jobs for this quote (one UV job, one per 3D line). Each must book
-    // under its own NinjaVan requested_tracking_number (NinjaVanTrackingNumber::forJob),
-    // or the second booking collides with the first and only one job ever closes.
+    // makes two jobs for this quote (one UV job, one per 3D line), each with its
+    // own 1:1 shipment. Each must book under its own NinjaVan
+    // requested_tracking_number (NinjaVanTrackingNumber::forShipment), or the
+    // second booking collides with the first and only one job ever closes.
     $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
     $threeDProduct = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $quote = Quote::factory()->create([

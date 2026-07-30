@@ -1472,7 +1472,9 @@ final class QuoteService
 
         $this->tryQueue($quote->fresh(['lineItems']));
 
-        return $quote->fresh(['lineItems', 'jobs']);
+        // jobs.shipment: QuoteResource::shipmentSummary reads each job's
+        // shipment (Stage 2a), so load it here to avoid an N+1 per job.
+        return $quote->fresh(['lineItems', 'jobs.shipment']);
     }
 
     /**
@@ -1736,7 +1738,9 @@ final class QuoteService
 
             $this->tryQueue($quote->fresh(['lineItems']));
 
-            return $quote->fresh(['lineItems', 'jobs']);
+            // jobs.shipment: QuoteResource::shipmentSummary reads each job's
+        // shipment (Stage 2a), so load it here to avoid an N+1 per job.
+        return $quote->fresh(['lineItems', 'jobs.shipment']);
         });
     }
 

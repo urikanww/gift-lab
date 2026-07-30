@@ -423,12 +423,12 @@ final class QueueService
      *    CLOSED via the normal advance() path (audits, broadcasts, and
      *    closes the quote once every job on it is CLOSED - same as a
      *    delivered job).
-     *  - reship: the courier's footprint is cleared (consignment_ref,
-     *    carrier, label_url, last_courier_status/_at, delivered_at) and the
-     *    job goes back to IN_PRODUCTION to re-queue; a later ship books a
-     *    FRESH per-job NinjaVan number (NinjaVanTrackingNumber::forJob) -
-     *    the old consignment_ref must be cleared first, since it is
-     *    unique-indexed.
+     *  - reship: the courier's footprint is cleared on the shipment
+     *    (consignment_ref, carrier, label_url, last_courier_status/_at,
+     *    delivered_at) and the job goes back to IN_PRODUCTION to re-queue; a
+     *    later ship books a FRESH NinjaVan number
+     *    (NinjaVanTrackingNumber::forShipment) - the old consignment_ref must be
+     *    cleared first, since it is unique-indexed.
      *  - cancel_credit: routes through QuoteService::cancel() (Task 13),
      *    which voids any live invoice and mints a credit note for what was
      *    collected. The job itself is left SHIPPED - this disposition means
@@ -477,11 +477,21 @@ final class QueueService
         }
 
         return DB::transaction(function () use ($job, $note): ProductionJob {
-            // L16: lock the row and RE-READ its state under the lock, mirroring
-            // the NinjaVan webhook's TOCTOU guard. A delivered webhook racing
-            // this manual confirmation also takes this lock; whichever commits
-            // second re-reads the now-CLOSED job here and no-ops instead of
-            // advancing again (which would fire a second "delivered" email).
+            // Shipment-then-job lock order, matching the NinjaVan webhook
+            // (which locks the shipment then its member jobs). Acquiring the
+            // shipment lock FIRST here means a Delivered webhook racing this
+            // manual confirmation serializes on the shipment row instead of
+            // deadlocking on an ABBA lock inversion (webhook: shipment->job vs.
+            // an old job->shipment order here).
+            $lockedShipment = $job->shipment_id !== null
+                ? Shipment::query()->whereKey($job->shipment_id)->lockForUpdate()->first()
+                : null;
+
+            // L16: lock the job and RE-READ its state under the lock, mirroring
+            // the webhook's TOCTOU guard. A delivered webhook racing this manual
+            // confirmation also takes these locks; whichever commits second
+            // re-reads the now-CLOSED job here and no-ops instead of advancing
+            // again (which would fire a second "delivered" email).
             $locked = ProductionJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
 
             if ($locked->state !== JobState::Shipped) {
@@ -491,8 +501,14 @@ final class QueueService
 
             // Courier fields live on the shipment now; stamp the manual-
             // confirmation marker there BEFORE advancing, so the row the
-            // tracker reads reflects a staff-confirmed delivery.
-            $shipment = $this->shipmentFor($locked);
+            // tracker reads reflects a staff-confirmed delivery. Reuse the row
+            // already locked above when present.
+            if ($lockedShipment !== null) {
+                $locked->setRelation('shipment', $lockedShipment);
+                $shipment = $lockedShipment;
+            } else {
+                $shipment = $this->shipmentFor($locked);
+            }
             $previousCourierStatus = $shipment->last_courier_status;
 
             $shipment->last_courier_status = self::MANUAL_DELIVERED_STATUS;

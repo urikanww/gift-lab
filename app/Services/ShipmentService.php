@@ -32,24 +32,16 @@ final class ShipmentService
     {
         $quote = $job->quote;
 
-        // The courier fields live on the job's shipment now (Stage 2a). Every
-        // job built via buildJobsForQuote already has a 1:1 shipment;
-        // defensively create one for a legacy/factory job so the booking has a
-        // shipment id to key the tracking number off.
-        $shipment = $job->shipment;
-        if ($shipment === null) {
-            $shipment = Shipment::create(['quote_id' => $quote->id]);
-            $job->shipment()->associate($shipment)->save();
-        }
-
-        // Idempotency guard FIRST: the merchant-supplied tracking number is
+        // Idempotency guard FIRST: the courier fields live on the job's
+        // shipment now (Stage 2a), and the merchant-supplied tracking number is
         // deterministic per shipment, so a shipment that already carries a
         // consignment_ref has already booked a consignment - refuse to
-        // double-book. TOCTOU: two truly-concurrent requests could both pass
-        // this check, but the deterministic requested_tracking_number is the
-        // remote-uniqueness backstop (NinjaVan rejects the duplicate booking),
-        // so no second SHIPPED results.
-        if ($shipment->consignment_ref !== null) {
+        // double-book. A job with no shipment yet plainly has no consignment,
+        // so it is not "already shipped". TOCTOU: two truly-concurrent requests
+        // could both pass this check, but the deterministic
+        // requested_tracking_number is the remote-uniqueness backstop (NinjaVan
+        // rejects the duplicate booking), so no second SHIPPED results.
+        if ($job->shipment?->consignment_ref !== null) {
             throw new DomainRuleException('This job already has a shipment.');
         }
 
@@ -69,6 +61,16 @@ final class ShipmentService
         // would otherwise reach NinjaVan as a 400 and surface to staff as an
         // opaque 502, instead of a specific, actionable 422.
         $this->assertShipToComplete($addr);
+
+        // Ensure the job carries a shipment now - AFTER all the guards, so an
+        // aborted booking never persists an orphan null-consignment row. Every
+        // job built via buildJobsForQuote already has a 1:1 shipment; this only
+        // covers the legacy/factory path.
+        $shipment = $job->shipment;
+        if ($shipment === null) {
+            $shipment = Shipment::create(['quote_id' => $quote->id]);
+            $job->shipment()->associate($shipment)->save();
+        }
 
         // Per-SHIPMENT, not per-quote: a multi-job quote books one NinjaVan
         // order per shipment (1:1 with jobs in Stage 2a), so a number derived
