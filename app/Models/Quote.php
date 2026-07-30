@@ -73,6 +73,7 @@ class Quote extends Model
         'stock_confirmed_by',
         'reminders_sent',
         'reminded_phase',
+        'approval_order',
         'last_reminded_at',
         'amendment_log',
         'notes',
@@ -85,6 +86,7 @@ class Quote extends Model
     {
         return [
             'state' => QuoteState::class,
+            'approval_order' => \App\Enums\ApprovalOrder::class,
             'subtotal' => 'decimal:2',
             'delivery' => 'decimal:2',
             'adjustments' => 'array',

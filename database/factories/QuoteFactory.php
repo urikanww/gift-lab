@@ -31,6 +31,7 @@ class QuoteFactory extends Factory
             'gst_amount' => 0,
             'gst_rate' => 9,
             'total' => 0,
+            'approval_order' => 'price_first',
             'price_snapshot_at' => null,
             'amendment_log' => null,
             'notes' => null,
@@ -44,6 +45,13 @@ class QuoteFactory extends Factory
         return $this->state(fn (): array => [
             'state' => 'SENT',
             'price_snapshot_at' => now(),
+        ]);
+    }
+
+    public function proofFirst(): static
+    {
+        return $this->state(fn (): array => [
+            'approval_order' => 'proof_first',
         ]);
     }
 
