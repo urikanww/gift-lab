@@ -27,7 +27,7 @@ final class OrderTracker
         $stage = $quote->trackingStage();
 
         return [
-            'reference' => $quote->tracking_code,
+            'reference' => $quote->reference,
             'stage' => $stage,
             'stage_label' => $quote->trackingStageLabel(),
             'cancelled' => $stage === 'CANCELLED',
@@ -70,7 +70,7 @@ final class OrderTracker
     {
         // absolute:false + signed:relative on the route keeps the signature valid
         // regardless of host, and yields "/api/track/view?code=..&signature=..".
-        $apiPath = URL::signedRoute('track.view', ['code' => $quote->tracking_code], null, false);
+        $apiPath = URL::signedRoute('track.view', ['code' => $quote->reference], null, false);
 
         return '/track/view?'.Str::after($apiPath, '?');
     }

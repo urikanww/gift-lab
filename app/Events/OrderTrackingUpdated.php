@@ -13,8 +13,8 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Pushed to a PUBLIC channel keyed by the opaque tracking code so the
- * login-free tracking page updates live (no auth - the code is the handle).
+ * Pushed to a PUBLIC channel keyed by the opaque order reference so the
+ * login-free tracking page updates live (no auth - the reference is the handle).
  * Carries the coarse buyer-facing stage plus the same shipments/item-count
  * detail the HTTP /track payload carries (via OrderTracker, so the shape
  * lives in one place): no pricing, no PII.
@@ -34,12 +34,12 @@ class OrderTrackingUpdated implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        // No tracking code (shouldn't happen post-migration) → no channel.
-        if (empty($this->quote->tracking_code)) {
+        // No reference (shouldn't happen post-migration) → no channel.
+        if (empty($this->quote->reference)) {
             return [];
         }
 
-        return [new Channel("track.{$this->quote->tracking_code}")];
+        return [new Channel("track.{$this->quote->reference}")];
     }
 
     public function broadcastAs(): string
@@ -61,7 +61,7 @@ class OrderTrackingUpdated implements ShouldBroadcast
         $payload = app(OrderTracker::class)->payload($this->quote);
 
         return [
-            'reference' => $this->quote->tracking_code,
+            'reference' => $this->quote->reference,
             'stage' => $stage,
             'stage_label' => $this->quote->trackingStageLabel(),
             'cancelled' => $stage === 'CANCELLED',

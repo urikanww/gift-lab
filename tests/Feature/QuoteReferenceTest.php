@@ -7,11 +7,12 @@ use App\Models\Quote;
 use App\Models\User;
 use Laravel\Sanctum\Sanctum;
 
-it('assigns a unique opaque reference on create', function (): void {
+it('assigns a unique GL- reference to every new quote', function (): void {
     $a = Quote::factory()->create();
     $b = Quote::factory()->create();
 
-    expect($a->reference)->toBeString()->toHaveLength(10)
+    expect($a->reference)->toStartWith('GL-')
+        ->and(strlen((string) $a->reference))->toBe(13)
         ->and($a->reference)->not->toBe($b->reference);
 });
 

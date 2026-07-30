@@ -82,21 +82,12 @@
                                 <td class="gl-px" style="padding:0 48px;">
                                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e6e6ef; border-bottom:1px solid #e6e6ef;">
                                         <tr>
-                                            {{-- The reference, not the tracking code: this is the identifier
-                                                 the order page shows and the only one the order search can find. --}}
+                                            {{-- The single order id used everywhere: this reference is what the
+                                                 order pages show, what tracking and the QR code resolve to, and the
+                                                 only identifier the order search can find. (Feature B collapsed the
+                                                 former separate tracking code into this one reference.) --}}
                                             <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a8a99; border-bottom:1px solid #f0f0f6;">Quote ref</td>
                                             <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#14141a; border-bottom:1px solid #f0f0f6; font-weight:600;">{{ $quote->reference }}</td>
-                                        </tr>
-                                        <tr>
-                                            {{-- Kept, but labelled for what it is: the tracking code has a
-                                                 separate job - login-free tracking at /track, shareable with a
-                                                 recipient who has no account. Same framing as QuoteDetailPage. --}}
-                                            <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a8a99; border-bottom:1px solid #f0f0f6;">
-                                                Tracking code
-                                                <br>
-                                                <span style="font-size:12px; color:#8a8a99;">Share to track without an account</span>
-                                            </td>
-                                            <td align="right" style="padding:14px 0; font-family:'Courier New',Courier,monospace; font-size:14px; color:#14141a; border-bottom:1px solid #f0f0f6; font-weight:600;">{{ $quote->tracking_code }}</td>
                                         </tr>
                                         <tr>
                                             <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a8a99; border-bottom:1px solid #f0f0f6;">Items</td>

@@ -22,7 +22,7 @@ it('serves the tracking payload for a validly signed link', function (): void {
 
     $this->getJson("/api/track/view?{$query}")
         ->assertOk()
-        ->assertJson(['reference' => $quote->tracking_code, 'stage' => 'ACTION_REQUIRED']);
+        ->assertJson(['reference' => $quote->reference, 'stage' => 'ACTION_REQUIRED']);
 });
 
 it('rejects a tampered signature', function (): void {

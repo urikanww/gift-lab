@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 
 /**
  * Login-free order tracking (spec: buyer follows an order with no account).
- * Identity = opaque tracking code + a first-5-of-email check. The code is the
+ * Identity = opaque order reference + a first-5-of-email check. The reference is the
  * anti-enumeration handle (sequential quote ids are guessable); the email
  * prefix is a light second factor. Route is rate-limited and every failure
  * returns the SAME generic error, so a caller can never learn whether a code
@@ -21,7 +21,7 @@ class TrackingController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'tracking_code' => ['required', 'string', 'max:16'],
+            'reference' => ['required', 'string', 'max:24'],
             'email' => ['required', 'string', 'max:255'],
         ]);
 
@@ -30,11 +30,11 @@ class TrackingController extends Controller
             404,
         );
 
-        $code = strtoupper(trim($data['tracking_code']));
+        $code = strtoupper(trim($data['reference']));
 
         $quote = Quote::query()
             ->with('company')
-            ->where('tracking_code', $code)
+            ->where('reference', $code)
             ->first();
 
         // Same generic failure for an unknown code and a wrong email prefix -
@@ -62,7 +62,7 @@ class TrackingController extends Controller
     {
         $code = strtoupper(trim((string) $request->query('code', '')));
 
-        $quote = Quote::query()->where('tracking_code', $code)->first();
+        $quote = Quote::query()->where('reference', $code)->first();
 
         if ($quote === null) {
             return response()->json(['message' => 'No order matches those details.'], 404);

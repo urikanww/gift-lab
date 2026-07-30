@@ -113,7 +113,7 @@ final class ShipmentService
         }
 
         $courierShipment = new CourierShipment(
-            reference: (string) ($quote->tracking_code ?? $quote->id),
+            reference: (string) $quote->reference,
             recipientName: $addr->recipient_name, phone: $addr->phone, email: $addr->email,
             line1: $addr->line1, line2: $addr->line2, city: $addr->city, state: $addr->state,
             postalCode: $addr->postal_code, country: $addr->country, notes: $addr->notes,

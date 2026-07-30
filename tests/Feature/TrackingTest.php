@@ -10,11 +10,11 @@ use App\Models\Proof;
 use App\Models\Quote;
 use App\Services\QueueService;
 
-it('assigns an opaque tracking code to every new quote', function (): void {
+it('assigns an opaque GL- reference to every new quote', function (): void {
     $quote = Quote::factory()->create();
 
-    expect($quote->tracking_code)->toStartWith('GL-')
-        ->and(strlen((string) $quote->tracking_code))->toBe(9);
+    expect($quote->reference)->toStartWith('GL-')
+        ->and(strlen((string) $quote->reference))->toBe(13);
 });
 
 it('returns order status for a matching code and email prefix', function (): void {
@@ -22,12 +22,12 @@ it('returns order status for a matching code and email prefix', function (): voi
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'SENT']);
 
     $this->postJson('/api/track', [
-        'tracking_code' => $quote->tracking_code,
+        'reference' => $quote->reference,
         'email' => 'buyer@acme.com',
     ])
         ->assertOk()
         ->assertJson([
-            'reference' => $quote->tracking_code,
+            'reference' => $quote->reference,
             'stage' => 'ACTION_REQUIRED',
             'stage_label' => 'Awaiting your approval',
         ])
@@ -41,7 +41,7 @@ it('accepts a lookup using only the first five email characters', function (): v
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROOF_APPROVED']);
 
     $this->postJson('/api/track', [
-        'tracking_code' => strtolower((string) $quote->tracking_code), // case-insensitive
+        'reference' => strtolower((string) $quote->reference), // case-insensitive
         'email' => 'buyer',
     ])
         ->assertOk()
@@ -67,7 +67,7 @@ it('projects SHIPPED then DELIVERED on /track as the jobs advance', function ():
     $job = $queue->buildJobsForQuote($quote->load('lineItems.product'))->first();
 
     $track = fn (): array => $this->postJson('/api/track', [
-        'tracking_code' => $quote->tracking_code,
+        'reference' => $quote->reference,
         'email' => 'buyer@acme.com',
     ])->assertOk()->json();
 
@@ -90,12 +90,12 @@ it('gives the same generic 404 for a wrong email prefix and an unknown code', fu
     $quote = Quote::factory()->create(['company_id' => $company->id]);
 
     $wrongEmail = $this->postJson('/api/track', [
-        'tracking_code' => $quote->tracking_code,
+        'reference' => $quote->reference,
         'email' => 'nope@other.com',
     ])->assertNotFound();
 
     $unknownCode = $this->postJson('/api/track', [
-        'tracking_code' => 'GL-000000',
+        'reference' => 'GL-000000',
         'email' => 'buyer@acme.com',
     ])->assertNotFound();
 
@@ -114,7 +114,7 @@ it('lists product name and qty on the tracker, without pricing', function (): vo
         'quote_id' => $quote->id, 'product_id' => $product->id, 'qty' => 25,
     ]);
 
-    $this->postJson('/api/track', ['tracking_code' => $quote->tracking_code, 'email' => 'buyer@acme.com'])
+    $this->postJson('/api/track', ['reference' => $quote->reference, 'email' => 'buyer@acme.com'])
         ->assertOk()
         ->assertJsonPath('items.0.name', 'Tote Bag')
         ->assertJsonPath('items.0.qty', 25)

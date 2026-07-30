@@ -54,7 +54,7 @@ const payload: TrackResult = {
 
 async function trackAnOrder() {
   render(<TrackPage />);
-  fireEvent.change(screen.getByLabelText(/tracking code/i), { target: { value: 'GL-ABC123' } });
+  fireEvent.change(screen.getByLabelText(/order reference/i), { target: { value: 'GL-ABC123' } });
   fireEvent.change(screen.getByLabelText(/order email/i), { target: { value: 'buyer@example.com' } });
   fireEvent.click(screen.getByRole('button', { name: /track order/i }));
   await screen.findByText('GL-ABC123');
@@ -63,8 +63,21 @@ async function trackAnOrder() {
 describe('TrackPage', () => {
   afterEach(() => {
     cleanup();
+    post.mockClear();
     capturedListener = null;
     leftChannel = null;
+  });
+
+  it('posts the unified reference (not tracking_code) and renders the result on success', async () => {
+    post.mockResolvedValue({ data: payload });
+    await trackAnOrder();
+
+    expect(post).toHaveBeenCalledWith('/track', {
+      reference: 'GL-ABC123',
+      email: 'buyer@example.com',
+    });
+    // The success payload's reference is rendered in the result view.
+    expect(await screen.findByText('GL-ABC123')).toBeInTheDocument();
   });
 
   it('applies live shipments + item counts from an OrderTrackingUpdated broadcast without a refetch', async () => {
@@ -145,7 +158,7 @@ describe('TrackPage', () => {
   it('leaves the public track channel on unmount', async () => {
     post.mockResolvedValue({ data: payload });
     const { unmount } = render(<TrackPage />);
-    fireEvent.change(screen.getByLabelText(/tracking code/i), { target: { value: 'GL-ABC123' } });
+    fireEvent.change(screen.getByLabelText(/order reference/i), { target: { value: 'GL-ABC123' } });
     fireEvent.change(screen.getByLabelText(/order email/i), { target: { value: 'buyer@example.com' } });
     fireEvent.click(screen.getByRole('button', { name: /track order/i }));
     await screen.findByText('GL-ABC123');

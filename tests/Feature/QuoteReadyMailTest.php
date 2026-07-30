@@ -65,16 +65,14 @@ it('shows the searchable reference under Quote ref, not the tracking code', func
     $mail->assertSeeInHtml($quote->reference, false);
 });
 
-it('still carries the tracking code, labelled for login-free tracking', function (): void {
+it('no longer shows a separate tracking-code row (single reference id)', function (): void {
     $quote = Quote::factory()->create();
     $mail = new QuoteReadyMail($quote, hasProof: false, proofImageUrl: null);
 
-    // Not dropped, just disambiguated: the tracking code is the shareable one a
-    // recipient without an account uses at /track.
-    expect($quote->tracking_code)->not->toBeNull();
-    $mail->assertSeeInHtml('Tracking code', false);
-    $mail->assertSeeInHtml($quote->tracking_code, false);
-    $mail->assertSeeInHtml('Share to track without an account', false);
+    // Feature B collapses the two order ids into the single reference. The
+    // former "Tracking code" row is retired from this email; the reference is
+    // now the only order id shown (order pages, tracking, QR).
+    $mail->assertDontSeeInHtml('Tracking code', false);
 });
 
 it('escapes a malicious creator name in the greeting', function (): void {

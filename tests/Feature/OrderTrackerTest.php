@@ -18,7 +18,7 @@ it('builds a PII-free payload for a quote', function (): void {
 
     $payload = app(OrderTracker::class)->payload($quote->fresh());
 
-    expect($payload['reference'])->toBe($quote->tracking_code)
+    expect($payload['reference'])->toBe($quote->reference)
         ->and($payload['stage'])->toBe('ACTION_REQUIRED')
         ->and($payload['stage_label'])->toBe('Awaiting your approval')
         ->and($payload)->not->toHaveKeys(['total', 'subtotal', 'notes']);
