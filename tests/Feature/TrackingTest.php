@@ -10,7 +10,7 @@ use App\Models\Proof;
 use App\Models\Quote;
 use App\Services\QueueService;
 
-it('assigns an opaque tracking code to every new quote', function (): void {
+it('assigns an opaque GL- reference to every new quote', function (): void {
     $quote = Quote::factory()->create();
 
     expect($quote->reference)->toStartWith('GL-')

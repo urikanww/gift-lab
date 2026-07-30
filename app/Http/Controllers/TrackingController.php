@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 
 /**
  * Login-free order tracking (spec: buyer follows an order with no account).
- * Identity = opaque tracking code + a first-5-of-email check. The code is the
+ * Identity = opaque order reference + a first-5-of-email check. The reference is the
  * anti-enumeration handle (sequential quote ids are guessable); the email
  * prefix is a light second factor. Route is rate-limited and every failure
  * returns the SAME generic error, so a caller can never learn whether a code

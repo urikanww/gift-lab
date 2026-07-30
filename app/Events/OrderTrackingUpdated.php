@@ -13,8 +13,8 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Pushed to a PUBLIC channel keyed by the opaque tracking code so the
- * login-free tracking page updates live (no auth - the code is the handle).
+ * Pushed to a PUBLIC channel keyed by the opaque order reference so the
+ * login-free tracking page updates live (no auth - the reference is the handle).
  * Carries the coarse buyer-facing stage plus the same shipments/item-count
  * detail the HTTP /track payload carries (via OrderTracker, so the shape
  * lives in one place): no pricing, no PII.
