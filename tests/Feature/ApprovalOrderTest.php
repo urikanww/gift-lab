@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Enums\ApprovalOrder;
-use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
