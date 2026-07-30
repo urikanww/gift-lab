@@ -259,6 +259,39 @@ it('Make queue drops a SHIPPED job (no dead card off the floor)', () => {
   expect(screen.queryByText(/GL-CCC0000003/)).not.toBeInTheDocument();
 });
 
+// F13: the courier is SG-only, so the delivery-address panel always shows
+// Singapore/Singapore/SG for city/state/country regardless of what loaded, and
+// those three inputs are locked (disabled). Reached by opening the Ship desk's
+// book-shipment confirm modal, which renders the DeliveryAddressPanel.
+it('locks City/State/Country to Singapore in the delivery address panel', async () => {
+  vi.mocked(api.get).mockResolvedValue({ data: { data: [] } } as any);
+  const fetchShippingAddress = vi.fn(async () => ({
+    address: { recipient_name: 'A', phone: '1', line1: 'L1', postal_code: '000000', city: 'Kuala Lumpur', state: 'Selangor', country: 'MY' },
+    saved: false,
+  }));
+  seedTwoTabs({
+    createShipment: vi.fn(async () => ({ consignment_ref: 'SP1', tracking_url: null })),
+    fetchShippingAddress,
+    saveShippingAddress: vi.fn(async () => {}),
+  });
+  renderPage();
+
+  fireEvent.click(screen.getByRole('tab', { name: /ship desk/i }));
+  await userEvent.click(screen.getByRole('button', { name: /create ninjavan shipment/i }));
+
+  const city = await screen.findByLabelText(/city/i);
+  expect(city).toHaveValue('Singapore');
+  expect(city).toBeDisabled();
+
+  const state = screen.getByLabelText(/state/i);
+  expect(state).toHaveValue('Singapore');
+  expect(state).toBeDisabled();
+
+  const country = screen.getByLabelText(/country/i);
+  expect(country).toHaveValue('SG');
+  expect(country).toBeDisabled();
+});
+
 // With the floor full of READY jobs and nothing produced yet, the Ship desk is
 // empty but not "clear" - the make-oriented copy would mislead.
 it('Ship desk empty state reads "nothing ready to ship", not the make copy', () => {

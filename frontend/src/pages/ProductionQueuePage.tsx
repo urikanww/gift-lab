@@ -735,9 +735,9 @@ function DeliveryAddressPanel({
           postal_code: addr.postal_code ?? '',
           email: addr.email ?? '',
           line2: addr.line2 ?? '',
-          city: addr.city ?? '',
-          state: addr.state ?? '',
-          country: addr.country ?? '',
+          city: 'Singapore',
+          state: 'Singapore',
+          country: 'SG',
           notes: addr.notes ?? '',
         });
         // Gate the create-shipment button on a persisted row, not a defaulted
@@ -811,12 +811,12 @@ function DeliveryAddressPanel({
       <Input label="Address line 1" required value={form.line1} onChange={update('line1')} />
       <Input label="Address line 2" value={form.line2} onChange={update('line2')} />
       <div className="grid grid-cols-2 gap-2">
-        <Input label="City" value={form.city} onChange={update('city')} />
-        <Input label="State" value={form.state} onChange={update('state')} />
+        <Input label="City" value={form.city} disabled onChange={update('city')} />
+        <Input label="State" value={form.state} disabled onChange={update('state')} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Input label="Postal code" required value={form.postal_code} onChange={update('postal_code')} />
-        <Input label="Country" placeholder="SG" maxLength={2} value={form.country} onChange={update('country')} />
+        <Input label="Country" value={form.country} maxLength={2} disabled onChange={update('country')} />
       </div>
       <Textarea label="Notes" rows={2} value={form.notes} onChange={update('notes')} />
       <Button
