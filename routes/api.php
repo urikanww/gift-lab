@@ -223,6 +223,11 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Staff fix the self-fixable SCRAPED_UV blockers inline (dims/weight, print
     // method, price), then re-gate + publish in one call.
     Route::post('/admin/products/{product}/resolve-blockers', [AdminCatalogueController::class, 'resolveBlockers'])->middleware('permission:products.edit');
+    // Staff delete (soft) an unpublished gate item, or a selected batch. The
+    // literal bulk-delete route MUST precede the /{product} wildcard, or
+    // "bulk-delete" would bind as a {product} id. Published rows are refused/skipped.
+    Route::post('/admin/catalogue/bulk-delete', [AdminCatalogueController::class, 'bulkDestroy'])->middleware('permission:products.edit');
+    Route::delete('/admin/catalogue/{product}', [AdminCatalogueController::class, 'destroy'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/unpublish', [AdminCatalogueController::class, 'unpublish'])->middleware('permission:products.approve');
     Route::post('/admin/products/{product}/verify-estimates', [AdminCatalogueController::class, 'verifyEstimates'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/model-file', [AdminCatalogueController::class, 'uploadModelFile'])->middleware('permission:products.edit');

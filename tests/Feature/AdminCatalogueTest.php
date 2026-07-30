@@ -426,3 +426,73 @@ it('returns the blocker-prefill fields on each gate row', function (): void {
         ->assertJsonPath('data.0.print_method', 'UV')
         ->assertJsonPath('data.0.is_printable', true);
 });
+
+it('soft-deletes an unpublished gate item and drops it from the list', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs($this->staff);
+    $this->deleteJson("/api/admin/catalogue/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('deleted', true);
+
+    expect($product->fresh()->trashed())->toBeTrue();
+
+    // Gone from the gate list.
+    $res = $this->getJson('/api/admin/catalogue')->assertOk();
+    expect(collect($res->json('data'))->pluck('id')->all())->not->toContain($product->id);
+
+    // Audited under the gate-delete event.
+    $this->assertDatabaseHas('audit_logs', [
+        'auditable_type' => Product::class,
+        'auditable_id' => $product->id,
+        'event' => 'product.gate_deleted',
+        'user_id' => $this->staff->id,
+    ]);
+});
+
+it('refuses to delete a published product (422) and leaves it intact', function (): void {
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->staff);
+    $this->deleteJson("/api/admin/catalogue/{$product->id}")
+        ->assertStatus(422)
+        ->assertJsonPath('message', 'Unpublish a live product before deleting it.');
+
+    expect($product->fresh()->trashed())->toBeFalse();
+});
+
+it('bulk-deletes unpublished rows and skips published ones', function (): void {
+    $unpublishedA = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+    $unpublishedB = Product::factory()->model3d()->create(['publish_state' => 'READY_TO_APPROVE']);
+    $published = Product::factory()->scrapedUv()->create(['publish_state' => 'PUBLISHED']);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->postJson('/api/admin/catalogue/bulk-delete', [
+        'ids' => [$unpublishedA->id, $unpublishedB->id, $published->id],
+    ])->assertOk();
+
+    expect($res->json('deleted'))->toContain($unpublishedA->id)->toContain($unpublishedB->id)
+        ->and($res->json('deleted'))->not->toContain($published->id)
+        ->and($res->json('skipped'))->toBe([$published->id]);
+
+    expect($unpublishedA->fresh()->trashed())->toBeTrue()
+        ->and($unpublishedB->fresh()->trashed())->toBeTrue()
+        ->and($published->fresh()->trashed())->toBeFalse();
+
+    $this->assertDatabaseHas('audit_logs', [
+        'auditable_type' => Product::class,
+        'auditable_id' => $unpublishedA->id,
+        'event' => 'product.gate_deleted',
+    ]);
+});
+
+it('forbids a viewer-only staff user from deleting or bulk-deleting', function (): void {
+    $viewer = User::factory()->staffAdmin()->create(['permissions' => ['products.view']]);
+    $product = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs($viewer);
+    $this->deleteJson("/api/admin/catalogue/{$product->id}")->assertForbidden();
+    $this->postJson('/api/admin/catalogue/bulk-delete', ['ids' => [$product->id]])->assertForbidden();
+
+    expect($product->fresh()->trashed())->toBeFalse();
+});

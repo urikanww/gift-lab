@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ProductClass;
 use App\Enums\PublishState;
+use App\Exceptions\DomainRuleException;
 use App\Models\PricingConfig;
 use App\Models\Product;
 use App\Models\ProductModelPart;
@@ -282,6 +283,69 @@ class AdminCatalogueController extends Controller
             'publish_state' => $product->publish_state->value,
             'cannot_publish_reasons' => $product->cannot_publish_reasons,
         ]);
+    }
+
+    /**
+     * Staff delete (archive) an unpublished gate item. Soft delete - it drops out
+     * of the gate but stays recoverable via the product-admin restore, and the
+     * model cascades the soft-delete to variants. A PUBLISHED item is live and
+     * managed from the product admin (and no longer listed here at all), so it is
+     * refused with a 422 pointing the staffer to unpublish first.
+     */
+    public function destroy(Request $request, Product $product): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        if ($product->publish_state === PublishState::Published) {
+            throw new DomainRuleException('Unpublish a live product before deleting it.');
+        }
+
+        $product->delete();
+
+        $this->audit->log($product, 'product.gate_deleted', ['publish_state' => $product->publish_state->value], null);
+
+        return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * Staff bulk-delete (archive) a selected batch of gate items. Published rows
+     * in the selection are SKIPPED (not deleted) and reported back rather than
+     * aborting the whole batch, so a stray live id can't block the rest. Each
+     * delete is soft + audited. Returns the deleted + skipped id lists.
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'max:200'],
+            'ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        $deleted = [];
+        $skipped = [];
+
+        foreach ($validated['ids'] as $id) {
+            // find() skips already-soft-deleted rows, so a re-submitted id is a
+            // no-op rather than a double-archive.
+            $product = Product::find($id);
+
+            if ($product === null) {
+                continue;
+            }
+
+            if ($product->publish_state === PublishState::Published) {
+                $skipped[] = $product->id;
+
+                continue;
+            }
+
+            $product->delete();
+            $this->audit->log($product, 'product.gate_deleted', ['publish_state' => $product->publish_state->value], null);
+            $deleted[] = $product->id;
+        }
+
+        return response()->json(['deleted' => $deleted, 'skipped' => $skipped]);
     }
 
     public function unpublish(Request $request, Product $product): JsonResponse
