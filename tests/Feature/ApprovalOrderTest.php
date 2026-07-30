@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\QuoteService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
+use Laravel\Sanctum\Sanctum;
 
 it('defaults a new quote to price_first', function (): void {
     $quote = Quote::factory()->create();
@@ -171,3 +172,22 @@ it('plain-stock is a no-op under both orderings', function (string $order): void
     $svc->accept($quote->fresh()); // auto-skips to PROOF_APPROVED
     expect($quote->fresh()->state)->toBe(QuoteState::ProofApproved);
 })->with(['price_first', 'proof_first']);
+
+it('PATCH /approval-order updates a DRAFT quote and echoes it in the resource', function (): void {
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $quote = Quote::factory()->create(['state' => QuoteState::Draft->value]);
+
+    $this->patchJson("/api/quotes/{$quote->id}/approval-order", ['approval_order' => 'proof_first'])
+        ->assertOk()
+        ->assertJsonPath('data.approval_order', 'proof_first');
+
+    expect($quote->fresh()->approval_order)->toBe(ApprovalOrder::ProofFirst);
+});
+
+it('PATCH /approval-order rejects an invalid value', function (): void {
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $quote = Quote::factory()->create(['state' => QuoteState::Draft->value]);
+
+    $this->patchJson("/api/quotes/{$quote->id}/approval-order", ['approval_order' => 'nonsense'])
+        ->assertStatus(422);
+});

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ApprovalOrder;
 use App\Enums\PaymentState;
 use App\Enums\QuoteState;
 use App\Exceptions\DomainRuleException;
@@ -12,6 +13,7 @@ use App\Http\Requests\CancelQuoteRequest;
 use App\Http\Requests\IssueInvoiceRequest;
 use App\Http\Requests\ReconcilePaymentRequest;
 use App\Http\Requests\SendQuoteRequest;
+use App\Http\Requests\SetApprovalOrderRequest;
 use App\Http\Requests\StoreQuoteRequest;
 use App\Http\Resources\QuoteHistoryResource;
 use App\Http\Resources\QuoteResource;
@@ -274,6 +276,15 @@ class QuoteController extends Controller
         $this->authorize('manageProduction', $quote);
 
         return new QuoteResource($this->quotes->send($quote));
+    }
+
+    public function setApprovalOrder(SetApprovalOrderRequest $request, Quote $quote): QuoteResource
+    {
+        $this->authorize('manageProduction', $quote);
+
+        $order = ApprovalOrder::from($request->string('approval_order')->toString());
+
+        return new QuoteResource($this->quotes->setApprovalOrder($quote, $order)->load('lineItems'));
     }
 
     public function accept(Request $request, Quote $quote): QuoteResource

@@ -36,6 +36,7 @@ class QuoteResource extends JsonResource
             // Company soft-deletes, so a loaded relation can still be null.
             'company_name' => $this->whenLoaded('company', fn () => $this->company?->name),
             'state' => $this->state->value,
+            'approval_order' => $this->approval_order->value,
             'currency' => $this->currency,
             'subtotal' => $this->subtotal,
             // LT16: the personalisation/decoration fee is folded into subtotal
