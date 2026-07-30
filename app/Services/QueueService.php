@@ -494,9 +494,40 @@ final class QueueService
     {
         return ProductionJob::query()
             ->where('state', JobState::Shipped->value)
+            // Returned/failed parcels leave this list for the Needs-attention
+            // surface - they can't be "marked delivered" (the backend rejects
+            // it), so they don't belong on the awaiting-delivery board.
+            ->where(fn ($q) => $q
+                ->whereNull('last_courier_status')
+                ->orWhereNotIn('last_courier_status', [
+                    NinjaVanStatusMapper::LABEL_ATTEMPT_FAILED,
+                    NinjaVanStatusMapper::LABEL_RETURNED,
+                ]))
             ->whereHas('quote')
             ->with(['quote', 'lineItems.product'])
             ->orderByDesc('updated_at')
+            ->get();
+    }
+
+    /**
+     * Parcels NinjaVan reported returned/attempt-failed: SHIPPED jobs whose
+     * last courier status is one of NinjaVanStatusMapper's needsAttention
+     * labels. The Needs-attention surface; each is resolved via resolveReturn
+     * (reship / close / cancel-credit). Cancelled/soft-deleted quotes excluded.
+     *
+     * @return Collection<int, ProductionJob>
+     */
+    public function needsAttention(): Collection
+    {
+        return ProductionJob::query()
+            ->where('state', JobState::Shipped->value)
+            ->whereIn('last_courier_status', [
+                NinjaVanStatusMapper::LABEL_ATTEMPT_FAILED,
+                NinjaVanStatusMapper::LABEL_RETURNED,
+            ])
+            ->whereHas('quote')
+            ->with(['quote', 'lineItems.product'])
+            ->orderByDesc('last_courier_status_at')
             ->get();
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\ProductionJob;
+use App\Services\Courier\NinjaVanStatusMapper;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -37,6 +38,11 @@ class ProductionJobResource extends JsonResource
                 : null,
             'last_courier_status' => $this->last_courier_status,
             'last_courier_status_at' => $this->last_courier_status_at?->toIso8601String(),
+            // Derived: is this a returned/failed parcel awaiting staff
+            // resolution (drives the Needs-attention surface + gates the
+            // resolve-return actions client-side). Mirrors the server guard in
+            // QueueService::resolveReturn.
+            'needs_attention' => NinjaVanStatusMapper::isNeedsAttentionLabel($this->last_courier_status),
             'print_method' => $this->print_method?->value,
             'qty' => $this->qty,
             // Per-line saved customization + the product's model/zone, so the floor

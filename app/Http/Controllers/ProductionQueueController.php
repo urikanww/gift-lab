@@ -232,6 +232,18 @@ class ProductionQueueController extends Controller
     }
 
     /**
+     * Returned/failed parcels awaiting staff resolution (reship/close/
+     * cancel-credit). Read-only; separate from the in-transit board, which now
+     * excludes these. Staff-gated like the rest of the queue.
+     */
+    public function needsAttention(Request $request): AnonymousResourceCollection
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        return ProductionJobResource::collection($this->queue->needsAttention());
+    }
+
+    /**
      * Staff manually confirm a shipped parcel was delivered - the fallback for
      * when NinjaVan's delivery webhook never arrives. Closes the job (and the
      * quote when it's the last one), firing the buyer's delivered milestone,

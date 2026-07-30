@@ -191,6 +191,9 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Jobs in transit (SHIPPED, awaiting delivery confirmation). Registered
     // before the /{job} wildcards so "in-transit" is never read as a job id.
     Route::get('/production-jobs/in-transit', [ProductionQueueController::class, 'inTransit'])->middleware('permission:production.view');
+    // Returned/failed parcels awaiting staff resolution. Registered before the
+    // /{job} wildcards so "needs-attention" is never read as a job id.
+    Route::get('/production-jobs/needs-attention', [ProductionQueueController::class, 'needsAttention'])->middleware('permission:production.view');
     Route::post('/production-jobs/{job}/advance', [ProductionQueueController::class, 'advance'])->middleware('permission:production.manage');
     Route::post('/production-jobs/advance-batch', [ProductionQueueController::class, 'advanceBatch'])->middleware('permission:production.manage');
     Route::post('/production-jobs/{job}/advance-next', [ProductionQueueController::class, 'advanceNext'])->middleware('permission:production.manage');
