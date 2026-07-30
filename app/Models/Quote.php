@@ -55,7 +55,6 @@ class Quote extends Model
 
     protected $fillable = [
         'company_id',
-        'tracking_code',
         'reference',
         'idempotency_key',
         'state',
@@ -121,17 +120,7 @@ class Quote extends Model
 
     protected static function booted(): void
     {
-        // Assign an opaque tracking code before insert (unless one was set
-        // explicitly, e.g. a backfill/import). Loops on the unlikely collision.
         static::creating(function (Quote $quote): void {
-            if (empty($quote->tracking_code)) {
-                do {
-                    $code = self::generateTrackingCode();
-                } while (self::withTrashed()->where('tracking_code', $code)->exists());
-
-                $quote->tracking_code = $code;
-            }
-
             // Opaque order reference for buyer/public URLs (no numeric id leak).
             if (empty($quote->reference)) {
                 do {
@@ -395,16 +384,6 @@ class Quote extends Model
                 fn () => QuoteStateChanged::dispatch($this, $previous)
             )
         );
-    }
-
-    public static function generateTrackingCode(): string
-    {
-        $out = 'GL-';
-        for ($i = 0; $i < 6; $i++) {
-            $out .= self::TRACKING_ALPHABET[random_int(0, 31)];
-        }
-
-        return $out;
     }
 
     /**
