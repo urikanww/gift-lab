@@ -8,6 +8,7 @@ use App\Enums\Carrier;
 use App\Exceptions\CourierException;
 use App\Services\Courier\Contracts\CourierClient;
 use App\Support\CourierConfig;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
@@ -199,13 +200,59 @@ final class HttpNinjaVanClient implements CourierClient
         // so we re-auth below instead of handing back the wedged value.
         if ($forceRefresh) {
             Cache::forget($key);
+        } else {
+            $cached = Cache::get($key);
+            if (is_string($cached) && $cached !== '') {
+                return $cached;
+            }
         }
 
-        $cached = Cache::get($key);
-        if (is_string($cached) && $cached !== '') {
-            return $cached;
+        // Single-flight: serialise concurrent cold callers on a short lock so
+        // exactly ONE mints a token and the rest reuse it, instead of every
+        // in-flight request hitting the OAuth endpoint and minting its own (the
+        // cache stampede that logged dozens of tokens - several within the same
+        // second - in NinjaVan's audit). A lock timeout falls through to an
+        // unlocked mint so a stuck lock can never wedge a dispatch.
+        // NOTE: the database cache store needs the `cache_locks` table for this
+        // (created alongside `cache` by `php artisan make:cache-table`).
+        $lock = Cache::lock($key.':lock', 10);
+
+        try {
+            $lock->block(5);
+        } catch (LockTimeoutException) {
+            // Someone else is already minting: reuse whatever they cached, and
+            // only mint unlocked as a last resort if the cache is still cold.
+            $cached = Cache::get($key);
+            if (is_string($cached) && $cached !== '') {
+                return $cached;
+            }
+
+            return $this->requestToken($base, $key);
         }
 
+        try {
+            // Double-checked locking: the holder we just waited on may have
+            // already cached a fresh token, so re-read before minting.
+            if (! $forceRefresh) {
+                $cached = Cache::get($key);
+                if (is_string($cached) && $cached !== '') {
+                    return $cached;
+                }
+            }
+
+            return $this->requestToken($base, $key);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Mint one fresh OAuth token and cache it until ~5 min before expiry. Only
+     * ever called while holding the single-flight lock (or on a lock timeout),
+     * so two callers never mint at the same instant.
+     */
+    private function requestToken(string $base, string $key): string
+    {
         $resp = Http::connectTimeout(5)->timeout(20)
             ->retry(2, 500, function (Throwable $e): bool {
                 return $e instanceof ConnectionException
