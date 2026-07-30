@@ -1211,13 +1211,9 @@ export default function QuoteDetailPage() {
                   </span>
                 </p>
               )}
-              {quote.reference && (
-                <p className="mt-1 text-sm text-fg-muted">
-                  Order reference{' '}
-                  <span className="font-mono font-semibold text-fg">{quote.reference}</span>
-                  <span className="text-fg-subtle"> - share to track without an account at /track</span>
-                </p>
-              )}
+              <p className="mt-1 text-sm text-fg-subtle">
+                Share your order reference above to track without an account at /track
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {/* Buyer-only tracking entry point, aligned with the order title.
