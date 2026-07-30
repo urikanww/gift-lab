@@ -29,20 +29,22 @@ class ProductionJobResource extends JsonResource
             'state' => $this->state->value,
             'ready_at' => $this->ready_at?->toIso8601String(),
             'artwork_refs' => $this->artwork_refs ?? [],
-            'consignment_ref' => $this->consignment_ref,
+            // Courier fields now live on the job's shipment (Stage 2a); the
+            // output keys are unchanged, just sourced from $this->shipment.
+            'consignment_ref' => $this->shipment?->consignment_ref,
             // Courier context for the in-transit / awaiting-delivery panel.
-            'carrier' => $this->carrier?->value,
-            'carrier_label' => $this->carrier?->label(),
-            'tracking_url' => $this->consignment_ref !== null
-                ? $this->carrier?->trackingUrl($this->consignment_ref)
+            'carrier' => $this->shipment?->carrier?->value,
+            'carrier_label' => $this->shipment?->carrier?->label(),
+            'tracking_url' => $this->shipment?->consignment_ref !== null
+                ? $this->shipment?->carrier?->trackingUrl($this->shipment->consignment_ref)
                 : null,
-            'last_courier_status' => $this->last_courier_status,
-            'last_courier_status_at' => $this->last_courier_status_at?->toIso8601String(),
+            'last_courier_status' => $this->shipment?->last_courier_status,
+            'last_courier_status_at' => $this->shipment?->last_courier_status_at?->toIso8601String(),
             // Derived: is this a returned/failed parcel awaiting staff
             // resolution (drives the Needs-attention surface + gates the
             // resolve-return actions client-side). Mirrors the server guard in
             // QueueService::resolveReturn.
-            'needs_attention' => NinjaVanStatusMapper::isNeedsAttentionLabel($this->last_courier_status),
+            'needs_attention' => NinjaVanStatusMapper::isNeedsAttentionLabel($this->shipment?->last_courier_status),
             'print_method' => $this->print_method?->value,
             'qty' => $this->qty,
             // Per-line saved customization + the product's model/zone, so the floor

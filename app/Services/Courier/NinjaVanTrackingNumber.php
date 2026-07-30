@@ -71,4 +71,34 @@ final class NinjaVanTrackingNumber
         // the value past NinjaVan's 9-char limit.
         return substr($candidate, 0, $max);
     }
+
+    /**
+     * Per-SHIPMENT tracking number (Stage 2a). A shipment is the entity that
+     * books one NinjaVan order and owns the consignment_ref, so the merchant-
+     * supplied requested_tracking_number is keyed off the shipment id - itself a
+     * globally-unique primary key - so every shipment of a quote resolves to a
+     * distinct value (NinjaVan rejects a duplicate requested_tracking_number).
+     *
+     * Same derivation as forJob (base36 of the id, hash-slice fallback past the
+     * 9-char budget), just keyed on the shipment. Still fully deterministic
+     * (same shipment id -> same value), which is what makes it double as both
+     * the idempotency key for a retried booking and the stored consignment_ref.
+     */
+    public static function forShipment(int $quoteId, int $shipmentId): string
+    {
+        $prefix = strtoupper((string) config('services.ninjavan.tracking_prefix', 'GL'));
+        $max = 9;
+        $body = strtoupper(base_convert((string) $shipmentId, 10, 36));
+        $candidate = $prefix.$body;
+
+        if (strlen($candidate) <= $max) {
+            return $candidate;
+        }
+
+        $room = max(1, $max - strlen($prefix));
+
+        $candidate = $prefix.substr(strtoupper(base_convert(substr(md5($quoteId.':'.$shipmentId), 0, 12), 16, 36)), 0, $room);
+
+        return substr($candidate, 0, $max);
+    }
 }

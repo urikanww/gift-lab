@@ -57,8 +57,8 @@ class ParcelReturned implements ShouldBroadcast
             'quote_id' => $this->job->quote_id,
             // Displayed identifier; the store keys realtime refreshes off it.
             'quote_reference' => $this->job->quote?->reference,
-            'consignment_ref' => $this->job->consignment_ref,
-            'last_courier_status' => $this->job->last_courier_status,
+            'consignment_ref' => $this->job->shipment?->consignment_ref,
+            'last_courier_status' => $this->job->shipment?->last_courier_status,
         ];
     }
 }

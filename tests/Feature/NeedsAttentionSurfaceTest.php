@@ -61,9 +61,11 @@ function shippedJobWithStatus(string $label, string $consignmentRef): Production
     $queue->advance($job, JobState::InProduction);
     $job = $queue->advance($job, JobState::Shipped, $consignmentRef, Carrier::NinjaVan);
 
-    $job->last_courier_status = $label;
-    $job->last_courier_status_at = now();
-    $job->save();
+    // Courier status lives on the shipment now (Stage 2a).
+    $shipment = $job->shipment;
+    $shipment->last_courier_status = $label;
+    $shipment->last_courier_status_at = now();
+    $shipment->save();
 
     return $job->fresh();
 }

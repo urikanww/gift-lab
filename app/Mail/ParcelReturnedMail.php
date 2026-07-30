@@ -44,8 +44,8 @@ class ParcelReturnedMail extends Mailable implements ShouldQueue
             with: [
                 'job' => $this->job,
                 'quote' => $quote,
-                'lastCourierStatus' => $this->job->last_courier_status,
-                'consignmentRef' => $this->job->consignment_ref,
+                'lastCourierStatus' => $this->job->shipment?->last_courier_status,
+                'consignmentRef' => $this->job->shipment?->consignment_ref,
                 'orderUrl' => $quote !== null
                     ? rtrim((string) config('app.frontend_url', config('app.url')), '/').'/orders/'.$quote->reference
                     : null,

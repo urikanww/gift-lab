@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Models\User;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Services\OrderTracker;
@@ -69,16 +70,21 @@ it('does not count a returned-flagged shipped parcel as completed (L14)', functi
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'READY']);
     $product = Product::factory()->create(['class' => 'CORE']);
 
+    // Courier fields live on each parcel's shipment now (Stage 2a).
     $shippedJob = ProductionJob::factory()->create([
         'quote_id' => $quote->id, 'state' => JobState::Shipped->value,
-        'consignment_ref' => 'NVOK1', 'carrier' => Carrier::NinjaVan->value,
-        'last_courier_status' => 'Out for Delivery',
     ]);
+    $shippedJob->shipment()->associate(Shipment::factory()->create([
+        'quote_id' => $quote->id, 'consignment_ref' => 'NVOK1', 'carrier' => Carrier::NinjaVan->value,
+        'last_courier_status' => 'Out for Delivery',
+    ]))->save();
     $returnedJob = ProductionJob::factory()->create([
         'quote_id' => $quote->id, 'state' => JobState::Shipped->value,
-        'consignment_ref' => 'NVRET1', 'carrier' => Carrier::NinjaVan->value,
-        'last_courier_status' => NinjaVanStatusMapper::LABEL_RETURNED,
     ]);
+    $returnedJob->shipment()->associate(Shipment::factory()->create([
+        'quote_id' => $quote->id, 'consignment_ref' => 'NVRET1', 'carrier' => Carrier::NinjaVan->value,
+        'last_courier_status' => NinjaVanStatusMapper::LABEL_RETURNED,
+    ]))->save();
     LineItem::factory()->create(['quote_id' => $quote->id, 'product_id' => $product->id, 'job_id' => $shippedJob->id, 'line_state' => LineItemState::Ready->value]);
     LineItem::factory()->create(['quote_id' => $quote->id, 'product_id' => $product->id, 'job_id' => $returnedJob->id, 'line_state' => LineItemState::Ready->value]);
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\Company;
 use App\Models\ProductionJob;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Models\User;
 use Laravel\Sanctum\Sanctum;
 
@@ -15,12 +16,16 @@ use Laravel\Sanctum\Sanctum;
 it('exposes shipments with carrier and consignment to staff on the order page', function (): void {
     $company = Company::factory()->create();
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'READY']);
-    ProductionJob::factory()->create([
+    $job = ProductionJob::factory()->create([
         'quote_id' => $quote->id,
         'state' => 'SHIPPED',
+    ]);
+    $shipment = Shipment::factory()->create([
+        'quote_id' => $quote->id,
         'carrier' => 'SINGPOST',
         'consignment_ref' => 'SP123456789SG',
     ]);
+    $job->shipment()->associate($shipment)->save();
 
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
@@ -35,11 +40,15 @@ it('does not expose shipments to the buyer', function (): void {
     $company = Company::factory()->create();
     $buyer = User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']);
     $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'READY']);
-    ProductionJob::factory()->create([
+    $job = ProductionJob::factory()->create([
         'quote_id' => $quote->id,
         'state' => 'SHIPPED',
+    ]);
+    $shipment = Shipment::factory()->create([
+        'quote_id' => $quote->id,
         'consignment_ref' => 'SP123456789SG',
     ]);
+    $job->shipment()->associate($shipment)->save();
 
     Sanctum::actingAs($buyer);
 

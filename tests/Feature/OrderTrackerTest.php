@@ -73,9 +73,9 @@ it('surfaces the live courier status on a shipped job', function (): void {
     $queue->advance($job, JobState::Shipped, 'NVSGNEXGE000TRK001', Carrier::NinjaVan);
 
     $job->refresh();
-    $job->last_courier_status = 'Out for delivery';
-    $job->last_courier_status_at = now();
-    $job->save();
+    $job->shipment->last_courier_status = 'Out for delivery';
+    $job->shipment->last_courier_status_at = now();
+    $job->shipment->save();
 
     $shipment = app(OrderTracker::class)->payload($quote->fresh())['shipments'][0];
 
@@ -101,10 +101,10 @@ it('surfaces delivered_at once the job has been delivered', function (): void {
     $queue->advance($job, JobState::Shipped, 'NVSGNEXGE000TRK002', Carrier::NinjaVan);
 
     $job->refresh();
-    $job->last_courier_status = 'Delivered';
-    $job->last_courier_status_at = now();
-    $job->delivered_at = now();
-    $job->save();
+    $job->shipment->last_courier_status = 'Delivered';
+    $job->shipment->last_courier_status_at = now();
+    $job->shipment->delivered_at = now();
+    $job->shipment->save();
     $queue->advance($job->fresh(), JobState::Closed);
 
     $shipment = app(OrderTracker::class)->payload($quote->fresh())['shipments'][0];

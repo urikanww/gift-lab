@@ -67,7 +67,7 @@ it('lets staff mark a shipped job delivered: job + quote close, with a manual au
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Closed)
-        ->and($job->last_courier_status)->toContain('confirmed by staff');
+        ->and($job->shipment->last_courier_status)->toContain('confirmed by staff');
 
     expect($job->quote()->first()->state)->toBe(QuoteState::Closed);
 
@@ -88,9 +88,9 @@ it('rejects marking a job delivered when it is not shipped', function (): void {
 
 it('directs a returned/failed parcel to the returned-parcel resolution instead', function (): void {
     $job = shippedJobAwaitingDelivery();
-    $job->last_courier_status = NinjaVanStatusMapper::map('Returned to Sender')->label;
-    $job->last_courier_status_at = now();
-    $job->save();
+    $job->shipment->last_courier_status = NinjaVanStatusMapper::map('Returned to Sender')->label;
+    $job->shipment->last_courier_status_at = now();
+    $job->shipment->save();
 
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
     $this->postJson("/api/production-jobs/{$job->id}/mark-delivered")

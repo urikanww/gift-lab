@@ -8,6 +8,7 @@ use App\Enums\Carrier;
 use App\Enums\JobState;
 use App\Exceptions\DomainRuleException;
 use App\Models\ProductionJob;
+use App\Models\Shipment;
 use App\Models\ShippingAddress;
 use App\Services\Courier\Contracts\CourierClient;
 use App\Services\Courier\CourierShipment;
@@ -31,13 +32,24 @@ final class ShipmentService
     {
         $quote = $job->quote;
 
+        // The courier fields live on the job's shipment now (Stage 2a). Every
+        // job built via buildJobsForQuote already has a 1:1 shipment;
+        // defensively create one for a legacy/factory job so the booking has a
+        // shipment id to key the tracking number off.
+        $shipment = $job->shipment;
+        if ($shipment === null) {
+            $shipment = Shipment::create(['quote_id' => $quote->id]);
+            $job->shipment()->associate($shipment)->save();
+        }
+
         // Idempotency guard FIRST: the merchant-supplied tracking number is
-        // deterministic per quote, so a job that already carries a consignment_ref
-        // has already booked a consignment - refuse to double-book.
-        // TOCTOU: two truly-concurrent requests could both pass this check, but the
-        // deterministic requested_tracking_number is the remote-uniqueness backstop
-        // (NinjaVan rejects the duplicate booking), so no second SHIPPED results.
-        if ($job->consignment_ref !== null) {
+        // deterministic per shipment, so a shipment that already carries a
+        // consignment_ref has already booked a consignment - refuse to
+        // double-book. TOCTOU: two truly-concurrent requests could both pass
+        // this check, but the deterministic requested_tracking_number is the
+        // remote-uniqueness backstop (NinjaVan rejects the duplicate booking),
+        // so no second SHIPPED results.
+        if ($shipment->consignment_ref !== null) {
             throw new DomainRuleException('This job already has a shipment.');
         }
 
@@ -58,12 +70,12 @@ final class ShipmentService
         // opaque 502, instead of a specific, actionable 422.
         $this->assertShipToComplete($addr);
 
-        // Per-JOB, not per-quote: a multi-job quote (one UV job + one per 3D
-        // line) books one NinjaVan order per job, so a number derived from the
-        // quote id alone would collide across a quote's own jobs (NinjaVan
-        // rejects the second as a duplicate, and only one job's webhook would
-        // ever find a match). See NinjaVanTrackingNumber::forJob.
-        $trackingNumber = NinjaVanTrackingNumber::forJob((int) $quote->id, (int) $job->id);
+        // Per-SHIPMENT, not per-quote: a multi-job quote books one NinjaVan
+        // order per shipment (1:1 with jobs in Stage 2a), so a number derived
+        // from the quote id alone would collide across a quote's own shipments
+        // (NinjaVan rejects the second as a duplicate, and only one shipment's
+        // webhook would ever find a match). See NinjaVanTrackingNumber::forShipment.
+        $trackingNumber = NinjaVanTrackingNumber::forShipment((int) $quote->id, (int) $shipment->id);
         $deliveryStartDate = $quote->needed_by?->toDateString()
             ?? now()->addDays((int) config('services.ninjavan.lead_days', 2))->toDateString();
 

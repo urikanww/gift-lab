@@ -7,6 +7,7 @@ use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Models\ShippingAddress;
 use App\Models\User;
 use App\Services\Courier\Contracts\CourierClient;
@@ -29,10 +30,11 @@ it('creates a NinjaVan shipment and marks the job shipped', function (): void {
         ->assertOk();
 
     $job->refresh();
+    $shipment = $job->shipment;
     expect($job->state->value)->toBe('SHIPPED')
-        ->and($job->carrier->value)->toBe('NINJAVAN')
-        ->and($job->consignment_ref)->not->toBeNull()
-        ->and($job->consignment_ref)->toBe(NinjaVanTrackingNumber::forJob($quote->id, $job->id));
+        ->and($shipment->carrier->value)->toBe('NINJAVAN')
+        ->and($shipment->consignment_ref)->not->toBeNull()
+        ->and($shipment->consignment_ref)->toBe(NinjaVanTrackingNumber::forShipment($quote->id, $shipment->id));
 });
 
 it('refuses to re-ship a job that already has a consignment', function (): void {
@@ -53,14 +55,16 @@ it('refuses to re-ship a job that already has a consignment', function (): void 
         'postal_code' => '018989', 'country' => 'SG',
     ]);
     $job = ProductionJob::factory()->create(['quote_id' => $quote->id, 'state' => 'IN_PRODUCTION']);
-    $job->update(['consignment_ref' => 'GLEXISTING']);
+    // The consignment lives on the shipment now (Stage 2a).
+    $shipment = Shipment::factory()->create(['quote_id' => $quote->id, 'consignment_ref' => 'GLEXISTING']);
+    $job->shipment()->associate($shipment)->save();
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
     $this->postJson("/api/production-jobs/{$job->id}/create-shipment")
         ->assertStatus(422);
 
     // The idempotency guard fires before the courier call: ref unchanged.
-    expect($job->fresh()->consignment_ref)->toBe('GLEXISTING');
+    expect($job->fresh()->shipment->consignment_ref)->toBe('GLEXISTING');
 });
 
 it('refuses to ship without a shipping address', function (): void {
@@ -120,12 +124,16 @@ it('persists the label_url returned by the courier', function (): void {
     $job = ProductionJob::factory()->create(['quote_id' => $quote->id, 'state' => 'IN_PRODUCTION']);
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
-    $this->postJson("/api/production-jobs/{$job->id}/create-shipment")
-        ->assertOk()
-        ->assertJsonPath('data.label_url', 'https://ninjavan.test/labels/'.NinjaVanTrackingNumber::forJob($quote->id, $job->id).'.pdf');
+    $res = $this->postJson("/api/production-jobs/{$job->id}/create-shipment")
+        ->assertOk();
 
-    expect($job->fresh()->label_url)
-        ->toBe('https://ninjavan.test/labels/'.NinjaVanTrackingNumber::forJob($quote->id, $job->id).'.pdf');
+    // The fixture echoes the requested tracking number (= consignment_ref) into
+    // the label URL; the courier footprint lives on the shipment now.
+    $shipment = $job->fresh()->shipment;
+    $expected = 'https://ninjavan.test/labels/'.$shipment->consignment_ref.'.pdf';
+
+    $res->assertJsonPath('data.label_url', $expected);
+    expect($shipment->label_url)->toBe($expected);
 });
 
 it('computes and sends the real parcel weight from the job line items', function (): void {
@@ -225,7 +233,7 @@ it('rejects a shipment with a blank required ship-to field with a 422, not a 502
     $this->postJson("/api/production-jobs/{$job->id}/create-shipment")
         ->assertStatus(422);
 
-    expect($job->fresh()->consignment_ref)->toBeNull();
+    expect($job->fresh()->shipment?->consignment_ref)->toBeNull();
 });
 
 it('clamps a past delivery_start_date up to today', function (): void {

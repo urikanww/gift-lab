@@ -67,10 +67,12 @@ function returnedShippedJob(string $consignmentRef = 'NVSGRET0001'): ProductionJ
     $job = $queue->advance($job, JobState::Shipped, $consignmentRef, Carrier::NinjaVan);
 
     // Mirrors what NinjaVanWebhookController writes for a "Returned to
-    // Sender" event, without needing to sign+post a webhook payload here.
-    $job->last_courier_status = NinjaVanStatusMapper::map('Returned to Sender')->label;
-    $job->last_courier_status_at = now();
-    $job->save();
+    // Sender" event, without needing to sign+post a webhook payload here. The
+    // courier footprint lives on the shipment now (Stage 2a).
+    $shipment = $job->shipment;
+    $shipment->last_courier_status = NinjaVanStatusMapper::map('Returned to Sender')->label;
+    $shipment->last_courier_status_at = now();
+    $shipment->save();
 
     return $job->fresh();
 }
@@ -139,7 +141,7 @@ it('resolves cancel_credit: cancels the quote, voids the invoice, and mints one 
 
 it('resolves reship: clears the old consignment ref, sends the job back to IN_PRODUCTION, and a later ship books a fresh distinct number', function (): void {
     $job = returnedShippedJob('NVSGRETSHIP1');
-    $oldRef = $job->consignment_ref;
+    $oldRef = $job->shipment->consignment_ref;
 
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 
@@ -148,26 +150,27 @@ it('resolves reship: clears the old consignment ref, sends the job back to IN_PR
     ])->assertOk()->assertJsonPath('data.state', 'IN_PRODUCTION');
 
     $job->refresh();
+    $shipment = $job->shipment;
     expect($job->state)->toBe(JobState::InProduction)
-        ->and($job->consignment_ref)->toBeNull()
-        ->and($job->carrier)->toBeNull()
-        ->and($job->label_url)->toBeNull()
-        ->and($job->last_courier_status)->toBeNull()
-        ->and($job->last_courier_status_at)->toBeNull();
+        ->and($shipment->consignment_ref)->toBeNull()
+        ->and($shipment->carrier)->toBeNull()
+        ->and($shipment->label_url)->toBeNull()
+        ->and($shipment->last_courier_status)->toBeNull()
+        ->and($shipment->last_courier_status_at)->toBeNull();
 
     // A subsequent ship must book a NEW, distinct consignment_ref (the old
-    // one is cleared, so the unique index + a fresh forJob() call both work).
+    // one is cleared, so the unique index + a fresh forShipment() call both work).
     $reshipped = app(ShipmentService::class)->createForJob($job->fresh());
 
     expect($reshipped->state)->toBe(JobState::Shipped)
-        ->and($reshipped->consignment_ref)->not->toBeNull()
-        ->and($reshipped->consignment_ref)->not->toBe($oldRef);
+        ->and($reshipped->shipment->consignment_ref)->not->toBeNull()
+        ->and($reshipped->shipment->consignment_ref)->not->toBe($oldRef);
 });
 
 it('refuses to resolve a job that is not flagged returned/failed (e.g. a normal in-transit job)', function (): void {
     $job = returnedShippedJob('NVSGINTRANSIT1');
-    $job->last_courier_status = 'In transit';
-    $job->save();
+    $job->shipment->last_courier_status = 'In transit';
+    $job->shipment->save();
 
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 

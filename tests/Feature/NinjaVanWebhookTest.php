@@ -15,6 +15,7 @@ use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Models\ShippingAddress;
 use App\Models\User;
 use App\Services\QueueService;
@@ -101,8 +102,8 @@ it('closes the job and quote on a valid Delivered event, and is a no-op on a rep
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Closed)
-        ->and($job->delivered_at)->not->toBeNull()
-        ->and($job->last_courier_status)->toBe('Delivered');
+        ->and($job->shipment->delivered_at)->not->toBeNull()
+        ->and($job->shipment->last_courier_status)->toBe('Delivered');
 
     $quote = $job->quote()->first();
     expect($quote->state)->toBe(QuoteState::Closed)
@@ -130,9 +131,9 @@ it('records Out for Delivery without closing the job', function (): void {
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Shipped)
-        ->and($job->last_courier_status)->toBe('Out for delivery')
-        ->and($job->last_courier_status_at)->not->toBeNull()
-        ->and($job->delivered_at)->toBeNull();
+        ->and($job->shipment->last_courier_status)->toBe('Out for delivery')
+        ->and($job->shipment->last_courier_status_at)->not->toBeNull()
+        ->and($job->shipment->delivered_at)->toBeNull();
 });
 
 it('fires OrderTrackingUpdated for the job\'s quote on an intermediate status change', function (): void {
@@ -162,7 +163,7 @@ it('flags Returned to Sender for staff without regressing job state', function (
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Shipped)
-        ->and($job->last_courier_status)->toBe('Delivery unsuccessful — returned');
+        ->and($job->shipment->last_courier_status)->toBe('Delivery unsuccessful — returned');
 });
 
 it('skips a replayed identical event so staff are not re-alerted or re-broadcast (L10/L11)', function (): void {
@@ -196,8 +197,8 @@ it('rejects an invalid signature with no state change', function (): void {
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Shipped)
-        ->and($job->last_courier_status)->toBeNull()
-        ->and($job->delivered_at)->toBeNull();
+        ->and($job->shipment->last_courier_status)->toBeNull()
+        ->and($job->shipment->delivered_at)->toBeNull();
 });
 
 it('rejects a signature computed with the wrong secret', function (): void {
@@ -245,7 +246,7 @@ it('stores an unrecognised status string verbatim without crashing', function ()
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Shipped)
-        ->and($job->last_courier_status)->toBe('Some Brand New Courier Status');
+        ->and($job->shipment->last_courier_status)->toBe('Some Brand New Courier Status');
 });
 
 it('books a distinct consignment_ref per job on a multi-job quote, and two Delivered webhooks close both jobs then the quote', function (): void {
@@ -288,13 +289,13 @@ it('books a distinct consignment_ref per job on a multi-job quote, and two Deliv
         return $shipmentService->createForJob($job->fresh());
     });
 
-    $refs = $shippedJobs->pluck('consignment_ref');
+    $refs = $shippedJobs->map(fn (ProductionJob $job): ?string => $job->shipment->consignment_ref);
     expect($refs->filter())->toHaveCount(2)
         ->and($refs->unique())->toHaveCount(2);
 
     foreach ($shippedJobs as $job) {
         postNinjaVanWebhook([
-            'tracking_number' => $job->consignment_ref,
+            'tracking_number' => $job->shipment->consignment_ref,
             'status' => 'Delivered',
         ])->assertOk()->assertJson(['received' => true]);
     }
@@ -322,7 +323,7 @@ it('matches a recovered (un-prefixed) consignment_ref against NinjaVan\'s prefix
 
     $job->refresh();
     expect($job->state)->toBe(JobState::Closed)
-        ->and($job->last_courier_status)->toBe('Delivered');
+        ->and($job->shipment->last_courier_status)->toBe('Delivered');
 });
 
 it('locks the job row so two concurrent Delivered events cannot both close it or double the audit trail', function (): void {
@@ -367,7 +368,7 @@ it('does not regress last_courier_status when an older event arrives after a new
     ])->assertOk();
 
     $job->refresh();
-    expect($job->last_courier_status)->toBe('Out for delivery');
+    expect($job->shipment->last_courier_status)->toBe('Out for delivery');
 
     // A stale "In transit" event, timestamped BEFORE the "Out for Delivery"
     // event above, arrives late (retry/out-of-order delivery). It must not
@@ -379,7 +380,7 @@ it('does not regress last_courier_status when an older event arrives after a new
     ])->assertOk();
 
     $job->refresh();
-    expect($job->last_courier_status)->toBe('Out for delivery');
+    expect($job->shipment->last_courier_status)->toBe('Out for delivery');
 
     // A genuinely newer event still updates it.
     postNinjaVanWebhook([
@@ -389,13 +390,15 @@ it('does not regress last_courier_status when an older event arrives after a new
     ])->assertOk();
 
     $job->refresh();
-    expect($job->last_courier_status)->toBe('In transit');
+    expect($job->shipment->last_courier_status)->toBe('In transit');
 });
 
 it('enforces a unique consignment_ref at the database level', function (): void {
-    ProductionJob::factory()->create(['consignment_ref' => 'GLDUPTEST']);
+    // The unique index moved onto shipments (Stage 2a); the consignment_ref is
+    // the shipment's now.
+    Shipment::factory()->create(['consignment_ref' => 'GLDUPTEST']);
 
-    expect(fn () => ProductionJob::factory()->create(['consignment_ref' => 'GLDUPTEST']))
+    expect(fn () => Shipment::factory()->create(['consignment_ref' => 'GLDUPTEST']))
         ->toThrow(\Illuminate\Database\QueryException::class);
 });
 
@@ -550,7 +553,7 @@ it('resolves a NinjaVan webhook only by consignment_ref, never the order referen
 
     // Only the real consignment_ref resolves the parcel and closes the job.
     postNinjaVanWebhook([
-        'tracking_number' => $job->consignment_ref,
+        'tracking_number' => $job->shipment->consignment_ref,
         'status' => 'Delivered',
         'timestamp' => '2026-07-27T10:10:00+08:00',
     ])->assertOk()->assertJson(['received' => true]);

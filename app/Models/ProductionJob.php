@@ -33,19 +33,14 @@ class ProductionJob extends Model
 
     protected $fillable = [
         'quote_id',
+        'shipment_id',
         'track',
         'ready_at',
         'state',
         'artwork_refs',
-        'consignment_ref',
-        'carrier',
-        'label_url',
         'print_method',
         'qty',
         'created_by',
-        'last_courier_status',
-        'last_courier_status_at',
-        'delivered_at',
     ];
 
     protected function casts(): array
@@ -54,12 +49,9 @@ class ProductionJob extends Model
             'track' => JobTrack::class,
             'ready_at' => 'datetime',
             'state' => JobState::class,
-            'carrier' => \App\Enums\Carrier::class,
             'print_method' => PrintMethod::class,
             'qty' => 'integer',
             'artwork_refs' => 'array',
-            'last_courier_status_at' => 'datetime',
-            'delivered_at' => 'datetime',
         ];
     }
 
@@ -69,6 +61,18 @@ class ProductionJob extends Model
     public function quote(): BelongsTo
     {
         return $this->belongsTo(Quote::class);
+    }
+
+    /**
+     * The courier shipment this job belongs to (1:1 in Stage 2a). Owns the
+     * consignment_ref/carrier/label_url/last_courier_status/_at/delivered_at
+     * that used to live on this row.
+     *
+     * @return BelongsTo<Shipment, ProductionJob>
+     */
+    public function shipment(): BelongsTo
+    {
+        return $this->belongsTo(Shipment::class);
     }
 
     /**

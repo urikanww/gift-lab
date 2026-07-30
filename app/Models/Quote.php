@@ -209,6 +209,14 @@ class Quote extends Model
     }
 
     /**
+     * @return HasMany<Shipment>
+     */
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class);
+    }
+
+    /**
      * @return HasMany<Invoice>
      */
     public function purchaseOrders(): HasMany

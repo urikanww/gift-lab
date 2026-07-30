@@ -96,9 +96,12 @@ final class OrderTracker
                     \App\Enums\JobState::Shipped->value,
                     \App\Enums\JobState::Closed->value,
                 ])
-                ->where(fn ($q2) => $q2
-                    ->whereNull('last_courier_status')
-                    ->orWhereNotIn('last_courier_status', [
+                // The courier status lives on the job's shipment now (Stage 2a).
+                // A line counts as completed unless its parcel is flagged
+                // returned/failed: a job with no shipment, or a shipment whose
+                // status is null/non-attention, still counts.
+                ->whereDoesntHave('shipment', fn ($s) => $s
+                    ->whereIn('last_courier_status', [
                         NinjaVanStatusMapper::LABEL_ATTEMPT_FAILED,
                         NinjaVanStatusMapper::LABEL_RETURNED,
                     ])))
@@ -116,24 +119,27 @@ final class OrderTracker
      */
     private function shipments(Quote $quote): array
     {
-        return $quote->jobs()
-            ->whereIn('state', [
+        // Read real shipment rows now (Stage 2a): a shipment with a booked
+        // consignment_ref whose member job is shipped/closed. 1:1 with jobs
+        // here, so this yields the same set the per-job query used to.
+        return $quote->shipments()
+            ->whereNotNull('consignment_ref')
+            ->whereHas('jobs', fn ($q) => $q->whereIn('state', [
                 \App\Enums\JobState::Shipped->value,
                 \App\Enums\JobState::Closed->value,
-            ])
-            ->whereNotNull('consignment_ref')
+            ]))
             ->get()
-            ->map(function (\App\Models\ProductionJob $job): array {
-                $carrier = $job->carrier;
-                $ref = (string) $job->consignment_ref;
+            ->map(function (\App\Models\Shipment $shipment): array {
+                $carrier = $shipment->carrier;
+                $ref = (string) $shipment->consignment_ref;
 
                 return [
                     'carrier_label' => $carrier?->label(),
                     'tracking_url' => $carrier?->trackingUrl($ref),
                     'ref' => $ref,
-                    'status' => $job->last_courier_status,
-                    'status_at' => $job->last_courier_status_at?->toIso8601String(),
-                    'delivered_at' => $job->delivered_at?->toIso8601String(),
+                    'status' => $shipment->last_courier_status,
+                    'status_at' => $shipment->last_courier_status_at?->toIso8601String(),
+                    'delivered_at' => $shipment->delivered_at?->toIso8601String(),
                 ];
             })
             ->values()

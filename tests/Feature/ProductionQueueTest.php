@@ -201,7 +201,7 @@ it('marks a job shipped with a consignment ref and audit-logs the transition', f
         ->assertOk()
         ->assertJsonPath('data.consignment_ref', 'SP123456789SG');
 
-    expect($job->fresh()->consignment_ref)->toBe('SP123456789SG')
+    expect($job->fresh()->shipment->consignment_ref)->toBe('SP123456789SG')
         ->and(
             AuditLog::where('event', 'production_job.advanced')
                 ->whereJsonContains('new_values->state', 'SHIPPED')

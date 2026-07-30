@@ -161,9 +161,11 @@ class QuoteResource extends JsonResource
         return $this->jobs->map(fn ($job): array => [
             'job_id' => $job->id,
             'state' => $job->state->value,
-            'carrier' => $job->carrier?->value,
-            'consignment_ref' => $job->consignment_ref,
-            'delivered_at' => $job->delivered_at?->toIso8601String(),
+            // Courier fields live on the job's shipment now (Stage 2a); keys
+            // and shape are unchanged, just sourced from $job->shipment.
+            'carrier' => $job->shipment?->carrier?->value,
+            'consignment_ref' => $job->shipment?->consignment_ref,
+            'delivered_at' => $job->shipment?->delivered_at?->toIso8601String(),
         ])->values()->all();
     }
 

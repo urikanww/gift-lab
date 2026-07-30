@@ -18,6 +18,7 @@ use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
 use App\Models\ProductionJob;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Support\Broadcasting;
 use Illuminate\Support\Collection;
@@ -92,6 +93,13 @@ final class QueueService
                     'qty' => (int) $lines->sum('qty'),
                     'created_by' => auth()->id(),
                 ]);
+
+                // 1:1 shipment per job (Stage 2a). Each job books its own
+                // consignment on ship, so it needs its own shipment to carry
+                // the courier fields. Phase 2b collapses this to one shipment
+                // per quote (the seam this line creates).
+                $shipment = Shipment::create(['quote_id' => $quote->id]);
+                $job->shipment()->associate($shipment)->save();
 
                 foreach ($lines as $line) {
                     $line->job_id = $job->id;
@@ -215,7 +223,7 @@ final class QueueService
         // count catches it. See QuoteReferenceExposureTest's N+1 guard.
         return ProductionJob::query()
             ->queueOrder()
-            ->with(['quote', 'lineItems.product.modelParts'])
+            ->with(['quote', 'shipment', 'lineItems.product.modelParts'])
             ->get();
     }
 
@@ -247,15 +255,21 @@ final class QueueService
 
         $from = $job->state->value;
 
-        // Persisted in the same save as the state change (transitionTo saves).
+        // Courier fields now live on the job's shipment (Stage 2a). Written and
+        // saved on the shipment here, before the job's own state save below, so
+        // the SHIPPED transition and its consignment land together. Both the
+        // manual /advance endpoint and ShipmentService's courier flow route
+        // through here, so this is the single write site.
         if ($target === JobState::Shipped && $consignmentRef !== null) {
-            $job->consignment_ref = $consignmentRef;
+            $shipment = $this->shipmentFor($job);
+            $shipment->consignment_ref = $consignmentRef;
             if ($carrier !== null) {
-                $job->carrier = $carrier;
+                $shipment->carrier = $carrier;
             }
             if ($labelUrl !== null) {
-                $job->label_url = $labelUrl;
+                $shipment->label_url = $labelUrl;
             }
+            $shipment->save();
         }
 
         $job->transitionTo($target);
@@ -264,7 +278,7 @@ final class QueueService
             $job,
             'production_job.advanced',
             ['state' => $from],
-            ['state' => $target->value, 'consignment_ref' => $job->consignment_ref],
+            ['state' => $target->value, 'consignment_ref' => $job->shipment?->consignment_ref],
         );
 
         $action = match ($target) {
@@ -324,11 +338,12 @@ final class QueueService
                 ->exists();
 
             if (! $anotherAlreadyShipped) {
-                $consignmentRef = $job->consignment_ref;
+                $shipment = $job->shipment;
+                $consignmentRef = $shipment?->consignment_ref;
                 $context = [
                     'consignment_ref' => $consignmentRef,
-                    'carrier_label' => $job->carrier?->label(),
-                    'tracking_url' => $consignmentRef !== null ? $job->carrier?->trackingUrl($consignmentRef) : null,
+                    'carrier_label' => $shipment?->carrier?->label(),
+                    'tracking_url' => $consignmentRef !== null ? $shipment?->carrier?->trackingUrl($consignmentRef) : null,
                 ];
 
                 DB::afterCommit(fn () => $this->notifier->send($quote, OrderMilestone::Shipped, $context));
@@ -379,6 +394,23 @@ final class QueueService
     private function isReshipOnlyTransition(ProductionJob $job, JobState $target): bool
     {
         return $job->state === JobState::Shipped && $target === JobState::InProduction;
+    }
+
+    /**
+     * The job's shipment - the row that now carries its courier fields. Every
+     * job built via buildJobsForQuote already has one (1:1); this defensively
+     * creates one for a legacy/factory job that reaches a courier write without
+     * a shipment, so the SHIPPED write always has somewhere to land.
+     */
+    private function shipmentFor(ProductionJob $job): Shipment
+    {
+        $shipment = $job->shipment;
+        if ($shipment === null) {
+            $shipment = Shipment::create(['quote_id' => $job->quote_id]);
+            $job->shipment()->associate($shipment)->save();
+        }
+
+        return $shipment;
     }
 
     /**
@@ -438,7 +470,7 @@ final class QueueService
             );
         }
 
-        if (NinjaVanStatusMapper::isNeedsAttentionLabel($job->last_courier_status)) {
+        if (NinjaVanStatusMapper::isNeedsAttentionLabel($job->shipment?->last_courier_status)) {
             throw new DomainRuleException(
                 'This parcel is flagged as returned/failed by the courier; resolve it through the returned-parcel resolution instead of marking it delivered.'
             );
@@ -457,13 +489,15 @@ final class QueueService
                 return $locked;
             }
 
-            $previousCourierStatus = $locked->last_courier_status;
+            // Courier fields live on the shipment now; stamp the manual-
+            // confirmation marker there BEFORE advancing, so the row the
+            // tracker reads reflects a staff-confirmed delivery.
+            $shipment = $this->shipmentFor($locked);
+            $previousCourierStatus = $shipment->last_courier_status;
 
-            // Stamp the manual-confirmation marker BEFORE advancing, so the row
-            // the tracker reads reflects a staff-confirmed delivery.
-            $locked->last_courier_status = self::MANUAL_DELIVERED_STATUS;
-            $locked->last_courier_status_at = now();
-            $locked->save();
+            $shipment->last_courier_status = self::MANUAL_DELIVERED_STATUS;
+            $shipment->last_courier_status_at = now();
+            $shipment->save();
 
             // Same close path the webhook uses: closes the job, closes the quote
             // when it's the last one, and fires the delivered milestone email.
@@ -496,12 +530,14 @@ final class QueueService
             ->where('state', JobState::Shipped->value)
             // Returned/failed parcels leave this list for the Needs-attention
             // surface - they can't be "marked delivered" (the backend rejects
-            // it), so they don't belong on the awaiting-delivery board.
-            ->where(fn ($q) => $q
-                ->whereNull('last_courier_status')
-                ->orWhereNotIn('last_courier_status', NinjaVanStatusMapper::NEEDS_ATTENTION_LABELS))
+            // it), so they don't belong on the awaiting-delivery board. The
+            // courier status lives on the shipment now (Stage 2a): a job with no
+            // shipment, or one whose shipment status is null/non-attention,
+            // still belongs on the awaiting-delivery board.
+            ->whereDoesntHave('shipment', fn ($s) => $s
+                ->whereIn('last_courier_status', NinjaVanStatusMapper::NEEDS_ATTENTION_LABELS))
             ->whereHas('quote')
-            ->with(['quote', 'lineItems.product'])
+            ->with(['quote', 'shipment', 'lineItems.product'])
             ->orderByDesc('updated_at')
             ->get();
     }
@@ -518,16 +554,21 @@ final class QueueService
     {
         return ProductionJob::query()
             ->where('state', JobState::Shipped->value)
-            ->whereIn('last_courier_status', NinjaVanStatusMapper::NEEDS_ATTENTION_LABELS)
+            ->whereHas('shipment', fn ($s) => $s
+                ->whereIn('last_courier_status', NinjaVanStatusMapper::NEEDS_ATTENTION_LABELS))
             ->whereHas('quote')
-            ->with(['quote', 'lineItems.product'])
-            ->orderByDesc('last_courier_status_at')
-            ->get();
+            ->with(['quote', 'shipment', 'lineItems.product'])
+            ->get()
+            // The status_at that orders this board lives on the shipment now;
+            // newest-flagged first, sorted in PHP since it is a related column
+            // (the needs-attention list is small).
+            ->sortByDesc(fn (ProductionJob $job): ?string => $job->shipment?->last_courier_status_at?->toIso8601String())
+            ->values();
     }
 
     public function resolveReturn(ProductionJob $job, string $disposition, ?string $note = null): ProductionJob
     {
-        if ($job->state !== JobState::Shipped || ! NinjaVanStatusMapper::isNeedsAttentionLabel($job->last_courier_status)) {
+        if ($job->state !== JobState::Shipped || ! NinjaVanStatusMapper::isNeedsAttentionLabel($job->shipment?->last_courier_status)) {
             throw new DomainRuleException(
                 'This job is not flagged as a returned/failed parcel awaiting resolution.'
             );
@@ -544,7 +585,7 @@ final class QueueService
     private function resolveReturnClose(ProductionJob $job, ?string $note): ProductionJob
     {
         return DB::transaction(function () use ($job, $note): ProductionJob {
-            $lastCourierStatus = $job->last_courier_status;
+            $lastCourierStatus = $job->shipment?->last_courier_status;
 
             $job = $this->advance($job, JobState::Closed);
 
@@ -563,21 +604,25 @@ final class QueueService
     private function resolveReturnReship(ProductionJob $job, ?string $note): ProductionJob
     {
         return DB::transaction(function () use ($job, $note): ProductionJob {
-            $lastCourierStatus = $job->last_courier_status;
+            $shipment = $job->shipment;
+            $lastCourierStatus = $shipment?->last_courier_status;
 
             // Clear the old courier footprint FIRST - consignment_ref is
-            // unique-indexed, so a later ship() booking a fresh
-            // NinjaVanTrackingNumber::forJob() value must not collide with
-            // this now-abandoned one.
-            $job->consignment_ref = null;
-            $job->carrier = null;
-            $job->label_url = null;
-            $job->last_courier_status = null;
-            $job->last_courier_status_at = null;
-            $job->delivered_at = null;
+            // unique-indexed (on shipments now), so a later ship() booking a
+            // fresh NinjaVanTrackingNumber::forShipment() value must not collide
+            // with this now-abandoned one. The footprint lives on the shipment.
+            if ($shipment !== null) {
+                $shipment->consignment_ref = null;
+                $shipment->carrier = null;
+                $shipment->label_url = null;
+                $shipment->last_courier_status = null;
+                $shipment->last_courier_status_at = null;
+                $shipment->delivered_at = null;
+                $shipment->save();
+            }
 
-            // transitionTo() saves the model - every dirty attribute above
-            // (plus the state change) lands in one write.
+            // transitionTo() saves the job (state change only now - the courier
+            // footprint that was cleared above lives on the shipment).
             $job->transitionTo(JobState::InProduction);
 
             $this->audit->log($job, 'production_job.return_resolved', [
@@ -597,7 +642,7 @@ final class QueueService
     private function resolveReturnCancelCredit(ProductionJob $job, ?string $note): ProductionJob
     {
         return DB::transaction(function () use ($job, $note): ProductionJob {
-            $lastCourierStatus = $job->last_courier_status;
+            $lastCourierStatus = $job->shipment?->last_courier_status;
 
             $job->loadMissing('quote');
             $quote = $job->quote;

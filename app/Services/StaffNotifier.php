@@ -149,13 +149,13 @@ class StaffNotifier
     public function parcelReturned(ProductionJob $job): void
     {
         try {
-            $job->loadMissing('quote');
+            $job->loadMissing('quote', 'shipment');
 
             Log::warning('Courier reported a returned/failed parcel; needs staff resolution.', [
                 'job_id' => $job->id,
                 'quote_id' => $job->quote_id,
-                'consignment_ref' => $job->consignment_ref,
-                'last_courier_status' => $job->last_courier_status,
+                'consignment_ref' => $job->shipment?->consignment_ref,
+                'last_courier_status' => $job->shipment?->last_courier_status,
             ]);
 
             // Push (live) to the staff console. Swallows transport failures so a

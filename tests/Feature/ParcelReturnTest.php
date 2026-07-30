@@ -12,6 +12,7 @@ use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variant;
@@ -55,20 +56,31 @@ function twoParcelOrder(string $paymentState = 'PAID', ?float $amountPaid = null
         'issued_at' => now(),
     ]);
 
+    // Courier fields live on each parcel's shipment now (Stage 2a); a returned
+    // parcel is a shipment carrying the needs-attention status.
     $jobA = ProductionJob::factory()->create([
         'quote_id' => $quote->id,
         'state' => JobState::Shipped->value,
+    ]);
+    $shipmentA = Shipment::factory()->create([
+        'quote_id' => $quote->id,
         'consignment_ref' => 'NVSGA0001',
         'carrier' => Carrier::NinjaVan->value,
         'last_courier_status' => NinjaVanStatusMapper::map('Returned to Sender')->label,
         'last_courier_status_at' => now(),
     ]);
+    $jobA->shipment()->associate($shipmentA)->save();
+
     $jobB = ProductionJob::factory()->create([
         'quote_id' => $quote->id,
         'state' => JobState::Shipped->value,
+    ]);
+    $shipmentB = Shipment::factory()->create([
+        'quote_id' => $quote->id,
         'consignment_ref' => 'NVSGB0001',
         'carrier' => Carrier::NinjaVan->value,
     ]);
+    $jobB->shipment()->associate($shipmentB)->save();
 
     // One equal-value line per parcel: 500 each → fraction 0.5.
     $variantA = Variant::factory()->create(['product_id' => $product->id]);

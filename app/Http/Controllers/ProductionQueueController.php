@@ -188,13 +188,15 @@ class ProductionQueueController extends Controller
             return response()->json(['message' => 'The courier could not create this shipment. Please try again.'], 502);
         }
 
+        $shipment = $job->shipment;
+
         return response()->json([
             'data' => [
                 'state' => $job->state->value,
-                'carrier' => $job->carrier?->value,
-                'consignment_ref' => $job->consignment_ref,
-                'tracking_url' => $job->carrier?->trackingUrl((string) $job->consignment_ref),
-                'label_url' => $job->label_url,
+                'carrier' => $shipment?->carrier?->value,
+                'consignment_ref' => $shipment?->consignment_ref,
+                'tracking_url' => $shipment?->carrier?->trackingUrl((string) $shipment?->consignment_ref),
+                'label_url' => $shipment?->label_url,
             ],
         ]);
     }
