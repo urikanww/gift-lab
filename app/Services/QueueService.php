@@ -499,10 +499,7 @@ final class QueueService
             // it), so they don't belong on the awaiting-delivery board.
             ->where(fn ($q) => $q
                 ->whereNull('last_courier_status')
-                ->orWhereNotIn('last_courier_status', [
-                    NinjaVanStatusMapper::LABEL_ATTEMPT_FAILED,
-                    NinjaVanStatusMapper::LABEL_RETURNED,
-                ]))
+                ->orWhereNotIn('last_courier_status', NinjaVanStatusMapper::NEEDS_ATTENTION_LABELS))
             ->whereHas('quote')
             ->with(['quote', 'lineItems.product'])
             ->orderByDesc('updated_at')
@@ -521,10 +518,7 @@ final class QueueService
     {
         return ProductionJob::query()
             ->where('state', JobState::Shipped->value)
-            ->whereIn('last_courier_status', [
-                NinjaVanStatusMapper::LABEL_ATTEMPT_FAILED,
-                NinjaVanStatusMapper::LABEL_RETURNED,
-            ])
+            ->whereIn('last_courier_status', NinjaVanStatusMapper::NEEDS_ATTENTION_LABELS)
             ->whereHas('quote')
             ->with(['quote', 'lineItems.product'])
             ->orderByDesc('last_courier_status_at')

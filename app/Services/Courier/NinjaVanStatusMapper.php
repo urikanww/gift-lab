@@ -28,6 +28,13 @@ final class NinjaVanStatusMapper
 
     public const LABEL_RETURNED = 'Delivery unsuccessful — returned';
 
+    /**
+     * The needs-attention label set - the single source of truth consumed by
+     * isNeedsAttentionLabel() and by QueueService's in-transit/needs-attention
+     * partition, so a new returned/failed label can't drift the two boards.
+     */
+    public const NEEDS_ATTENTION_LABELS = [self::LABEL_ATTEMPT_FAILED, self::LABEL_RETURNED];
+
     public static function map(string $rawStatus): NinjaVanStatusMapping
     {
         $normalized = strtolower(trim($rawStatus));
@@ -75,6 +82,6 @@ final class NinjaVanStatusMapper
      */
     public static function isNeedsAttentionLabel(?string $label): bool
     {
-        return in_array($label, [self::LABEL_ATTEMPT_FAILED, self::LABEL_RETURNED], true);
+        return in_array($label, self::NEEDS_ATTENTION_LABELS, true);
     }
 }
