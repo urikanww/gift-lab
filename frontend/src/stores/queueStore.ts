@@ -45,6 +45,16 @@ interface QueueStoreState {
   fetchInTransit: (opts?: { silent?: boolean }) => Promise<void>;
   /** Staff manually confirm delivery when the courier webhook never arrived. */
   markDelivered: (jobId: number, note?: string) => Promise<boolean>;
+  /** Parcels the courier reported returned/failed - the Needs-attention surface. */
+  needsAttention: ProductionJob[];
+  needsAttentionLoading: boolean;
+  fetchNeedsAttention: (opts?: { silent?: boolean }) => Promise<void>;
+  /** Staff resolve a returned/failed parcel (reship / close / cancel_credit). */
+  resolveReturn: (
+    jobId: number,
+    disposition: 'reship' | 'close' | 'cancel_credit',
+    note?: string,
+  ) => Promise<boolean>;
   subscribe: () => void;
   unsubscribe: () => void;
 }
@@ -72,6 +82,8 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
   subscribed: false,
   inTransit: [],
   inTransitLoading: false,
+  needsAttention: [],
+  needsAttentionLoading: false,
 
   fetchQueue: async (opts) => {
     set({ loading: opts?.silent ? get().loading : true, error: null });
@@ -195,6 +207,36 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       await api.post(`/production-jobs/${jobId}/mark-delivered`, note ? { note } : {});
       // Drop it from the in-transit list; the closed job also leaves the board.
       set((s) => ({ inTransit: s.inTransit.filter((j) => j.id !== jobId) }));
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
+  },
+
+  fetchNeedsAttention: async (opts) => {
+    if (!opts?.silent) set({ needsAttentionLoading: true });
+    try {
+      const { data } = await api.get<{ data: ProductionJob[] }>('/production-jobs/needs-attention');
+      set({ needsAttention: data.data });
+    } catch {
+      // Non-critical: the panel stays as-is; the rest of the board is unaffected.
+    } finally {
+      set({ needsAttentionLoading: false });
+    }
+  },
+
+  resolveReturn: async (jobId, disposition, note) => {
+    await ensureCsrf();
+    try {
+      await api.post(`/production-jobs/${jobId}/resolve-return`, {
+        disposition,
+        ...(note ? { note } : {}),
+      });
+      // The parcel leaves the needs-attention list; a reship re-enters the make
+      // queue, so reconcile both against server truth.
+      await get().fetchNeedsAttention({ silent: true });
+      await get().fetchQueue({ silent: true });
       return true;
     } catch (err) {
       set({ error: apiError(err) });

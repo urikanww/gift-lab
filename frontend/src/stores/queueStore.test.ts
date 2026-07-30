@@ -311,3 +311,27 @@ describe('queueStore', () => {
     expect(printFilesZipPath(7)).toBe('/production-jobs/7/print-files.zip');
   });
 });
+
+describe('queueStore returned-parcel resolution', () => {
+  beforeEach(() => {
+    useQueueStore.setState({ needsAttention: [], jobs: [], inTransit: [] });
+    get.mockResolvedValue({ data: { data: [] } });
+    post.mockResolvedValue({ data: {} });
+  });
+
+  it('fetchNeedsAttention loads the needs-attention list', async () => {
+    get.mockResolvedValueOnce({ data: { data: [{ id: 7 }] } });
+    await useQueueStore.getState().fetchNeedsAttention();
+    expect(get).toHaveBeenCalledWith('/production-jobs/needs-attention');
+    expect(useQueueStore.getState().needsAttention).toEqual([{ id: 7 }]);
+  });
+
+  it('resolveReturn posts the disposition + note and refetches', async () => {
+    await useQueueStore.getState().resolveReturn(7, 'reship', 'damaged box');
+    expect(post).toHaveBeenCalledWith('/production-jobs/7/resolve-return', {
+      disposition: 'reship',
+      note: 'damaged box',
+    });
+    expect(get).toHaveBeenCalledWith('/production-jobs/needs-attention');
+  });
+});

@@ -527,6 +527,8 @@ export interface ProductionJob {
   tracking_url?: string | null;
   last_courier_status?: string | null;
   last_courier_status_at?: string | null;
+  /** True when the courier reported this parcel returned/failed (Needs-attention surface). */
+  needs_attention?: boolean;
   print_method: PrintMethod | null;
   qty: number;
   /**
