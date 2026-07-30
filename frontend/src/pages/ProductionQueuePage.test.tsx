@@ -247,6 +247,26 @@ it('Make queue tab does not offer courier actions', () => {
   expect(screen.queryByRole('button', { name: /create ninjavan shipment/i })).not.toBeInTheDocument();
 });
 
+// Stage 2b: one shipment groups a whole order's jobs, so the Ship desk shows
+// ONE card per shipment. Two IN_PRODUCTION jobs sharing shipment_id collapse to
+// a single card (booking it books the whole order's shipment already).
+it('Ship desk shows one card per shipment (dedupes jobs sharing a shipment_id)', () => {
+  vi.mocked(api.get).mockResolvedValue({ data: { data: [] } } as any);
+  seedTwoTabs({
+    jobs: [
+      { ...inProductionJob, id: 2, quote_reference: 'GL-BBB0000002', shipment_id: 5 },
+      { ...inProductionJob, id: 4, quote_reference: 'GL-BBB0000002', shipment_id: 5 },
+    ],
+    createShipment: vi.fn(async () => ({ consignment_ref: 'SP1', tracking_url: null })),
+  });
+  renderPage();
+
+  fireEvent.click(screen.getByRole('tab', { name: /ship desk/i }));
+
+  // Both jobs belong to shipment 5, so only one courier card renders for it.
+  expect(screen.getAllByRole('button', { name: /create ninjavan shipment/i })).toHaveLength(1);
+});
+
 // A SHIPPED job lingers in `jobs` until it closes, but it has no floor action
 // and lives on the In-transit tab - it must not render as a dead card on Make.
 it('Make queue drops a SHIPPED job (no dead card off the floor)', () => {

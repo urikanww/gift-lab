@@ -11,7 +11,7 @@ import { ErrorState } from '../components/ui/States';
 import Model3dDecalPreview from '../components/Model3dDecalPreview';
 import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
-import type { JobLineItem, JobState, ModelPart, ShippingAddressInput } from '../types';
+import type { JobLineItem, JobState, ModelPart, ProductionJob, ShippingAddressInput } from '../types';
 import type { PrintZone } from '../lib/printZone';
 
 // The board is split into four surfaces. Make queue is the print floor;
@@ -56,6 +56,22 @@ function QueueSkeleton() {
       ))}
     </ul>
   );
+}
+
+/**
+ * Ship desk collapses a whole order's jobs to one card: Stage 2b books the
+ * order's single shipment when any of its jobs is booked. Dedupe IN_PRODUCTION
+ * jobs to one representative per shipment_id; a job with no shipment_id (legacy
+ * / not yet grouped) still stands alone as its own card.
+ */
+function uniqueByShipment(list: ProductionJob[]): ProductionJob[] {
+  const seen = new Set<number>();
+  return list.filter((j) => {
+    if (j.shipment_id == null) return true; // null-shipment jobs each stand alone
+    if (seen.has(j.shipment_id)) return false;
+    seen.add(j.shipment_id);
+    return true;
+  });
 }
 
 /** Pull the server-set filename out of a Content-Disposition header, if present. */
@@ -240,7 +256,7 @@ export default function ProductionQueuePage() {
   // already lives on the In-transit tab.
   const boardJobs =
     tab === 'ship'
-      ? jobs.filter((j) => j.state === 'IN_PRODUCTION')
+      ? uniqueByShipment(jobs.filter((j) => j.state === 'IN_PRODUCTION'))
       : jobs.filter((j) => j.state === 'READY' || j.state === 'IN_PRODUCTION');
 
   return (
@@ -537,16 +553,21 @@ export default function ProductionQueuePage() {
                       // Opens the confirm modal (which shows the delivery address)
                       // rather than booking on one click - the button no longer
                       // depends on the panel below having been opened first (L23).
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        fullWidth
-                        loading={creatingShipmentId === j.id}
-                        disabled={creatingShipmentId !== null && creatingShipmentId !== j.id}
-                        onClick={() => setConfirmShipJobId(j.id)}
-                      >
-                        Create NinjaVan shipment
-                      </Button>
+                      <div className="mt-auto flex flex-col gap-1">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          fullWidth
+                          loading={creatingShipmentId === j.id}
+                          disabled={creatingShipmentId !== null && creatingShipmentId !== j.id}
+                          onClick={() => setConfirmShipJobId(j.id)}
+                        >
+                          Create NinjaVan shipment
+                        </Button>
+                        {/* One shipment covers the whole order (Stage 2b), so this
+                            books a single courier parcel for all of its items. */}
+                        <p className="text-xs text-fg-subtle">Books one courier parcel for the whole order.</p>
+                      </div>
                     )}
 
                     {/* Make queue advances READY → IN_PRODUCTION only; shipping

@@ -515,6 +515,8 @@ export interface ProductionJob {
   quote_id: number;
   /** Display identity. quote_id remains the key realtime updates match on. */
   quote_reference?: string | null;
+  /** The shipment this job belongs to; one shipment groups a whole order's jobs (Stage 2b). */
+  shipment_id?: number | null;
   track: JobTrack;
   state: JobState;
   ready_at: string | null;
