@@ -21,7 +21,7 @@ class TrackingController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'tracking_code' => ['required', 'string', 'max:16'],
+            'reference' => ['required', 'string', 'max:16'],
             'email' => ['required', 'string', 'max:255'],
         ]);
 
@@ -30,11 +30,11 @@ class TrackingController extends Controller
             404,
         );
 
-        $code = strtoupper(trim($data['tracking_code']));
+        $code = strtoupper(trim($data['reference']));
 
         $quote = Quote::query()
             ->with('company')
-            ->where('tracking_code', $code)
+            ->where('reference', $code)
             ->first();
 
         // Same generic failure for an unknown code and a wrong email prefix -
@@ -62,7 +62,7 @@ class TrackingController extends Controller
     {
         $code = strtoupper(trim((string) $request->query('code', '')));
 
-        $quote = Quote::query()->where('tracking_code', $code)->first();
+        $quote = Quote::query()->where('reference', $code)->first();
 
         if ($quote === null) {
             return response()->json(['message' => 'No order matches those details.'], 404);
