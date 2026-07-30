@@ -1211,10 +1211,10 @@ export default function QuoteDetailPage() {
                   </span>
                 </p>
               )}
-              {quote.tracking_code && (
+              {quote.reference && (
                 <p className="mt-1 text-sm text-fg-muted">
-                  Tracking code{' '}
-                  <span className="font-mono font-semibold text-fg">{quote.tracking_code}</span>
+                  Order reference{' '}
+                  <span className="font-mono font-semibold text-fg">{quote.reference}</span>
                   <span className="text-fg-subtle"> - share to track without an account at /track</span>
                 </p>
               )}

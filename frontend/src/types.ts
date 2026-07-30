@@ -356,8 +356,6 @@ export interface Quote {
   company_id: number;
   /** Opaque order reference used in buyer/public URLs (/orders/{reference}). */
   reference: string;
-  /** Opaque code for login-free tracking (share with the recipient). */
-  tracking_code?: string | null;
   /** Relative signed path for login-free tracking (e.g. /track/view?code=...&signature=...). */
   tracking_link?: string | null;
   /** Only present on staff listings (relation-loaded server-side). */

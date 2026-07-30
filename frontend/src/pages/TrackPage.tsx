@@ -28,7 +28,7 @@ interface OrderTrackingUpdatedEvent {
  * No account, no pricing, no line detail - mirrors the public API contract.
  */
 export default function TrackPage() {
-  const [code, setCode] = useState(() => localStorage.getItem('gl.track.code') ?? '');
+  const [code, setCode] = useState(() => localStorage.getItem('gl.track.reference') ?? '');
   const [email, setEmail] = useState(() => localStorage.getItem('gl.track.email') ?? '');
   const [result, setResult] = useState<TrackResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +71,11 @@ export default function TrackPage() {
     setResult(null);
     try {
       const { data } = await api.post<TrackResult>('/track', {
-        tracking_code: code.trim(),
+        reference: code.trim(),
         email: email.trim(),
       });
       setResult(data);
-      localStorage.setItem('gl.track.code', code.trim());
+      localStorage.setItem('gl.track.reference', code.trim());
       localStorage.setItem('gl.track.email', email.trim());
     } catch (err) {
       // 404 (generic anti-enumeration miss) and 422 (validation jargon) both
@@ -98,15 +98,15 @@ export default function TrackPage() {
       <header className="flex flex-col gap-2">
         <h1 className="font-display text-3xl leading-tight text-fg sm:text-4xl">Track your order</h1>
         <p className="text-fg-muted">
-          Enter the tracking code from your order confirmation and the email it was sent to. No account needed.
+          Enter the order reference from your order confirmation and the email it was sent to. No account needed.
         </p>
       </header>
 
       <Card padding="lg">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <Input
-            label="Tracking code"
-            placeholder="GL-XXXXXX"
+            label="Order reference"
+            placeholder="GL-XXXXXXXXXX"
             value={code}
             autoCapitalize="characters"
             maxLength={16}
