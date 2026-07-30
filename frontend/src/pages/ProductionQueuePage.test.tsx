@@ -267,6 +267,33 @@ it('Ship desk shows one card per shipment (dedupes jobs sharing a shipment_id)',
   expect(screen.getAllByRole('button', { name: /create ninjavan shipment/i })).toHaveLength(1);
 });
 
+// "Ship separately" split action: a shipment grouping >1 IN_PRODUCTION item
+// dedupes to one ship-desk card, which lists the sibling(s) and offers a split
+// button that moves the sibling into its own parcel via splitShipment(id).
+it('Ship desk lists a shipment sibling and splits it into its own parcel on click', async () => {
+  vi.mocked(api.get).mockResolvedValue({ data: { data: [] } } as any);
+  const splitShipment = vi.fn(async () => true);
+  seedTwoTabs({
+    jobs: [
+      { ...inProductionJob, id: 2, quote_id: 200, quote_reference: 'GL-BBB0000002', shipment_id: 5 },
+      { ...inProductionJob, id: 4, quote_id: 200, quote_reference: 'GL-BBB0000002', shipment_id: 5 },
+    ],
+    createShipment: vi.fn(async () => ({ consignment_ref: 'SP1', tracking_url: null })),
+    splitShipment,
+  });
+  renderPage();
+
+  fireEvent.click(screen.getByRole('tab', { name: /ship desk/i }));
+
+  // The two jobs dedupe to a single card (job #2 is the representative), which
+  // exposes a "Ship separately" action for its sibling (job #4).
+  expect(screen.getAllByRole('button', { name: /create ninjavan shipment/i })).toHaveLength(1);
+  const splitBtn = screen.getByRole('button', { name: /ship separately/i });
+  await userEvent.click(splitBtn);
+
+  expect(splitShipment).toHaveBeenCalledWith(4);
+});
+
 // A SHIPPED job lingers in `jobs` until it closes, but it has no floor action
 // and lives on the In-transit tab - it must not render as a dead card on Make.
 it('Make queue drops a SHIPPED job (no dead card off the floor)', () => {

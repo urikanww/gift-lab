@@ -93,6 +93,7 @@ export default function ProductionQueuePage() {
     advanceBatch,
     advanceNext,
     createShipment,
+    splitShipment,
     subscribe,
     unsubscribe,
   } = useQueueStore();
@@ -111,6 +112,8 @@ export default function ProductionQueuePage() {
   const [addressPanelId, setAddressPanelId] = useState<number | null>(null);
   // Single-flight guard for the automated NinjaVan shipment booking.
   const [creatingShipmentId, setCreatingShipmentId] = useState<number | null>(null);
+  // Single-flight guard for splitting an item into its own shipment.
+  const [splittingId, setSplittingId] = useState<number | null>(null);
   // Shipping is confirm-gated: marking a job shipped requires a consignment ref
   // (that transition fires the buyer's "on the way" signal). This tracks which
   // card is mid-confirmation and its typed reference.
@@ -246,6 +249,24 @@ export default function ProductionQueuePage() {
       toast({ title: 'Could not create shipment', description: apiError(err), tone: 'danger' });
     } finally {
       setCreatingShipmentId(null);
+    }
+  };
+
+  // Split one item out of its (unbooked) shipment into a new shipment of its own,
+  // so it ships as a separate parcel. The store refetches on success, re-rendering
+  // the split item as its own ship-desk card.
+  const onSplitShipment = async (jobId: number) => {
+    if (splittingId !== null) return;
+    setSplittingId(jobId);
+    try {
+      const ok = await splitShipment(jobId);
+      if (ok) {
+        toast({ title: 'Item will ship separately', tone: 'success' });
+      } else {
+        toast({ title: 'Could not ship item separately', tone: 'danger' });
+      }
+    } finally {
+      setSplittingId(null);
     }
   };
 
@@ -548,6 +569,75 @@ export default function ProductionQueuePage() {
                     )}
                     </>
                     )}
+
+                    {/* Items sharing this (unbooked) shipment. A booked
+                        shipment's jobs are SHIPPED and off the ship desk, so any
+                        IN_PRODUCTION sibling here means the parcel groups >1 item
+                        and can still be split. */}
+                    {tab === 'ship' && (() => {
+                      const siblings = jobs.filter(
+                        (s) =>
+                          s.shipment_id != null &&
+                          s.shipment_id === j.shipment_id &&
+                          s.id !== j.id &&
+                          s.state === 'IN_PRODUCTION',
+                      );
+                      if (siblings.length === 0) return null;
+                      const members = [j, ...siblings];
+                      return (
+                        <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                          <p className="text-xs font-medium text-fg-subtle">
+                            Items in this shipment ({members.length})
+                          </p>
+                          <ul className="flex flex-col divide-y divide-border/60">
+                            {members.map((m) => (
+                              <li key={m.id} className="flex items-center justify-between gap-2 py-1.5">
+                                <span className="min-w-0 flex-1 truncate text-xs text-fg">
+                                  Job #{m.id}
+                                  {m.id === j.id && (
+                                    <span className="ml-1 text-2xs text-fg-subtle">(this parcel)</span>
+                                  )}
+                                </span>
+                                {m.id !== j.id && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    loading={splittingId === m.id}
+                                    disabled={splittingId !== null && splittingId !== m.id}
+                                    onClick={() => void onSplitShipment(m.id)}
+                                  >
+                                    Ship separately
+                                  </Button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Surcharge hint: when this order's IN_PRODUCTION jobs span
+                        more than one shipment (i.e. it was split), flag that the
+                        extra parcel may warrant a delivery charge. Informational
+                        only - no control. */}
+                    {tab === 'ship' && (() => {
+                      const quoteShipmentIds = new Set(
+                        jobs
+                          .filter(
+                            (s) =>
+                              s.quote_id === j.quote_id &&
+                              s.state === 'IN_PRODUCTION' &&
+                              s.shipment_id != null,
+                          )
+                          .map((s) => s.shipment_id),
+                      );
+                      if (quoteShipmentIds.size <= 1) return null;
+                      return (
+                        <p className="text-xs text-fg-subtle">
+                          Shipping as separate parcels - a manager can add a delivery charge via order amend.
+                        </p>
+                      );
+                    })()}
 
                     {tab === 'ship' && j.state === 'IN_PRODUCTION' && (
                       // Opens the confirm modal (which shows the delivery address)

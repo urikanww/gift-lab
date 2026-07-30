@@ -55,6 +55,8 @@ interface QueueStoreState {
     disposition: 'reship' | 'close' | 'cancel_credit',
     note?: string,
   ) => Promise<boolean>;
+  /** Move an item into its own shipment so it ships as a separate parcel. */
+  splitShipment: (jobId: number) => Promise<boolean>;
   subscribe: () => void;
   unsubscribe: () => void;
 }
@@ -236,6 +238,18 @@ export const useQueueStore = create<QueueStoreState>((set, get) => ({
       // The parcel leaves the needs-attention list; a reship re-enters the make
       // queue, so reconcile both against server truth.
       await get().fetchNeedsAttention({ silent: true });
+      await get().fetchQueue({ silent: true });
+      return true;
+    } catch (err) {
+      set({ error: apiError(err) });
+      return false;
+    }
+  },
+
+  splitShipment: async (jobId) => {
+    await ensureCsrf();
+    try {
+      await api.post(`/production-jobs/${jobId}/split`);
       await get().fetchQueue({ silent: true });
       return true;
     } catch (err) {

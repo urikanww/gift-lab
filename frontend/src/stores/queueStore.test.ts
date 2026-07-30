@@ -334,4 +334,11 @@ describe('queueStore returned-parcel resolution', () => {
     });
     expect(get).toHaveBeenCalledWith('/production-jobs/needs-attention');
   });
+
+  it('splitShipment posts to the job split endpoint and refetches the queue', async () => {
+    const ok = await useQueueStore.getState().splitShipment(7);
+    expect(post).toHaveBeenCalledWith('/production-jobs/7/split');
+    expect(get).toHaveBeenCalledWith('/production-queue');
+    expect(ok).toBe(true);
+  });
 });
