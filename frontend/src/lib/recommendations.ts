@@ -36,15 +36,25 @@ export async function searchCandidates(
   return data;
 }
 
-export async function addBlank(c: Candidate): Promise<void> {
+/** The gate verdict `add()` returns for the freshly-created draft, so the
+ *  recommender can open the resolve-blockers popup seeded with its blockers. */
+export interface AddBlankResult {
+  id: number;
+  publish_state: string;
+  cannot_publish_reasons: string[] | null;
+  base_cost: string | number | null;
+}
+
+export async function addBlank(c: Candidate): Promise<AddBlankResult> {
   await ensureCsrf();
-  await api.post('/admin/blank-recommendations/add', {
+  const { data } = await api.post<{ data: AddBlankResult }>('/admin/blank-recommendations/add', {
     source_product_id: c.source_product_id,
     name: c.name,
     price: c.price,
     image_url: c.image_url,
     product_link: c.product_link,
   });
+  return data.data;
 }
 
 export async function featureCandidate(c: Candidate): Promise<void> {

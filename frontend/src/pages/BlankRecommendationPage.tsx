@@ -2,13 +2,48 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Input, Modal, Select, useOptionalToast } from '../ui';
 import { apiError } from '../lib/api';
 import { ShopeeLink } from '../components/ShopeeLink';
+import ResolveBlockersModal from '../components/admin/ResolveBlockersModal';
 import {
   addBlank,
   featureCandidate,
   searchCandidates,
+  type AddBlankResult,
   type Candidate,
   type CandidateSort,
 } from '../lib/recommendations';
+import type { AdminCatalogueItem, PublishState } from '../types';
+
+/**
+ * Shape the `add()` verdict into the AdminCatalogueItem the resolve-blockers
+ * popup consumes. The gate returns only id/publish_state/cannot_publish_reasons/
+ * base_cost; the rest of the row's fields come from the Shopee candidate we just
+ * added (name, image, source link) or default to "unknown" (null/false) - the
+ * popup only reads the blocker set + name + base_cost to seed its fields.
+ */
+function toCatalogueItem(c: Candidate, verdict: AddBlankResult): AdminCatalogueItem {
+  return {
+    id: verdict.id,
+    name: c.name,
+    class: 'SCRAPED_UV',
+    publish_state: verdict.publish_state as PublishState,
+    cannot_publish_reasons: verdict.cannot_publish_reasons,
+    weight: null,
+    dimensions: null,
+    print_method: null,
+    is_printable: false,
+    base_cost: verdict.base_cost == null ? '' : String(verdict.base_cost),
+    currency: c.currency,
+    creator_credit: null,
+    image_url: c.image_url,
+    source_url: c.product_link,
+    source_kind: null,
+    filament_material: null,
+    filament_color: null,
+    est_grams: null,
+    estimates_verified: false,
+    model_file_ref: null,
+  };
+}
 
 const PAGE_SIZE = 20;
 
@@ -35,6 +70,10 @@ export default function BlankRecommendationPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Candidate | null>(null);
   const [help, setHelp] = useState(false);
+  // The freshly-added draft whose blockers we open the fix-popup on. Non-null
+  // both holds the seed and mounts the modal (its state seeds from props once,
+  // so it must unmount between products - key it by id).
+  const [blockersFor, setBlockersFor] = useState<AdminCatalogueItem | null>(null);
   const sentinel = useRef<HTMLDivElement | null>(null);
 
   const run = async (sortOverride?: CandidateSort) => {
@@ -102,9 +141,17 @@ export default function BlankRecommendationPage() {
   const act = async (c: Candidate, kind: 'add' | 'feature') => {
     setBusy(`${kind}:${c.source_product_id}`);
     try {
-      if (kind === 'add') await addBlank(c);
-      else await featureCandidate(c);
-      toast({ title: kind === 'add' ? 'Added to gate' : 'Featured', description: c.name, tone: 'success' });
+      if (kind === 'add') {
+        const verdict = await addBlank(c);
+        toast({ title: 'Added to gate', description: c.name, tone: 'success' });
+        // Open the resolve-blockers popup seeded with the new draft so the
+        // staffer can clear its gate blockers (e.g. price/dimensions) right here
+        // instead of hopping to the gate.
+        setBlockersFor(toCatalogueItem(c, verdict));
+      } else {
+        await featureCandidate(c);
+        toast({ title: 'Featured', description: c.name, tone: 'success' });
+      }
     } catch (err) {
       toast({ title: 'Action failed', description: apiError(err), tone: 'danger' });
     } finally {
@@ -223,6 +270,22 @@ export default function BlankRecommendationPage() {
           <img src={zoom.image_url} alt={zoom.name} className="mx-auto max-h-[70vh] w-auto rounded object-contain" referrerPolicy="no-referrer" />
         )}
       </Modal>
+
+      {blockersFor && (
+        <ResolveBlockersModal
+          key={blockersFor.id}
+          product={blockersFor}
+          open
+          onClose={() => setBlockersFor(null)}
+          onResolved={(published) =>
+            toast(
+              published
+                ? { title: 'Published', description: blockersFor.name, tone: 'success' }
+                : { title: 'Saved - still blocked', description: blockersFor.name, tone: 'warning' },
+            )
+          }
+        />
+      )}
 
       <Modal open={help} onClose={() => setHelp(false)} title="What do these actions do?" size="md">
         <dl className="flex flex-col gap-3 text-sm">

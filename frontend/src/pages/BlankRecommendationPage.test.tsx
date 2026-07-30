@@ -1,5 +1,5 @@
 import { expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '../ui';
@@ -107,6 +107,33 @@ it('renders an affiliate Shopee preview link on each card', async () => {
   const link = screen.getByRole('link', { name: /view on shopee/i });
   expect(link).toHaveAttribute('href', 'https://s.shopee.sg/3_4'); // affiliate offer_link (preview)
   expect(link).toHaveAttribute('rel', expect.stringContaining('sponsored'));
+});
+
+it('opens the resolve-blockers popup seeded with the added product', async () => {
+  vi.spyOn(recs, 'searchCandidates').mockResolvedValue({
+    data: [candidate('9_9', 'Blank Mug')], page: 1, has_more: false,
+  });
+  const addSpy = vi.spyOn(recs, 'addBlank').mockResolvedValue({
+    id: 501,
+    publish_state: 'CANNOT_PUBLISH',
+    cannot_publish_reasons: ['missing_price'],
+    base_cost: '0.00',
+  });
+  renderPage();
+
+  await userEvent.type(screen.getByLabelText(/keyword/i), 'mug');
+  await userEvent.click(screen.getByRole('button', { name: /^search$/i }));
+  await waitFor(() => expect(screen.getByText('Blank Mug')).toBeInTheDocument());
+
+  await userEvent.click(screen.getByRole('button', { name: /add as blank/i }));
+
+  await waitFor(() => expect(addSpy).toHaveBeenCalled());
+  // The fix popup opens, seeded with the freshly-added product + its blockers.
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent(/resolve blockers/i);
+  expect(within(dialog).getByText('Blank Mug')).toBeInTheDocument();
+  // missing_price → the popup surfaces the base-cost field to fix here.
+  expect(within(dialog).getByLabelText(/base cost/i)).toBeInTheDocument();
 });
 
 it('loads the next page and appends results', async () => {
