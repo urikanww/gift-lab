@@ -186,7 +186,7 @@ function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
 }
 
 export default function CatalogueAdminPage() {
-  const { items, meta, counts, loading, error, fetch, publish, unpublish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
+  const { items, meta, counts, loading, error, fetch, publish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
@@ -329,8 +329,8 @@ export default function CatalogueAdminPage() {
     );
   };
 
-  // Single-flight guard so a rapid double-click can't fire publish/unpublish
-  // twice on the same row.
+  // Single-flight guard so a rapid double-click can't fire a row action
+  // (publish/delete) twice on the same row.
   const runRow = async (id: number, label: string, fn: (id: number) => Promise<void>) => {
     if (pendingId !== null) return;
     setPendingId(id);
@@ -452,7 +452,6 @@ export default function CatalogueAdminPage() {
             <Badge tone="neutral">{counts.total} total</Badge>
             {counts.pending > 0 && <Badge tone="neutral">{counts.pending} pending</Badge>}
             {counts.ready > 0 && <Badge tone="warning">{counts.ready} ready to approve</Badge>}
-            {counts.published > 0 && <Badge tone="success">{counts.published} published</Badge>}
             {counts.blocked > 0 && <Badge tone="danger">{counts.blocked} blocked</Badge>}
             {eligibleIds.length > 0 && (
               <div className="ml-auto">
@@ -512,7 +511,6 @@ export default function CatalogueAdminPage() {
               <option value="">All states</option>
               <option value="PENDING">Pending</option>
               <option value="READY_TO_APPROVE">Ready to approve</option>
-              <option value="PUBLISHED">Published</option>
               <option value="CANNOT_PUBLISH">Cannot publish</option>
             </Select>
             <Select label="Blocker" value={draft.blocker} onChange={(e) => setDraftKey('blocker', e.target.value)}>
@@ -729,17 +727,6 @@ export default function CatalogueAdminPage() {
                       onClick={() => void runRow(it.id, 'Publish', publish)}
                     >
                       Publish
-                    </Button>
-                  )}
-                  {it.publish_state === 'PUBLISHED' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      loading={pendingId === it.id}
-                      disabled={pendingId !== null && pendingId !== it.id}
-                      onClick={() => void runRow(it.id, 'Unpublish', unpublish)}
-                    >
-                      Unpublish
                     </Button>
                   )}
                   {/* No-action states: tell the staffer what unblocks the row

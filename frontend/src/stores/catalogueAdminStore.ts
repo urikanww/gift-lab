@@ -8,12 +8,13 @@ interface CatalogueMeta {
   total: number;
 }
 
-/** Full-set state breakdown (page-independent) for the summary badges. */
+/** Full-set state breakdown (page-independent) for the summary badges.
+ *  Published rows are excluded from the gate by the backend, so there is no
+ *  `published` key here. */
 export interface CatalogueCounts {
   total: number;
   pending: number;
   ready: number;
-  published: number;
   blocked: number;
 }
 
@@ -73,7 +74,6 @@ interface CatalogueAdminState {
     opts?: { silent?: boolean },
   ) => Promise<void>;
   publish: (id: number) => Promise<void>;
-  unpublish: (id: number) => Promise<void>;
   bulkPublish: (ids: number[]) => Promise<{ published: number; failed: number } | null>;
   setAutoPublish: (enabled: boolean) => Promise<boolean>;
   verifyEstimates: (
@@ -126,17 +126,6 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
     try {
       await ensureCsrf();
       await api.post(`/admin/products/${id}/publish`);
-      await get().fetch(undefined, { silent: true });
-    } catch (err) {
-      set({ error: apiError(err) });
-    }
-  },
-
-  unpublish: async (id) => {
-    set({ error: null });
-    try {
-      await ensureCsrf();
-      await api.post(`/admin/products/${id}/unpublish`);
       await get().fetch(undefined, { silent: true });
     } catch (err) {
       set({ error: apiError(err) });
