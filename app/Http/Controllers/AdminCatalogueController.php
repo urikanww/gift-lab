@@ -242,8 +242,9 @@ class AdminCatalogueController extends Controller
             // Manual stock the staffer reads off the source listing: the affiliate
             // feed never carries a quantity, so a fuller sync can't clear
             // stock_unreadable on its own. Indicative only (non-authoritative) -
-            // the order-time StockLedger is what actually prevents overselling.
-            'stock_estimate' => ['sometimes', 'integer', 'gt:0', 'max:1000000'],
+            // the order-time StockLedger is what actually prevents overselling. 0
+            // is valid ("readable, out of stock") - only a NULL estimate blocks.
+            'stock_estimate' => ['sometimes', 'integer', 'min:0', 'max:1000000'],
         ]);
 
         if (isset($validated['dimensions'])) {
@@ -304,6 +305,12 @@ class AdminCatalogueController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
+        // The gate only manages SCRAPED_UV + MODEL_3D rows (the classes index()
+        // lists); a CORE product is managed from the product admin, never here.
+        if (! $this->isGateClass($product)) {
+            throw new DomainRuleException("This product isn't managed in the catalogue gate.");
+        }
+
         if ($product->publish_state === PublishState::Published) {
             throw new DomainRuleException('Unpublish a live product before deleting it.');
         }
@@ -342,7 +349,10 @@ class AdminCatalogueController extends Controller
                 continue;
             }
 
-            if ($product->publish_state === PublishState::Published) {
+            // A non-gate-class (CORE) row or a live PUBLISHED row is skipped, not
+            // deleted, so a stray id in the selection can't archive a product the
+            // gate doesn't own or a live listing.
+            if (! $this->isGateClass($product) || $product->publish_state === PublishState::Published) {
                 $skipped[] = $product->id;
 
                 continue;
@@ -354,6 +364,16 @@ class AdminCatalogueController extends Controller
         }
 
         return response()->json(['deleted' => $deleted, 'skipped' => $skipped]);
+    }
+
+    /**
+     * Whether a product belongs to the gate surface (SCRAPED_UV or MODEL_3D) -
+     * the same class set index() lists. CORE products are managed from the
+     * product admin, so the gate's own delete refuses/skips them.
+     */
+    private function isGateClass(Product $product): bool
+    {
+        return in_array($product->class, [ProductClass::ScrapedUv, ProductClass::Model3d], true);
     }
 
     public function unpublish(Request $request, Product $product): JsonResponse

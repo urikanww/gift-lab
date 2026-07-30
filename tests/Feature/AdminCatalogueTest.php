@@ -313,11 +313,34 @@ it('resolves a STOCKED blank stock_estimate and publishes', function (): void {
         ->and($product->stock_estimate)->toBe(42);
 });
 
+it('accepts a zero stock_estimate (readable, out of stock) and clears the block', function (): void {
+    // 0 is a valid readable estimate - only a NULL estimate keeps stock_unreadable.
+    $product = blockedScrapedProduct(['stock_mode' => 'STOCKED', 'stock_estimate' => null]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'base_cost' => 12.5,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
+        'weight' => 250,
+        'is_printable' => true,
+        'print_method' => 'UV',
+        'stock_estimate' => 0,
+    ])
+        ->assertOk()
+        ->assertJsonPath('published', true)
+        ->assertJsonPath('cannot_publish_reasons', null);
+
+    $product->refresh();
+    expect($product->publish_state->value)->toBe('PUBLISHED')
+        ->and($product->stock_estimate)->toBe(0);
+});
+
 it('saves the fix but does not publish when an unfixable blocker remains', function (): void {
-    // A STOCKED blank whose stock_estimate is source-truth and NOT settable
-    // here, so the row stays blocked - but the typed weight must still persist.
-    // (A MAKE_TO_ORDER blank waives stock_unreadable, so it would publish - see
-    // the CompletenessGate make-to-order waiver.)
+    // A STOCKED blank: this call deliberately OMITS stock_estimate, so the null
+    // estimate keeps stock_unreadable and the row stays blocked - but the typed
+    // weight must still persist. (Passing a stock_estimate would clear it, and a
+    // MAKE_TO_ORDER blank waives stock_unreadable outright - see the resolve +
+    // CompletenessGate make-to-order tests.)
     $product = blockedScrapedProduct(['stock_mode' => 'STOCKED', 'stock_estimate' => null]);
 
     Sanctum::actingAs($this->staff);
@@ -484,6 +507,29 @@ it('soft-deletes an unpublished gate item and drops it from the list', function 
         'event' => 'product.gate_deleted',
         'user_id' => $this->staff->id,
     ]);
+});
+
+it('refuses to delete a non-gate (CORE) product and skips it in bulk', function (): void {
+    $core = Product::factory()->create(['class' => 'CORE', 'publish_state' => 'READY_TO_APPROVE']);
+    $gate = Product::factory()->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
+
+    Sanctum::actingAs($this->staff);
+
+    // Single delete of a CORE row is refused (it isn't a gate item).
+    $this->deleteJson("/api/admin/catalogue/{$core->id}")
+        ->assertStatus(422)
+        ->assertJsonPath('message', "This product isn't managed in the catalogue gate.");
+    expect($core->fresh()->trashed())->toBeFalse();
+
+    // In bulk, a CORE id is skipped like a published one; the gate row still deletes.
+    $res = $this->postJson('/api/admin/catalogue/bulk-delete', [
+        'ids' => [$core->id, $gate->id],
+    ])->assertOk();
+
+    expect($res->json('deleted'))->toBe([$gate->id])
+        ->and($res->json('skipped'))->toBe([$core->id]);
+    expect($core->fresh()->trashed())->toBeFalse()
+        ->and($gate->fresh()->trashed())->toBeTrue();
 });
 
 it('refuses to delete a published product (422) and leaves it intact', function (): void {

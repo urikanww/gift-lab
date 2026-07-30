@@ -81,7 +81,8 @@ final class AdminBlankRecommendationController extends Controller
             // the affiliate API never returns a quantity, so this is the only way
             // to seed stock_estimate at ingest and pre-clear the stock_unreadable
             // gate reason. Indicative only - the order-time ledger is authoritative.
-            'stock_estimate' => ['nullable', 'integer', 'gt:0', 'max:1000000'],
+            // 0 is valid ("readable, out of stock"); only a NULL estimate blocks.
+            'stock_estimate' => ['nullable', 'integer', 'min:0', 'max:1000000'],
         ]);
 
         $product = $service->ingest(new ScrapedProductData(
