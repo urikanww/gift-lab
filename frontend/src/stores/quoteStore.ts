@@ -119,6 +119,7 @@ interface QuoteStoreState {
    */
   amend: (id: number, payload: AmendPayload) => Promise<Record<string, string>>;
   send: (id: number, proof?: { artwork_version_ref: string; notes?: string }) => Promise<void>;
+  setApprovalOrder: (quoteId: number, order: 'price_first' | 'proof_first') => Promise<void>;
   accept: (id: number) => Promise<void>;
   procure: (id: number) => Promise<void>;
   /**
@@ -284,6 +285,17 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await ensureCsrf();
       await api.post(`/quotes/${id}/send`, proof ?? {});
       await get().fetchQuote(id);
+    } catch (err) {
+      set({ actionError: apiError(err) });
+    }
+  },
+
+  setApprovalOrder: async (quoteId, order) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.patch(`/quotes/${quoteId}/approval-order`, { approval_order: order });
+      await get().fetchQuote(quoteId);
     } catch (err) {
       set({ actionError: apiError(err) });
     }
