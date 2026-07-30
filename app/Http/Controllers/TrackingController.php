@@ -21,7 +21,7 @@ class TrackingController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'reference' => ['required', 'string', 'max:16'],
+            'reference' => ['required', 'string', 'max:24'],
             'email' => ['required', 'string', 'max:255'],
         ]);
 

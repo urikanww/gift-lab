@@ -24,7 +24,7 @@ interface OrderTrackingUpdatedEvent {
 }
 
 /**
- * Login-free order tracking. Opaque code + first-5-of-email → read-only status.
+ * Login-free order tracking. Order reference + first-5-of-email → read-only status.
  * No account, no pricing, no line detail - mirrors the public API contract.
  */
 export default function TrackPage() {
@@ -35,8 +35,8 @@ export default function TrackPage() {
   const [busy, setBusy] = useState(false);
 
   // Live updates: once an order is found, subscribe to its PUBLIC tracking
-  // channel (keyed by the opaque code - no auth) so the stage refreshes the
-  // moment the floor advances the job. No polling.
+  // channel (keyed by the opaque order reference - no auth) so the stage refreshes
+  // the moment the floor advances the job. No polling.
   const reference = result?.reference ?? null;
   useEffect(() => {
     if (!reference) return;
@@ -109,7 +109,7 @@ export default function TrackPage() {
             placeholder="GL-XXXXXXXXXX"
             value={code}
             autoCapitalize="characters"
-            maxLength={16}
+            maxLength={24}
             onChange={(e) => setCode(e.target.value)}
             required
           />

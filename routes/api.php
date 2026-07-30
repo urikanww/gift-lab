@@ -93,7 +93,7 @@ Route::get('/uploads/artwork/preview', [UploadController::class, 'artworkPreview
 Route::post('/uploads/proof', [UploadController::class, 'proof'])
     ->middleware(['auth:sanctum', 'throttle:artwork-uploads']);
 
-// Login-free order tracking - opaque code + email-prefix check. Throttled
+// Login-free order tracking - order reference + email-prefix check. Throttled
 // hard (anti-enumeration; the controller also returns a single generic error).
 Route::post('/track', TrackingController::class)->middleware('throttle:tracking');
 
