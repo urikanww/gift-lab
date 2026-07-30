@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use App\Enums\Carrier;
 use App\Enums\JobState;
+use App\Enums\OrderMilestone;
 use App\Enums\QuoteState;
+use App\Mail\OrderMilestoneMail;
 use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\LineItem;
@@ -12,10 +14,13 @@ use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
+use App\Models\Shipment;
 use App\Models\ShippingAddress;
 use App\Models\User;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Services\QueueService;
+use App\Services\ShipmentService;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 
 /**
@@ -56,6 +61,80 @@ function shippedJobAwaitingDelivery(string $consignmentRef = 'NVSGDEL0001'): Pro
 
     return $job->fresh();
 }
+
+/**
+ * A UV line + a 3D line collapse into two production jobs that share ONE
+ * shipment (Stage 2b grouping), booked to SHIPPED together via
+ * createForShipment - the exact 2-job-one-shipment shape the cascade must
+ * cover. Returns the shared shipment.
+ */
+function twoJobShipmentDelivery(): Shipment
+{
+    $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
+    $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+    $quote = Quote::factory()->create([
+        'company_id' => test()->company->id,
+        'state' => 'PROCURING',
+        'created_by' => test()->buyer->id,
+    ]);
+    $uvLine = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $uvProduct->id,
+        'qty' => 10,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
+    ]);
+    Proof::factory()->forLine($uvLine)->approved()->create();
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $model3d->id,
+        'qty' => 2,
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png'],
+    ]);
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+
+    $queue = app(QueueService::class);
+    $jobs = $queue->buildJobsForQuote($quote->load('lineItems.product'));
+    foreach ($jobs as $job) {
+        $queue->advance($job->fresh(), JobState::InProduction);
+    }
+
+    $shipment = $jobs->first()->shipment;
+    app(ShipmentService::class)->createForShipment($shipment->fresh());
+
+    return $shipment->fresh();
+}
+
+it('cascades a manual delivery across the whole shipment: both member jobs + quote close, one delivered email', function (): void {
+    $shipment = twoJobShipmentDelivery();
+    $jobs = $shipment->jobs()->get();
+    expect($jobs)->toHaveCount(2);
+
+    // Fake AFTER the fixture ships, so only the delivery action's mail counts.
+    Mail::fake();
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/production-jobs/{$jobs->first()->id}/mark-delivered", [
+        'note' => 'Buyer confirmed receipt of the whole order by phone.',
+    ])->assertOk()->assertJsonPath('data.state', 'CLOSED');
+
+    foreach ($jobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Closed);
+    }
+
+    expect($shipment->quote()->first()->state)->toBe(QuoteState::Closed);
+
+    // Exactly ONE "delivered" milestone for the whole order (fired off the
+    // quote's single READY->CLOSED transition when the last member closes).
+    $delivered = Mail::queued(
+        OrderMilestoneMail::class,
+        fn (OrderMilestoneMail $m): bool => $m->milestone === OrderMilestone::Delivered,
+    );
+    expect($delivered)->toHaveCount(1);
+});
 
 it('lets staff mark a shipped job delivered: job + quote close, with a manual audit', function (): void {
     $job = shippedJobAwaitingDelivery();

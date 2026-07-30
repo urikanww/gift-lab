@@ -478,6 +478,12 @@ final class QueueService
             );
         }
 
+        // Legacy/factory job with no shipment: keep the original single-job
+        // behaviour (there are no member siblings to cascade to).
+        if ($job->shipment_id === null) {
+            return $this->markDeliveredSingle($job, $note);
+        }
+
         return DB::transaction(function () use ($job, $note): ProductionJob {
             // Shipment-then-job lock order, matching the NinjaVan webhook
             // (which locks the shipment then its member jobs). Acquiring the
@@ -485,40 +491,70 @@ final class QueueService
             // manual confirmation serializes on the shipment row instead of
             // deadlocking on an ABBA lock inversion (webhook: shipment->job vs.
             // an old job->shipment order here).
-            $lockedShipment = $job->shipment_id !== null
-                ? Shipment::query()->whereKey($job->shipment_id)->lockForUpdate()->first()
-                : null;
+            $lockedShipment = Shipment::query()->whereKey($job->shipment_id)->lockForUpdate()->firstOrFail();
 
-            // L16: lock the job and RE-READ its state under the lock, mirroring
-            // the webhook's TOCTOU guard. A delivered webhook racing this manual
-            // confirmation also takes these locks; whichever commits second
-            // re-reads the now-CLOSED job here and no-ops instead of advancing
-            // again (which would fire a second "delivered" email).
+            // Stamp the manual-confirmation marker on the shipment ONCE, BEFORE
+            // advancing, so the row the tracker reads reflects a staff-confirmed
+            // delivery for the whole order.
+            $previousCourierStatus = $lockedShipment->last_courier_status;
+            $lockedShipment->last_courier_status = self::MANUAL_DELIVERED_STATUS;
+            $lockedShipment->last_courier_status_at = now();
+            $lockedShipment->save();
+
+            // Close EVERY member job still SHIPPED - a manual delivery confirms
+            // the whole shipment arrived, not just the one job staff clicked.
+            // Each with its own re-read + lockForUpdate + idempotent no-op (L16):
+            // a Delivered webhook racing this confirmation re-reads a now-CLOSED
+            // member here and no-ops instead of advancing (and re-emailing)
+            // again. The quote-close + the SINGLE delivered-milestone email come
+            // from advance()'s all-jobs-closed edge, reached when the last member
+            // closes.
+            foreach ($lockedShipment->jobs()->where('state', JobState::Shipped->value)->get() as $memberJob) {
+                $locked = ProductionJob::query()->whereKey($memberJob->getKey())->lockForUpdate()->firstOrFail();
+
+                if ($locked->state !== JobState::Shipped) {
+                    continue; // already closed by a racing path - idempotent no-op
+                }
+
+                $locked->setRelation('shipment', $lockedShipment);
+                $locked = $this->advance($locked, JobState::Closed);
+
+                $this->audit->log($locked, 'production_job.manually_delivered', [
+                    'last_courier_status' => $previousCourierStatus,
+                    'state' => JobState::Shipped->value,
+                ], [
+                    'note' => $note,
+                    'state' => $locked->state->value,
+                ]);
+            }
+
+            // Return the passed job, freshened.
+            return $job->fresh() ?? $job;
+        });
+    }
+
+    /**
+     * Original single-job manual-delivery path, kept for a legacy/factory job
+     * with no shipment. shipmentFor() defensively creates the row the manual
+     * marker lands on, then advance() closes the job (and the quote when it is
+     * the order's last), firing the delivered milestone.
+     */
+    private function markDeliveredSingle(ProductionJob $job, ?string $note): ProductionJob
+    {
+        return DB::transaction(function () use ($job, $note): ProductionJob {
             $locked = ProductionJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
 
             if ($locked->state !== JobState::Shipped) {
-                // The other path already closed it - idempotent no-op.
-                return $locked;
+                return $locked; // idempotent no-op
             }
 
-            // Courier fields live on the shipment now; stamp the manual-
-            // confirmation marker there BEFORE advancing, so the row the
-            // tracker reads reflects a staff-confirmed delivery. Reuse the row
-            // already locked above when present.
-            if ($lockedShipment !== null) {
-                $locked->setRelation('shipment', $lockedShipment);
-                $shipment = $lockedShipment;
-            } else {
-                $shipment = $this->shipmentFor($locked);
-            }
+            $shipment = $this->shipmentFor($locked);
             $previousCourierStatus = $shipment->last_courier_status;
 
             $shipment->last_courier_status = self::MANUAL_DELIVERED_STATUS;
             $shipment->last_courier_status_at = now();
             $shipment->save();
 
-            // Same close path the webhook uses: closes the job, closes the quote
-            // when it's the last one, and fires the delivered milestone email.
             $locked = $this->advance($locked, JobState::Closed);
 
             $this->audit->log($locked, 'production_job.manually_delivered', [
@@ -557,7 +593,13 @@ final class QueueService
             ->whereHas('quote')
             ->with(['quote', 'shipment', 'lineItems.product'])
             ->orderByDesc('updated_at')
-            ->get();
+            ->get()
+            // One row per SHIPMENT: a multi-job order shares one shipment, so
+            // its member jobs would otherwise show as N awaiting-delivery rows.
+            // A job with no shipment_id keeps its own row (null is not collapsed
+            // with other null-shipment jobs).
+            ->unique(fn (ProductionJob $j) => $j->shipment_id ?? 'job-'.$j->id)
+            ->values();
     }
 
     /**
@@ -581,6 +623,10 @@ final class QueueService
             // newest-flagged first, sorted in PHP since it is a related column
             // (the needs-attention list is small).
             ->sortByDesc(fn (ProductionJob $job): ?string => $job->shipment?->last_courier_status_at?->toIso8601String())
+            // One row per SHIPMENT (after the sort, so the representative kept is
+            // the newest-flagged member). A job with no shipment_id keeps its own
+            // row - null is not collapsed with other null-shipment jobs.
+            ->unique(fn (ProductionJob $j) => $j->shipment_id ?? 'job-'.$j->id)
             ->values();
     }
 
@@ -605,8 +651,17 @@ final class QueueService
         return DB::transaction(function () use ($job, $note): ProductionJob {
             $lastCourierStatus = $job->shipment?->last_courier_status;
 
-            $job = $this->advance($job, JobState::Closed);
+            // Close EVERY member job of the shipment still SHIPPED - the whole
+            // parcel is written off, not just the one row staff clicked. The
+            // quote closes via advance()'s all-jobs-closed edge on the last
+            // member (same edge a delivered order hits).
+            foreach ($this->shippedMemberJobs($job) as $memberJob) {
+                $this->advance($memberJob, JobState::Closed);
+            }
 
+            $job = $job->fresh() ?? $job;
+
+            // Audit once per shipment (keyed to the clicked job).
             $this->audit->log($job, 'production_job.return_resolved', [
                 'last_courier_status' => $lastCourierStatus,
             ], [
@@ -625,10 +680,10 @@ final class QueueService
             $shipment = $job->shipment;
             $lastCourierStatus = $shipment?->last_courier_status;
 
-            // Clear the old courier footprint FIRST - consignment_ref is
-            // unique-indexed (on shipments now), so a later ship() booking a
+            // Clear the old courier footprint ONCE on the shipment FIRST -
+            // consignment_ref is unique-indexed, so a later ship() booking a
             // fresh NinjaVanTrackingNumber::forShipment() value must not collide
-            // with this now-abandoned one. The footprint lives on the shipment.
+            // with this now-abandoned one.
             if ($shipment !== null) {
                 $shipment->consignment_ref = null;
                 $shipment->carrier = null;
@@ -639,9 +694,18 @@ final class QueueService
                 $shipment->save();
             }
 
-            // transitionTo() saves the job (state change only now - the courier
-            // footprint that was cleared above lives on the shipment).
-            $job->transitionTo(JobState::InProduction);
+            // Send EVERY member job still SHIPPED back to IN_PRODUCTION. Clearing
+            // the shipment footprint but leaving a sibling SHIPPED used to block
+            // re-booking (createForShipment's all-shippable guard) - re-queue the
+            // whole shipment so it can ship again on one fresh consignment.
+            foreach ($this->shippedMemberJobs($job) as $memberJob) {
+                // transitionTo() saves the job (state change only - the courier
+                // footprint cleared above lives on the shipment).
+                $memberJob->transitionTo(JobState::InProduction);
+                Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($memberJob, 'started'));
+            }
+
+            $job = $job->fresh() ?? $job;
 
             $this->audit->log($job, 'production_job.return_resolved', [
                 'last_courier_status' => $lastCourierStatus,
@@ -650,8 +714,6 @@ final class QueueService
                 'note' => $note,
                 'state' => $job->state->value,
             ]);
-
-            Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($job, 'started'));
 
             return $job;
         });
@@ -666,26 +728,38 @@ final class QueueService
             $quote = $job->quote;
 
             if ($quote !== null) {
-                // M15: does any SIBLING parcel still stand (delivered or in
-                // flight, i.e. not itself already returned)? If so, cancel &
-                // credit ONLY this parcel and leave the order live. If this is
-                // the only/last live parcel, fall back to the whole-order cancel.
+                // M15, per SHIPMENT (not per member job): every member job of
+                // this shipment is being returned together, so a "still-live
+                // sibling" is a job OUTSIDE this shipment that isn't itself
+                // returned. With one shipment per order today there is none, so
+                // this falls to the whole-order cancel + a SINGLE credit note -
+                // crediting once, never once per member job.
+                $memberJobIds = $this->memberJobIds($job);
+
                 $siblingStillLive = $quote->jobs()
-                    ->whereKeyNot($job->getKey())
+                    ->whereNotIn('id', $memberJobIds)
                     ->where('state', '!=', JobState::Returned->value)
                     ->exists();
 
+                // Mark every member parcel returned so none leaves as delivered
+                // or lingers on the awaiting-delivery board.
+                foreach ($this->shippedMemberJobs($job) as $memberJob) {
+                    $memberJob->transitionTo(JobState::Returned);
+                }
+
                 if ($siblingStillLive) {
+                    // A separate parcel still stands: credit only this shipment
+                    // (once) and leave the order live. No multi-shipment order
+                    // exists today; kept correct for when it does.
                     app(QuoteService::class)->returnParcel($quote, $job, $note);
                 } else {
-                    // Mark the parcel returned before the whole-order cancel so
-                    // it leaves the awaiting-delivery board and isn't faked as
-                    // delivered; cancel() then closes the money loop.
-                    $job->transitionTo(JobState::Returned);
+                    // The order's only live parcel: cancel the whole order,
+                    // which mints exactly one credit note for what was collected.
                     app(QuoteService::class)->cancel($quote, $note);
                 }
             }
 
+            // Audit once per shipment (keyed to the clicked job).
             $this->audit->log($job, 'production_job.return_resolved', [
                 'last_courier_status' => $lastCourierStatus,
             ], [
@@ -703,5 +777,43 @@ final class QueueService
 
             return $fresh;
         });
+    }
+
+    /**
+     * The member jobs of $job's shipment that are still SHIPPED - the set a
+     * return/deliver cascade acts on. A job with no shipment (legacy) has no
+     * siblings, so this is just [$job] itself.
+     *
+     * @return Collection<int, ProductionJob>
+     */
+    private function shippedMemberJobs(ProductionJob $job): Collection
+    {
+        if ($job->shipment_id === null) {
+            return collect([$job]);
+        }
+
+        return ProductionJob::query()
+            ->where('shipment_id', $job->shipment_id)
+            ->where('state', JobState::Shipped->value)
+            ->get();
+    }
+
+    /**
+     * Every member job id of $job's shipment (any state). Used to scope the
+     * cancel_credit sibling check to jobs OUTSIDE this shipment. A job with no
+     * shipment is its own sole member.
+     *
+     * @return array<int, int>
+     */
+    private function memberJobIds(ProductionJob $job): array
+    {
+        if ($job->shipment_id === null) {
+            return [$job->getKey()];
+        }
+
+        return ProductionJob::query()
+            ->where('shipment_id', $job->shipment_id)
+            ->pluck('id')
+            ->all();
     }
 }

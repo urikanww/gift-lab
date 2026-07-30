@@ -22,6 +22,9 @@ class ProductionJobResource extends JsonResource
         return [
             'id' => $this->id,
             'quote_id' => $this->quote_id,
+            // The shipment a job belongs to; the in-transit / needs-attention
+            // surfaces dedupe to one representative row per shipment_id.
+            'shipment_id' => $this->shipment_id,
             // The displayed order identifier. quote_id stays because the realtime
             // stores join incoming broadcasts against on-screen rows by it.
             'quote_reference' => $this->quote?->reference,

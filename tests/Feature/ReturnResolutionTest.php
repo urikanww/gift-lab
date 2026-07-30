@@ -77,6 +77,104 @@ function returnedShippedJob(string $consignmentRef = 'NVSGRET0001'): ProductionJ
     return $job->fresh();
 }
 
+/**
+ * A UV line + a 3D line collapse into two production jobs sharing ONE shipment,
+ * booked to SHIPPED together via createForShipment, then flagged returned - the
+ * 2-job-one-shipment shape the return cascade must cover. Returns the shipment.
+ */
+function twoJobReturnedShipment(): \App\Models\Shipment
+{
+    $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
+    $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+    $quote = Quote::factory()->create([
+        'company_id' => test()->company->id,
+        'state' => 'PROCURING',
+        'created_by' => test()->buyer->id,
+    ]);
+    $uvLine = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $uvProduct->id,
+        'qty' => 10,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
+    ]);
+    Proof::factory()->forLine($uvLine)->approved()->create();
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $model3d->id,
+        'qty' => 2,
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png'],
+    ]);
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+
+    $queue = app(QueueService::class);
+    $jobs = $queue->buildJobsForQuote($quote->load('lineItems.product'));
+    foreach ($jobs as $job) {
+        $queue->advance($job->fresh(), JobState::InProduction);
+    }
+
+    $shipment = $jobs->first()->shipment;
+    app(ShipmentService::class)->createForShipment($shipment->fresh());
+
+    // Flag the whole shipment returned (as the webhook would).
+    $shipment = $shipment->fresh();
+    $shipment->last_courier_status = NinjaVanStatusMapper::map('Returned to Sender')->label;
+    $shipment->last_courier_status_at = now();
+    $shipment->save();
+
+    return $shipment->fresh();
+}
+
+it('cascades reship across the whole shipment: both member jobs to IN_PRODUCTION, footprint cleared once, re-bookable', function (): void {
+    $shipment = twoJobReturnedShipment();
+    $jobs = $shipment->jobs()->get();
+    expect($jobs)->toHaveCount(2);
+    expect($shipment->consignment_ref)->not->toBeNull();
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/production-jobs/{$jobs->first()->id}/resolve-return", [
+        'disposition' => 'reship',
+    ])->assertOk()->assertJsonPath('data.state', 'IN_PRODUCTION');
+
+    foreach ($jobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::InProduction);
+    }
+
+    $shipment = $shipment->fresh();
+    expect($shipment->consignment_ref)->toBeNull()
+        ->and($shipment->carrier)->toBeNull()
+        ->and($shipment->last_courier_status)->toBeNull();
+
+    // No SHIPPED sibling left to block the all-shippable guard: the whole
+    // shipment re-books in one call (the footprint being cleared once is what
+    // frees the unique consignment_ref index for a fresh booking) and every
+    // member job ships again together.
+    $rebooked = app(ShipmentService::class)->createForShipment($shipment->fresh());
+    expect($rebooked->consignment_ref)->not->toBeNull();
+    foreach ($shipment->jobs()->get() as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Shipped);
+    }
+});
+
+it('cascades close across the whole shipment: both member jobs CLOSED', function (): void {
+    $shipment = twoJobReturnedShipment();
+    $jobs = $shipment->jobs()->get();
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/production-jobs/{$jobs->first()->id}/resolve-return", [
+        'disposition' => 'close',
+    ])->assertOk()->assertJsonPath('data.state', 'CLOSED');
+
+    foreach ($jobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Closed);
+    }
+
+    expect($shipment->quote()->first()->state)->toBe(QuoteState::Closed);
+});
+
 it('resolves close: advances the job and closes the quote', function (): void {
     $job = returnedShippedJob();
     Sanctum::actingAs(User::factory()->staffAdmin()->create());

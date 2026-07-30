@@ -14,6 +14,7 @@ use App\Models\ShippingAddress;
 use App\Models\User;
 use App\Services\Courier\NinjaVanStatusMapper;
 use App\Services\QueueService;
+use App\Services\ShipmentService;
 use Laravel\Sanctum\Sanctum;
 
 use function Pest\Laravel\getJson;
@@ -69,6 +70,76 @@ function shippedJobWithStatus(string $label, string $consignmentRef): Production
 
     return $job->fresh();
 }
+
+/**
+ * A UV line + a 3D line collapse into two production jobs sharing ONE shipment,
+ * booked to SHIPPED together via createForShipment - the 2-job-one-shipment
+ * shape the surfaces must dedupe to a single row. Returns the shared shipment.
+ */
+function twoJobShipment(): \App\Models\Shipment
+{
+    $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
+    $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+    $quote = Quote::factory()->create([
+        'company_id' => test()->company->id,
+        'state' => 'PROCURING',
+        'created_by' => test()->buyer->id,
+    ]);
+    $uvLine = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $uvProduct->id,
+        'qty' => 10,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
+    ]);
+    Proof::factory()->forLine($uvLine)->approved()->create();
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id,
+        'product_id' => $model3d->id,
+        'qty' => 2,
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png'],
+    ]);
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+
+    $queue = app(QueueService::class);
+    $jobs = $queue->buildJobsForQuote($quote->load('lineItems.product'));
+    foreach ($jobs as $job) {
+        $queue->advance($job->fresh(), JobState::InProduction);
+    }
+
+    $shipment = $jobs->first()->shipment;
+    app(ShipmentService::class)->createForShipment($shipment->fresh());
+
+    return $shipment->fresh();
+}
+
+it('dedupes a 2-job returned shipment to ONE needs-attention row', function (): void {
+    $shipment = twoJobShipment();
+    expect($shipment->jobs()->count())->toBe(2);
+    $shipment->last_courier_status = NinjaVanStatusMapper::LABEL_RETURNED;
+    $shipment->last_courier_status_at = now();
+    $shipment->save();
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $rows = collect(getJson('/api/production-jobs/needs-attention')->assertOk()->json('data'))
+        ->where('shipment_id', $shipment->id);
+
+    expect($rows)->toHaveCount(1);
+});
+
+it('dedupes a 2-job in-transit shipment to ONE in-transit row', function (): void {
+    $shipment = twoJobShipment(); // normal SHIPPED, no needs-attention status
+    expect($shipment->jobs()->count())->toBe(2);
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $rows = collect(getJson('/api/production-jobs/in-transit')->assertOk()->json('data'))
+        ->where('shipment_id', $shipment->id);
+
+    expect($rows)->toHaveCount(1);
+});
 
 it('lists a returned/failed parcel in needs-attention and not in in-transit', function (): void {
     $returned = shippedJobWithStatus(NinjaVanStatusMapper::LABEL_RETURNED, 'NVSGNA0001');
