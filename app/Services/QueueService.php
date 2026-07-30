@@ -361,15 +361,22 @@ final class QueueService
         if ($target === JobState::Shipped && $job->quote !== null) {
             $quote = $job->quote;
 
-            // M19: one "on its way" email per ORDER, not per parcel. A
-            // parcel-split order builds several jobs; only the first to ship
-            // notifies the buyer. Every other milestone is order-level, so this
-            // one should be too. (This job is already SHIPPED here, so we look
-            // for ANOTHER job on the quote already shipped/closed.)
-            $anotherAlreadyShipped = $quote->jobs()
-                ->whereKeyNot($job->id)
-                ->whereIn('state', [JobState::Shipped->value, JobState::Closed->value])
-                ->exists();
+            // M19: one "on its way" email per SHIPMENT (parcel), so a split
+            // order notifies once per parcel; an unsplit order (one shipment)
+            // still sends exactly one. A shipment groups an order's jobs, so we
+            // dedup within the job's shipment: the first job of a shipment to
+            // ship notifies the buyer (with that parcel's tracking URL); its
+            // shipment-mates skip. A split shipment ships later and notifies on
+            // its own. (This job is already SHIPPED here, so we look for ANOTHER
+            // job in the SAME shipment already shipped/closed.) Null-shipment
+            // legacy job: it is its own parcel with no shipment to group on, so
+            // fall back to the old whole-quote dedup (whereNull cannot compare a
+            // null shipment_id with `=`, and each such job is a lone parcel).
+            $sameShipmentQuery = $quote->jobs()->whereKeyNot($job->id)
+                ->whereIn('state', [JobState::Shipped->value, JobState::Closed->value]);
+            $anotherAlreadyShipped = $job->shipment_id !== null
+                ? (clone $sameShipmentQuery)->where('shipment_id', $job->shipment_id)->exists()
+                : $sameShipmentQuery->exists();
 
             if (! $anotherAlreadyShipped) {
                 $shipment = $job->shipment;

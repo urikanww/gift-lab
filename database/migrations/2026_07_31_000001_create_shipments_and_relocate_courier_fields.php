@@ -67,6 +67,15 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Best-effort, FORWARD-ONLY reversal. This copies each shipment's
+        // consignment_ref back onto EVERY member job and then rebuilds
+        // unique('consignment_ref') on production_jobs. Once orders have been
+        // grouped and shipped, a single shipment covers 2+ jobs that all share
+        // one consignment_ref, so restoring the unique index CANNOT succeed - the
+        // duplicated ref violates it and the rebuild fails. down() is therefore
+        // impossible on real grouped+shipped data and is retained only for
+        // rolling back a fresh/empty-data migration (e.g. a failed deploy before
+        // any shipment was booked). Do not rely on it to reverse production data.
         Schema::table('production_jobs', function (Blueprint $table): void {
             $table->string('consignment_ref', 128)->nullable()->after('artwork_refs');
             $table->string('carrier', 32)->nullable()->after('consignment_ref');
