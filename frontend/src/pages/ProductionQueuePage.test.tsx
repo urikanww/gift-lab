@@ -246,3 +246,28 @@ it('Make queue tab does not offer courier actions', () => {
   expect(screen.getByText(/GL-BBB0000002/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /create ninjavan shipment/i })).not.toBeInTheDocument();
 });
+
+// A SHIPPED job lingers in `jobs` until it closes, but it has no floor action
+// and lives on the In-transit tab - it must not render as a dead card on Make.
+it('Make queue drops a SHIPPED job (no dead card off the floor)', () => {
+  seedTwoTabs({
+    jobs: [readyJob, { ...inProductionJob, id: 3, quote_reference: 'GL-CCC0000003', state: 'SHIPPED' }],
+  });
+  renderPage();
+
+  expect(screen.getByText(/GL-AAA0000001/)).toBeInTheDocument();
+  expect(screen.queryByText(/GL-CCC0000003/)).not.toBeInTheDocument();
+});
+
+// With the floor full of READY jobs and nothing produced yet, the Ship desk is
+// empty but not "clear" - the make-oriented copy would mislead.
+it('Ship desk empty state reads "nothing ready to ship", not the make copy', () => {
+  vi.mocked(api.get).mockResolvedValue({ data: { data: [] } } as any);
+  seedTwoTabs({ jobs: [readyJob] });
+  renderPage();
+
+  fireEvent.click(screen.getByRole('tab', { name: /ship desk/i }));
+
+  expect(screen.getByText(/nothing ready to ship/i)).toBeInTheDocument();
+  expect(screen.queryByText(/the queue is clear/i)).not.toBeInTheDocument();
+});

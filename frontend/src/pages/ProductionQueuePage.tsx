@@ -233,9 +233,15 @@ export default function ProductionQueuePage() {
     }
   };
 
-  // Make queue shows the whole board (READY + IN_PRODUCTION); Ship desk is the
-  // courier hand-off, so it lists only the jobs a courier can take now.
-  const boardJobs = tab === 'ship' ? jobs.filter((j) => j.state === 'IN_PRODUCTION') : jobs;
+  // Make queue is the print floor (READY + IN_PRODUCTION); Ship desk is the
+  // courier hand-off, so it lists only the jobs a courier can take now. A
+  // SHIPPED job lingers in `jobs` until it closes (the realtime reducer keeps
+  // it), so filter it off the Make board too - it has no floor action there and
+  // already lives on the In-transit tab.
+  const boardJobs =
+    tab === 'ship'
+      ? jobs.filter((j) => j.state === 'IN_PRODUCTION')
+      : jobs.filter((j) => j.state === 'READY' || j.state === 'IN_PRODUCTION');
 
   return (
     <section className="flex flex-col gap-6">
@@ -331,12 +337,20 @@ export default function ProductionQueuePage() {
       {/* Error - retry */}
       {!loading && error && <ErrorState message={error} onRetry={() => void fetchQueue()} />}
 
-      {/* Empty */}
+      {/* Empty - copy is per-surface: the Ship desk is "nothing ready to ship",
+          not "the queue is clear" (the floor may be full of READY jobs). */}
       {!loading && !error && boardJobs.length === 0 && (
-        <EmptyState
-          title="The queue is clear."
-          description="Jobs appear here the moment a quote is confirmed and ready to make."
-        />
+        tab === 'ship' ? (
+          <EmptyState
+            title="Nothing ready to ship."
+            description="Items appear here once they're produced and ready to hand to the courier."
+          />
+        ) : (
+          <EmptyState
+            title="The queue is clear."
+            description="Jobs appear here the moment a quote is confirmed and ready to make."
+          />
+        )
       )}
 
       {/* Bulk floor actions - only on the Make queue, while a selection exists */}
