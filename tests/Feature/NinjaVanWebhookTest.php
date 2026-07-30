@@ -249,12 +249,12 @@ it('stores an unrecognised status string verbatim without crashing', function ()
         ->and($job->shipment->last_courier_status)->toBe('Some Brand New Courier Status');
 });
 
-it('books a distinct consignment_ref per job on a multi-job quote, and two Delivered webhooks close both jobs then the quote', function (): void {
+it('books ONE consignment for a multi-job quote, and a Delivered webhook closes both jobs then the quote', function (): void {
     // One CORE (UV-track) line + one MODEL_3D line -> QueueService::buildJobsForQuote
-    // makes two jobs for this quote (one UV job, one per 3D line), each with its
-    // own 1:1 shipment. Each must book under its own NinjaVan
-    // requested_tracking_number (NinjaVanTrackingNumber::forShipment), or the
-    // second booking collides with the first and only one job ever closes.
+    // makes two jobs for this quote (one UV job, one per 3D line) SHARING a single
+    // shipment (Stage 2b). Booking that one shipment (ShipmentService::
+    // createForShipment) books ONE NinjaVan consignment and ships both jobs, so a
+    // single Delivered webhook for that consignment closes both jobs, then the quote.
     $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
     $threeDProduct = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
     $quote = Quote::factory()->create([
@@ -283,25 +283,29 @@ it('books a distinct consignment_ref per job on a multi-job quote, and two Deliv
     $jobs = $queue->buildJobsForQuote($quote->load('lineItems.product'));
     expect($jobs)->toHaveCount(2);
 
-    $shipmentService = app(ShipmentService::class);
-    $shippedJobs = $jobs->map(function (ProductionJob $job) use ($queue, $shipmentService): ProductionJob {
+    // Both jobs share one shipment; advance both to IN_PRODUCTION, then book once.
+    expect($jobs->pluck('shipment_id')->unique())->toHaveCount(1);
+    foreach ($jobs as $job) {
         $queue->advance($job, JobState::InProduction);
-
-        return $shipmentService->createForJob($job->fresh());
-    });
-
-    $refs = $shippedJobs->map(fn (ProductionJob $job): ?string => $job->shipment->consignment_ref);
-    expect($refs->filter())->toHaveCount(2)
-        ->and($refs->unique())->toHaveCount(2);
-
-    foreach ($shippedJobs as $job) {
-        postNinjaVanWebhook([
-            'tracking_number' => $job->shipment->consignment_ref,
-            'status' => 'Delivered',
-        ])->assertOk()->assertJson(['received' => true]);
     }
 
-    foreach ($shippedJobs as $job) {
+    $shipment = app(ShipmentService::class)->createForShipment(
+        Shipment::findOrFail($jobs->first()->shipment_id)
+    );
+
+    // Exactly one consignment covers the whole order; both jobs are now SHIPPED.
+    expect($shipment->consignment_ref)->not->toBeNull();
+    foreach ($jobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Shipped);
+    }
+
+    // A single Delivered webhook for the shared consignment closes BOTH member jobs.
+    postNinjaVanWebhook([
+        'tracking_number' => $shipment->consignment_ref,
+        'status' => 'Delivered',
+    ])->assertOk()->assertJson(['received' => true]);
+
+    foreach ($jobs as $job) {
         expect($job->fresh()->state)->toBe(JobState::Closed);
     }
 

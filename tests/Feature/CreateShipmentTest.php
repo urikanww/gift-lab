@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Enums\JobState;
 use App\Exceptions\CourierException;
+use App\Models\Company;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\ProductionJob;
+use App\Models\Proof;
 use App\Models\Quote;
 use App\Models\Shipment;
 use App\Models\ShippingAddress;
@@ -14,6 +17,7 @@ use App\Services\Courier\Contracts\CourierClient;
 use App\Services\Courier\CourierShipment;
 use App\Services\Courier\CourierShipmentResult;
 use App\Services\Courier\NinjaVanTrackingNumber;
+use App\Services\QueueService;
 use Laravel\Sanctum\Sanctum;
 
 it('creates a NinjaVan shipment and marks the job shipped', function (): void {
@@ -35,6 +39,73 @@ it('creates a NinjaVan shipment and marks the job shipped', function (): void {
         ->and($shipment->carrier->value)->toBe('NINJAVAN')
         ->and($shipment->consignment_ref)->not->toBeNull()
         ->and($shipment->consignment_ref)->toBe(NinjaVanTrackingNumber::forShipment($quote->id, $shipment->id));
+});
+
+it('books ONE consignment for the whole shipment and ships every member job', function (): void {
+    // A call-counting courier spy: a multi-job order must book exactly ONE
+    // consignment for its shared shipment, not one per member job.
+    $calls = 0;
+    app()->bind(CourierClient::class, function () use (&$calls) {
+        return new class($calls) implements CourierClient
+        {
+            public function __construct(private int &$calls) {}
+
+            public function createShipment(CourierShipment $shipment): CourierShipmentResult
+            {
+                $this->calls++;
+
+                return new CourierShipmentResult($shipment->requestedTrackingNumber, 'NINJAVAN', null);
+            }
+        };
+    });
+
+    // A quote whose lines fan out into 2 jobs sharing one shipment: one UV-track
+    // (CORE) line folds into a UV job, one MODEL_3D line splits into its own job.
+    $company = Company::factory()->create();
+    $uvProduct = Product::factory()->create(['class' => 'CORE', 'print_method' => 'UV']);
+    $model3d = Product::factory()->create(['class' => 'MODEL_3D', 'print_method' => 'FDM']);
+
+    $quote = Quote::factory()->create(['company_id' => $company->id, 'state' => 'PROCURING']);
+    ShippingAddress::create([
+        'quote_id' => $quote->id, 'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567', 'line1' => '1 Marina Blvd',
+        'postal_code' => '018989', 'country' => 'SG',
+    ]);
+    $uvLine = LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id, 'product_id' => $uvProduct->id, 'qty' => 10,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/core.png'],
+    ]);
+    Proof::factory()->forLine($uvLine)->approved()->create();
+    LineItem::factory()->ready()->create([
+        'quote_id' => $quote->id, 'product_id' => $model3d->id, 'qty' => 2,
+        'customization' => ['mode' => 'designer', 'print_file_ref' => 'artwork/decal.png'],
+    ]);
+
+    $jobs = app(QueueService::class)->buildJobsForQuote($quote->load('lineItems.product'));
+    expect($jobs)->toHaveCount(2);
+
+    // Advance both jobs to IN_PRODUCTION so the whole shipment is shippable.
+    foreach ($jobs as $job) {
+        app(QueueService::class)->advance($job, JobState::InProduction);
+    }
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/production-jobs/{$jobs->first()->id}/create-shipment")
+        ->assertOk();
+
+    // Exactly ONE courier booking for the shared shipment.
+    expect($calls)->toBe(1);
+
+    // BOTH member jobs are now SHIPPED (not just the one the endpoint named).
+    foreach ($jobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Shipped);
+    }
+
+    // The shared shipment carries exactly one non-null consignment_ref.
+    $shipmentIds = $jobs->pluck('shipment_id')->unique()->values();
+    expect($shipmentIds)->toHaveCount(1);
+    $shipment = Shipment::findOrFail($shipmentIds->first());
+    expect($shipment->consignment_ref)->not->toBeNull();
 });
 
 it('refuses to re-ship a job that already has a consignment', function (): void {
