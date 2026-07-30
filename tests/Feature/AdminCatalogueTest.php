@@ -275,9 +275,11 @@ it('resolves every blocker and publishes in one call', function (): void {
 });
 
 it('saves the fix but does not publish when an unfixable blocker remains', function (): void {
-    // stock_estimate is source-truth and NOT settable here, so the row stays
-    // blocked - but the typed weight must still persist.
-    $product = blockedScrapedProduct(['stock_estimate' => null]);
+    // A STOCKED blank whose stock_estimate is source-truth and NOT settable
+    // here, so the row stays blocked - but the typed weight must still persist.
+    // (A MAKE_TO_ORDER blank waives stock_unreadable, so it would publish - see
+    // the CompletenessGate make-to-order waiver.)
+    $product = blockedScrapedProduct(['stock_mode' => 'STOCKED', 'stock_estimate' => null]);
 
     Sanctum::actingAs($this->staff);
     $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [

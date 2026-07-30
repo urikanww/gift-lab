@@ -15,6 +15,7 @@ function scrapedProduct(array $overrides = []): Product
         'weight' => 100,
         'is_printable' => true,
         'print_method' => 'UV',
+        'stock_mode' => 'STOCKED',
         'stock_estimate' => 20,
     ], $overrides));
 }
@@ -38,7 +39,18 @@ it('flags not printable', function (): void {
         ->toContain('not_printable');
 });
 
-it('flags unreadable stock', function (): void {
+it('flags unreadable stock for a STOCKED blank', function (): void {
     expect((new CompletenessGate())->reasons(scrapedProduct(['stock_estimate' => null])))
         ->toContain('stock_unreadable');
+});
+
+it('waives unreadable stock for a MAKE_TO_ORDER blank', function (): void {
+    $reasons = (new CompletenessGate())->reasons(
+        scrapedProduct(['stock_mode' => 'MAKE_TO_ORDER', 'stock_estimate' => null])
+    );
+
+    expect($reasons)->not->toContain('stock_unreadable');
+    expect((new CompletenessGate())->isComplete(
+        scrapedProduct(['stock_mode' => 'MAKE_TO_ORDER', 'stock_estimate' => null])
+    ))->toBeTrue();
 });

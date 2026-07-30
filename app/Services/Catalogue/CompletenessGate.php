@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Catalogue;
 
+use App\Enums\StockMode;
 use App\Models\Product;
 
 /**
@@ -36,7 +37,11 @@ final class CompletenessGate
             $reasons[] = 'not_printable';
         }
 
-        if ($product->stock_estimate === null) {
+        // Only STOCKED blanks need a readable stock estimate. A MAKE_TO_ORDER
+        // (buy-per-order) blank has no seller quantity to read - a null estimate
+        // is expected there, checked by a human at procurement - so it must not
+        // block publish; STOCKED items still gate on it.
+        if ($product->stock_mode === StockMode::Stocked && $product->stock_estimate === null) {
             $reasons[] = 'stock_unreadable';
         }
 
