@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\ApprovalOrder;
 use App\Enums\JobState;
 use App\Enums\LineItemState;
 use App\Enums\ProofState;
@@ -86,7 +87,7 @@ class Quote extends Model
     {
         return [
             'state' => QuoteState::class,
-            'approval_order' => \App\Enums\ApprovalOrder::class,
+            'approval_order' => ApprovalOrder::class,
             'subtotal' => 'decimal:2',
             'delivery' => 'decimal:2',
             'adjustments' => 'array',
