@@ -144,6 +144,8 @@ Frontend (Vitest/RTL):
 
 - Pure additive column with a default — no backfill, no data migration. Every existing quote reads `price_first` and behaves exactly as before.
 - No change to `QuoteState`, its transition table, `recomputeProofState()`, or the invoice guard.
+- **Both orderings are enforced per the flag** (owner: "whichever staff think it is"). `price_first` genuinely requires the price to be agreed before proofs are sent (guard on `sendProofs` when `accepted_at === null`); `proof_first` blocks the price ask/accept before proof approval. Plain-stock stays a no-op.
+- Pre-Feature-A tests that exercised the proof-first path under the *implicit* default (`SlimQuoteFlowTest` slim-path cases, `SendProofsTest`) are re-labeled `proofFirst()` / given a consistent `accepted_at` — behaviour-preserving (assertions unchanged); the explicit flag just names the ordering they always exercised.
 - Do not delete or disturb seeded/walkthrough data.
 
 ---
