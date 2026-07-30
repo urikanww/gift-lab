@@ -523,3 +523,29 @@ it('still delivers on a single unambiguous suffix match (courier-prefixed number
 
     expect($job->fresh()->state)->toBe(JobState::Closed);
 });
+
+// Feature B guard: the courier side keys on consignment_ref (the NinjaVan
+// tracking number), NEVER on the buyer-facing order id. Unifying reference +
+// tracking_code into one order id must not touch webhook matching.
+it('resolves the webhook parcel by consignment_ref, independent of the order id', function (): void {
+    $job = ninjaVanShippedJob('NVSGNEXGE000FEATB1');
+    $quote = $job->quote()->first();
+
+    // The unified order id (reference) is unrelated to the courier ref: a
+    // webhook carrying the order id must NOT match; only consignment_ref does.
+    postNinjaVanWebhook([
+        'tracking_number' => (string) $quote->reference,
+        'status' => 'Delivered',
+    ])->assertOk()->assertJson(['received' => true]);
+    expect($job->fresh()->state)->toBe(JobState::Shipped); // untouched — no match on the order id
+
+    // The correct consignment_ref matches and drives the job to delivered.
+    postNinjaVanWebhook([
+        'tracking_number' => 'NVSGNEXGE000FEATB1',
+        'status' => 'Delivered',
+    ])->assertOk()->assertJson(['received' => true]);
+
+    $job->refresh();
+    expect($job->state)->toBe(JobState::Closed)
+        ->and($job->last_courier_status)->toBe('Delivered');
+});
