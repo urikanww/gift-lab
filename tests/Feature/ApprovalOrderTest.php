@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\ApprovalOrder;
+use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
@@ -190,4 +191,58 @@ it('PATCH /approval-order rejects an invalid value', function (): void {
 
     $this->patchJson("/api/quotes/{$quote->id}/approval-order", ['approval_order' => 'nonsense'])
         ->assertStatus(422);
+});
+
+// The chase command keys off quote STATE, not approval_order. These three prove
+// both orderings land on the correct ladder with NO production change: the price
+// wait (SENT / ARTWORK_APPROVED) sets reminded_phase 'price', the proof wait
+// (PROOFING with an open SENT proof) sets 'proof'. ReminderPrice/ReminderProof
+// are enabled by default, so no config seeding is needed (unlike the milestones
+// OrderNotificationTest explicitly switches off). Ladders read from
+// ReminderSchedule: quote [3, 7, 12], proof [2, 5, 9]; subDays(30) clears rung 1.
+
+it('proof_first waiting in PROOFING chases on the proof ladder', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->proofFirst()->create([
+        'company_id' => $buyer->company_id,
+        'state' => QuoteState::Proofing->value,
+    ]);
+    $line = proofLine($quote);
+    $svc = app(QuoteService::class);
+    $svc->stageProof($quote, $line, 'artwork/v1.png');
+    // Make the proof genuinely SENT and old enough for rung 1 (proof ladder = 2 days).
+    $quote->proofs()->update(['state' => ProofState::Sent->value, 'created_at' => now()->subDays(30)]);
+
+    $this->artisan('quotes:chase')->assertSuccessful();
+
+    expect($quote->fresh()->reminded_phase)->toBe('proof');
+});
+
+it('proof_first waiting in ARTWORK_APPROVED chases on the price ladder', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->proofFirst()->create([
+        'company_id' => $buyer->company_id,
+        'state' => QuoteState::ArtworkApproved->value,
+        'price_snapshot_at' => now()->subDays(30),
+    ]);
+
+    $this->artisan('quotes:chase')->assertSuccessful();
+
+    expect($quote->fresh()->reminded_phase)->toBe('price');
+});
+
+it('price_first waiting in SENT chases on the price ladder', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->create([
+        'company_id' => $buyer->company_id,
+        'state' => QuoteState::Sent->value,
+        'price_snapshot_at' => now()->subDays(30),
+    ]);
+
+    $this->artisan('quotes:chase')->assertSuccessful();
+
+    expect($quote->fresh()->reminded_phase)->toBe('price');
 });
