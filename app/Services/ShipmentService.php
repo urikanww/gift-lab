@@ -211,7 +211,13 @@ final class ShipmentService
      */
     private function gramsForJob(ProductionJob $job): ?float
     {
-        $lineItems = $job->lineItems()->with('product')->get();
+        // Reuse the eager-loaded relation when the caller already loaded it
+        // (createForShipment loads lineItems.product on the whole set) so the
+        // weight sum is not one query per member job; fall back to a query for
+        // a job passed in cold.
+        $lineItems = $job->relationLoaded('lineItems')
+            ? $job->lineItems
+            : $job->lineItems()->with('product')->get();
         if ($lineItems->isEmpty()) {
             return null;
         }
