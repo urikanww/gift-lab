@@ -1262,26 +1262,33 @@ final class QuoteService
     }
 
     /**
-     * M15: cancel & credit ONE returned parcel of a multi-parcel order without
-     * disturbing its delivered siblings. Restocks only this parcel's lines,
-     * reduces the invoice by the parcel's proportional share, and credits only
-     * that share of what was actually collected (proportional to the deposit,
-     * so a part-paid order never refunds more than it received). The order stays
-     * live; the parcel's job moves to the terminal RETURNED state.
+     * M15: cancel & credit ONE returned SHIPMENT of a multi-shipment order
+     * without disturbing its delivered siblings. A shipment can group several
+     * jobs (parcel-split), so this restocks EVERY member job's lines, reduces
+     * the invoice by the shipment's proportional share, and credits only that
+     * share of what was actually collected (proportional to the deposit, so a
+     * part-paid order never refunds more than it received). The order stays
+     * live; every member job of the shipment moves to the terminal RETURNED
+     * state. A 1-job shipment behaves exactly as the old job-scoped version.
      *
-     * The parcel's share is by line value (unit*qty + decoration fee) over the
+     * The shipment's share is by line value (unit*qty + decoration fee) over the
      * whole order, so the GST + delivery folded into the invoice total are
-     * allocated pro-rata rather than needing a separate per-parcel breakdown.
+     * allocated pro-rata rather than needing a separate per-shipment breakdown.
      *
      * The caller (QueueService::resolveReturnCancelCredit) decides this vs a
-     * whole-order cancel by whether any sibling parcel is still live, and owns
+     * whole-order cancel by whether any sibling shipment is still live, and owns
      * the broadcast/audit around it - this method only moves money + stock.
      */
-    public function returnParcel(Quote $quote, ProductionJob $job, ?string $reason): void
+    public function returnParcel(Quote $quote, \App\Models\Shipment $shipment, ?string $reason): void
     {
-        DB::transaction(function () use ($quote, $job, $reason): void {
-            $job->loadMissing('lineItems.variant', 'lineItems.product');
+        DB::transaction(function () use ($quote, $shipment, $reason): void {
+            $shipment->loadMissing('jobs.lineItems.variant', 'jobs.lineItems.product');
             $quote->loadMissing('lineItems');
+
+            // Every member job's lines - a shipment can group several jobs
+            // (parcel-split), so the returned parcel is the WHOLE shipment, not
+            // just the one job staff clicked.
+            $parcelLines = $shipment->jobs->flatMap(fn ($j) => $j->lineItems);
 
             $allLinesValue = 0.0;
             foreach ($quote->lineItems as $line) {
@@ -1289,15 +1296,16 @@ final class QuoteService
             }
 
             $parcelLinesValue = 0.0;
-            foreach ($job->lineItems as $line) {
+            foreach ($parcelLines as $line) {
                 $parcelLinesValue += $this->lineSubtotalContribution($line);
             }
 
             $fraction = $allLinesValue > 0.0 ? min(1.0, $parcelLinesValue / $allLinesValue) : 0.0;
 
-            // Restock only this parcel's lines - siblings' stock stays consumed.
-            $this->returnConsumedStockForLines($job->lineItems);
-            $this->returnConsumedFilamentForLines($job->lineItems);
+            // Restock only this shipment's lines - sibling shipments' stock
+            // stays consumed.
+            $this->returnConsumedStockForLines($parcelLines);
+            $this->returnConsumedFilamentForLines($parcelLines);
 
             foreach ($quote->purchaseOrders()->lockForUpdate()->get() as $invoice) {
                 if ($invoice->payment_state === PaymentState::Void) {
@@ -1309,6 +1317,7 @@ final class QuoteService
 
                 // Credit only the parcel's proportional slice of money actually
                 // collected - never the full parcel value on a part-paid order.
+                // One credit note per invoice (the loop already does one each).
                 if ($refund > 0.0) {
                     $creditNote = CreditNote::create([
                         'quote_id' => $quote->id,
@@ -1323,7 +1332,7 @@ final class QuoteService
                         'invoice_id' => $invoice->id,
                         'amount' => $refund,
                         'scope' => 'parcel',
-                        'job_id' => $job->id,
+                        'shipment_id' => $shipment->id,
                     ]);
                 }
 
@@ -1337,13 +1346,21 @@ final class QuoteService
                 $invoice->save();
 
                 $this->audit->log($invoice, 'invoice.parcel_returned', null, [
-                    'job_id' => $job->id,
+                    'shipment_id' => $shipment->id,
                     'reduced_by' => $parcelInvoiceValue,
                     'new_amount' => $invoice->amount,
                 ]);
             }
 
-            $job->transitionTo(JobState::Returned);
+            // Move EVERY member job of the returned shipment to terminal
+            // RETURNED. Idempotent: the caller (resolveReturnCancelCredit) may
+            // have already flipped the SHIPPED members before calling here, and
+            // RETURNED is terminal (no self-transition), so skip any already there.
+            foreach ($shipment->jobs as $j) {
+                if ($j->state !== JobState::Returned) {
+                    $j->transitionTo(JobState::Returned);
+                }
+            }
         });
     }
 
