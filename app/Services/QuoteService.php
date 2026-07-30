@@ -743,13 +743,18 @@ final class QuoteService
             return $quote;
         }
 
-        $before = $quote->approval_order->value;
-        $quote->approval_order = $order;
-        $quote->save();
+        // Wrap the state flip and its audit insert together, matching the
+        // atomicity discipline amend() uses for every state+audit pair - a
+        // failed audit insert must not leave the change persisted untraced.
+        return DB::transaction(function () use ($quote, $order): Quote {
+            $before = $quote->approval_order->value;
+            $quote->approval_order = $order;
+            $quote->save();
 
-        $this->audit->log($quote, 'quote.approval_order_changed', ['approval_order' => $before], ['approval_order' => $order->value]);
+            $this->audit->log($quote, 'quote.approval_order_changed', ['approval_order' => $before], ['approval_order' => $order->value]);
 
-        return $quote;
+            return $quote;
+        });
     }
 
     /**
