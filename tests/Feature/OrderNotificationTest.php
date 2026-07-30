@@ -188,6 +188,9 @@ it('emails the buyer the batched proofs-ready mail on every round, not just the 
     $staff = User::factory()->staffAdmin()->create();
     $this->actingAs($staff);
     $quote = quoteIn(QuoteState::Accepted);
+    // Price-first happy path: the price was agreed before proofing, so stamp
+    // accepted_at (the fixture's ACCEPTED state alone leaves it null).
+    $quote->update(['accepted_at' => now()]);
     $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
