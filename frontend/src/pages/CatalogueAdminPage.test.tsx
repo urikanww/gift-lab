@@ -105,3 +105,51 @@ describe('CatalogueAdminPage — Published/Unpublish dropped (Task 5)', () => {
     expect(screen.queryByRole('button', { name: /unpublish/i })).not.toBeInTheDocument();
   });
 });
+
+describe('CatalogueAdminPage — in-gate delete (Task 6)', () => {
+  it('deletes a row (behind a confirm) via DELETE /admin/catalogue/{id}', async () => {
+    mockList([blocked]);
+    del.mockResolvedValue({ data: {} });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Blocked Bottle')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /delete blocked bottle/i }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(del).toHaveBeenCalledWith('/admin/catalogue/2'));
+    confirmSpy.mockRestore();
+  });
+
+  it('does not delete when the confirm is dismissed', async () => {
+    mockList([blocked]);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Blocked Bottle')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /delete blocked bottle/i }));
+
+    expect(del).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('lets any row be selected (not just ready ones) and bulk-deletes the selection', async () => {
+    mockList([item(), blocked]);
+    post.mockResolvedValue({ data: { deleted: [2], skipped: [] } });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Blocked Bottle')).toBeInTheDocument());
+
+    // A CANNOT_PUBLISH row is selectable now (delete works on any row).
+    const blockedCheckbox = screen.getByRole('checkbox', { name: /select blocked bottle/i });
+    expect(blockedCheckbox).not.toBeDisabled();
+    await userEvent.click(blockedCheckbox);
+
+    await userEvent.click(screen.getByRole('button', { name: /delete selected/i }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/admin/catalogue/bulk-delete', { ids: [2] }),
+    );
+    confirmSpy.mockRestore();
+  });
+});

@@ -186,7 +186,7 @@ function Model3dRowTools({ item }: { item: AdminCatalogueItem }) {
 }
 
 export default function CatalogueAdminPage() {
-  const { items, meta, counts, loading, error, fetch, publish, bulkPublish, setAutoPublish, autoPublish, autoPublishSaving } =
+  const { items, meta, counts, loading, error, fetch, publish, bulkPublish, deleteProduct, bulkDelete, setAutoPublish, autoPublish, autoPublishSaving } =
     useCatalogueAdminStore();
   const user = useAuthStore((s) => s.user);
   const isSuperadmin = user?.role === 'superadmin';
@@ -347,12 +347,18 @@ export default function CatalogueAdminPage() {
     }
   };
 
-  // Only READY_TO_APPROVE rows can be bulk-published. Keep the eligible-id set
-  // and prune any stale selections (a row that dropped out of the list or
-  // changed state after a refetch must not linger in `selected`).
+  // Selection is decoupled from the publish-eligible subset: ANY row can be
+  // selected (delete works on all of them), while Publish uses only the
+  // READY_TO_APPROVE ids that are also selected.
+  const rowIds = useMemo(() => items.map((it) => it.id), [items]);
   const eligibleIds = useMemo(
     () => items.filter((it) => it.publish_state === 'READY_TO_APPROVE').map((it) => it.id),
     [items],
+  );
+  // The publish subset: selected rows that are actually ready to approve.
+  const selectedEligible = useMemo(
+    () => eligibleIds.filter((id) => selected.has(id)),
+    [eligibleIds, selected],
   );
 
   const filterChips = useMemo(() => {
@@ -369,15 +375,17 @@ export default function CatalogueAdminPage() {
     return chips;
   }, [q, classFilter, stateFilter, blocker, source, printMethod, category, ipFlagged, missingLink]);
 
+  // Prune stale selections against the FULL row set (a row that dropped out of
+  // the list after a refetch must not linger in `selected`).
   useEffect(() => {
     setSelected((prev) => {
-      const eligible = new Set(eligibleIds);
-      const next = new Set([...prev].filter((id) => eligible.has(id)));
+      const present = new Set(rowIds);
+      const next = new Set([...prev].filter((id) => present.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [eligibleIds]);
+  }, [rowIds]);
 
-  const allEligibleSelected = eligibleIds.length > 0 && eligibleIds.every((id) => selected.has(id));
+  const allRowsSelected = rowIds.length > 0 && rowIds.every((id) => selected.has(id));
 
   const toggleRow = (id: number) => {
     setSelected((prev) => {
@@ -388,14 +396,14 @@ export default function CatalogueAdminPage() {
     });
   };
 
-  const toggleAllEligible = () => {
-    setSelected((prev) => (prev.size === eligibleIds.length ? new Set() : new Set(eligibleIds)));
+  const toggleAllRows = () => {
+    setSelected((prev) => (prev.size === rowIds.length ? new Set() : new Set(rowIds)));
   };
 
   const runBulkPublish = async () => {
-    if (bulkBusy || selected.size === 0) return;
+    if (bulkBusy || selectedEligible.length === 0) return;
     setBulkBusy(true);
-    const result = await bulkPublish([...selected]);
+    const result = await bulkPublish(selectedEligible);
     setBulkBusy(false);
     if (result) {
       toast({
@@ -405,6 +413,45 @@ export default function CatalogueAdminPage() {
       setSelected(new Set());
     } else {
       toast({ title: 'Bulk publish failed', description: 'Please try again.', tone: 'danger' });
+    }
+  };
+
+  const runBulkDelete = async () => {
+    if (bulkBusy || selected.size === 0) return;
+    const ids = [...selected];
+    if (!window.confirm(`Delete ${ids.length} selected item${ids.length === 1 ? '' : 's'}? This can be restored from Product Admin.`)) {
+      return;
+    }
+    setBulkBusy(true);
+    const result = await bulkDelete(ids);
+    setBulkBusy(false);
+    if (result) {
+      const skipped = result.skipped.length;
+      toast({
+        title: `Deleted ${result.deleted.length}${skipped > 0 ? `, ${skipped} skipped` : ''}`,
+        description: skipped > 0 ? `${skipped} skipped (published/not deletable).` : undefined,
+        tone: skipped > 0 ? 'warning' : 'success',
+      });
+      setSelected(new Set());
+    } else {
+      toast({ title: 'Bulk delete failed', description: 'Please try again.', tone: 'danger' });
+    }
+  };
+
+  const runDelete = async (item: AdminCatalogueItem) => {
+    if (pendingId !== null) return;
+    if (!window.confirm(`Delete “${item.name}”? This can be restored from Product Admin.`)) return;
+    setPendingId(item.id);
+    try {
+      await deleteProduct(item.id);
+      const failed = useCatalogueAdminStore.getState().error;
+      toast(
+        failed
+          ? { title: 'Could not delete item', description: failed, tone: 'danger' }
+          : { title: 'Item deleted', description: item.name, tone: 'success' },
+      );
+    } finally {
+      setPendingId(null);
     }
   };
 
@@ -444,27 +491,36 @@ export default function CatalogueAdminPage() {
           </Button>
         </div>
 
-        {/* Summary stats + bulk action. Counts are the full-set breakdown from
-            the server (page-independent), so total = pending + ready + published
-            + blocked across the whole gate. */}
+        {/* Summary stats + bulk actions. Counts are the full-set breakdown from
+            the server (page-independent), so total = pending + ready + blocked
+            across the whole gate (published rows are excluded by the backend). */}
         {!loading && !error && counts && counts.total > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="neutral">{counts.total} total</Badge>
             {counts.pending > 0 && <Badge tone="neutral">{counts.pending} pending</Badge>}
             {counts.ready > 0 && <Badge tone="warning">{counts.ready} ready to approve</Badge>}
             {counts.blocked > 0 && <Badge tone="danger">{counts.blocked} blocked</Badge>}
-            {eligibleIds.length > 0 && (
-              <div className="ml-auto">
+            <div className="ml-auto flex gap-2">
+              {eligibleIds.length > 0 && (
                 <Button
                   size="sm"
                   loading={bulkBusy}
-                  disabled={selected.size === 0}
+                  disabled={selectedEligible.length === 0}
                   onClick={() => void runBulkPublish()}
                 >
-                  Publish selected ({selected.size})
+                  Publish selected ({selectedEligible.length})
                 </Button>
-              </div>
-            )}
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                loading={bulkBusy}
+                disabled={selected.size === 0}
+                onClick={() => void runBulkDelete()}
+              >
+                Delete selected ({selected.size})
+              </Button>
+            </div>
           </div>
         )}
 
@@ -600,10 +656,10 @@ export default function CatalogueAdminPage() {
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-[var(--color-primary)]"
-                aria-label="Select all eligible items"
-                checked={allEligibleSelected}
-                disabled={eligibleIds.length === 0}
-                onChange={toggleAllEligible}
+                aria-label="Select all items"
+                checked={allRowsSelected}
+                disabled={rowIds.length === 0}
+                onChange={toggleAllRows}
               />
             </span>
             <span>Item</span>
@@ -631,7 +687,6 @@ export default function CatalogueAdminPage() {
                     className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-40"
                     aria-label={`Select ${it.name}`}
                     checked={selected.has(it.id)}
-                    disabled={it.publish_state !== 'READY_TO_APPROVE'}
                     onChange={() => toggleRow(it.id)}
                   />
                 </div>
@@ -718,7 +773,7 @@ export default function CatalogueAdminPage() {
                   )}
                 </div>
 
-                <div className="flex lg:justify-end">
+                <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-end">
                   {it.publish_state === 'READY_TO_APPROVE' && (
                     <Button
                       size="sm"
@@ -745,6 +800,18 @@ export default function CatalogueAdminPage() {
                           : 'Fix the blockers at the source - re-checked on next sync.'}
                     </span>
                   )}
+                  {/* Delete works on any unpublished gate row (soft-delete,
+                      restorable from Product Admin). */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Delete ${it.name}`}
+                    loading={pendingId === it.id}
+                    disabled={pendingId !== null && pendingId !== it.id}
+                    onClick={() => void runDelete(it)}
+                  >
+                    Delete
+                  </Button>
                 </div>
 
                 {it.class === 'MODEL_3D' && <Model3dRowTools item={it} />}

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminCatalogueItem } from '../types';
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const { get, post, del } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn() }));
 vi.mock('../lib/api', () => ({
-  default: { get, post, patch: vi.fn() },
+  default: { get, post, delete: del, patch: vi.fn() },
   apiError: (e: unknown) => String(e),
   ensureCsrf: vi.fn(),
 }));
@@ -37,6 +37,7 @@ beforeEach(() => {
   useCatalogueAdminStore.setState({ items: [], loading: false, error: null, autoPublishSaving: false });
   get.mockReset();
   post.mockReset();
+  del.mockReset();
 });
 
 describe('catalogueAdminStore', () => {
@@ -57,6 +58,38 @@ describe('catalogueAdminStore', () => {
 
     expect(post).toHaveBeenCalledWith('/admin/products/7/publish');
     expect(get).toHaveBeenCalledOnce();
+  });
+
+  it('deletes a product then refetches', async () => {
+    del.mockResolvedValue({ data: {} });
+    get.mockResolvedValue({ data: { data: [] } });
+
+    await useCatalogueAdminStore.getState().deleteProduct(7);
+
+    expect(del).toHaveBeenCalledWith('/admin/catalogue/7');
+    expect(get).toHaveBeenCalledOnce();
+  });
+
+  it('bulk-deletes then refetches, surfacing the skipped ids', async () => {
+    post.mockResolvedValue({ data: { deleted: [7], skipped: [9] } });
+    get.mockResolvedValue({ data: { data: [] } });
+
+    const result = await useCatalogueAdminStore.getState().bulkDelete([7, 9]);
+
+    expect(post).toHaveBeenCalledWith('/admin/catalogue/bulk-delete', { ids: [7, 9] });
+    expect(get).toHaveBeenCalledOnce();
+    expect(result).toEqual({ deleted: [7], skipped: [9] });
+  });
+
+  it('returns null and records an error when bulk-delete fails', async () => {
+    post.mockImplementation(async () => {
+      throw new Error('nope');
+    });
+
+    const result = await useCatalogueAdminStore.getState().bulkDelete([7]);
+
+    expect(result).toBeNull();
+    expect(useCatalogueAdminStore.getState().error).toContain('nope');
   });
 
   it('records an error on fetch failure', async () => {

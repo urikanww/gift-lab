@@ -75,6 +75,8 @@ interface CatalogueAdminState {
   ) => Promise<void>;
   publish: (id: number) => Promise<void>;
   bulkPublish: (ids: number[]) => Promise<{ published: number; failed: number } | null>;
+  deleteProduct: (id: number) => Promise<void>;
+  bulkDelete: (ids: number[]) => Promise<{ deleted: number[]; skipped: number[] } | null>;
   setAutoPublish: (enabled: boolean) => Promise<boolean>;
   verifyEstimates: (
     id: number,
@@ -145,6 +147,39 @@ export const useCatalogueAdminStore = create<CatalogueAdminState>((set, get) => 
       );
       await get().fetch(undefined, { silent: true });
       return { published: data.meta.published, failed: data.meta.failed };
+    } catch (err) {
+      set({ error: apiError(err) });
+      return null;
+    }
+  },
+
+  // Soft-delete a single unpublished gate row, then silently refetch so the
+  // list drops it without a skeleton flash. Mirrors publish's shape (errors
+  // land on `error`, which the row UI reads to toast).
+  deleteProduct: async (id) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      await api.delete(`/admin/catalogue/${id}`);
+      await get().fetch(undefined, { silent: true });
+    } catch (err) {
+      set({ error: apiError(err) });
+    }
+  },
+
+  // Bulk soft-delete the selected rows. The backend skips published / non-gate
+  // rows and reports them, so we return {deleted, skipped} (or null on request
+  // failure) for the page to toast the skipped tally.
+  bulkDelete: async (ids) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ deleted: number[]; skipped: number[] }>(
+        '/admin/catalogue/bulk-delete',
+        { ids },
+      );
+      await get().fetch(undefined, { silent: true });
+      return { deleted: data.deleted ?? [], skipped: data.skipped ?? [] };
     } catch (err) {
       set({ error: apiError(err) });
       return null;
