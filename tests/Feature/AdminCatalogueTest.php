@@ -27,8 +27,8 @@ it('lists scraped and 3D items for staff', function (): void {
 });
 
 it('sorts the gate list by creation date ascending or descending', function (): void {
-    $old = Product::factory()->model3d()->create(['name' => 'Older', 'created_at' => now()->subDays(3)]);
-    $new = Product::factory()->model3d()->create(['name' => 'Newer', 'created_at' => now()->subDay()]);
+    $old = Product::factory()->model3d()->create(['name' => 'Older', 'publish_state' => 'READY_TO_APPROVE', 'created_at' => now()->subDays(3)]);
+    $new = Product::factory()->model3d()->create(['name' => 'Newer', 'publish_state' => 'READY_TO_APPROVE', 'created_at' => now()->subDay()]);
 
     Sanctum::actingAs($this->staff);
 
@@ -42,8 +42,8 @@ it('sorts the gate list by creation date ascending or descending', function (): 
 });
 
 it('sorts the gate list by name when asked', function (): void {
-    Product::factory()->model3d()->create(['name' => 'Zeta']);
-    Product::factory()->model3d()->create(['name' => 'Alpha']);
+    Product::factory()->model3d()->create(['name' => 'Zeta', 'publish_state' => 'READY_TO_APPROVE']);
+    Product::factory()->model3d()->create(['name' => 'Alpha', 'publish_state' => 'READY_TO_APPROVE']);
 
     Sanctum::actingAs($this->staff);
     $res = $this->getJson('/api/admin/catalogue?sort=name&dir=asc')->assertOk();
@@ -52,27 +52,43 @@ it('sorts the gate list by name when asked', function (): void {
 });
 
 it('returns full-set state counts independent of pagination and the state filter', function (): void {
-    Product::factory()->count(3)->model3d()->create(['publish_state' => 'PUBLISHED']);
-    Product::factory()->count(2)->scrapedUv()->create(['publish_state' => 'READY_TO_APPROVE']);
-    Product::factory()->model3d()->create(['publish_state' => 'CANNOT_PUBLISH']);
+    Product::factory()->count(3)->model3d()->create(['publish_state' => 'READY_TO_APPROVE']);
+    Product::factory()->count(2)->scrapedUv()->create(['publish_state' => 'CANNOT_PUBLISH']);
     Product::factory()->model3d()->create(['publish_state' => 'PENDING']);
+    Product::factory()->model3d()->create(['publish_state' => 'PUBLISHED']); // excluded from the gate
     Product::factory()->create(['class' => 'CORE', 'publish_state' => 'PUBLISHED']); // not in the gate
 
     Sanctum::actingAs($this->staff);
     // A single filtered page must not shrink the summary counts.
-    $res = $this->getJson('/api/admin/catalogue?per_page=2&state=PUBLISHED')->assertOk();
+    $res = $this->getJson('/api/admin/catalogue?per_page=2&state=READY_TO_APPROVE')->assertOk();
 
-    $res->assertJsonPath('counts.total', 7)
-        ->assertJsonPath('counts.published', 3)
-        ->assertJsonPath('counts.ready', 2)
-        ->assertJsonPath('counts.blocked', 1)
+    $res->assertJsonPath('counts.total', 6)
+        ->assertJsonPath('counts.ready', 3)
+        ->assertJsonPath('counts.blocked', 2)
         ->assertJsonPath('counts.pending', 1);
-    expect($res->json('data'))->toHaveCount(2); // page still limited + state-filtered
+    expect($res->json('data'))->toHaveCount(2) // page still limited + state-filtered
+        ->and($res->json('counts'))->not->toHaveKey('published'); // published dropped from the gate
+});
+
+it('excludes published products from the gate list and counts', function (): void {
+    $published = Product::factory()->scrapedUv()->create(['publish_state' => 'PUBLISHED']);
+    $unpublished = Product::factory()->scrapedUv()->create(['publish_state' => 'READY_TO_APPROVE']);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/catalogue')->assertOk();
+
+    $ids = collect($res->json('data'))->pluck('id')->all();
+    expect($ids)->toContain($unpublished->id)
+        ->and($ids)->not->toContain($published->id)
+        // The full-set counts must not count the published row, and the
+        // 'published' bucket is gone entirely (the gate never shows live items).
+        ->and($res->json('counts.total'))->toBe(1)
+        ->and($res->json('counts'))->not->toHaveKey('published');
 });
 
 it('filters the gate list and counts by a name/creator search term', function (): void {
     Product::factory()->model3d()->create(['name' => 'Baby Groot Planter', 'publish_state' => 'READY_TO_APPROVE']);
-    Product::factory()->model3d()->create(['name' => 'Cable Holder', 'creator_credit' => 'GrootFan', 'publish_state' => 'PUBLISHED']);
+    Product::factory()->model3d()->create(['name' => 'Cable Holder', 'creator_credit' => 'GrootFan', 'publish_state' => 'CANNOT_PUBLISH']);
     Product::factory()->scrapedUv()->create(['name' => 'Ceramic Mug', 'publish_state' => 'READY_TO_APPROVE']);
 
     Sanctum::actingAs($this->staff);

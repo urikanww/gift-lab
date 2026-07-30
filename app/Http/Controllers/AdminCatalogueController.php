@@ -92,8 +92,13 @@ class AdminCatalogueController extends Controller
         // State breakdown across the WHOLE gate set (respecting the class + search
         // filters but NOT the state filter), so the summary badges reflect the
         // filtered catalogue total - not just the current page or the state subset.
+        // Published items are LIVE and managed from the product admin, not the
+        // gate - the gate is a pre-publication review surface, so they're excluded
+        // from BOTH the counts breakdown and the paginator (and there is no
+        // 'published' count bucket).
         $byState = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
+            ->where('publish_state', '!=', PublishState::Published->value)
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->where($searchScope)
             ->where($filterScope)
@@ -105,7 +110,6 @@ class AdminCatalogueController extends Controller
             'total' => (int) $byState->sum(),
             'pending' => (int) ($byState[PublishState::Pending->value] ?? 0),
             'ready' => (int) ($byState[PublishState::ReadyToApprove->value] ?? 0),
-            'published' => (int) ($byState[PublishState::Published->value] ?? 0),
             'blocked' => (int) ($byState[PublishState::CannotPublish->value] ?? 0),
         ];
 
@@ -118,6 +122,7 @@ class AdminCatalogueController extends Controller
 
         $paginator = Product::query()
             ->whereIn('class', ['SCRAPED_UV', 'MODEL_3D'])
+            ->where('publish_state', '!=', PublishState::Published->value)
             ->when($request->filled('class'), fn ($q) => $q->where('class', $request->string('class')->toString()))
             ->when($request->filled('state'), fn ($q) => $q->where('publish_state', $request->string('state')->toString()))
             ->where($searchScope)
