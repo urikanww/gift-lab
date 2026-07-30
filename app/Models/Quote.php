@@ -408,12 +408,12 @@ class Quote extends Model
     }
 
     /**
-     * Opaque order reference for buyer/public URLs. 10 chars from the same
-     * unambiguous alphabet gives ~2^50 space - non-enumerable and collision-safe.
+     * Opaque order reference for buyer/public URLs. 'GL-' + 10 chars (13 total)
+     * from the 32-symbol alphabet, ~2^50 space - non-enumerable and collision-safe.
      */
     public static function generateReference(): string
     {
-        $out = '';
+        $out = 'GL-';
         for ($i = 0; $i < 10; $i++) {
             $out .= self::TRACKING_ALPHABET[random_int(0, 31)];
         }
