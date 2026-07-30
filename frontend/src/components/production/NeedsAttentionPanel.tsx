@@ -70,7 +70,7 @@ export default function NeedsAttentionPanel() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" loading={busyId === j.id} onClick={() => void run(j, 'reship')}>
+              <Button variant="secondary" size="sm" loading={busyId === j.id} disabled={busyId !== null && busyId !== j.id} onClick={() => void run(j, 'reship')}>
                 Reship
               </Button>
               <Button variant="ghost" size="sm" disabled={busyId !== null} onClick={() => void run(j, 'close')}>
