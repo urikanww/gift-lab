@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Enums\ApprovalOrder;
+use App\Enums\ProofState;
 use App\Enums\QuoteState;
 use App\Exceptions\DomainRuleException;
 use App\Models\LineItem;
@@ -10,6 +11,7 @@ use App\Models\Quote;
 use App\Models\User;
 use App\Services\QuoteService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 
 it('defaults a new quote to price_first', function (): void {
     $quote = Quote::factory()->create();
@@ -93,3 +95,80 @@ it('proof_first: blocks price acceptance from SENT with proof lines', function (
 
     expect($quote->fresh()->accepted_at)->toBeNull();
 });
+
+it('proof_first: Draft -> Proofing -> ArtworkApproved -> accept -> ProofApproved', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $quote = Quote::factory()->proofFirst()->create([
+        'company_id' => $buyer->company_id,
+        'state' => QuoteState::Draft->value,
+        'accepted_at' => null,
+    ]);
+    $line = proofLine($quote);
+    $svc = app(QuoteService::class);
+
+    $svc->stageProof($quote, $line, 'artwork/v1.png');
+    $svc->sendProofs($quote);
+    expect($quote->fresh()->state)->toBe(QuoteState::Proofing);
+
+    Auth::login($buyer);
+    $proof = $quote->fresh()->proofs()->first();
+    $svc->approveProof($proof);
+    expect($quote->fresh()->state)->toBe(QuoteState::ArtworkApproved);
+
+    $svc->accept($quote->fresh());
+    $fresh = $quote->fresh();
+    expect($fresh->state)->toBe(QuoteState::ProofApproved)
+        ->and($fresh->accepted_at)->not->toBeNull();
+});
+
+it('price_first: Draft -> Sent -> accept -> Proofing -> approve -> ProofApproved', function (): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $staff = User::factory()->staffAdmin()->create();
+    $quote = Quote::factory()->create([
+        'company_id' => $buyer->company_id,
+        'state' => QuoteState::Draft->value,
+    ]);
+    $line = proofLine($quote);
+    $svc = app(QuoteService::class);
+
+    Auth::login($staff);
+    $svc->send($quote);
+    expect($quote->fresh()->state)->toBe(QuoteState::Sent);
+
+    Auth::login($buyer);
+    $svc->accept($quote->fresh());
+    expect($quote->fresh()->state)->toBe(QuoteState::Accepted);
+
+    Auth::login($staff);
+    $svc->stageProof($quote->fresh(), $line, 'artwork/v1.png');
+    $svc->sendProofs($quote->fresh());
+    expect($quote->fresh()->state)->toBe(QuoteState::Proofing);
+
+    Auth::login($buyer);
+    $svc->approveProof($quote->fresh()->proofs()->first());
+    expect($quote->fresh()->state)->toBe(QuoteState::ProofApproved);
+});
+
+it('plain-stock is a no-op under both orderings', function (string $order): void {
+    Mail::fake();
+    $buyer = User::factory()->create();
+    $staff = User::factory()->staffAdmin()->create();
+    // No proofLine() => plain stock. Bare line, explicitly no customization.
+    $quote = Quote::factory()->create([
+        'company_id' => $buyer->company_id,
+        'state' => QuoteState::Draft->value,
+        'approval_order' => $order,
+    ]);
+    LineItem::factory()->create(['quote_id' => $quote->id, 'line_state' => 'PENDING', 'customization' => null]);
+    $svc = app(QuoteService::class);
+
+    Auth::login($staff);
+    $svc->send($quote);            // allowed even for proof_first: nothing to proof
+    expect($quote->fresh()->state)->toBe(QuoteState::Sent);
+
+    Auth::login($buyer);
+    $svc->accept($quote->fresh()); // auto-skips to PROOF_APPROVED
+    expect($quote->fresh()->state)->toBe(QuoteState::ProofApproved);
+})->with(['price_first', 'proof_first']);
