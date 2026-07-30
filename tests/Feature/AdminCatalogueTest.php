@@ -290,6 +290,29 @@ it('resolves every blocker and publishes in one call', function (): void {
         ->and($product->dimensions)->toBe(['l' => 100, 'w' => 80, 'h' => 60, 'unit' => 'mm']);
 });
 
+it('resolves a STOCKED blank stock_estimate and publishes', function (): void {
+    // A STOCKED blank with a null estimate carries stock_unreadable; typing the
+    // estimate here (plus the other fixes) clears it so the row publishes.
+    $product = blockedScrapedProduct(['stock_mode' => 'STOCKED', 'stock_estimate' => null]);
+
+    Sanctum::actingAs($this->staff);
+    $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
+        'base_cost' => 12.5,
+        'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
+        'weight' => 250,
+        'is_printable' => true,
+        'print_method' => 'UV',
+        'stock_estimate' => 42,
+    ])
+        ->assertOk()
+        ->assertJsonPath('published', true)
+        ->assertJsonPath('cannot_publish_reasons', null);
+
+    $product->refresh();
+    expect($product->publish_state->value)->toBe('PUBLISHED')
+        ->and($product->stock_estimate)->toBe(42);
+});
+
 it('saves the fix but does not publish when an unfixable blocker remains', function (): void {
     // A STOCKED blank whose stock_estimate is source-truth and NOT settable
     // here, so the row stays blocked - but the typed weight must still persist.
@@ -425,6 +448,19 @@ it('returns the blocker-prefill fields on each gate row', function (): void {
         ->assertJsonPath('data.0.dimensions.l', 100)
         ->assertJsonPath('data.0.print_method', 'UV')
         ->assertJsonPath('data.0.is_printable', true);
+});
+
+it('returns stock_estimate on each gate row', function (): void {
+    Product::factory()->scrapedUv()->create([
+        'publish_state' => 'CANNOT_PUBLISH',
+        'stock_mode' => 'STOCKED',
+        'stock_estimate' => 15,
+    ]);
+
+    Sanctum::actingAs($this->staff);
+    $res = $this->getJson('/api/admin/catalogue')->assertOk();
+
+    $res->assertJsonPath('data.0.stock_estimate', 15);
 });
 
 it('soft-deletes an unpublished gate item and drops it from the list', function (): void {

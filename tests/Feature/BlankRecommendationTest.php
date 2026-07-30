@@ -114,6 +114,34 @@ it('adds a candidate as a SCRAPED_UV blank in the gate with the plain product li
         ->and($product->source_links[0]['url'])->toBe('https://shopee.sg/product/3/4');
 });
 
+it('returns the gate verdict and persists a stock_estimate when adding a blank', function (): void {
+    Sanctum::actingAs($this->staff);
+    $res = $this->postJson('/api/admin/blank-recommendations/add', [
+        'source_product_id' => '3_4', 'name' => 'Plain Ceramic Mug 440ml', 'price' => 9.90,
+        'image_url' => 'https://i/2', 'product_link' => 'https://shopee.sg/product/3/4',
+        'stock_estimate' => 25,
+    ])->assertOk();
+
+    // The verdict the resolve-blockers popup seeds itself from: the new draft's
+    // publish state, its blockers, and its base cost - not just the id.
+    $res->assertJsonPath('data.publish_state', 'CANNOT_PUBLISH');
+    expect($res->json('data'))->toHaveKeys(['id', 'publish_state', 'cannot_publish_reasons', 'base_cost'])
+        ->and($res->json('data.cannot_publish_reasons'))->toBeArray()
+        ->and($res->json('data.cannot_publish_reasons'))->not->toBeEmpty();
+
+    // The typed stock estimate is seeded at ingest.
+    expect(Product::findOrFail($res->json('data.id'))->stock_estimate)->toBe(25);
+});
+
+it('rejects a non-integer stock_estimate when adding a blank', function (): void {
+    Sanctum::actingAs($this->staff);
+    $this->postJson('/api/admin/blank-recommendations/add', [
+        'source_product_id' => '3_4', 'name' => 'Mug', 'price' => 9.90,
+        'product_link' => 'https://shopee.sg/product/3/4',
+        'stock_estimate' => 'lots',
+    ])->assertStatus(422)->assertJsonValidationErrors(['stock_estimate']);
+});
+
 it('lists featured items for staff management (incl. IP-flagged)', function (): void {
     Sanctum::actingAs($this->staff);
     GiftIdeaFeature::factory()->create(['source_product_id' => 'A_1', 'name' => 'Public Mug', 'ip_flagged' => false]);

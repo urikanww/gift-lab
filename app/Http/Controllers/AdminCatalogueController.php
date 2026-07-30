@@ -147,6 +147,7 @@ class AdminCatalogueController extends Controller
             'dimensions' => $p->dimensions,
             'print_method' => $p->print_method?->value,
             'is_printable' => (bool) $p->is_printable,
+            'stock_estimate' => $p->stock_estimate,
             'base_cost' => $p->base_cost,
             'currency' => $p->currency,
             'creator_credit' => $p->creator_credit,
@@ -238,6 +239,11 @@ class AdminCatalogueController extends Controller
             'dimensions.h' => ['required_with:dimensions', 'numeric', 'gt:0', 'max:2000'],
             'print_method' => ['sometimes', 'string', 'in:UV,FDM,RESIN'],
             'is_printable' => ['sometimes', 'boolean'],
+            // Manual stock the staffer reads off the source listing: the affiliate
+            // feed never carries a quantity, so a fuller sync can't clear
+            // stock_unreadable on its own. Indicative only (non-authoritative) -
+            // the order-time StockLedger is what actually prevents overselling.
+            'stock_estimate' => ['sometimes', 'integer', 'gt:0', 'max:1000000'],
         ]);
 
         if (isset($validated['dimensions'])) {
@@ -250,6 +256,7 @@ class AdminCatalogueController extends Controller
             'dimensions' => $product->dimensions,
             'print_method' => $product->print_method?->value,
             'is_printable' => $product->is_printable,
+            'stock_estimate' => $product->stock_estimate,
             'publish_state' => $product->publish_state->value,
         ];
 
@@ -275,6 +282,7 @@ class AdminCatalogueController extends Controller
             'dimensions' => $product->dimensions,
             'print_method' => $product->print_method?->value,
             'is_printable' => $product->is_printable,
+            'stock_estimate' => $product->stock_estimate,
             'publish_state' => $product->publish_state->value,
         ]);
 
