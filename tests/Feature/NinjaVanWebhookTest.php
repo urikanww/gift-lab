@@ -523,3 +523,36 @@ it('still delivers on a single unambiguous suffix match (courier-prefixed number
 
     expect($job->fresh()->state)->toBe(JobState::Closed);
 });
+
+// Courier-independence guard: the webhook resolves a parcel by consignment_ref
+// ONLY. The order reference (quote->reference) and the internal job id are NOT
+// courier identifiers - NinjaVan never sees them and must never be able to match
+// a parcel by them, even on an otherwise-valid signed Delivered event.
+it('resolves a NinjaVan webhook only by consignment_ref, never the order reference or job id', function (): void {
+    $job = ninjaVanShippedJob('NVSGNEXGE000INDEP1');
+
+    // The order reference is a real, distinct identifier - but it is NOT the
+    // courier's tracking number, so a Delivered event carrying it must not match.
+    postNinjaVanWebhook([
+        'tracking_number' => $job->quote->reference,
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:00:00+08:00',
+    ])->assertOk()->assertJson(['received' => true]);
+    expect($job->fresh()->state)->toBe(JobState::Shipped);
+
+    // The internal job id is likewise not a courier identifier - no match.
+    postNinjaVanWebhook([
+        'tracking_number' => (string) $job->id,
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:05:00+08:00',
+    ])->assertOk()->assertJson(['received' => true]);
+    expect($job->fresh()->state)->toBe(JobState::Shipped);
+
+    // Only the real consignment_ref resolves the parcel and closes the job.
+    postNinjaVanWebhook([
+        'tracking_number' => $job->consignment_ref,
+        'status' => 'Delivered',
+        'timestamp' => '2026-07-27T10:10:00+08:00',
+    ])->assertOk()->assertJson(['received' => true]);
+    expect($job->fresh()->state)->toBe(JobState::Closed);
+});
