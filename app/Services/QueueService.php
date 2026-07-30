@@ -81,6 +81,11 @@ final class QueueService
         $jobs = collect();
 
         DB::transaction(function () use ($quote, $groups, &$jobs): void {
+            // One shipment per order (Stage 2b): create it once, before the
+            // job loop, so every job on this quote shares it and the whole
+            // order books a single consignment.
+            $shipment = Shipment::create(['quote_id' => $quote->id]);
+
             foreach ($groups as $lines) {
                 $track = $lines->first()->product->class->track();
                 $job = ProductionJob::create([
@@ -94,11 +99,8 @@ final class QueueService
                     'created_by' => auth()->id(),
                 ]);
 
-                // 1:1 shipment per job (Stage 2a). Each job books its own
-                // consignment on ship, so it needs its own shipment to carry
-                // the courier fields. Phase 2b collapses this to one shipment
-                // per quote (the seam this line creates).
-                $shipment = Shipment::create(['quote_id' => $quote->id]);
+                // One shipment per order (Stage 2b): every job on this quote
+                // shares it, so the whole order books a single consignment.
                 $job->shipment()->associate($shipment)->save();
 
                 foreach ($lines as $line) {
