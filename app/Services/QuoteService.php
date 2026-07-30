@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\ApprovalOrder;
 use App\Enums\JobState;
 use App\Enums\LineItemState;
 use App\Enums\OrderMilestone;
@@ -725,6 +726,30 @@ final class QuoteService
                 'frozen_at' => now()->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * Set the buyer approval ordering for a quote (Feature A). Editable by staff
+     * only while the order is still DRAFT; once sent it is locked, EXCEPT for a
+     * superadmin, who may still flip it (mirrors amend()'s superadmin override).
+     */
+    public function setApprovalOrder(Quote $quote, ApprovalOrder $order): Quote
+    {
+        if ($quote->state !== QuoteState::Draft && ! (Auth::user()?->isSuperadmin() ?? false)) {
+            throw new DomainRuleException('Approval order is locked once the order is sent.');
+        }
+
+        if ($quote->approval_order === $order) {
+            return $quote;
+        }
+
+        $before = $quote->approval_order->value;
+        $quote->approval_order = $order;
+        $quote->save();
+
+        $this->audit->log($quote, 'quote.approval_order_changed', ['approval_order' => $before], ['approval_order' => $order->value]);
+
+        return $quote;
     }
 
     /**
