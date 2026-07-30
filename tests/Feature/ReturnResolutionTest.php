@@ -175,6 +175,47 @@ it('cascades close across the whole shipment: both member jobs CLOSED', function
     expect($shipment->quote()->first()->state)->toBe(QuoteState::Closed);
 });
 
+it('cascades cancel_credit across the whole shipment: credits ONCE, voids the invoice, cancels the quote, returns both members', function (): void {
+    $shipment = twoJobReturnedShipment();
+    $jobs = $shipment->jobs()->get();
+    expect($jobs)->toHaveCount(2);
+    $quote = $shipment->quote()->first();
+
+    Invoice::create([
+        'quote_id' => $quote->id,
+        'po_ref' => 'PO-'.$quote->id,
+        'invoice_ref' => null,
+        'terms' => null,
+        'payment_state' => 'PAID',
+        'amount' => 199.90,
+        'gst_amount' => 16.51,
+        'gst_rate' => 9,
+        'currency' => 'SGD',
+        'issued_by' => null,
+        'issued_at' => now(),
+    ]);
+
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->postJson("/api/production-jobs/{$jobs->first()->id}/resolve-return", [
+        'disposition' => 'cancel_credit',
+        'note' => 'Buyer declined a reship on the whole order; refund via credit note.',
+    ])->assertOk();
+
+    // Credited ONCE for the whole shipment, not once per member job.
+    expect(CreditNote::where('quote_id', $quote->id)->count())->toBe(1);
+    expect((float) CreditNote::where('quote_id', $quote->id)->firstOrFail()->amount)->toBe(199.90);
+
+    $invoice = Invoice::where('quote_id', $quote->id)->firstOrFail();
+    expect($invoice->payment_state->value)->toBe('VOID');
+
+    expect($quote->fresh()->state)->toBe(QuoteState::Cancelled);
+
+    // BOTH member jobs returned - not just the one staff clicked.
+    foreach ($jobs as $job) {
+        expect($job->fresh()->state)->toBe(JobState::Returned);
+    }
+});
+
 it('resolves close: advances the job and closes the quote', function (): void {
     $job = returnedShippedJob();
     Sanctum::actingAs(User::factory()->staffAdmin()->create());

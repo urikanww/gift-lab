@@ -748,9 +748,13 @@ final class QueueService
                 }
 
                 if ($siblingStillLive) {
-                    // A separate parcel still stands: credit only this shipment
-                    // (once) and leave the order live. No multi-shipment order
-                    // exists today; kept correct for when it does.
+                    // A separate parcel still stands: credit this shipment and
+                    // leave the order live. NEEDS REWORK in Stage 2c (when a
+                    // shipment can have live siblings): returnParcel restocks and
+                    // credits ONLY the clicked job's lines, so it would
+                    // under-credit a multi-member shipment. Unreachable today (one
+                    // shipment per order), so no member shipment has a live
+                    // sibling to trip it.
                     app(QuoteService::class)->returnParcel($quote, $job, $note);
                 } else {
                     // The order's only live parcel: cancel the whole order,
