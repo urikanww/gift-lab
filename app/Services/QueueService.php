@@ -161,6 +161,38 @@ final class QueueService
     }
 
     /**
+     * Move a job out of its shipment into a fresh one so it ships as a separate
+     * parcel (its own consignment). Only allowed while the current shipment is
+     * unbooked (no consignment_ref) - splitting after booking would strand the
+     * parcel - and only when the shipment groups more than one job (a lone job is
+     * already its own parcel).
+     */
+    public function splitJobToOwnShipment(ProductionJob $job): Shipment
+    {
+        $shipment = $job->shipment;
+        if ($shipment === null) {
+            $fresh = Shipment::create(['quote_id' => $job->quote_id]);
+            $job->shipment()->associate($fresh)->save();
+
+            return $fresh;
+        }
+        if ($shipment->consignment_ref !== null) {
+            throw new DomainRuleException('This shipment is already booked and cannot be split.');
+        }
+        if ($shipment->jobs()->count() < 2) {
+            throw new DomainRuleException('This item is already its own shipment.');
+        }
+
+        return DB::transaction(function () use ($job, $shipment): Shipment {
+            $fresh = Shipment::create(['quote_id' => $shipment->quote_id]);
+            $job->shipment()->associate($fresh)->save();
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProductionQueueUpdated::dispatch($job->fresh(), 'started')));
+
+            return $fresh;
+        });
+    }
+
+    /**
      * Advance many jobs to the same target in one call. Each job is guarded by
      * canTransitionTo; jobs in the wrong current state are collected as skipped
      * rather than failing the whole batch. Returns [advanced ids, skipped ids].

@@ -202,6 +202,10 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::get('/production-jobs/{job}/print-file', [ProductionQueueController::class, 'printFile'])->middleware('permission:production.view');
     // ...or all of a batched job's per-line files at once, as a labelled ZIP.
     Route::get('/production-jobs/{job}/print-files.zip', [ProductionQueueController::class, 'printFileZip'])->middleware('permission:production.view');
+    // Pull one item out of an order's shipment so it ships as its own parcel
+    // (its own consignment). 422 when the shipment is already booked or is a
+    // lone job. Registered near create-shipment - it's the pre-booking sibling.
+    Route::post('/production-jobs/{job}/split', [ProductionQueueController::class, 'split'])->middleware('permission:production.manage');
     Route::post('/production-jobs/{job}/create-shipment', [ProductionQueueController::class, 'createShipment'])->middleware('permission:production.manage');
     // Staff resolve a job NinjaVan reported returned/failed: close (write
     // off) / reship (re-queue) / cancel_credit (cancel + void invoice +

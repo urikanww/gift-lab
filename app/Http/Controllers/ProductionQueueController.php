@@ -202,6 +202,21 @@ class ProductionQueueController extends Controller
     }
 
     /**
+     * Pull one item out of an order's shipment so it ships as a separate parcel
+     * (its own consignment). Only allowed while the shipment is unbooked and
+     * groups more than one job - see QueueService::splitJobToOwnShipment, which
+     * throws a DomainRuleException (rendered 422) otherwise.
+     */
+    public function split(Request $request, ProductionJob $job): ProductionJobResource
+    {
+        $this->authorize('manageProduction', Quote::class);
+
+        $this->queue->splitJobToOwnShipment($job);
+
+        return new ProductionJobResource($job->fresh()->load('shipment'));
+    }
+
+    /**
      * Staff resolve a job NinjaVan reported returned/failed: close (write
      * off), reship (re-queue for a fresh shipment), or cancel_credit (cancel
      * the order, void any live invoice, mint a credit note). Refused with a
