@@ -768,6 +768,10 @@ final class QuoteService
             throw new DomainRuleException('Only DRAFT quotes can be sent.');
         }
 
+        if ($this->requiresProofFirst($quote)) {
+            throw new DomainRuleException('This order is set to proof-first; send the artwork proof to the buyer before asking for the price.');
+        }
+
         return DB::transaction(function () use ($quote): Quote {
             $previous = $quote->state->value;
             $quote->price_snapshot_at = now();
@@ -797,6 +801,10 @@ final class QuoteService
         // (rolled back, but an opaque message) - this gives a clean, honest one.
         if (! in_array($quote->state, [QuoteState::Sent, QuoteState::ArtworkApproved], true)) {
             throw new DomainRuleException('This order is not awaiting price acceptance.');
+        }
+
+        if ($quote->state === QuoteState::Sent && $this->requiresProofFirst($quote)) {
+            throw new DomainRuleException('This order is set to proof-first; approve the artwork proof before agreeing the price.');
         }
 
         return DB::transaction(function () use ($quote): Quote {
@@ -834,6 +842,20 @@ final class QuoteService
         return $quote->lineItems()->get()->contains(
             fn (LineItem $line): bool => $line->needsProof()
         );
+    }
+
+    /** proof_first ordering that actually has artwork to approve first. */
+    private function requiresProofFirst(Quote $quote): bool
+    {
+        return $quote->approval_order === ApprovalOrder::ProofFirst
+            && $this->hasProofNeedingLines($quote);
+    }
+
+    /** price_first ordering that actually has artwork (so proofs must wait for the price). */
+    private function requiresPriceFirst(Quote $quote): bool
+    {
+        return $quote->approval_order === ApprovalOrder::PriceFirst
+            && $this->hasProofNeedingLines($quote);
     }
 
     /**
@@ -905,6 +927,10 @@ final class QuoteService
      */
     public function sendProofs(Quote $quote): Quote
     {
+        if ($this->requiresPriceFirst($quote) && $quote->accepted_at === null) {
+            throw new DomainRuleException('This order is set to price-first; the buyer must agree the price before proofs are sent.');
+        }
+
         $drafts = $quote->proofs()->where('state', ProofState::Draft->value)->get();
 
         if ($drafts->isEmpty()) {
