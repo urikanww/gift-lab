@@ -405,6 +405,50 @@ it('DRAFT "Send to buyer" is a plain param-less send, not a proof send', async (
   expect(sendProofs).not.toHaveBeenCalled();
 });
 
+it('DRAFT staff panel: activating "Proof first" sets the approval order', async () => {
+  const setApprovalOrder = vi.fn(async () => {});
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, approval_order: 'price_first' },
+    setApprovalOrder,
+  } as any);
+  asStaff();
+  renderPage();
+
+  // The segmented control renders both options; "Price first" is the active one.
+  expect(screen.getByRole('radio', { name: /price first/i })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('radio', { name: /proof first/i }));
+
+  expect(setApprovalOrder).toHaveBeenCalledWith(42, 'proof_first');
+});
+
+it('approval-order control is disabled once the quote leaves DRAFT', () => {
+  seedQuote('SENT');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, approval_order: 'price_first' },
+  } as any);
+  asStaff();
+  renderPage();
+
+  expect(screen.getByRole('radio', { name: /price first/i })).toBeDisabled();
+  expect(screen.getByRole('radio', { name: /proof first/i })).toBeDisabled();
+});
+
+it('buyer proof_first ARTWORK_APPROVED: Next step accepts pricing, price stays visible', () => {
+  seedQuote('ARTWORK_APPROVED');
+  useQuoteStore.setState({
+    current: { ...useQuoteStore.getState().current!, approval_order: 'proof_first' },
+  } as any);
+  asBuyer();
+  renderPage();
+
+  // Second step of the proof-first flow: artwork signed off, now accept pricing.
+  expect(screen.getByRole('button', { name: /accept/i })).toBeInTheDocument();
+  expect(screen.getByText(/review the pricing/i)).toBeInTheDocument();
+  // A-1: the pricing block itself stays on the page (read-only), not hidden.
+  expect(screen.getByText('Subtotal')).toBeInTheDocument();
+});
+
 it('stages a line proof from the buyer’s existing design via the picker', async () => {
   const stageProof = vi.fn(async () => {});
   seedQuote('ACCEPTED');

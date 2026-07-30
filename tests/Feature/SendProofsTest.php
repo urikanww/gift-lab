@@ -32,7 +32,7 @@ function draftFor(Quote $q, string $ref): Proof
 }
 
 it('sends every staged proof in one email and moves the order to proofing', function (): void {
-    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'created_by' => $this->buyer->id, 'state' => 'ACCEPTED']);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'created_by' => $this->buyer->id, 'state' => 'ACCEPTED', 'accepted_at' => now()]);
     draftFor($quote, 'artwork/a.png');
     draftFor($quote, 'artwork/b.png');
 

@@ -21,7 +21,7 @@ beforeEach(function (): void {
 it('stages a line proof and sends the round into proofing', function (): void {
     Event::fake([ProofStatusChanged::class]);
     Sanctum::actingAs($this->staff);
-    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'ACCEPTED']);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'ACCEPTED', 'accepted_at' => now()]);
     $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
         'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],

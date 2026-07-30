@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\ApprovalOrder;
 use App\Enums\JobState;
 use App\Enums\LineItemState;
 use App\Enums\OrderMilestone;
@@ -728,6 +729,35 @@ final class QuoteService
     }
 
     /**
+     * Set the buyer approval ordering for a quote (Feature A). Editable by staff
+     * only while the order is still DRAFT; once sent it is locked, EXCEPT for a
+     * superadmin, who may still flip it (mirrors amend()'s superadmin override).
+     */
+    public function setApprovalOrder(Quote $quote, ApprovalOrder $order): Quote
+    {
+        if ($quote->state !== QuoteState::Draft && ! (Auth::user()?->isSuperadmin() ?? false)) {
+            throw new DomainRuleException('Approval order is locked once the order is sent.');
+        }
+
+        if ($quote->approval_order === $order) {
+            return $quote;
+        }
+
+        // Wrap the state flip and its audit insert together, matching the
+        // atomicity discipline amend() uses for every state+audit pair - a
+        // failed audit insert must not leave the change persisted untraced.
+        return DB::transaction(function () use ($quote, $order): Quote {
+            $before = $quote->approval_order->value;
+            $quote->approval_order = $order;
+            $quote->save();
+
+            $this->audit->log($quote, 'quote.approval_order_changed', ['approval_order' => $before], ['approval_order' => $order->value]);
+
+            return $quote;
+        });
+    }
+
+    /**
      * Send the quote to the buyer (DRAFT -> SENT), freezing the price snapshot
      * timestamp. Proofs are staged and sent per line through stageProof ->
      * sendProofs, so this is a plain quote send with no artwork attached.
@@ -736,6 +766,10 @@ final class QuoteService
     {
         if ($quote->state !== QuoteState::Draft) {
             throw new DomainRuleException('Only DRAFT quotes can be sent.');
+        }
+
+        if ($this->requiresProofFirst($quote)) {
+            throw new DomainRuleException('This order is set to proof-first; send the artwork proof to the buyer before asking for the price.');
         }
 
         return DB::transaction(function () use ($quote): Quote {
@@ -767,6 +801,10 @@ final class QuoteService
         // (rolled back, but an opaque message) - this gives a clean, honest one.
         if (! in_array($quote->state, [QuoteState::Sent, QuoteState::ArtworkApproved], true)) {
             throw new DomainRuleException('This order is not awaiting price acceptance.');
+        }
+
+        if ($quote->state === QuoteState::Sent && $this->requiresProofFirst($quote)) {
+            throw new DomainRuleException('This order is set to proof-first; approve the artwork proof before agreeing the price.');
         }
 
         return DB::transaction(function () use ($quote): Quote {
@@ -804,6 +842,20 @@ final class QuoteService
         return $quote->lineItems()->get()->contains(
             fn (LineItem $line): bool => $line->needsProof()
         );
+    }
+
+    /** proof_first ordering that actually has artwork to approve first. */
+    private function requiresProofFirst(Quote $quote): bool
+    {
+        return $quote->approval_order === ApprovalOrder::ProofFirst
+            && $this->hasProofNeedingLines($quote);
+    }
+
+    /** price_first ordering that actually has artwork (so proofs must wait for the price). */
+    private function requiresPriceFirst(Quote $quote): bool
+    {
+        return $quote->approval_order === ApprovalOrder::PriceFirst
+            && $this->hasProofNeedingLines($quote);
     }
 
     /**
@@ -875,6 +927,10 @@ final class QuoteService
      */
     public function sendProofs(Quote $quote): Quote
     {
+        if ($this->requiresPriceFirst($quote) && $quote->accepted_at === null) {
+            throw new DomainRuleException('This order is set to price-first; the buyer must agree the price before proofs are sent.');
+        }
+
         $drafts = $quote->proofs()->where('state', ProofState::Draft->value)->get();
 
         if ($drafts->isEmpty()) {

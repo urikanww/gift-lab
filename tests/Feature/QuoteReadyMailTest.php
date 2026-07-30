@@ -89,7 +89,7 @@ it('escapes a malicious creator name in the greeting', function (): void {
 it('emails the buyer with the proof variant when a proof round is sent', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
-    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'created_by' => $buyer->id]);
+    $quote = Quote::factory()->proofFirst()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'created_by' => $buyer->id]);
     $line = mailProofLine($quote);
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
 

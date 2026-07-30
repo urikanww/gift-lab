@@ -66,7 +66,7 @@ it('does not stamp acceptance when accept is called on an illegal state', functi
 
 it('stages a line proof and sends the round into PROOFING', function (): void {
     Mail::fake();
-    $quote = Quote::factory()->create(['state' => 'DRAFT']);
+    $quote = Quote::factory()->proofFirst()->create(['state' => 'DRAFT']);
     $line = slimLine($quote);
 
     stageAndSend($this, $quote, $line, 'artwork/v1-key.png');
@@ -98,7 +98,7 @@ it('sends a quote without a proof and lands in SENT', function (): void {
 it('does not treat artwork approval as agreeing the price', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
-    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
+    $quote = Quote::factory()->proofFirst()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
     $line = slimLine($quote);
     stageAndSend($this, $quote, $line, 'a/v1.png');
     $proof = $quote->fresh()->proofs()->first();
@@ -115,7 +115,7 @@ it('does not treat artwork approval as agreeing the price', function (): void {
 it('completes the pair when the buyer then agrees the price', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
-    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
+    $quote = Quote::factory()->proofFirst()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
     $line = slimLine($quote);
     stageAndSend($this, $quote, $line, 'a/v1.png');
     $proof = $quote->fresh()->proofs()->first();
@@ -146,7 +146,7 @@ it('refuses to invoice an order the buyer never priced', function (): void {
 it('routes a per-line request-changes to CHANGES_REQUESTED', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
-    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
+    $quote = Quote::factory()->proofFirst()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
     $line = slimLine($quote);
     stageAndSend($this, $quote, $line, 'a/v1.png');
     $proof = $quote->fresh()->proofs()->first();
@@ -188,7 +188,7 @@ it('keeps a multi-line order in PROOFING when only one line requests changes', f
 it('recovers a CHANGES_REQUESTED order by staging a revised proof', function (): void {
     Mail::fake();
     $buyer = User::factory()->create();
-    $quote = Quote::factory()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
+    $quote = Quote::factory()->proofFirst()->create(['company_id' => $buyer->company_id, 'state' => 'DRAFT', 'accepted_at' => null]);
     $line = slimLine($quote);
     stageAndSend($this, $quote, $line, 'a/v1.png');
     $proof = $quote->fresh()->proofs()->first();

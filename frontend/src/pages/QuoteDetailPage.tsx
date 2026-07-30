@@ -99,6 +99,7 @@ export default function QuoteDetailPage() {
     procure,
     stageProof,
     sendProofs,
+    setApprovalOrder,
     decideProof,
     approveAllProofs,
     resendProof,
@@ -664,6 +665,33 @@ export default function QuoteDetailPage() {
   // will next hear from us.
   const staffPanel = isStaff ? (
     <div className="flex flex-col gap-5">
+      {/* Feature A: which approval the buyer gives first. Editable only while the
+          quote is a DRAFT (once sent, the ordering is locked in). The backend
+          still enforces the superadmin override, so no client-side signal for
+          that is surfaced here - staff just see the control disabled. */}
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-fg">Approval order</span>
+        <div role="radiogroup" aria-label="Approval order" className="flex gap-2">
+          {(['price_first', 'proof_first'] as const).map((order) => {
+            const active = quote.approval_order === order;
+            return (
+              <Button
+                key={order}
+                role="radio"
+                aria-checked={active}
+                size="sm"
+                variant={active ? 'primary' : 'outline'}
+                disabled={quote.state !== 'DRAFT' || busy}
+                onClick={() => {
+                  if (!active) void run(() => setApprovalOrder(quote.id, order), 'Approval order updated');
+                }}
+              >
+                {order === 'price_first' ? 'Price first' : 'Proof first'}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
       <div>
         {quote.state === 'DRAFT' && (
           <div className="flex flex-col gap-4">
@@ -687,7 +715,16 @@ export default function QuoteDetailPage() {
                   variant="primary"
                   loading={busy}
                   disabled={busy}
-                  onClick={() => void run(() => send(quote.id), 'Sent to buyer')}
+                  onClick={() => {
+                    // proof_first WITH customised lines sends the proof round;
+                    // otherwise (price_first, or plain stock with no proofs) it
+                    // is the ordinary param-less quote send.
+                    if (quote.approval_order === 'proof_first' && proofLines.length > 0) {
+                      void run(() => sendProofs(quote.id), 'Proofs sent to buyer');
+                    } else {
+                      void run(() => send(quote.id), 'Sent to buyer');
+                    }
+                  }}
                 >
                   Send to buyer
                 </Button>

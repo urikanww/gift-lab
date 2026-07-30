@@ -143,6 +143,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // these - accept/pay below are the buyer's, and are not gated).
     Route::patch('/quotes/{quote}/amend', [QuoteController::class, 'amend'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/send', [QuoteController::class, 'send'])->middleware('permission:quotes.edit');
+    Route::patch('/quotes/{quote}/approval-order', [QuoteController::class, 'setApprovalOrder'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/accept', [QuoteController::class, 'accept']);
     // One-click reorder: clone a past order's cloneable lines into a fresh
     // DRAFT, re-priced at today's config. Buyer's own company or staff (any

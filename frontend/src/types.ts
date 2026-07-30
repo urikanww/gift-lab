@@ -363,6 +363,8 @@ export interface Quote {
   /** Only present on staff listings (relation-loaded server-side). */
   company_name?: string;
   state: QuoteState;
+  /** Feature A: which approval the buyer gives first. Default price_first. */
+  approval_order: 'price_first' | 'proof_first';
   currency: string;
   subtotal: string;
   /** LT16: personalisation/decoration fee folded into subtotal, surfaced as its
