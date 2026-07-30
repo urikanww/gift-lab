@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // The page only ever needs apiError() to turn a rejection into displayable
@@ -17,6 +17,17 @@ vi.mock('../lib/api', () => ({
 // way a decoded QR frame would.
 const scanMock = vi.hoisted(() => ({ startCameraScan: vi.fn() }));
 vi.mock('../lib/scan', () => scanMock);
+
+// Run the animated board with reduced motion so the layout list has no exit
+// transition: switching tabs filters the board (a card leaves the list), and
+// framer-motion's AnimatePresence otherwise keeps the exiting card mounted
+// until an exit animation that never completes under jsdom. Reduced motion
+// drops the exit prop, so removal is synchronous - the only thing these tests
+// assert about the list. Everything else in framer stays real.
+vi.mock('framer-motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('framer-motion')>()),
+  useReducedMotion: () => true,
+}));
 
 import { ThemeProvider, ToastProvider } from '../ui';
 import ProductionQueuePage from './ProductionQueuePage';
@@ -124,6 +135,8 @@ it('confirms in a modal before booking a NinjaVan shipment, then books on confir
   seed({ jobs: [{ ...job, state: 'IN_PRODUCTION' }], createShipment });
   renderPage();
 
+  // The courier action now lives on the Ship desk tab, not the Make queue.
+  await userEvent.click(screen.getByRole('tab', { name: /ship desk/i }));
   const button = screen.getByRole('button', { name: /create ninjavan shipment/i });
   expect(button).toBeEnabled();
 
@@ -167,4 +180,69 @@ it('accepts a job that arrives via realtime after the camera starts (no stale jo
 
   await waitFor(() => expect(advanceNext).toHaveBeenCalledWith(99));
   expect(screen.queryByText(/not on the queue/i)).not.toBeInTheDocument();
+});
+
+// TASK 5: the board is split into four tabs. The Make queue (default) is the
+// print floor and carries NO courier actions; the Ship desk carries them and
+// lists only the IN_PRODUCTION jobs that are ready to hand to a courier.
+const readyJob: ProductionJob = {
+  id: 1,
+  quote_id: 101,
+  quote_reference: 'GL-AAA0000001',
+  track: 'UV',
+  state: 'READY',
+  ready_at: '2026-07-06T00:00:00Z',
+  print_method: 'UV',
+  qty: 2,
+};
+
+const inProductionJob: ProductionJob = {
+  id: 2,
+  quote_id: 102,
+  quote_reference: 'GL-BBB0000002',
+  track: '3D',
+  state: 'IN_PRODUCTION',
+  ready_at: '2026-07-07T00:00:00Z',
+  print_method: 'FDM',
+  qty: 5,
+};
+
+/** Seed both a READY and an IN_PRODUCTION job with every lifecycle/fetch hook
+ * stubbed to a no-op (the mount effect now also fires fetchInTransit /
+ * fetchNeedsAttention), plus empty in-transit / needs-attention lists so the
+ * badge selectors read zero. */
+function seedTwoTabs(overrides: Record<string, unknown> = {}) {
+  useQueueStore.setState({
+    jobs: [readyJob, inProductionJob],
+    inTransit: [],
+    needsAttention: [],
+    loading: false,
+    error: null,
+    fetchQueue: vi.fn(async () => {}),
+    fetchInTransit: vi.fn(async () => {}),
+    fetchNeedsAttention: vi.fn(async () => {}),
+    subscribe: vi.fn(() => {}),
+    unsubscribe: vi.fn(() => {}),
+    ...overrides,
+  } as any);
+}
+
+it('Ship desk tab shows only IN_PRODUCTION jobs and offers the courier action', () => {
+  vi.mocked(api.get).mockResolvedValue({ data: { data: [] } } as any);
+  seedTwoTabs({ createShipment: vi.fn(async () => ({ consignment_ref: 'SP1', tracking_url: null })) });
+  renderPage();
+
+  fireEvent.click(screen.getByRole('tab', { name: /ship desk/i }));
+
+  expect(screen.getByText(/GL-BBB0000002/)).toBeInTheDocument();
+  expect(screen.queryByText(/GL-AAA0000001/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /create ninjavan shipment/i })).toBeInTheDocument();
+});
+
+it('Make queue tab does not offer courier actions', () => {
+  seedTwoTabs();
+  renderPage();
+
+  expect(screen.getByText(/GL-BBB0000002/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /create ninjavan shipment/i })).not.toBeInTheDocument();
 });

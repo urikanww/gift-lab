@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { printFilePath, printFilesZipPath, useQueueStore } from '../stores/queueStore';
 import JobLabel from '../components/JobLabel';
 import AwaitingDeliveryPanel from '../components/production/AwaitingDeliveryPanel';
+import NeedsAttentionPanel from '../components/production/NeedsAttentionPanel';
 import api, { apiError } from '../lib/api';
 import { Badge, Button, Card, EmptyState, Input, Modal, Skeleton, Textarea, useToast } from '../ui';
 import type { BadgeTone } from '../ui';
@@ -12,6 +13,10 @@ import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
 import type { JobLineItem, JobState, ModelPart, ShippingAddressInput } from '../types';
 import type { PrintZone } from '../lib/printZone';
+
+// The board is split into four surfaces. Make queue is the print floor;
+// Ship desk is the courier hand-off; the last two are self-fetching panels.
+type ProdTab = 'make' | 'ship' | 'transit' | 'attention';
 
 const NEXT_STATE: Partial<Record<JobState, { label: string; to: JobState }>> = {
   READY: { label: 'Start production', to: 'IN_PRODUCTION' },
@@ -66,6 +71,8 @@ export default function ProductionQueuePage() {
     loading,
     error,
     fetchQueue,
+    fetchInTransit,
+    fetchNeedsAttention,
     advance,
     advanceBatch,
     advanceNext,
@@ -73,7 +80,12 @@ export default function ProductionQueuePage() {
     subscribe,
     unsubscribe,
   } = useQueueStore();
+  // Live badge counts for the tab bar - read as selectors so a realtime update
+  // to either list re-renders the badge even while another tab is showing.
+  const inTransitCount = useQueueStore((s) => s.inTransit.length);
+  const needsAttentionCount = useQueueStore((s) => s.needsAttention.length);
   const { toast } = useToast();
+  const [tab, setTab] = useState<ProdTab>('make');
   const [pendingId, setPendingId] = useState<number | null>(null);
   // Single-flight guard across all print-file downloads on the page. Keyed per
   // link (`pf:<jobId>:<ref>` for one file, `zip:<jobId>` for the bundle) so only
@@ -113,9 +125,13 @@ export default function ProductionQueuePage() {
 
   useEffect(() => {
     void fetchQueue();
+    // The transit/attention panels self-fetch when their tab is shown, but the
+    // tab badges must be live from mount regardless of the active tab.
+    void fetchInTransit();
+    void fetchNeedsAttention();
     subscribe(); // live via Reverb; no polling
     return () => unsubscribe();
-  }, [fetchQueue, subscribe, unsubscribe]);
+  }, [fetchQueue, fetchInTransit, fetchNeedsAttention, subscribe, unsubscribe]);
 
   // Release the camera if the page unmounts while a scan is running.
   useEffect(() => () => void stopCameraRef.current?.(), []);
@@ -217,6 +233,10 @@ export default function ProductionQueuePage() {
     }
   };
 
+  // Make queue shows the whole board (READY + IN_PRODUCTION); Ship desk is the
+  // courier hand-off, so it lists only the jobs a courier can take now.
+  const boardJobs = tab === 'ship' ? jobs.filter((j) => j.state === 'IN_PRODUCTION') : jobs;
+
   return (
     <section className="flex flex-col gap-6">
       <Motion variants={fadeInUp} initial="hidden" animate="visible">
@@ -231,7 +251,39 @@ export default function ProductionQueuePage() {
         </p>
       </Motion>
 
-      {/* Scan-to-advance: hardware wedge scanner (Enter) or rear camera */}
+      {/* Four-surface split: Make queue (print floor), Ship desk (courier
+          hand-off), and the two self-fetching panels. */}
+      <div role="tablist" className="flex flex-wrap gap-1 border-b border-border">
+        {([
+          ['make', 'Make queue'],
+          ['ship', 'Ship desk'],
+          ['transit', 'In-transit'],
+          ['attention', 'Needs attention'],
+        ] as [ProdTab, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+              tab === key ? 'border-brand text-fg' : 'border-transparent text-fg-muted hover:text-fg'
+            }`}
+          >
+            {label}
+            {key === 'attention' && needsAttentionCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-danger px-1.5 text-2xs text-white">{needsAttentionCount}</span>
+            )}
+            {key === 'transit' && inTransitCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-brand px-1.5 text-2xs text-white">{inTransitCount}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Scan-to-advance: hardware wedge scanner (Enter) or rear camera. Only on
+          the Make queue - the floor advances jobs; the Ship desk does not. */}
+      {tab === 'make' && (
+      <>
       <div className="flex flex-wrap items-end gap-2">
         <Input
           label="Scan to advance"
@@ -261,28 +313,34 @@ export default function ProductionQueuePage() {
         </Button>
       </div>
       {cameraOn && <div id="qr-reader" className="w-full max-w-xs" />}
+      </>
+      )}
 
-      {/* Shipped-but-not-yet-delivered parcels: the manual "mark delivered"
-          fallback for when the courier's delivery webhook is silent. Renders
-          nothing when there are none. */}
-      <AwaitingDeliveryPanel />
+      {/* In-transit and needs-attention are self-fetching panels, each shown
+          only on its own tab. */}
+      {tab === 'transit' && <AwaitingDeliveryPanel />}
+      {tab === 'attention' && <NeedsAttentionPanel />}
 
+      {/* The FCFS board (Make queue + Ship desk). Skeleton/empty/error gate on
+          the tab-filtered list so the Ship desk shows its own emptiness. */}
+      {(tab === 'make' || tab === 'ship') && (
+      <>
       {/* Loading - animated skeletons on first load only */}
-      {loading && jobs.length === 0 && <QueueSkeleton />}
+      {loading && boardJobs.length === 0 && <QueueSkeleton />}
 
       {/* Error - retry */}
       {!loading && error && <ErrorState message={error} onRetry={() => void fetchQueue()} />}
 
       {/* Empty */}
-      {!loading && !error && jobs.length === 0 && (
+      {!loading && !error && boardJobs.length === 0 && (
         <EmptyState
           title="The queue is clear."
           description="Jobs appear here the moment a quote is confirmed and ready to make."
         />
       )}
 
-      {/* Bulk floor actions - only while a selection exists */}
-      {selected.size > 0 && (
+      {/* Bulk floor actions - only on the Make queue, while a selection exists */}
+      {tab === 'make' && selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-2 p-3">
           <span className="text-sm text-fg">{selected.size} selected</span>
           <Button
@@ -314,13 +372,13 @@ export default function ProductionQueuePage() {
       )}
 
       {/* Board - layout-animated cards; realtime add/remove/reorder via AnimatePresence + layout */}
-      {jobs.length > 0 && (
+      {boardJobs.length > 0 && (
         <motion.ul
           layout={animate}
           className="flex list-none flex-col gap-3 p-0"
         >
           <AnimatePresence initial={false} mode="popLayout">
-            {jobs.map((j) => {
+            {boardJobs.map((j) => {
               const next = NEXT_STATE[j.state];
               const meta = STATE_META[j.state];
               const isPending = pendingId === j.id;
@@ -336,13 +394,15 @@ export default function ProductionQueuePage() {
                   <Card padding="md" className="flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-2">
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 shrink-0"
-                          checked={selected.has(j.id)}
-                          onChange={() => toggleSelected(j.id)}
-                          aria-label={`Select job ${j.id}`}
-                        />
+                        {tab === 'make' && (
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 shrink-0"
+                            checked={selected.has(j.id)}
+                            onChange={() => toggleSelected(j.id)}
+                            aria-label={`Select job ${j.id}`}
+                          />
+                        )}
                         <div>
                           <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
                           <p className="text-sm text-fg-muted">Order {j.quote_reference}</p>
@@ -374,6 +434,10 @@ export default function ProductionQueuePage() {
                       </div>
                     </dl>
 
+                    {/* Print-floor detail: customization preview + print-file
+                        downloads live on the Make queue only. */}
+                    {tab === 'make' && (
+                    <>
                     {!!j.line_items?.length && (
                       <Button
                         variant="ghost"
@@ -425,11 +489,17 @@ export default function ProductionQueuePage() {
                         )}
                       </div>
                     )}
+                    </>
+                    )}
 
                     <Button variant="ghost" size="sm" fullWidth onClick={() => setLabelJobId(j.id)}>
                       Print label
                     </Button>
 
+                    {/* Courier hand-off surface: the delivery-address editor is
+                        only relevant on the Ship desk. */}
+                    {tab === 'ship' && (
+                    <>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -446,8 +516,10 @@ export default function ProductionQueuePage() {
                         onSaved={() => {}}
                       />
                     )}
+                    </>
+                    )}
 
-                    {j.state === 'IN_PRODUCTION' && (
+                    {tab === 'ship' && j.state === 'IN_PRODUCTION' && (
                       // Opens the confirm modal (which shows the delivery address)
                       // rather than booking on one click - the button no longer
                       // depends on the panel below having been opened first (L23).
@@ -463,60 +535,78 @@ export default function ProductionQueuePage() {
                       </Button>
                     )}
 
-                    {next && next.to === 'SHIPPED' && shippingId === j.id ? (
-                      <div className="mt-auto flex flex-col gap-2">
-                        <label className="text-sm text-fg-muted">
-                          Carrier
-                          <select
-                            className="mt-1 w-full rounded-md border border-border bg-bg p-2 text-sm text-fg"
-                            value={carrier}
-                            onChange={(e) => setCarrier(e.target.value)}
-                          >
-                            <option value="">Select carrier…</option>
-                            <option value="SINGPOST">SingPost</option>
-                            <option value="NINJAVAN">Ninja Van</option>
-                            <option value="JNT">J&amp;T Express</option>
-                            <option value="QXPRESS">Qxpress</option>
-                            <option value="DHL">DHL</option>
-                            <option value="FEDEX">FedEx</option>
-                            <option value="OTHER">Other</option>
-                          </select>
-                        </label>
-                        <Input
-                          label="Consignment / tracking ref"
-                          placeholder="e.g. SP123456789SG"
-                          value={consignment}
-                          maxLength={128}
-                          autoFocus
-                          onChange={(e) => setConsignment(e.target.value)}
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            fullWidth
-                            loading={isPending}
-                            disabled={!consignment.trim() || (pendingId !== null && !isPending)}
-                            onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim(), carrier || undefined)}
-                          >
-                            Confirm shipped
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={isPending}
-                            onClick={() => {
-                              setShippingId(null);
-                              setConsignment('');
-                              setCarrier('');
-                            }}
-                          >
-                            Cancel
-                          </Button>
+                    {/* Make queue advances READY → IN_PRODUCTION only; shipping
+                        is off the floor entirely now. */}
+                    {tab === 'make' && next?.to === 'IN_PRODUCTION' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        fullWidth
+                        className="mt-auto"
+                        loading={isPending}
+                        disabled={pendingId !== null && !isPending}
+                        onClick={() => void onAdvance(j.id, next.to)}
+                      >
+                        {next.label}
+                      </Button>
+                    )}
+
+                    {/* Ship desk carries the manual "mark shipped" consignment
+                        flow (the confirm-gated buyer "on the way" signal). */}
+                    {tab === 'ship' && next?.to === 'SHIPPED' && (
+                      shippingId === j.id ? (
+                        <div className="mt-auto flex flex-col gap-2">
+                          <label className="text-sm text-fg-muted">
+                            Carrier
+                            <select
+                              className="mt-1 w-full rounded-md border border-border bg-bg p-2 text-sm text-fg"
+                              value={carrier}
+                              onChange={(e) => setCarrier(e.target.value)}
+                            >
+                              <option value="">Select carrier…</option>
+                              <option value="SINGPOST">SingPost</option>
+                              <option value="NINJAVAN">Ninja Van</option>
+                              <option value="JNT">J&amp;T Express</option>
+                              <option value="QXPRESS">Qxpress</option>
+                              <option value="DHL">DHL</option>
+                              <option value="FEDEX">FedEx</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                          </label>
+                          <Input
+                            label="Consignment / tracking ref"
+                            placeholder="e.g. SP123456789SG"
+                            value={consignment}
+                            maxLength={128}
+                            autoFocus
+                            onChange={(e) => setConsignment(e.target.value)}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              fullWidth
+                              loading={isPending}
+                              disabled={!consignment.trim() || (pendingId !== null && !isPending)}
+                              onClick={() => void onAdvance(j.id, 'SHIPPED', consignment.trim(), carrier || undefined)}
+                            >
+                              Confirm shipped
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={isPending}
+                              onClick={() => {
+                                setShippingId(null);
+                                setConsignment('');
+                                setCarrier('');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      next && (
+                      ) : (
                         <Button
                           variant="secondary"
                           size="sm"
@@ -524,11 +614,7 @@ export default function ProductionQueuePage() {
                           className="mt-auto"
                           loading={isPending}
                           disabled={pendingId !== null && !isPending}
-                          onClick={() =>
-                            next.to === 'SHIPPED'
-                              ? setShippingId(j.id)
-                              : void onAdvance(j.id, next.to)
-                          }
+                          onClick={() => setShippingId(j.id)}
                         >
                           {next.label}
                         </Button>
@@ -540,6 +626,8 @@ export default function ProductionQueuePage() {
             })}
           </AnimatePresence>
         </motion.ul>
+      )}
+      </>
       )}
 
       {labelJobId !== null && <JobLabel jobId={labelJobId} onClose={() => setLabelJobId(null)} />}
