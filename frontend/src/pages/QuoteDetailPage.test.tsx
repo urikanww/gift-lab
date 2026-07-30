@@ -1140,6 +1140,18 @@ it('confirms before committing an order to production', async () => {
   expect(issueInvoice).toHaveBeenCalledWith(42, 'PO-9', null);
 });
 
+// F8: the PO reference is required to raise the invoice, so the field is marked
+// required at the commit step (mirrors the Commit button's disabled-when-empty
+// guard and validatePoRef).
+it('marks the PO reference field as required at the commit step', () => {
+  asStaff();
+  seedQuote('PROOF_APPROVED');
+  renderPage();
+
+  const po = screen.getByLabelText(/PO reference/i);
+  expect(po).toBeRequired();
+});
+
 it('shows the staff-only Edit history when the order carries an amendment log', () => {
   asStaff();
   seedQuote('DRAFT');

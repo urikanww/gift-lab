@@ -730,8 +730,9 @@ export default function QuoteDetailPage() {
               <div className="flex-1">
                 <Input
                   label="PO reference"
+                  required
                   placeholder="PO number"
-                  hint="Raises the invoice and commits the order to production."
+                  hint="Required to raise the invoice and commit the order to production."
                   value={poRef}
                   error={poRefError}
                   onChange={(e) => {
