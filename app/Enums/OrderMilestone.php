@@ -19,6 +19,16 @@ enum OrderMilestone: string
 {
     case Accepted = 'accepted';
     case ArtworkApproved = 'artwork_approved';
+    /**
+     * M18: a notification-PREFERENCE key only, not a generic-template email.
+     * The proof-ready email is the richer QuoteReadyMail (proof thumbnails +
+     * quote summary), sent by QuoteService::emailProofsReady, which gates on
+     * this case via OrderNotifier::isEnabled(). It is NEVER passed to
+     * OrderNotifier::send(), so this case's subject()/heading()/body()/ctaLabel()
+     * are an unused fallback — kept only so the match arms stay exhaustive and
+     * the settings screen can list a "proof issued" toggle. Do not wire it into
+     * OrderMilestoneMail: that would send the plain template instead of the proof.
+     */
     case ProofIssued = 'proof_issued';
     case Committed = 'committed';
     case InProduction = 'in_production';

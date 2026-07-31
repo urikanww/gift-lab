@@ -1293,14 +1293,15 @@ export default function QuoteDetailPage() {
     </div>
   ) : undefined;
 
-  // Buyer "Next step" action card, pinned above the Items list (P4) so a buyer
-  // never has to scroll past the order detail to find what to do next.
+  // Buyer "Next step" action card, pinned above the Items list AND made sticky
+  // on desktop (P4) so the primary action stays in view as the buyer scrolls the
+  // order detail, instead of scrolling away below it.
   const buyerActionsCard = !isStaff &&
     (quote.state === 'DRAFT' ||
       quote.state === 'SENT' ||
       quote.state === 'ARTWORK_APPROVED' ||
       quote.state === 'PROOF_APPROVED') && (
-    <Motion variants={staggerItem}>
+    <Motion variants={staggerItem} className="z-10 lg:sticky lg:top-4">
       <Card padding="lg">
         <h2 className="font-display text-xl text-fg">Next step</h2>
         {/* A buyer can land on a DRAFT after reordering a past order. They

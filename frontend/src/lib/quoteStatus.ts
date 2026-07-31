@@ -37,6 +37,7 @@ const lineToneMap: Partial<Record<LineItemState, BadgeTone>> = {
   AMENDED: 'warning',
   DROPPED: 'danger',
   CANCELLED: 'danger',
+  DELIVERED: 'success',
 };
 
 export function lineStateTone(state: LineItemState): BadgeTone {

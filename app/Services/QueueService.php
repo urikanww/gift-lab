@@ -409,6 +409,12 @@ final class QueueService
                 DB::transaction(function () use ($job): void {
                     $previous = $job->quote->state->value;
                     $job->quote->transitionTo(QuoteState::Closed);
+                    // LT15: a delivered order shouldn't still show "Ready" lines.
+                    // Advance every READY line to DELIVERED in one write (dropped/
+                    // cancelled lines keep their terminal state).
+                    $job->quote->lineItems()
+                        ->where('line_state', LineItemState::Ready->value)
+                        ->update(['line_state' => LineItemState::Delivered->value]);
                     DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($job->quote, $previous)));
                 });
             }

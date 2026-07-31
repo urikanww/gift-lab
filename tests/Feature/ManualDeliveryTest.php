@@ -150,6 +150,12 @@ it('lets staff mark a shipped job delivered: job + quote close, with a manual au
 
     expect($job->quote()->first()->state)->toBe(QuoteState::Closed);
 
+    // LT15: closing the order advances its READY lines to DELIVERED, so a
+    // completed order no longer shows a lingering "Ready" line.
+    $states = LineItem::where('quote_id', $job->quote_id)->get()
+        ->pluck('line_state')->map->value->all();
+    expect($states)->toContain('DELIVERED')->not->toContain('READY');
+
     expect(AuditLog::where('auditable_type', ProductionJob::class)
         ->where('auditable_id', $job->id)
         ->where('event', 'production_job.manually_delivered')

@@ -443,44 +443,52 @@ export default function ProductionQueuePage() {
                   transition={springSoft}
                 >
                   <Card padding="md" className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
-                        {tab === 'make' && (
-                          <input
-                            type="checkbox"
-                            className="mt-1 h-4 w-4 shrink-0"
-                            checked={selected.has(j.id)}
-                            onChange={() => toggleSelected(j.id)}
-                            aria-label={`Select job ${j.id}`}
-                          />
-                        )}
-                        <div>
-                          <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
-                          <p className="text-sm text-fg-muted">Order {j.quote_reference}</p>
-                        </div>
+                    <div className="flex items-start gap-2">
+                      {tab === 'make' && (
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 shrink-0"
+                          checked={selected.has(j.id)}
+                          onChange={() => toggleSelected(j.id)}
+                          aria-label={`Select job ${j.id}`}
+                        />
+                      )}
+                      <div>
+                        <p className="font-display text-lg leading-tight text-fg">Job #{j.id}</p>
+                        <p className="text-sm text-fg-muted">Order {j.quote_reference}</p>
                       </div>
-                      <Badge tone={meta.tone}>{meta.label}</Badge>
                     </div>
 
-                    {/* Facts laid out horizontally so each full-width row reads
-                        like a table line rather than a stacked card (P5). */}
-                    <dl className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm">
-                      <div className="flex items-center gap-2">
-                        <dt className="text-fg-subtle">Track</dt>
+                    {/* P5: the facts sit in a fixed 4-column grid (label over
+                        value) so Track / Qty / Ready / Status line up at the same
+                        x-positions on every row and the board scans like a table -
+                        without a real <table>, which would break the rich per-job
+                        controls (downloads, address panel, shipment split) below. */}
+                    <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+                      <div className="flex flex-col gap-0.5">
+                        <dt className="text-2xs uppercase tracking-wide text-fg-subtle">Track</dt>
                         <dd>
                           <Badge tone="neutral" size="sm">
                             {j.track}
                           </Badge>
                         </dd>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <dt className="text-fg-subtle">Qty</dt>
+                      <div className="flex flex-col gap-0.5">
+                        <dt className="text-2xs uppercase tracking-wide text-fg-subtle">Qty</dt>
                         <dd className="font-medium text-fg">{j.qty}</dd>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <dt className="text-fg-subtle">Ready at</dt>
+                      <div className="flex flex-col gap-0.5">
+                        <dt className="text-2xs uppercase tracking-wide text-fg-subtle">Ready at</dt>
                         <dd className="font-medium text-fg">
                           {j.ready_at ? new Date(j.ready_at).toLocaleString() : '-'}
+                        </dd>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <dt className="text-2xs uppercase tracking-wide text-fg-subtle">Status</dt>
+                        <dd>
+                          <Badge tone={meta.tone} size="sm">
+                            {meta.label}
+                          </Badge>
                         </dd>
                       </div>
                     </dl>
