@@ -15,7 +15,7 @@ import {
   useReducedMotionSafe,
 } from '../motion';
 import { humanizeState, quoteStateTone } from '../lib/quoteStatus';
-import ListFilters from '../components/filters/ListFilters';
+import ListFilters, { FilterBadges } from '../components/filters/ListFilters';
 import type { FilterValues } from '../components/filters/types';
 import {
   quoteFilterFields,
@@ -99,20 +99,24 @@ export default function QuoteListPage() {
         </p>
       </Motion>
 
-      {/* Search + filters. Both stay on screen through empty/loading states so a
-          zero-result filter can still be cleared. Filters open in a popup and
-          apply on submit; active ones show as removable badges (ListFilters). */}
+      {/* Search + filters. The Filters button sits on the same row as the search
+          box (bottom-aligned to the input, past its label); active filters wrap
+          onto their own line below as removable badges. Both stay on screen
+          through empty/loading states so a zero-result filter can still cleared. */}
       <div className="mb-4 flex flex-col gap-3">
-        <div className="max-w-sm">
-          <Input
-            type="search"
-            label="Search orders"
-            placeholder="Search by order reference or id"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-          />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-sm">
+            <Input
+              type="search"
+              label="Search orders"
+              placeholder="Search by order reference or id"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+          <ListFilters fields={quoteFilterFields(staff)} value={filters} onChange={setFilters} />
         </div>
-        <ListFilters fields={quoteFilterFields(staff)} value={filters} onChange={setFilters} />
+        <FilterBadges fields={quoteFilterFields(staff)} value={filters} onChange={setFilters} />
       </div>
 
       {/* Focus stays in the input while the list is replaced underneath it, and

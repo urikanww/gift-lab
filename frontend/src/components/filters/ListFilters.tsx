@@ -168,36 +168,18 @@ export default function ListFilters({
   }, [open, value]);
 
   const activeCount = countActive(fields, value);
-  const badges = fields.flatMap((f) => fieldPieces(f, value, onChange));
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        Filters{activeCount > 0 ? ` (${activeCount})` : ''}
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)} className="gap-1.5">
+        <span aria-hidden="true">☰</span>
+        Filters
+        {activeCount > 0 && (
+          <span className="ml-0.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold text-primary-fg">
+            {activeCount}
+          </span>
+        )}
       </Button>
-
-      {badges.map((b, i) => (
-        <span
-          key={`${b.label}-${i}`}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 py-1 pl-3 pr-1.5 text-xs text-fg"
-        >
-          {b.label}
-          <button
-            type="button"
-            aria-label={`Remove filter ${b.label}`}
-            onClick={b.onRemove}
-            className="flex h-4 w-4 items-center justify-center rounded-full text-fg-subtle hover:bg-surface-3 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </span>
-      ))}
-
-      {activeCount > 0 && (
-        <Button variant="ghost" size="sm" onClick={() => onChange({})}>
-          Clear all
-        </Button>
-      )}
 
       <Modal
         open={open}
@@ -221,12 +203,58 @@ export default function ListFilters({
           </div>
         }
       >
-        <div className="flex flex-col gap-5">
+        {/* Two columns so compact fields (company, value, dates, sort) pair up
+            and the popup stays short; multi-selects span the full width. */}
+        <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           {fields.map((f) => (
-            <FieldControl key={f.key} field={f} draft={draft} setDraft={setDraft} />
+            <div key={f.key} className={f.type === 'multiselect' ? 'sm:col-span-2' : ''}>
+              <FieldControl field={f} draft={draft} setDraft={setDraft} />
+            </div>
           ))}
         </div>
       </Modal>
+    </>
+  );
+}
+
+/**
+ * The active-filter badges row, rendered separately from the trigger so a page
+ * can align the Filters button with its search box and let the badges wrap on
+ * their own line below. Each × removes just that filter; "Clear all" resets.
+ */
+export function FilterBadges({
+  fields,
+  value,
+  onChange,
+}: {
+  fields: FilterField[];
+  value: FilterValues;
+  onChange: (v: FilterValues) => void;
+}) {
+  const badges = fields.flatMap((f) => fieldPieces(f, value, onChange));
+  if (badges.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {badges.map((b, i) => (
+        <span
+          key={`${b.label}-${i}`}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 py-1 pl-3 pr-1.5 text-xs text-fg"
+        >
+          {b.label}
+          <button
+            type="button"
+            aria-label={`Remove filter ${b.label}`}
+            onClick={b.onRemove}
+            className="flex h-4 w-4 items-center justify-center rounded-full text-fg-subtle hover:bg-surface-3 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </span>
+      ))}
+      <Button variant="ghost" size="sm" onClick={() => onChange({})}>
+        Clear all
+      </Button>
     </div>
   );
 }

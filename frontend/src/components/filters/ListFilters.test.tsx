@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ThemeProvider } from '../../ui';
-import ListFilters from './ListFilters';
-import type { FilterField } from './types';
+import ListFilters, { FilterBadges } from './ListFilters';
+import type { FilterField, FilterValues } from './types';
 
 afterEach(cleanup);
 
@@ -25,10 +25,19 @@ const FIELDS: FilterField[] = [
   },
 ];
 
-function renderFilters(value = {}, onChange = vi.fn()) {
+function renderFilters(value: FilterValues = {}, onChange = vi.fn()) {
   render(
     <ThemeProvider>
       <ListFilters fields={FIELDS} value={value} onChange={onChange} />
+    </ThemeProvider>,
+  );
+  return onChange;
+}
+
+function renderBadges(value: FilterValues = {}, onChange = vi.fn()) {
+  render(
+    <ThemeProvider>
+      <FilterBadges fields={FIELDS} value={value} onChange={onChange} />
     </ThemeProvider>,
   );
   return onChange;
@@ -47,7 +56,7 @@ it('applies a chosen filter only on Apply, not while editing', () => {
 });
 
 it('renders an active filter as a badge and removes just that one on ×', () => {
-  const onChange = renderFilters({ status: ['DRAFT', 'SENT'] });
+  const onChange = renderBadges({ status: ['DRAFT', 'SENT'] });
 
   expect(screen.getByText('Status: Draft')).toBeInTheDocument();
   expect(screen.getByText('Status: Sent')).toBeInTheDocument();
@@ -56,10 +65,13 @@ it('renders an active filter as a badge and removes just that one on ×', () => 
   expect(onChange).toHaveBeenCalledWith({ status: ['SENT'] });
 });
 
-it('shows the active-filter count on the button and clears all', () => {
-  const onChange = renderFilters({ status: ['DRAFT'], sort: 'total_desc' });
+it('shows the active-filter count on the trigger button', () => {
+  renderFilters({ status: ['DRAFT'], sort: 'total_desc' });
+  expect(screen.getByRole('button', { name: /filters/i })).toHaveTextContent('2');
+});
 
-  expect(screen.getByRole('button', { name: 'Filters (2)' })).toBeInTheDocument();
+it('clears every filter from the badges row', () => {
+  const onChange = renderBadges({ status: ['DRAFT'], sort: 'total_desc' });
   fireEvent.click(screen.getByRole('button', { name: /clear all/i }));
   expect(onChange).toHaveBeenCalledWith({});
 });
