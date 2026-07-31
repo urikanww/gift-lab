@@ -50,6 +50,15 @@ class QuoteController extends Controller
             // for product_name - without both eager-loaded here, either fires a
             // fresh query per SENT/PROOFING row (N+1 that scales with page size).
             ->when($user->isStaff(), fn ($q) => $q->with(['company', 'proofs.lineItem.product']))
+            // F9: the dashboard "Delivered · unpaid" tile links here with this
+            // filter so staff land on exactly those orders (CLOSED + an invoice
+            // still UNPAID/PARTIAL), mirroring DashboardMetrics::unpaidDelivered.
+            // purchaseOrders is eager-loaded ONLY here so QuoteResource can show
+            // the outstanding balance per row without an N+1 on the normal list.
+            ->when($request->query('filter') === 'delivered_unpaid', fn ($q) => $q
+                ->where('state', 'CLOSED')
+                ->whereHas('purchaseOrders', fn ($w) => $w->whereIn('payment_state', ['UNPAID', 'PARTIAL']))
+                ->with('purchaseOrders'))
             ->when($request->filled('q'), function ($query) use ($request): void {
                 // ?q[]=abc arrives as an array; casting that to string is a TypeError
                 // (a 500 on a public search box), so ignore anything not a string.

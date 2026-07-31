@@ -141,7 +141,7 @@ it('passes the typed term to fetchQuotes', async () => {
   fireEvent.change(searchBox(), { target: { value: 'ABC123' } });
   await tick(300);
 
-  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123');
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123', undefined);
 });
 
 it('debounces typing into one request rather than one per keystroke', async () => {
@@ -161,7 +161,7 @@ it('debounces typing into one request rather than one per keystroke', async () =
   await tick(300);
 
   expect(fetchQuotes).toHaveBeenCalledTimes(1);
-  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123');
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123', undefined);
 });
 
 // The effect keys on the TRIMMED term, so an edit that leaves it identical must
@@ -180,7 +180,7 @@ it('does not re-fetch when an edit leaves the trimmed term unchanged', async () 
   await tick(300);
 
   expect(fetchQuotes).toHaveBeenCalledTimes(1);
-  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC');
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC', undefined);
 });
 
 // A filtered miss must not claim the order history is empty: a buyer with a
@@ -253,7 +253,7 @@ it('carries the active search term when paging to the next page', async () => {
   await tick(300);
   fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123');
+  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123', undefined);
   expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
 });
 
@@ -325,7 +325,7 @@ it('re-applies the search term when the socket reconnects', async () => {
   // Fire the store's own reconnect closure, as lib/echo would on re-connect.
   capturedReconnect!();
 
-  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123');
+  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123', undefined);
   expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
 });
 
@@ -344,4 +344,26 @@ it('identifies orders by reference, never by the sequential id', () => {
   expect(screen.getAllByText(/9BWVKWCDXH/).length).toBeGreaterThan(0);
   // A stray "#42" anywhere means a surface was missed.
   expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
+});
+
+it('F9: opens pre-filtered by delivered_unpaid, threads the filter and shows the banner', async () => {
+  vi.useFakeTimers();
+  const fetchQuotes = vi.fn(async () => {});
+  seedQuotes();
+  useQuoteStore.setState({ fetchQuotes } as any);
+
+  render(
+    <ThemeProvider>
+      <MemoryRouter initialEntries={['/quotes?filter=delivered_unpaid']}>
+        <QuoteListPage />
+      </MemoryRouter>
+    </ThemeProvider>,
+  );
+  await act(async () => {
+    vi.advanceTimersByTime(300);
+  });
+
+  expect(fetchQuotes).toHaveBeenCalledWith(1, undefined, 'delivered_unpaid');
+  expect(screen.getByText(/outstanding balance/i)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /clear filter/i })).toBeInTheDocument();
 });

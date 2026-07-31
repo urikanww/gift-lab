@@ -43,6 +43,72 @@ function isOnPath(state: QuoteState): boolean {
   return TIMELINE.indexOf(state) !== -1;
 }
 
+/**
+ * Buyer-facing progress (F4). The eight internal states collapse to four plain
+ * stages a customer understands; the raw state name + "step N of 8" counter are
+ * staff-only. -1 = off-track (CANCELLED), rendered as a plain note instead.
+ */
+const BUYER_STAGES = ['Quote', 'Proof', 'Production', 'Delivered'] as const;
+
+function buyerStageIndex(state: QuoteState): number {
+  switch (state) {
+    case 'DRAFT':
+    case 'SENT':
+    case 'ACCEPTED':
+    case 'ARTWORK_APPROVED':
+      return 0;
+    case 'PROOFING':
+      return 1;
+    case 'PROOF_APPROVED':
+    case 'CONFIRMED':
+    case 'PROCURING':
+    case 'READY':
+      return 2;
+    case 'CLOSED':
+      return 3;
+    default:
+      return -1;
+  }
+}
+
+function BuyerProgress({ state }: { state: QuoteState }) {
+  const current = buyerStageIndex(state);
+  const complete = state === 'CLOSED';
+  return (
+    <ol className="mt-3 flex items-center gap-2" aria-label="Order progress">
+      {BUYER_STAGES.map((label, i) => {
+        const done = i < current || complete;
+        const active = i === current && !complete;
+        return (
+          <li key={label} className="flex flex-1 items-center gap-2">
+            <span
+              aria-hidden="true"
+              className={
+                'h-2 w-2 shrink-0 rounded-full ' +
+                (done || active ? 'bg-primary' : 'bg-border-strong')
+              }
+            />
+            <span
+              className={
+                'text-xs ' +
+                (active ? 'font-medium text-fg' : done ? 'text-fg-muted' : 'text-fg-subtle')
+              }
+            >
+              {label}
+            </span>
+            {i < BUYER_STAGES.length - 1 && (
+              <span
+                aria-hidden="true"
+                className={'h-px flex-1 ' + (done ? 'bg-primary' : 'bg-border')}
+              />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** The state that honestly follows, or null (off-path, or READY as the last). */
 function nextState(state: QuoteState): QuoteState | null {
   const i = TIMELINE.indexOf(state);
@@ -80,9 +146,16 @@ export default function OrderStatus({
   description,
   trailing,
   children,
+  audience = 'staff',
 }: {
   state: QuoteState;
   history: QuoteHistory;
+  /**
+   * Who's looking. 'staff' gets the full internal glance (next state, step N of
+   * 8, status-history trail); 'buyer' gets the friendly stage progress only -
+   * never the raw state machine or the who/when audit ledger (F4).
+   */
+  audience?: 'staff' | 'buyer';
   /** Optional passive status note (e.g. buyer's "what happens next" copy),
       rendered under the badge row so the glance and the note share one card. */
   note?: string;
@@ -105,6 +178,7 @@ export default function OrderStatus({
   const cancelled = state === 'CANCELLED';
   const complete = state === 'CLOSED';
   const idx = TIMELINE.indexOf(state);
+  const isStaffView = audience === 'staff';
 
   // API order is oldest first; the most recent change is what a reader wants.
   const newestFirst = [...entries].reverse();
@@ -120,39 +194,53 @@ export default function OrderStatus({
           {humanizeState(state)}
         </Badge>
 
-        {next && (
+        {/* Internal glance — staff only. Buyers must never see the raw next
+            state or the "step N of 8" counter (F4); their friendly progress
+            renders below the badge row instead. */}
+        {isStaffView && next && (
           <span className="text-sm text-fg-muted">
             <span aria-hidden="true">→</span> next: {humanizeState(next)}
           </span>
         )}
 
-        {cancelled && <span className="text-sm text-fg-muted">This quote was cancelled.</span>}
+        {cancelled && (
+          <span className="text-sm text-fg-muted">
+            This {isStaffView ? 'quote' : 'order'} was cancelled.
+          </span>
+        )}
 
-        {onPath && (
+        {isStaffView && onPath && (
           <span className="text-xs text-fg-subtle">
             step {idx + 1} of {TIMELINE.length}
           </span>
         )}
 
         {/* CLOSED sits off the path, so it has no slot to count. */}
-        {complete && <span className="text-xs text-fg-subtle">All steps complete</span>}
+        {isStaffView && complete && <span className="text-xs text-fg-subtle">All steps complete</span>}
 
         {/* Right edge: the staff Cancel control (when supplied) sits furthest
             right, with the history toggle beside it. `ml-auto` on the group
-            pushes both to the edge regardless of which are present. */}
-        <div className="ml-auto flex items-center gap-3">
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-controls={listId}
-            onClick={() => setExpanded((v) => !v)}
-            className="rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
-          >
-            {expanded ? 'Hide history' : 'Show history'}
-          </button>
-          {trailing}
-        </div>
+            pushes both to the edge regardless of which are present. The status
+            history is a staff audit ledger (actor names + raw states), so the
+            toggle is staff-only. */}
+        {isStaffView && (
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={listId}
+              onClick={() => setExpanded((v) => !v)}
+              className="rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg"
+            >
+              {expanded ? 'Hide history' : 'Show history'}
+            </button>
+            {trailing}
+          </div>
+        )}
       </div>
+
+      {/* Buyer-facing friendly progress (F4), in place of the internal counter. */}
+      {!isStaffView && !cancelled && <BuyerProgress state={state} />}
 
       {/* Under the badge: the buyer's passive note OR the staff state
           description - never both, as a page passes one or the other. */}
@@ -162,7 +250,7 @@ export default function OrderStatus({
       {/* Staff controls + notification panel, folded into this card. */}
       {children && <div className="mt-4">{children}</div>}
 
-      {expanded && (
+      {isStaffView && expanded && (
         <div
           id={listId}
           role="region"
