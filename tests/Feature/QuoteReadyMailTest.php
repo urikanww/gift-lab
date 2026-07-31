@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\OrderMilestone;
 use App\Mail\OrderMilestoneMail;
 use App\Mail\QuoteReadyMail;
 use App\Models\Company;
@@ -166,4 +167,53 @@ it('sends the batched proofs-ready email, not a milestone, on a revision round',
     Mail::assertQueued(QuoteReadyMail::class, 1);
     Mail::assertQueued(QuoteReadyMail::class, fn (QuoteReadyMail $m): bool => $m->hasProof === true && $m->hasTo($buyer->email));
     Mail::assertNotQueued(OrderMilestoneMail::class);
+});
+
+it('F5: renders no empty "Proof preview" box on a plain (no-proof) quote', function (): void {
+    $quote = Quote::factory()->create();
+    $mail = new QuoteReadyMail($quote, hasProof: false, proofImageUrl: null);
+
+    // The old @else fell through to a dashed placeholder that read as a broken
+    // image on the first customer email; a no-proof quote must show nothing.
+    $mail->assertDontSeeInHtml('Proof preview', false);
+});
+
+it('F5: renders the proof image when a proof exists', function (): void {
+    $quote = Quote::factory()->create();
+    $mail = new QuoteReadyMail($quote, hasProof: true, proofImageUrl: 'https://x/proof.png');
+
+    $mail->assertSeeInHtml('https://x/proof.png', false);
+});
+
+it('F6: pluralizes the item/unit summary correctly', function (): void {
+    $quote = Quote::factory()->create();
+    LineItem::factory()->create(['quote_id' => $quote->id, 'qty' => 1, 'line_state' => 'PENDING']);
+    $mail = new QuoteReadyMail($quote, hasProof: false, proofImageUrl: null);
+
+    $mail->assertSeeInHtml('1 item, 1 unit', false);
+    $mail->assertDontSeeInHtml('item(s)', false);
+    $mail->assertDontSeeInHtml('unit(s)', false);
+});
+
+it('F7: the Accepted email promises a proof only when the order has proof lines', function (): void {
+    $quote = Quote::factory()->create();
+    mailProofLine($quote);
+    $mail = new OrderMilestoneMail($quote, OrderMilestone::Accepted);
+
+    $mail->assertSeeInHtml('artwork proof', false);
+});
+
+it('F7: the Accepted email does not promise a proof on a plain-stock order', function (): void {
+    $quote = Quote::factory()->create();
+    LineItem::factory()->create(['quote_id' => $quote->id, 'customization' => null, 'line_state' => 'PENDING']);
+    $mail = new OrderMilestoneMail($quote, OrderMilestone::Accepted);
+
+    $mail->assertDontSeeInHtml('artwork proof', false);
+    $mail->assertSeeInHtml('ready for production', false);
+});
+
+it('F7: OrderMilestone::Accepted body branches on proof lines', function (): void {
+    expect(OrderMilestone::Accepted->body(true))->toContain('artwork proof')
+        ->and(OrderMilestone::Accepted->body(false))->not->toContain('artwork proof')
+        ->and(OrderMilestone::Accepted->body(false))->toContain('production');
 });

@@ -55,12 +55,20 @@ class OrderMilestoneMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
+        // A plain-stock order (no line needs a proof) skips proofing, so the
+        // Accepted milestone must not promise an artwork proof. Read the lines
+        // directly - the serialized model may reach the worker without the
+        // relation loaded. needsProof() only reads the customization column.
+        $hasProofLines = $this->quote->lineItems()->get()->contains(
+            fn (\App\Models\LineItem $line): bool => $line->needsProof(),
+        );
+
         return new Content(
             view: 'mail.order-milestone',
             with: [
                 'quote' => $this->quote,
                 'heading' => $this->milestone->heading(),
-                'body' => $this->milestone->body(),
+                'body' => $this->milestone->body($hasProofLines),
                 'ctaLabel' => $this->milestone->ctaLabel(),
                 // /orders/{reference}, not /quotes/{id}: the SPA only routes an
                 // order detail by opaque reference.
