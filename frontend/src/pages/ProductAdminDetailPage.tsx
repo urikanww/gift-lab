@@ -437,6 +437,8 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
   const [l, setL] = useState(product.dimensions?.l != null ? String(product.dimensions.l) : '');
   const [w, setW] = useState(product.dimensions?.w != null ? String(product.dimensions.w) : '');
   const [h, setH] = useState(product.dimensions?.h != null ? String(product.dimensions.h) : '');
+  // Staff-entered Shopee affiliate link; powers the order-detail stock-check button.
+  const [affiliateUrl, setAffiliateUrl] = useState(product.affiliate_url ?? '');
   const [weight, setWeight] = useState(product.weight != null ? String(product.weight) : '');
   // MODEL_3D production estimates - the inputs to the dynamic 3D base cost
   // (filament grams × rate + print minutes × rate).
@@ -473,6 +475,8 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
       print_method: printMethod,
       stock_mode: stockMode,
       allow_backorder: allowBackorder,
+      // Blank clears the affiliate link (null); the backend url-validates it.
+      affiliate_url: affiliateUrl.trim() === '' ? null : affiliateUrl.trim(),
     };
     if (weight !== '' && Number(weight) > 0) payload.weight = Number(weight);
     if (l !== '' && w !== '' && h !== '') {
@@ -597,6 +601,22 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
             <Input label="W (mm)" type="number" step="any" min="0" value={w} onChange={(e) => setW(e.target.value)} disabled={saving} />
             <Input label="H (mm)" type="number" step="any" min="0" value={h} onChange={(e) => setH(e.target.value)} disabled={saving} />
           </div>
+        </div>
+
+        <div className="rounded-md border border-border p-3">
+          <Input
+            label="Shopee affiliate link"
+            type="url"
+            placeholder="https://s.shopee.sg/…"
+            value={affiliateUrl}
+            onChange={(e) => setAffiliateUrl(e.target.value)}
+            disabled={saving}
+          />
+          <p className="mt-1 text-xs text-fg-subtle">
+            Staff-only. Shows a &ldquo;Check stock on Shopee&rdquo; button on the order
+            detail page so staff can jump to the listing. Never shown to buyers.
+            Leave blank to hide the button.
+          </p>
         </div>
 
         {isModel3d && (

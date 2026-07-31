@@ -64,6 +64,28 @@ class ProductResource extends JsonResource
             // True when an authored GLB is stored (preferred preview mesh).
             'has_glb' => $this->decor_glb_ref !== null,
             'variants' => VariantResource::collection($this->whenLoaded('variants')),
+            // Staff-only Shopee affiliate deeplink, for the "check stock on
+            // Shopee" button on the order-detail page. Buyer-gated: the supplier
+            // source is internal and hints at our margin, so it must never reach
+            // the storefront.
+            'affiliate_url' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn () => $this->affiliate_url,
+            ),
+            // Staff-only original source listing (MakerWorld/Thingiverse/Cults3D,
+            // or a plain marketplace/local link). The order-detail line action
+            // links here when there is no Shopee affiliate link. Same staff gate.
+            'source_url' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn () => $this->source_url,
+            ),
+            // Staff-only provenance label (marketplace|local|makerworld|
+            // thingiverse|cults3d|manual). Lets the order-detail line action name
+            // the source button ("View on Thingiverse"). Same staff gate.
+            'source_kind' => $this->when(
+                (bool) ($request->user()?->isStaff() ?? false),
+                fn () => $this->source_kind,
+            ),
         ];
     }
 

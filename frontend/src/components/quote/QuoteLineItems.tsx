@@ -3,7 +3,79 @@ import { Badge } from '../../ui';
 import { humanizeState, lineStateTone } from '../../lib/quoteStatus';
 import CustomizationPreview from '../CustomizationPreview';
 import ProductThumb from '../product/ProductThumb';
+import { ShopeeLink } from '../ShopeeLink';
+import { safeHref } from '../../lib/safeHref';
+import { isStaffRole } from '../../lib/roles';
+import { SOURCE_KIND_LABELS, type SourceKind } from '../../lib/sourceKind';
+import { useAuthStore } from '../../stores/authStore';
 import type { LineItem, Quote } from '../../types';
+
+/**
+ * Label for the generic source button. Known repos (MakerWorld/Thingiverse/
+ * Cults3D) read "View on <repo>"; anything else falls back to the link host
+ * ("View on shopee.sg") and finally a plain "View source".
+ */
+function sourceButtonLabel(kind: SourceKind | null | undefined, url: string): string {
+  if (kind && (kind === 'makerworld' || kind === 'thingiverse' || kind === 'cults3d')) {
+    return `View on ${SOURCE_KIND_LABELS[kind]}`;
+  }
+  try {
+    return `View on ${new URL(url).hostname.replace(/^www\./, '')}`;
+  } catch {
+    return 'View source';
+  }
+}
+
+/**
+ * Staff-only per-line source action. Precedence:
+ *   1. Shopee affiliate link → active "Check stock on Shopee" button.
+ *   2. any other source_url  → "View on <source>" link (Thingiverse listing,
+ *                              MakerWorld model page, marketplace listing…).
+ *   3. no source at all      → muted "No source detected" caption.
+ *
+ * Staff-only: the order-detail route is shared with buyers, so the whole
+ * affordance is gated to staff viewers. The source fields (affiliate_url /
+ * source_url / source_kind) are ALSO staff-gated by the API, so buyers never
+ * receive them regardless. safeHref blocks non-http(s) schemes.
+ *
+ * Shopee rel="sponsored nofollow noopener noreferrer" (affiliate convention).
+ * Staff purchase on a buyer account NOT linked to the affiliate account, so
+ * this is navigation only, not self-referral.
+ */
+function LineSourceAction({ product }: { product: LineItem['product'] }) {
+  const role = useAuthStore((s) => s.user?.role);
+  if (!role || !isStaffRole(role)) return null;
+
+  const affiliate = safeHref(product?.affiliate_url);
+  const source = affiliate ? undefined : safeHref(product?.source_url);
+
+  // Block wrapper on its own line so the action sits BELOW the design preview,
+  // not inline beside it (the links are inline-flex).
+  return (
+    <div className="mt-1.5">
+      {affiliate ? (
+        <ShopeeLink
+          href={affiliate}
+          rel="sponsored nofollow noopener noreferrer"
+          className="focus-visible:ring-[#EE4D2D]"
+        >
+          Check stock on Shopee
+        </ShopeeLink>
+      ) : source ? (
+        <a
+          href={source}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-fg transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+        >
+          {sourceButtonLabel(product?.source_kind, source)} ↗
+        </a>
+      ) : (
+        <p className="text-xs italic text-fg-subtle">No source detected</p>
+      )}
+    </div>
+  );
+}
 
 /**
  * The read-only items table and its pricing summary, lifted out of
@@ -81,6 +153,7 @@ export default function QuoteLineItems({ items }: { items: LineItem[] | undefine
                         productName={li.product?.name ?? `Product #${li.product_id}`}
                         productImageUrl={li.product?.image_url}
                       />
+                      <LineSourceAction product={li.product} />
                     </div>
                   </div>
                 </td>
@@ -125,6 +198,7 @@ export default function QuoteLineItems({ items }: { items: LineItem[] | undefine
                     productName={li.product?.name ?? `Product #${li.product_id}`}
                     productImageUrl={li.product?.image_url}
                   />
+                  <LineSourceAction product={li.product} />
                 </div>
               </div>
               <Badge tone={lineStateTone(li.line_state)} size="sm">
