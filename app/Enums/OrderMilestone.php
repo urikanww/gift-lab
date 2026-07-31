@@ -70,11 +70,24 @@ enum OrderMilestone: string
         };
     }
 
-    /** The body copy. Plain, and honest about what the buyer must do next. */
-    public function body(): string
+    /**
+     * The body copy. Plain, and honest about what the buyer must do next.
+     *
+     * $hasProofLines is the one branch that matters: a plain-stock order the
+     * buyer accepts skips proofing entirely (auto-advances to PROOF_APPROVED),
+     * so the Accepted email must NOT promise an artwork proof that will never
+     * come. Defaults true so callers without the context keep the proof wording.
+     */
+    public function body(bool $hasProofLines = true): string
     {
+        if ($this === self::Accepted) {
+            return $hasProofLines
+                ? 'Thanks for accepting your quote. We’re preparing your artwork proof and will send it over shortly.'
+                : 'Thanks for accepting your quote. We’re getting your order ready for production and will keep you posted.';
+        }
+
         return match ($this) {
-            self::Accepted => 'Thanks for accepting your quote. We’re preparing your artwork proof and will send it over shortly.',
+            self::Accepted => '',
             self::ArtworkApproved => 'Thanks for approving the artwork. There’s one step left: please review and accept the pricing to confirm your order.',
             self::ProofIssued => 'A new proof is ready for you to review. Please approve it, or tell us what to change.',
             self::Committed => 'Your order is confirmed and scheduled for production. We’ll let you know when it starts.',

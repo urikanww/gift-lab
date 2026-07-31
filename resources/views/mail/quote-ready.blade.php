@@ -91,7 +91,7 @@
                                         </tr>
                                         <tr>
                                             <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a8a99; border-bottom:1px solid #f0f0f6;">Items</td>
-                                            <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#14141a; border-bottom:1px solid #f0f0f6;">{{ $quote->lineItems->count() }} item(s), {{ $quote->lineItems->sum('qty') }} unit(s)</td>
+                                            <td align="right" style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:14px; color:#14141a; border-bottom:1px solid #f0f0f6;">{{ $quote->lineItems->count() }} {{ \Illuminate\Support\Str::plural('item', $quote->lineItems->count()) }}, {{ $quote->lineItems->sum('qty') }} {{ \Illuminate\Support\Str::plural('unit', (int) $quote->lineItems->sum('qty')) }}</td>
                                         </tr>
                                         <tr>
                                             <td style="padding:14px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; color:#8a8a99; border-bottom:1px solid #f0f0f6;">Needed by</td>
@@ -105,6 +105,11 @@
                                 </td>
                             </tr>
 
+                            {{-- Proof preview only when the round actually has a proof. A plain
+                                 (no-proof) quote used to fall through to an empty dashed "Proof
+                                 preview" box that read as a broken image on the first email (F5);
+                                 now the whole block is absent unless there's something to show. --}}
+                            @if(!empty($proofItems) || ($hasProof && $proofImageUrl))
                             <tr>
                                 <td class="gl-px" style="padding:28px 48px 8px 48px;" align="center">
                                     @if(!empty($proofItems))
@@ -117,6 +122,8 @@
                                                         @if($item['thumbnail_url'])
                                                             <img src="{{ $item['thumbnail_url'] }}" alt="{{ $item['product_name'] }} proof" class="gl-proof-img" width="504" style="display:block; margin:0 auto; width:100%; max-width:504px; height:auto; border:1px solid #e6e6ef; border-radius:10px;">
                                                         @else
+                                                            {{-- A staged proof whose thumbnail hasn't generated yet: the
+                                                                 proof exists, so a placeholder here is honest (unlike F5). --}}
                                                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px dashed #cfcfdd; border-radius:10px;">
                                                                 <tr>
                                                                     <td align="center" style="padding:36px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; letter-spacing:1px; color:#8a8a99; text-transform:uppercase;">
@@ -129,19 +136,12 @@
                                                 </tr>
                                             @endforeach
                                         </table>
-                                    @elseif($hasProof && $proofImageUrl)
-                                        <img src="{{ $proofImageUrl }}" alt="Proof preview" class="gl-proof-img" width="504" style="display:block; width:100%; max-width:504px; height:auto; border:1px solid #e6e6ef; border-radius:10px;">
                                     @else
-                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px dashed #cfcfdd; border-radius:10px;">
-                                            <tr>
-                                                <td align="center" style="padding:36px 0; font-family:Helvetica,Arial,sans-serif; font-size:13px; letter-spacing:1px; color:#8a8a99; text-transform:uppercase;">
-                                                    Proof preview
-                                                </td>
-                                            </tr>
-                                        </table>
+                                        <img src="{{ $proofImageUrl }}" alt="Proof preview" class="gl-proof-img" width="504" style="display:block; width:100%; max-width:504px; height:auto; border:1px solid #e6e6ef; border-radius:10px;">
                                     @endif
                                 </td>
                             </tr>
+                            @endif
 
                             <tr>
                                 <td class="gl-px" align="center" style="padding:32px 48px 44px 48px;">
