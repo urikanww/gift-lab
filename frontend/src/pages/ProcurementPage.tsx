@@ -4,6 +4,12 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useProcurementStore } from '../stores/procurementStore';
 import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
+import ListFilters, { FilterBadges } from '../components/filters/ListFilters';
+import type { FilterValues } from '../components/filters/types';
+import {
+  procurementFilterFields,
+  procurementFiltersToParams,
+} from '../lib/procurementListFilters';
 
 /** Raw enum -> human label. Distinct from the generic quoteStatus humanizer -
  * "qty_short" needs to read "Quantity short", not "Qty short". */
@@ -60,13 +66,33 @@ export default function ProcurementPage() {
   const { toast } = useToast();
   const animate = useReducedMotionSafe();
 
+  // Staff-list search + filters. Applying a filter (or the debounced search)
+  // refetches; typing inside the popup does not. `q` is folded into the same
+  // params object the store forwards to the index.
+  const [filters, setFilters] = useState<FilterValues>({});
+  const [term, setTerm] = useState('');
+  const params = procurementFiltersToParams(filters);
+  const activeTerm = term.trim();
+  const fetchParams = activeTerm ? { ...params, q: activeTerm } : params;
+  const paramsKey = JSON.stringify(fetchParams);
+  const filtersActive = activeTerm !== '' || Object.keys(params).length > 0;
+
+  // Subscribe once for the lifetime of the page - keeping this out of the fetch
+  // effect below means changing a filter doesn't churn the Reverb subscription.
   useEffect(() => {
-    // Fetch AND subscribe. The subscription alone only ever showed lines that
-    // broke while this page happened to be open.
-    void fetchAlerts();
     subscribe(); // live awaiting-reconfirm alerts via Reverb
     return () => unsubscribe();
-  }, [fetchAlerts, subscribe, unsubscribe]);
+  }, [subscribe, unsubscribe]);
+
+  // Fetch on mount and whenever the applied search/filters change. The
+  // subscription alone only ever showed lines that broke while this page
+  // happened to be open. Debounced so typing in the search box coalesces to one
+  // request; `fetchParams` is read from the closure - paramsKey is what changed.
+  useEffect(() => {
+    const id = setTimeout(() => void fetchAlerts(fetchParams), 300);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey, fetchAlerts]);
 
   const setAmendField = (id: number, field: 'qty' | 'unit_price', value: number) =>
     setAmend((s) => {
@@ -135,6 +161,26 @@ export default function ProcurementPage() {
         </p>
       </Motion>
 
+      {/* Search + filters. The Filters button sits on the same row as the search
+          box (bottom-aligned past its label); active filters wrap onto their own
+          line below as removable badges. Both stay on screen through empty/loading
+          states so a zero-result filter can still be cleared. */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-sm">
+            <Input
+              type="search"
+              label="Search lines"
+              placeholder="Search by order reference or product name"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+          <ListFilters fields={procurementFilterFields()} value={filters} onChange={setFilters} />
+        </div>
+        <FilterBadges fields={procurementFilterFields()} value={filters} onChange={setFilters} />
+      </div>
+
       {error && (
         <p className="rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger" role="alert">
           {error}
@@ -175,12 +221,32 @@ export default function ProcurementPage() {
           flash the whole desk away. */}
       {loading && alerts.length === 0 && <AlertsSkeleton />}
 
-      {/* Empty - only once we know it's actually empty (not loading, no error). */}
+      {/* Empty - only once we know it's actually empty (not loading, no error).
+          A search/filter that matches nothing is NOT an empty desk, so a filtered
+          miss gets its own copy and a way back out. */}
       {!loading && !error && alerts.length === 0 && (
-        <EmptyState
-          title="No lines awaiting reconfirmation."
-          description="Quantity shortfalls and price jumps from stock re-checks appear here in real time."
-        />
+        filtersActive ? (
+          <EmptyState
+            title="No lines match those filters"
+            description="Nothing matches the current search and filters. Adjust or clear them to see more."
+            action={
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setTerm('');
+                  setFilters({});
+                }}
+              >
+                Clear search &amp; filters
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="No lines awaiting reconfirmation."
+            description="Quantity shortfalls and price jumps from stock re-checks appear here in real time."
+          />
+        )
       )}
 
       {alerts.length > 0 && (

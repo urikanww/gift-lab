@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import api, { apiError, ensureCsrf } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
-import { Badge, Button, Card, useToast } from '../ui';
+import { Badge, Button, Card, Input, useToast } from '../ui';
 import { Motion, fadeInUp } from '../motion';
+import ListFilters, { FilterBadges } from '../components/filters/ListFilters';
+import type { FilterValues } from '../components/filters/types';
+import { buyListFilterFields, buyListFiltersToParams } from '../lib/buyListFilters';
 import type { AdminReorder } from '../types';
 
 interface ReorderMeta {
@@ -30,11 +33,29 @@ export default function ReorderBuyListPage() {
   const [error, setError] = useState<string | null>(null);
   const [receiving, setReceiving] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  // Staff-list filters + free-text search, mirroring QuoteListPage. The popup's
+  // values map to API params; the search box folds in as `q`. Applying a filter
+  // (or typing) resets back to page 1 via the paramsKey effect below, and the
+  // same params are threaded into "Load more" so pagination stays filtered.
+  const [filters, setFilters] = useState<FilterValues>({});
+  const [term, setTerm] = useState('');
+  const activeTerm = term.trim();
+  const params: Record<string, string> = {
+    ...buyListFiltersToParams(filters),
+    ...(activeTerm ? { q: activeTerm } : {}),
+  };
+  const paramsKey = JSON.stringify(params);
+  const hasActiveFilters = Object.keys(params).length > 0;
+
+  // Page 1 with the current params. Kept stable (no params dep) so the effect
+  // below controls when it runs — it reads params from the closure via paramsKey.
+  const load = useCallback(async (requestParams: Record<string, string>) => {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.get<{ data: AdminReorder[]; meta: ReorderMeta }>('/admin/supplier-reorders');
+      const { data } = await api.get<{ data: AdminReorder[]; meta: ReorderMeta }>('/admin/supplier-reorders', {
+        params: requestParams,
+      });
       setReorders(data.data);
       setMeta(data.meta);
     } catch (err) {
@@ -49,7 +70,7 @@ export default function ReorderBuyListPage() {
     setLoadingMore(true);
     try {
       const { data } = await api.get<{ data: AdminReorder[]; meta: ReorderMeta }>('/admin/supplier-reorders', {
-        params: { page: meta.current_page + 1 },
+        params: { ...params, page: meta.current_page + 1 },
       });
       setReorders((prev) => [...(prev ?? []), ...data.data]);
       setMeta(data.meta);
@@ -60,9 +81,14 @@ export default function ReorderBuyListPage() {
     }
   };
 
+  // Debounced so typing coalesces to one request; re-runs when applied filters
+  // change too (paramsKey), always resetting to page 1. `params` is read from the
+  // closure — paramsKey is the value that actually changed.
   useEffect(() => {
-    void load();
-  }, [load]);
+    const id = setTimeout(() => void load(params), 300);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey, load]);
 
   const receive = async (r: AdminReorder) => {
     if (receiving !== null) return;
@@ -71,7 +97,7 @@ export default function ReorderBuyListPage() {
       await ensureCsrf();
       await api.post(`/admin/supplier-reorders/${r.id}/receive`);
       toast({ title: 'Marked received', description: r.item, tone: 'success' });
-      await load();
+      await load(params);
     } catch (err) {
       toast({ title: 'Could not receive', description: apiError(err), tone: 'danger' });
     } finally {
@@ -92,12 +118,31 @@ export default function ReorderBuyListPage() {
         </p>
       </Motion>
 
+      {/* Search + filters. The Filters button sits on the same row as the search
+          box (bottom-aligned to the input); active filters wrap onto their own
+          line below as removable badges. */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-sm">
+            <Input
+              type="search"
+              label="Search buy-list"
+              placeholder="Search by SKU or product name"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+          <ListFilters fields={buyListFilterFields()} value={filters} onChange={setFilters} />
+        </div>
+        <FilterBadges fields={buyListFilterFields()} value={filters} onChange={setFilters} />
+      </div>
+
       <AsyncBoundary
         loading={loading}
         error={error}
         isEmpty={(reorders ?? []).length === 0}
-        emptyTitle="Nothing to reorder."
-        onRetry={load}
+        emptyTitle={hasActiveFilters ? 'No reorders match those filters.' : 'Nothing to reorder.'}
+        onRetry={() => void load(params)}
       >
         <ul className="flex list-none flex-col gap-3 p-0">
           {(reorders ?? []).map((r) => (

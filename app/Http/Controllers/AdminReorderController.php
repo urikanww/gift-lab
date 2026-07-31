@@ -36,11 +36,60 @@ class AdminReorderController extends Controller
     {
         abort_unless($request->user()->isStaff(), 403);
 
-        $paginator = SupplierReorder::query()
+        $query = SupplierReorder::query()
             ->with(['variant.product', 'filament'])
-            ->where('state', '!=', ReorderState::Received->value)
-            ->latest()
-            ->paginate(max(1, min((int) $request->integer('per_page', 20), 100)));
+            // Free text: the reorder SKU, or the related product's name. Wildcards
+            // escaped so a stray % or _ narrows literally (matches QuoteController).
+            ->when($request->filled('q'), function ($q) use ($request): void {
+                $raw = $request->input('q');
+                if (! is_string($raw)) {
+                    return;
+                }
+                $term = trim($raw);
+                if ($term === '') {
+                    return;
+                }
+                $like = '%'.addcslashes($term, '%_\\').'%';
+                $q->where(function ($w) use ($like): void {
+                    $w->where('sku', 'like', $like)
+                        ->orWhereHas('variant.product', fn ($p) => $p->where('name', 'like', $like));
+                });
+            })
+            // Kind: a variant-backed blank vs a filament spool.
+            ->when($request->query('kind') === 'variant', fn ($q) => $q->whereNotNull('variant_id'))
+            ->when($request->query('kind') === 'filament', fn ($q) => $q->whereNotNull('filament_id'))
+            // State: an explicit allowlist overrides the default open-only view (so
+            // RECEIVED becomes selectable). Unknown values are dropped; if nothing
+            // valid remains, fall back to the default != RECEIVED constraint rather
+            // than silently widening to every state.
+            ->when($request->filled('state'), function ($q) use ($request): void {
+                $states = array_values(array_intersect(
+                    array_map('strtoupper', array_filter(explode(',', (string) $request->query('state')))),
+                    array_map(fn (ReorderState $s): string => $s->value, ReorderState::cases()),
+                ));
+                if ($states === []) {
+                    $q->where('state', '!=', ReorderState::Received->value);
+
+                    return;
+                }
+                $q->whereIn('state', $states);
+            }, fn ($q) => $q->where('state', '!=', ReorderState::Received->value))
+            // Negative on-hand only: the backorder deficit driving a reorder. Only
+            // variant-backed rows carry an on-hand count, so filament rows drop out.
+            ->when($request->query('negative_only') === '1', fn ($q) => $q->whereHas(
+                'variant',
+                fn ($w) => $w->where('stock_on_hand', '<', 0),
+            ))
+            ->when($request->filled('created_from'), fn ($q) => $q->whereDate('created_at', '>=', (string) $request->query('created_from')))
+            ->when($request->filled('created_to'), fn ($q) => $q->whereDate('created_at', '<=', (string) $request->query('created_to')));
+
+        // Sort — a small allowlist, default newest-first (created desc).
+        $query = match ((string) $request->query('sort', 'newest')) {
+            'oldest' => $query->oldest(),
+            default => $query->latest(),
+        };
+
+        $paginator = $query->paginate(max(1, min((int) $request->integer('per_page', 20), 100)));
 
         return response()->json([
             'data' => collect($paginator->items())->map(fn (SupplierReorder $r): array => $this->serialize($r)),

@@ -40,6 +40,16 @@ class AdminUserController extends Controller
         $role = (string) $request->query('role', '');
         $companyId = $request->query('company', '');
         $q = trim((string) $request->query('q', ''));
+        $createdFrom = (string) $request->query('created_from', '');
+        $createdTo = (string) $request->query('created_to', '');
+
+        // Whitelisted sorts. Default stays alphabetical by name (A→Z).
+        [$sortColumn, $sortDir] = match ((string) $request->query('sort', 'name_asc')) {
+            'name_desc' => ['name', 'desc'],
+            'created_desc' => ['created_at', 'desc'],
+            'created_asc' => ['created_at', 'asc'],
+            default => ['name', 'asc'],
+        };
 
         $paginator = User::query()
             ->when($status === 'deactivated', fn ($qr) => $qr->onlyTrashed())
@@ -49,13 +59,15 @@ class AdminUserController extends Controller
                 fn ($qr) => $qr->where('role', $role),
             )
             ->when($companyId !== '', fn ($qr) => $qr->where('company_id', $companyId))
+            ->when($createdFrom !== '', fn ($qr) => $qr->whereDate('created_at', '>=', $createdFrom))
+            ->when($createdTo !== '', fn ($qr) => $qr->whereDate('created_at', '<=', $createdTo))
             ->when($q !== '', fn ($qr) => $qr->where(function ($w) use ($q): void {
                 $like = '%'.mb_strtolower($q).'%';
                 $w->whereRaw('LOWER(name) LIKE ?', [$like])
                     ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
             }))
             ->with('company:id,name')
-            ->orderBy('name')
+            ->orderBy($sortColumn, $sortDir)
             ->paginate($perPage);
 
         return response()->json([
