@@ -137,6 +137,30 @@ it('auto-stages the buyer designer art as a DRAFT proof for eligible lines only'
     expect(Proof::where('line_item_id', $stock->id)->exists())->toBeFalse();
 });
 
+it('auto-stages the buyer designer art on acceptance, server-side (#3)', function (): void {
+    // The trigger moved off the client (a page-load useEffect) onto the accept
+    // choke point: the moment the buyer agrees the price, their own designer art
+    // is staged as a DRAFT proof, so staff open the proofing desk to it already
+    // there rather than relying on the browser to POST /proofs/auto-stage.
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'SENT']);
+    $designer = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/buyer.png'],
+        'line_state' => 'PENDING',
+    ]);
+
+    $this->actingAs($this->buyer);
+    app(App\Services\QuoteService::class)->accept($quote);
+
+    // Proof-needing order stays in ACCEPTED (awaiting proof sign-off), not the
+    // plain-stock auto-advance, and the buyer's art is a DRAFT proof ready to send.
+    expect($quote->fresh()->state->value)->toBe('ACCEPTED');
+    $draft = Proof::where('line_item_id', $designer->id)->first();
+    expect($draft)->not->toBeNull()
+        ->and($draft->state->value)->toBe('DRAFT')
+        ->and($draft->artwork_version_ref)->toBe('artwork/buyer.png');
+});
+
 it('auto-stage is idempotent and never clobbers an existing proof', function (): void {
     Sanctum::actingAs($this->staff);
     $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);

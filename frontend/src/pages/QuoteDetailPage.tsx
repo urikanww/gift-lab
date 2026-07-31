@@ -108,7 +108,6 @@ export default function QuoteDetailPage() {
     procure,
     stageProof,
     unstageProof,
-    autoStageProofs,
     sendProofs,
     setApprovalOrder,
     decideProof,
@@ -203,40 +202,9 @@ export default function QuoteDetailPage() {
     if (reference) void fetchQuote(reference);
   }, [reference, fetchQuote, clearActionError]);
 
-  // Auto-stage the buyer's own designer art as DRAFT proofs the first time staff
-  // open an order that has eligible un-staged lines, so the proof panel greets
-  // them with drafts to review + send rather than blank rows to hand-pick from.
-  // Fires once per order id (guarded), and only when there is real work to do -
-  // the backend call is idempotent, but we avoid even the round trip otherwise.
-  const autoStagedRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const q = current;
-    if (!q || !isStaff || autoStagedRef.current.has(q.id)) return;
-
-    const linedProofs = new Set((q.proofs ?? []).map((p) => p.line_item_id));
-    const hasEligible = (q.line_items ?? []).some((li) => {
-      if (li.line_state === 'DROPPED') return false;
-      const c = li.customization;
-      if (!c || c.mode === 'buyer_uploaded' || !c.artwork_ref) return false;
-      const needs =
-        li.needs_proof !== undefined
-          ? li.needs_proof
-          : Boolean(c.mode || c.artwork_ref || (c.reference_refs && c.reference_refs.length > 0));
-      return needs && !linedProofs.has(li.id);
-    });
-    if (!hasEligible) return;
-
-    autoStagedRef.current.add(q.id);
-    void autoStageProofs(q.id).then((staged) => {
-      if (staged > 0) {
-        toast({
-          title: `Staged ${staged} buyer design${staged === 1 ? '' : 's'} as draft proofs`,
-          description: 'Review each, then send to the buyer.',
-          tone: 'success',
-        });
-      }
-    });
-  }, [current, isStaff, autoStageProofs, toast]);
+  // The buyer's own designer art is auto-staged as DRAFT proofs server-side the
+  // moment they accept the quote (QuoteService::accept, #3), so staff open the
+  // proofing desk to those drafts already there — no client trigger needed.
 
   const run = async (fn: () => Promise<void>, successMsg?: string) => {
     setBusy(true);

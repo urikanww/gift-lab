@@ -818,12 +818,23 @@ final class QuoteService
                     : QuoteState::Accepted,
             );
 
-            // A plain-stock order (nothing to proof) has no proofing step: the
-            // price is its only approval, so it is ready to invoice. Advance
-            // ACCEPTED -> PROOF_APPROVED directly rather than stranding it in
-            // ACCEPTED, whose only other forward exit needs a staged proof.
-            if ($quote->state === QuoteState::Accepted && ! $this->hasProofNeedingLines($quote)) {
-                $quote->transitionTo(QuoteState::ProofApproved);
+            if ($quote->state === QuoteState::Accepted) {
+                if ($this->hasProofNeedingLines($quote)) {
+                    // The buyer's own designer artwork becomes a DRAFT proof the
+                    // moment they accept, so staff open the proofing desk to that
+                    // artwork already staged for review instead of re-creating it
+                    // (#3). Idempotent and server-side — replaces the old
+                    // client-side trigger that fired on every page load. Staff
+                    // still review (and can remove) the draft before sending.
+                    $this->autoStageDesignerProofs($quote);
+                } else {
+                    // A plain-stock order (nothing to proof) has no proofing step:
+                    // the price is its only approval, so it is ready to invoice.
+                    // Advance ACCEPTED -> PROOF_APPROVED directly rather than
+                    // stranding it in ACCEPTED, whose only other forward exit
+                    // needs a staged proof.
+                    $quote->transitionTo(QuoteState::ProofApproved);
+                }
             }
 
             DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
