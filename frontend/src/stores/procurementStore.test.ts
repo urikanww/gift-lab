@@ -59,7 +59,7 @@ it('loads the lines awaiting a decision', async () => {
   await useProcurementStore.getState().fetchAlerts();
 
   const alerts = useProcurementStore.getState().alerts;
-  expect(get).toHaveBeenCalledWith('/procurement/awaiting-reconfirm');
+  expect(get).toHaveBeenCalledWith('/procurement/awaiting-reconfirm', { params: undefined });
   expect(alerts).toHaveLength(1);
   expect(alerts[0]).toMatchObject({
     line_item_id: 5,

@@ -13,6 +13,9 @@ import { fetchArtworkPreviewUrl } from '../lib/uploadArtwork';
 import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
 import type { JobLineItem, JobState, ModelPart, ProductionJob, ShippingAddressInput } from '../types';
 import type { PrintZone } from '../lib/printZone';
+import ListFilters, { FilterBadges } from '../components/filters/ListFilters';
+import type { FilterValues } from '../components/filters/types';
+import { productionFilterFields, matchesProductionFilters } from '../lib/productionFilters';
 
 // The board is split into four surfaces. Make queue is the print floor;
 // Ship desk is the courier hand-off; the last two are self-fetching panels.
@@ -103,6 +106,10 @@ export default function ProductionQueuePage() {
   const needsAttentionCount = useQueueStore((s) => s.needsAttention.length);
   const { toast } = useToast();
   const [tab, setTab] = useState<ProdTab>('make');
+  // Client-side board filters (track / print method / ready date). Applied to
+  // the loaded jobs BEFORE the tab split, so every tab and its count reflects
+  // the active filters. No refetch - the popup narrows what's already in memory.
+  const [filters, setFilters] = useState<FilterValues>({});
   const [pendingId, setPendingId] = useState<number | null>(null);
   // Single-flight guard across all print-file downloads on the page. Keyed per
   // link (`pf:<jobId>:<ref>` for one file, `zip:<jobId>` for the bundle) so only
@@ -275,10 +282,14 @@ export default function ProductionQueuePage() {
   // SHIPPED job lingers in `jobs` until it closes (the realtime reducer keeps
   // it), so filter it off the Make board too - it has no floor action there and
   // already lives on the In-transit tab.
+  // Narrow the loaded jobs by the active board filters FIRST, so the Make queue
+  // and Ship desk (and their emptiness) both reflect them. Empty filters pass
+  // everything through unchanged.
+  const filteredJobs = jobs.filter((j) => matchesProductionFilters(j, filters));
   const boardJobs =
     tab === 'ship'
-      ? uniqueByShipment(jobs.filter((j) => j.state === 'IN_PRODUCTION'))
-      : jobs.filter((j) => j.state === 'READY' || j.state === 'IN_PRODUCTION');
+      ? uniqueByShipment(filteredJobs.filter((j) => j.state === 'IN_PRODUCTION'))
+      : filteredJobs.filter((j) => j.state === 'READY' || j.state === 'IN_PRODUCTION');
 
   return (
     <section className="flex flex-col gap-6">
@@ -322,6 +333,25 @@ export default function ProductionQueuePage() {
           </button>
         ))}
       </div>
+
+      {/* Board filters (client-side): narrow the loaded jobs by track / print
+          method / ready date. Applied before the tab split, so the Make queue and
+          Ship desk both reflect them. The button sits on its own row (aligned to
+          the bottom like the Quotes list); active filters wrap onto a badge line
+          below. Kept off the transit/attention tabs, which are self-fetching
+          panels with their own lists. */}
+      {(tab === 'make' || tab === 'ship') && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <ListFilters
+              fields={productionFilterFields()}
+              value={filters}
+              onChange={setFilters}
+            />
+          </div>
+          <FilterBadges fields={productionFilterFields()} value={filters} onChange={setFilters} />
+        </div>
+      )}
 
       {/* Scan-to-advance: hardware wedge scanner (Enter) or rear camera. Only on
           the Make queue - the floor advances jobs; the Ship desk does not. */}

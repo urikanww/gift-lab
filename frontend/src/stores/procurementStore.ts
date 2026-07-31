@@ -69,8 +69,12 @@ interface ProcurementStoreState {
    * The desk used to have no data source at all - only the live broadcast - so
    * a blocked line was visible solely to whoever had the page open at the
    * moment it broke. Everyone else saw "nothing to do" while orders sat stuck.
+   *
+   * `params` carries the staff-list search/filters (q, updated_from/to, sort);
+   * forwarded straight to the index. The live subscription never refetches, so
+   * there is nothing to persist - the page owns the current filter state.
    */
-  fetchAlerts: () => Promise<void>;
+  fetchAlerts: (params?: Record<string, string>) => Promise<void>;
   subscribe: () => void;
   unsubscribe: () => void;
   reconfirm: (
@@ -86,11 +90,12 @@ export const useProcurementStore = create<ProcurementStoreState>((set, get) => (
   loading: false,
   error: null,
 
-  fetchAlerts: async () => {
+  fetchAlerts: async (params) => {
     set({ loading: true, error: null });
     try {
       const { data } = await api.get<{ data: AwaitingReconfirmLine[] }>(
         '/procurement/awaiting-reconfirm',
+        { params },
       );
       // The broadcast payload and the row shape differ; map once here so the
       // page renders one type whichever way a line arrived.

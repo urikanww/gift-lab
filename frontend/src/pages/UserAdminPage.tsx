@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { apiError } from '../lib/api';
 import { AsyncBoundary } from '../components/ui/States';
 import { Button, Card, Input, LinkButton, Select } from '../ui';
+import ListFilters, { FilterBadges } from '../components/filters/ListFilters';
+import type { FilterValues } from '../components/filters/types';
+import { userFilterFields, userFiltersToParams } from '../lib/userListFilters';
 import { Motion, fadeInUp } from '../motion';
 import type { AdminCompany, AdminUser } from '../types';
 import { ActiveBadge, RoleBadge } from './adminUserBadges';
@@ -33,11 +36,13 @@ export default function UserAdminPage() {
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(15);
-  const [status, setStatus] = useState<'active' | 'deactivated' | 'all'>('active');
-  const [role, setRole] = useState('');
-  const [company, setCompany] = useState('');
+  const [filters, setFilters] = useState<FilterValues>({});
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
+
+  const fields = useMemo(() => userFilterFields(companies), [companies]);
+  const params = useMemo(() => userFiltersToParams(filters), [filters]);
+  const paramsKey = JSON.stringify(params);
 
   // Debounce the free-text search so typing doesn't fire a request per keystroke.
   useEffect(() => {
@@ -49,7 +54,7 @@ export default function UserAdminPage() {
   // fewer pages).
   useEffect(() => {
     setPage(1);
-  }, [status, role, company, debouncedQ, perPage]);
+  }, [paramsKey, debouncedQ, perPage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,10 +79,8 @@ export default function UserAdminPage() {
         params: {
           page,
           per_page: perPage,
-          status,
-          role: role || undefined,
-          company: company || undefined,
           q: debouncedQ || undefined,
+          ...params,
         },
       });
       setUsers(data.data);
@@ -87,7 +90,9 @@ export default function UserAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, perPage, status, role, company, debouncedQ]);
+    // paramsKey stands in for the (stable-keyed) params object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, perPage, debouncedQ, paramsKey]);
 
   useEffect(() => {
     void load();
@@ -110,37 +115,23 @@ export default function UserAdminPage() {
 
       {/* Controls */}
       <Card padding="lg" className="flex flex-col gap-4">
-        <Input
-          label="Search"
-          placeholder="Search by name or email…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="">All roles</option>
-            <option value="buyer">Buyer</option>
-            <option value="staff_admin">Staff admin</option>
-            <option value="superadmin">Superadmin</option>
-          </Select>
-          <Select label="Company" value={company} onChange={(e) => setCompany(e.target.value)}>
-            <option value="">All companies</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[16rem] flex-1">
+            <Input
+              type="search"
+              label="Search"
+              placeholder="Search by name or email…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <ListFilters fields={fields} value={filters} onChange={setFilters} />
           <Select
-            label="Status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as 'active' | 'deactivated' | 'all')}
+            label="Per page"
+            className="w-28"
+            value={String(perPage)}
+            onChange={(e) => setPerPage(Number(e.target.value))}
           >
-            <option value="active">Active</option>
-            <option value="deactivated">Deactivated</option>
-            <option value="all">All</option>
-          </Select>
-          <Select label="Per page" value={String(perPage)} onChange={(e) => setPerPage(Number(e.target.value))}>
             {PER_PAGE_OPTIONS.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -148,6 +139,7 @@ export default function UserAdminPage() {
             ))}
           </Select>
         </div>
+        <FilterBadges fields={fields} value={filters} onChange={setFilters} />
       </Card>
 
       <AsyncBoundary
