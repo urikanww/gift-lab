@@ -55,7 +55,8 @@ export type LineItemState =
   | 'AWAITING_RECONFIRM'
   | 'AMENDED'
   | 'DROPPED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'DELIVERED';
 
 /**
  * Model-space print zone: where + how big the decoration surface is (mm).

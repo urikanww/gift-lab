@@ -20,6 +20,9 @@ enum LineItemState: string
     case Amended = 'AMENDED';
     case Dropped = 'DROPPED';
     case Cancelled = 'CANCELLED';
+    // Set when the order closes (all jobs delivered): a READY line advances to
+    // DELIVERED so a completed order no longer shows a "Ready" line (LT15).
+    case Delivered = 'DELIVERED';
 
     /**
      * @return array<int, self>
@@ -34,7 +37,8 @@ enum LineItemState: string
             self::Received => [self::Ready],
             self::AwaitingReconfirm => [self::Amended, self::Purchased, self::Dropped, self::Cancelled],
             self::Amended => [self::Procuring],
-            self::Ready, self::Dropped, self::Cancelled => [],
+            self::Ready => [self::Delivered],
+            self::Delivered, self::Dropped, self::Cancelled => [],
         };
     }
 
@@ -48,6 +52,6 @@ enum LineItemState: string
      */
     public function isResolvedForQueue(): bool
     {
-        return $this === self::Ready || $this === self::Dropped;
+        return $this === self::Ready || $this === self::Dropped || $this === self::Delivered;
     }
 }
