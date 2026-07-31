@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
@@ -27,6 +27,12 @@ export default function QuoteListPage() {
   const shouldAnimate = useReducedMotionSafe();
   const staff = isStaffRole(useAuthStore((s) => s.user?.role));
 
+  // F9: the dashboard "Delivered · unpaid" tile links here with ?filter=… so the
+  // list opens pre-scoped to those orders instead of dumping the whole pipeline.
+  const [searchParams] = useSearchParams();
+  const filter = searchParams.get('filter') ?? undefined;
+  const deliveredUnpaid = filter === 'delivered_unpaid';
+
   const [term, setTerm] = useState('');
 
   // Every fetch here sends this - the debounced search below, and equally the
@@ -48,9 +54,9 @@ export default function QuoteListPage() {
   // on page 2 of filtered results back to page 1 for a keystroke that changed
   // nothing.
   useEffect(() => {
-    const id = setTimeout(() => void fetchQuotes(1, activeTerm), 300);
+    const id = setTimeout(() => void fetchQuotes(1, activeTerm, filter), 300);
     return () => clearTimeout(id);
-  }, [activeTerm, fetchQuotes]);
+  }, [activeTerm, filter, fetchQuotes]);
 
   return (
     <section aria-labelledby="quotes-heading">
@@ -78,6 +84,17 @@ export default function QuoteListPage() {
             : 'Track your gift orders from request through production.'}
         </p>
       </Motion>
+
+      {deliveredUnpaid && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning-bg px-3 py-2">
+          <span className="text-sm text-fg">
+            Showing <span className="font-medium">delivered orders with an outstanding balance</span>.
+          </span>
+          <Link to="/quotes" className="text-sm font-medium text-primary hover:underline">
+            Clear filter
+          </Link>
+        </div>
+      )}
 
       {/* Outside the loading/empty branches below: a search that matches nothing
           must keep its own box on screen so the user can clear or amend the term. */}
@@ -110,7 +127,7 @@ export default function QuoteListPage() {
       {loading ? (
         <QuoteListSkeleton />
       ) : error ? (
-        <ErrorState message={error} onRetry={() => fetchQuotes(page, activeTerm)} />
+        <ErrorState message={error} onRetry={() => fetchQuotes(page, activeTerm, filter)} />
       ) : quotes.length === 0 ? (
         // A search that matches nothing is NOT an empty order history. Telling a
         // buyer with twelve orders that theirs is empty is both false and
@@ -202,7 +219,7 @@ export default function QuoteListPage() {
                 variant="outline"
                 size="sm"
                 disabled={loading || page <= 1}
-                onClick={() => void fetchQuotes(page - 1, activeTerm)}
+                onClick={() => void fetchQuotes(page - 1, activeTerm, filter)}
               >
                 Previous
               </Button>
@@ -213,7 +230,7 @@ export default function QuoteListPage() {
                 variant="outline"
                 size="sm"
                 disabled={loading || page >= lastPage}
-                onClick={() => void fetchQuotes(page + 1, activeTerm)}
+                onClick={() => void fetchQuotes(page + 1, activeTerm, filter)}
               >
                 Next
               </Button>
@@ -263,6 +280,13 @@ function QuoteRow({
       </td>
       <td className="px-5 py-4 text-right tabular-nums text-fg">
         {quote.currency} {quote.total}
+        {/* Only present on the delivered-unpaid filter (which eager-loads the
+            invoice); a red owed line makes the actionable amount scannable. */}
+        {quote.invoice && quote.invoice.balance_owed > 0 && (
+          <span className="block text-xs font-medium text-danger">
+            {quote.currency} {quote.invoice.balance_owed.toFixed(2)} owed
+          </span>
+        )}
       </td>
       <td className="px-5 py-4 text-fg-muted">{formatDate(quote.created_at)}</td>
     </motion.tr>
@@ -297,6 +321,11 @@ function QuoteCard({ quote, showCompany }: { quote: Quote; showCompany: boolean 
         <p className="mt-3 font-medium tabular-nums text-fg">
           {quote.currency} {quote.total}
         </p>
+        {quote.invoice && quote.invoice.balance_owed > 0 && (
+          <p className="mt-0.5 text-xs font-medium text-danger">
+            {quote.currency} {quote.invoice.balance_owed.toFixed(2)} owed
+          </p>
+        )}
       </Card>
     </Motion>
   );

@@ -174,3 +174,49 @@ it('exposes a per-line items_preview on the quotes list', function (): void {
         ->assertJsonPath('data.0.items_preview.0.image_url', 'http://img.test/mug.jpg')
         ->assertJsonPath('data.0.items_preview.0.qty', 12);
 });
+
+it('F9: ?filter=delivered_unpaid returns only closed orders with an outstanding invoice', function (): void {
+    $staff = User::factory()->staffAdmin()->create();
+
+    // Delivered (CLOSED) + UNPAID -> included, with the balance exposed.
+    $unpaid = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'UNPAIDAAAA']);
+    App\Models\Invoice::create(['quote_id' => $unpaid->id, 'po_ref' => 'PO-U', 'payment_state' => 'UNPAID',
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    // Delivered + PARTIAL -> included.
+    $partial = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'PARTIALBBB']);
+    App\Models\Invoice::create(['quote_id' => $partial->id, 'po_ref' => 'PO-P', 'payment_state' => 'PARTIAL', 'amount_paid' => 100,
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    // Delivered + PAID -> excluded.
+    $paid = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'PAIDCCCCCC']);
+    App\Models\Invoice::create(['quote_id' => $paid->id, 'po_ref' => 'PO-K', 'payment_state' => 'PAID', 'amount_paid' => 500,
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    // Unpaid but NOT delivered -> excluded.
+    $inFlight = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CONFIRMED', 'reference' => 'INFLIGHTDD']);
+    App\Models\Invoice::create(['quote_id' => $inFlight->id, 'po_ref' => 'PO-F', 'payment_state' => 'UNPAID',
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    Sanctum::actingAs($staff);
+    $refs = collect(
+        $this->getJson('/api/quotes?filter=delivered_unpaid')->assertOk()->json('data')
+    )->pluck('reference')->all();
+
+    expect($refs)->toContain('UNPAIDAAAA', 'PARTIALBBB')
+        ->not->toContain('PAIDCCCCCC')
+        ->not->toContain('INFLIGHTDD');
+});
+
+it('F9: the delivered_unpaid list exposes the outstanding balance per row', function (): void {
+    $staff = User::factory()->staffAdmin()->create();
+    $q = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'BALANCEEEE']);
+    App\Models\Invoice::create(['quote_id' => $q->id, 'po_ref' => 'PO-B', 'payment_state' => 'PARTIAL', 'amount_paid' => 100,
+        'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+
+    Sanctum::actingAs($staff);
+    $this->getJson('/api/quotes?filter=delivered_unpaid')
+        ->assertOk()
+        ->assertJsonPath('data.0.reference', 'BALANCEEEE')
+        ->assertJsonPath('data.0.invoice.balance_owed', 400);
+});

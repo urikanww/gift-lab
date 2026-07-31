@@ -95,9 +95,11 @@ interface QuoteStoreState {
    * while their term sat in the input.
    */
   searchTerm: string | undefined;
+  /** Active list filter (e.g. 'delivered_unpaid'), carried through reconnect refetches. */
+  listFilter: string | undefined;
 
   /** `term` filters by partial reference or exact id; omitted means no filter. */
-  fetchQuotes: (page?: number, term?: string) => Promise<void>;
+  fetchQuotes: (page?: number, term?: string, filter?: string) => Promise<void>;
   fetchSummary: () => Promise<void>;
   /** Accepts an opaque order reference (buyer URLs) or a numeric id. */
   fetchQuote: (idOrRef: string | number) => Promise<void>;
@@ -193,17 +195,23 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   subscribedCompany: null,
   summary: null,
   searchTerm: undefined,
+  listFilter: undefined,
 
   clearActionError: () => set({ actionError: null }),
 
-  fetchQuotes: async (page = 1, term) => {
+  fetchQuotes: async (page = 1, term, filter) => {
     const seq = ++fetchQuotesSeq;
-    set({ loading: true, error: null, searchTerm: term });
+    set({ loading: true, error: null, searchTerm: term, listFilter: filter });
     try {
       // Omitted rather than sent empty: the API treats a blank q as no filter,
-      // but keeping it out of the query string keeps the URL honest.
+      // but keeping it out of the query string keeps the URL honest. `filter`
+      // (e.g. 'delivered_unpaid') is threaded through the same way.
       const { data } = await api.get<Paginated<Quote>>('/quotes', {
-        params: term ? { page, q: term } : { page },
+        params: {
+          page,
+          ...(term ? { q: term } : {}),
+          ...(filter ? { filter } : {}),
+        },
       });
       if (seq !== fetchQuotesSeq) return;
       set({
@@ -527,7 +535,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       // Carry the active search through the reconnect refetch, or a socket drop
       // silently resets the user's filtered list to every order while their term
       // sits in the box.
-      void get().fetchQuotes(get().page, get().searchTerm);
+      void get().fetchQuotes(get().page, get().searchTerm, get().listFilter);
       const current = get().current;
       if (current) void get().fetchQuote(current.id);
     });

@@ -1484,6 +1484,7 @@ export default function QuoteDetailPage() {
           <OrderStatus
             state={quote.state}
             history={history}
+            audience={isStaff ? 'staff' : 'buyer'}
             note={
               !isStaff && !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs))
                 ? BUYER_STATUS_NOTE[quote.state]

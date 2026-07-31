@@ -45,7 +45,7 @@ export default function DashboardPage() {
         <StatTile label="At-risk / overdue jobs" value={data.production.overdue} to="/production-queue" />
         {/* LT14: delivered orders whose invoice is still outstanding - a
             completed-yet-unpaid order used to have no flag and nothing to chase. */}
-        <StatTile label="Delivered · unpaid" value={data.queues.unpaidDelivered} to="/quotes" />
+        <StatTile label="Delivered · unpaid" value={data.queues.unpaidDelivered} to="/quotes?filter=delivered_unpaid" />
       </section>
 
       {data.valueBooked && (

@@ -924,18 +924,14 @@ it('refreshes the status history when the buyer accepts and the order moves', as
   ]);
 
   seedQuote('SENT');
-  // Stand in for the store's accept(): it POSTs, then fetchQuote() writes the
-  // new state onto `current`. That write is the thing this page re-renders on.
-  useQuoteStore.setState({
-    accept: async () => {
-      useQuoteStore.setState((s) => ({ current: { ...s.current!, state: 'ACCEPTED' } }) as any);
-    },
-  } as any);
-  asBuyer();
+  // The status-history ledger is a staff view (actor names + raw states); a
+  // buyer never sees it (F4). The refresh is driven by the state change landing
+  // on `current` - here via a fetchQuote()-style write - not by who triggered it.
+  asStaff();
   renderPage();
   await openStatusHistory();
 
-  // Positive control: the pre-accept history is genuinely on the page.
+  // Positive control: the pre-move history is genuinely on the page.
   expect(await within(statusRegion()).findByText('Sent')).toBeInTheDocument();
   expect(within(statusRegion()).queryByText('Accepted')).not.toBeInTheDocument();
   expect(fetchQuoteHistory).toHaveBeenCalledTimes(1);
@@ -945,7 +941,9 @@ it('refreshes the status history when the buyer accepts and the order moves', as
     { from: 'SENT', to: 'ACCEPTED', changed_at: '2026-07-21T10:00:00+00:00', actor_name: 'Ada' },
   ]);
 
-  await userEvent.click(screen.getByRole('button', { name: /accept quote/i }));
+  await act(async () => {
+    useQuoteStore.setState((s) => ({ current: { ...s.current!, state: 'ACCEPTED' } }) as any);
+  });
 
   // The record now agrees with the badge: newest entry is Accepted. (Disclosure
   // stays open across the re-render.)
@@ -963,7 +961,7 @@ it('refreshes the status history when a broadcast moves the order underneath it'
   ]);
 
   seedQuote('SENT');
-  asBuyer();
+  asStaff();
   renderPage();
   await openStatusHistory();
 

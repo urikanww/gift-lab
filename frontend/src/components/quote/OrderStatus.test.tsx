@@ -10,6 +10,10 @@ function renderStatus(state: QuoteState, history = empty) {
   return render(<OrderStatus state={state} history={history} />);
 }
 
+function renderBuyerStatus(state: QuoteState, history = empty) {
+  return render(<OrderStatus state={state} history={history} audience="buyer" />);
+}
+
 function region() {
   return screen.getByRole('region', { name: 'Status history' });
 }
@@ -44,6 +48,35 @@ it('makes no position claim for an off-path state', () => {
   expect(screen.getByText('Changes requested')).toBeInTheDocument();
   expect(screen.queryByText(/step \d+ of \d+/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/next:/i)).not.toBeInTheDocument();
+});
+
+// F4: a buyer must never see the internal state machine — no "step N of 8",
+// no "next: <raw state>", no status-history audit ledger. They get a friendly
+// four-stage progress instead.
+it('hides the internal counter, next-state and history from a buyer', () => {
+  renderBuyerStatus('PROOFING');
+
+  expect(screen.queryByText(/step \d+ of \d+/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/next:/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /show history/i })).not.toBeInTheDocument();
+});
+
+it('shows a buyer four-stage progress with the current stage active', () => {
+  renderBuyerStatus('PROOFING');
+
+  const progress = screen.getByRole('list', { name: /order progress/i });
+  expect(within(progress).getByText('Quote')).toBeInTheDocument();
+  expect(within(progress).getByText('Proof')).toBeInTheDocument();
+  expect(within(progress).getByText('Production')).toBeInTheDocument();
+  expect(within(progress).getByText('Delivered')).toBeInTheDocument();
+});
+
+it('shows the staff internal glance unchanged (default audience)', () => {
+  renderStatus('PROOFING');
+
+  expect(screen.getByText('step 4 of 8')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /show history/i })).toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: /order progress/i })).not.toBeInTheDocument();
 });
 
 it('keeps the status ledger collapsed until opened', () => {
