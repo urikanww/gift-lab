@@ -211,4 +211,29 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 
 **Reviewed, left by design (no code change):** L5, L8, L9, L17 (see notes above/in the register).
 
-**Still parked (post-production):** UX P3–P8 (shipped separately). Deployment/config items (secrets, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage) are out of code scope — see the go-live checklist.
+**Batch 7 — 2026-07-31 (walkthrough F-findings + parked UX + tail).** Shipped as PRs #17–#20, each with tests; `tsc` + backend suites green.
+
+- **PR #17 — transactional email correctness:**
+  - **F7** — the "Accepted" milestone email promised "your artwork proof" even on a plain-stock order that skips proofing; `OrderMilestone::body()` now takes a proof-lines flag and says "getting your order ready for production" when there's nothing to proof.
+  - **F5** — a plain (no-proof) quote-ready email fell through to an empty dashed "Proof preview" box; the proof block is now gated on a proof actually existing.
+  - **F6** — "1 item(s), 50 unit(s)" → proper `Str::plural`.
+- **PR #18 — buyer progress + delivered-unpaid:**
+  - **F4** — the buyer order page leaked the internal state machine ("step N of 8", raw next-state, the who/when audit ledger); `OrderStatus` gains an `audience` prop and buyers now see a friendly four-stage progress (Quote → Proof → Production → Delivered) only. *(Subsumes the buyer half of L1.)*
+  - **F9** — the dashboard "Delivered · unpaid" tile now links to `/quotes?filter=delivered_unpaid`; the index supports the filter (CLOSED + invoice UNPAID/PARTIAL) and shows the balance owed per row.
+- **PR #19 — cosmetic copy tail:**
+  - **F1** — register validation errors now render inline per field (422 field bag) instead of one lumped Laravel-default banner.
+  - **F2** — the PDP volume tier reads "1 pc" (singular) for a qty-of-one tier.
+  - **F3** — the cart estimate now itemises the personalisation/setup fee on its own line (as the order page does); `PricingService::quoteTotals` returns `customization_fee`.
+- **PR #20 — delivered line state + UX tail:**
+  - **LT15** — a delivered order no longer shows "Ready" line items: new terminal `LineItemState::DELIVERED` (migration extends the enum); `QueueService` advances a closed order's READY lines to DELIVERED.
+  - **P4** — the buyer "Next step" action card is now `lg:sticky`, staying in view while scrolling the order detail.
+  - **P5** — the production board's per-job facts (Track/Qty/Ready/Status) now align in a fixed grid so the board scans like a table (kept card-based so the rich per-job controls survive; not a semantic `<table>`).
+  - **M18** — `OrderMilestone::ProofIssued` documented as a notification-preference key only (the proof email is the richer `QuoteReadyMail`); its unused generic copy no longer reads as a live-but-diverging mailable.
+
+Already verified done before this batch (no new code): **F8** (Commit PO field required), **F10** (returned-parcel resolution UI), and parked **P1/P2/P3/P6/P7/P8** (orderability gate, buyer next-step card, buyer table view, NinjaVan confirm modal, tracker names×qty, reorder-rail thumbnails).
+
+**Owner-deferred (decision recorded, intentionally NOT built):** **M1** (pay-now B2C/B2B gating — kept as one global switch, default OFF; per-company flag not built), and a **high-value/high-risk manual-review payment hold** (never specced into code).
+
+**Reviewed, left by design (no code change):** L5, L8, L9, L17 (see notes above/in the register).
+
+**Still parked (deployment/config, out of code scope):** secrets rotation, queue worker + scheduler + Reverb, multi-worker web server, real courier/mail/storage, host/CORS/session domains, seeded-password change — see the go-live checklist.

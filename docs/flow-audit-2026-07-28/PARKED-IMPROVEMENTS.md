@@ -1,5 +1,7 @@
 # Parked Improvements — revisit AFTER the demo walkthrough
 
+> **Resolved 2026-07-31:** the parked UX items are now shipped on `master` — **P1** (orderability gate), **P2** (buyer next-step card), **P3** (buyer table view), **P4** (sticky buyer action card, PR #20), **P5** (production board aligned column scan, PR #20), **P6** (NinjaVan confirm modal), **P7** (tracker names×qty), **P8** (reorder-rail thumbnails). See `FINDINGS.md` → Fix log Batch 7. *(P5 aligns columns card-based, not a semantic `<table>`; P4 pins the buyer card — staff actions were already top-anchored.)*
+
 **Status:** ⏸️ Parked by owner. MVP frozen until production. Do NOT implement yet. This is the running list of owner-approved directions + real issues to act on once all workflow demos are done.
 
 ---

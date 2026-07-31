@@ -1,5 +1,7 @@
 # Gift-Lab — Full Walkthrough Feedback Log
 
+> **Resolved 2026-07-31:** all F-findings below are fixed on `master` — **F5/F6/F7** (PR #17), **F4/F9** (PR #18), **F1/F2/F3** (PR #19); **F8** and **F10** were already fixed earlier. See `FINDINGS.md` → Fix log Batch 7 for detail.
+
 Run date: 2026-07-29 · Live Chrome preview · Sandbox third-parties (NinjaVan sandbox, Stripe test) · Real SMTP (admin@nexgen.com.sg)
 
 **Accounts (pinned §1b):**
