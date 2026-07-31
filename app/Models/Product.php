@@ -56,6 +56,7 @@ class Product extends Model
         'source_kind',
         'source_links',
         'source_product_id',
+        'affiliate_url',
         'stock_estimate',
         'is_printable',
         'model3d_id',

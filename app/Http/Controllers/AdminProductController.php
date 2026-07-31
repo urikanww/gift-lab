@@ -73,6 +73,11 @@ class AdminProductController extends Controller
         'allow_backorder' => ['nullable', 'boolean'],
         'category' => ['nullable', 'string', 'max:100'],
         'image_url' => ['nullable', 'url', 'max:2048'],
+        // Staff-entered Shopee affiliate deeplink for the order-detail
+        // stock-check button. Nullable so it can be cleared; url-validated so a
+        // stray value can't be stored. Separate from the plain procurement
+        // source_url (never conflate the two - self-referral rule).
+        'affiliate_url' => ['nullable', 'url', 'max:2048'],
         'is_printable' => ['nullable', 'boolean'],
         'publish_state' => ['nullable', 'string', 'in:PENDING,PUBLISHED'],
     ];
@@ -1024,6 +1029,9 @@ class AdminProductController extends Controller
             // (API-pulled Thingiverse items keep the id on the Model3D row).
             'source_url' => $this->resolveSourceUrl($product),
             'source_product_id' => $product->source_product_id,
+            // Staff-entered Shopee affiliate deeplink; drives the order-detail
+            // stock-check button. Stored verbatim (not derived like source_url).
+            'affiliate_url' => $product->affiliate_url,
             'is_printable' => (bool) $product->is_printable,
             'publish_state' => $product->publish_state->value,
             // Whether the product can actually be ordered as-is: a CORE blank

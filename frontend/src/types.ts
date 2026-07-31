@@ -267,6 +267,23 @@ export interface Product {
   /** True when an authored GLB is stored (preferred preview mesh). */
   has_glb?: boolean;
   variants?: Variant[];
+  /**
+   * Staff-only Shopee affiliate deeplink. Drives the "check stock on Shopee"
+   * button on the staff order-detail page. The API only serves this to staff,
+   * so it is absent for buyers — never render it on buyer-facing surfaces.
+   */
+  affiliate_url?: string | null;
+  /**
+   * Staff-only original source listing (MakerWorld/Thingiverse/Cults3D, or a
+   * plain marketplace/local link). The order-detail line action links here when
+   * there is no affiliate link. Staff-gated by the API; absent for buyers.
+   */
+  source_url?: string | null;
+  /**
+   * Staff-only provenance label for `source_url`; names the source button.
+   * Staff-gated by the API; absent for buyers.
+   */
+  source_kind?: import('./lib/sourceKind').SourceKind | null;
 }
 
 export interface Customization {
@@ -679,6 +696,8 @@ export interface AdminProduct {
   source_url?: string | null;
   /** Source's own id for the listing; null for CORE/manual products. */
   source_product_id?: string | null;
+  /** Staff-entered Shopee affiliate deeplink; drives the order-detail stock-check button. */
+  affiliate_url?: string | null;
   /**
    * Individual printable parts of a multi-part figure (e.g. Groot: head, body,
    * arms, legs). Empty for single-mesh products - the primary model covers them.

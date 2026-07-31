@@ -1264,12 +1264,12 @@ it('still offers a staff_admin the editor on a draft', () => {
   expect(screen.getByRole('button', { name: /edit items/i })).toBeInTheDocument();
 });
 
-// Bug: "Drop item" always fired onDrop, which just opens the line editor -
-// but the editor only renders when `canEditLines` is true (a plain
-// staff_admin past DRAFT can't reach it). The button was therefore a silent
-// no-op for that staff member on a sent/proofing order. Product decision:
-// hide the control rather than newly permit the drop.
-it('hides the Drop item control from a plain staff_admin past DRAFT, where it would be a no-op', () => {
+// "Drop item" just opens the line editor, which only renders when
+// `canEditLines` is true (a plain staff_admin past DRAFT can't reach it).
+// Product decision: keep the control visible but DISABLED with a reason, so
+// staff know it exists and why it's unavailable, rather than a silent no-op or
+// a vanished button.
+it('disables the Drop item control (with a reason) for a plain staff_admin past DRAFT', () => {
   asStaff();
   seedQuote('PROOFING');
   useQuoteStore.setState({
@@ -1277,29 +1277,48 @@ it('hides the Drop item control from a plain staff_admin past DRAFT, where it wo
   } as any);
   renderPage();
 
-  expect(screen.queryByRole('button', { name: /drop item/i })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /drop item/i })).toBeDisabled();
+  expect(screen.getByText(/only be changed while the order is a draft/i)).toBeInTheDocument();
 });
 
-it('offers the Drop item control on a DRAFT quote, where a plain staff_admin can edit lines', () => {
+it('offers an enabled Drop item control on a multi-line DRAFT quote (plain staff_admin can edit lines)', () => {
   asStaff();
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [customisedLine(), customisedLine({ id: 2 })],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.getAllByRole('button', { name: /drop item/i })[0]).toBeEnabled();
+});
+
+it('offers an enabled Drop item control to a superadmin past DRAFT on a multi-line order', () => {
+  asSuperadmin();
+  seedQuote('PROOFING');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [customisedLine(), customisedLine({ id: 2 })],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.getAllByRole('button', { name: /drop item/i })[0]).toBeEnabled();
+});
+
+it('disables the Drop item control (with a reason) when only one line remains', () => {
+  asSuperadmin();
   seedQuote('DRAFT');
   useQuoteStore.setState({
     current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
   } as any);
   renderPage();
 
-  expect(screen.getByRole('button', { name: /drop item/i })).toBeInTheDocument();
-});
-
-it('offers the Drop item control to a superadmin past DRAFT (the editor override)', () => {
-  asSuperadmin();
-  seedQuote('PROOFING');
-  useQuoteStore.setState({
-    current: { ...useQuoteStore.getState().current!, line_items: [customisedLine()] },
-  } as any);
-  renderPage();
-
-  expect(screen.getByRole('button', { name: /drop item/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /drop item/i })).toBeDisabled();
+  expect(screen.getByText(/must keep at least one item/i)).toBeInTheDocument();
 });
 
 // Bug: the DRAFT-send helper told staff the buyer could "accept it or request

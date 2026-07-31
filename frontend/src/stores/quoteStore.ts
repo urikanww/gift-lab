@@ -127,6 +127,12 @@ interface QuoteStoreState {
    * Per-line: proofs are prepared line by line, then sent together.
    */
   stageProof: (quoteId: number, lineId: number, artworkRef: string) => Promise<void>;
+  /**
+   * Auto-stage the buyer's own designer artwork as DRAFT proofs for every
+   * eligible line with none yet (staff review, then send). Idempotent; returns
+   * the number newly staged so a caller can skip a refetch when nothing changed.
+   */
+  autoStageProofs: (quoteId: number) => Promise<number>;
   /** Flip every DRAFT proof on the order to SENT in one buyer email (staff). */
   sendProofs: (quoteId: number) => Promise<void>;
   /** Approve every SENT proof on the order. Resolves true on success. */
@@ -333,6 +339,22 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await get().fetchQuote(quoteId);
     } catch (err) {
       set({ actionError: apiError(err) });
+    }
+  },
+
+  autoStageProofs: async (quoteId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ staged: number }>(`/quotes/${quoteId}/proofs/auto-stage`);
+      const staged = data?.staged ?? 0;
+      // Only refetch when something actually changed - avoids a needless round
+      // trip (and re-render) on the common re-entry where all lines are staged.
+      if (staged > 0) await get().fetchQuote(quoteId);
+      return staged;
+    } catch (err) {
+      set({ actionError: apiError(err) });
+      return 0;
     }
   },
 

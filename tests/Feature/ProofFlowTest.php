@@ -101,3 +101,69 @@ it('lets a buyer request changes without approving', function (): void {
 
     expect($quote->fresh()->state->value)->toBe('PROOFING');
 });
+
+it('auto-stages the buyer designer art as a DRAFT proof for eligible lines only', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT']);
+
+    // Eligible: designer line with the buyer's own artwork_ref, no proof yet.
+    $designer = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/buyer.png'],
+        'line_state' => 'PENDING',
+    ]);
+    // Not eligible: buyer_uploaded is a brief staff must draw, never auto-staged.
+    $uploaded = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'buyer_uploaded', 'reference_refs' => ['ref/a.png']],
+        'line_state' => 'PENDING',
+    ]);
+    // Not eligible: plain stock line takes no proof at all.
+    $stock = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => null,
+        'line_state' => 'PENDING',
+    ]);
+
+    $this->postJson("/api/quotes/{$quote->id}/proofs/auto-stage")
+        ->assertOk()
+        ->assertJsonPath('staged', 1);
+
+    $draft = Proof::where('line_item_id', $designer->id)->first();
+    expect($draft)->not->toBeNull()
+        ->and($draft->state->value)->toBe('DRAFT')
+        ->and($draft->artwork_version_ref)->toBe('artwork/buyer.png');
+    expect(Proof::where('line_item_id', $uploaded->id)->exists())->toBeFalse();
+    expect(Proof::where('line_item_id', $stock->id)->exists())->toBeFalse();
+});
+
+it('auto-stage is idempotent and never clobbers an existing proof', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/buyer.png'],
+        'line_state' => 'PENDING',
+    ]);
+    // A proof already sent to the buyer must be left untouched.
+    $sent = Proof::factory()->create([
+        'quote_id' => $quote->id,
+        'line_item_id' => $line->id,
+        'state' => 'SENT',
+        'artwork_version_ref' => 'proofs/v1.pdf',
+    ]);
+
+    $this->postJson("/api/quotes/{$quote->id}/proofs/auto-stage")
+        ->assertOk()
+        ->assertJsonPath('staged', 0);
+
+    expect(Proof::where('line_item_id', $line->id)->count())->toBe(1)
+        ->and($sent->fresh()->state->value)->toBe('SENT');
+});
+
+it('blocks a buyer from auto-staging proofs', function (): void {
+    Sanctum::actingAs($this->buyer);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT']);
+
+    $this->postJson("/api/quotes/{$quote->id}/proofs/auto-stage")->assertForbidden();
+});

@@ -922,6 +922,43 @@ final class QuoteService
     }
 
     /**
+     * Auto-stage the buyer's own designer artwork as a DRAFT proof for every
+     * eligible line that has none yet. A buyer-authored in-app design is already
+     * the thing to sign off, so staff shouldn't have to hand-pick it - they just
+     * review the staged draft and send. Eligible = needs a proof, is NOT a
+     * buyer-uploaded brief (staff must draw those), carries an artwork_ref, and
+     * has no proof at all yet (never clobbers a sent/approved/in-changes proof).
+     * Idempotent: re-running stages nothing once every eligible line has a proof.
+     *
+     * @return int  Number of lines newly staged.
+     */
+    public function autoStageDesignerProofs(Quote $quote): int
+    {
+        $staged = 0;
+
+        foreach ($quote->lineItems()->get() as $line) {
+            $c = $line->customization ?? [];
+            if (! is_array($c) || ($c['mode'] ?? null) === 'buyer_uploaded') {
+                continue;
+            }
+            $ref = $c['artwork_ref'] ?? null;
+            if (empty($ref) || ! $line->needsProof()) {
+                continue;
+            }
+            // Any existing proof (draft or further along) means staff/buyer have
+            // already engaged with this line - leave it untouched.
+            if ($line->proofs()->exists()) {
+                continue;
+            }
+
+            $this->stageProof($quote, $line, (string) $ref);
+            $staged++;
+        }
+
+        return $staged;
+    }
+
+    /**
      * Send the current round: flip every staged DRAFT proof to SENT, move the
      * order into PROOFING, and email the buyer ONCE with the round's items.
      */

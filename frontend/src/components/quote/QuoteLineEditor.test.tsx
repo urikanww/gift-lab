@@ -164,14 +164,19 @@ it('shows a rejected unit price against the field and keeps the edits', async ()
   expect(screen.getAllByLabelText('Unit price')[0]).toHaveValue(1);
 });
 
-it('refuses to save when every line has been removed', async () => {
+it('blocks removing the last remaining line so an order always keeps one item', async () => {
   renderEditor();
   const user = userEvent.setup();
 
-  for (const button of screen.getAllByRole('button', { name: 'Remove' })) {
-    await user.click(button);
-  }
+  // Two lines: remove the first, leaving one.
+  await user.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
 
+  // The sole surviving line's Remove is now disabled - the last item can't go.
+  const remaining = screen.getAllByRole('button', { name: 'Remove' });
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0]).toBeDisabled();
+
+  // And a removal alone (no remark) still can't be saved.
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
 });
 

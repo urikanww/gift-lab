@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
@@ -98,6 +98,7 @@ export default function QuoteDetailPage() {
     accept,
     procure,
     stageProof,
+    autoStageProofs,
     sendProofs,
     setApprovalOrder,
     decideProof,
@@ -131,6 +132,17 @@ export default function QuoteDetailPage() {
   // server actually stored, rather than leaving the form's optimistic figures
   // on screen.
   const [editingLines, setEditingLines] = useState(false);
+  // Items-card header, so "Drop item" (in the status card up top) can open the
+  // line editor AND bring it into view - otherwise the editor unfolds far below
+  // the click and looks like nothing happened.
+  const linesSectionRef = useRef<HTMLDivElement>(null);
+  const openLineEditor = () => {
+    setEditingLines(true);
+    // Scroll after the editor has mounted (next frame), not this render.
+    requestAnimationFrame(() =>
+      linesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  };
 
   // Staff-only amendment-log dialog, opened from the "History" button
   // beside "Edit items" in the Items card header.
@@ -180,6 +192,41 @@ export default function QuoteDetailPage() {
     clearActionError();
     if (reference) void fetchQuote(reference);
   }, [reference, fetchQuote, clearActionError]);
+
+  // Auto-stage the buyer's own designer art as DRAFT proofs the first time staff
+  // open an order that has eligible un-staged lines, so the proof panel greets
+  // them with drafts to review + send rather than blank rows to hand-pick from.
+  // Fires once per order id (guarded), and only when there is real work to do -
+  // the backend call is idempotent, but we avoid even the round trip otherwise.
+  const autoStagedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const q = current;
+    if (!q || !isStaff || autoStagedRef.current.has(q.id)) return;
+
+    const linedProofs = new Set((q.proofs ?? []).map((p) => p.line_item_id));
+    const hasEligible = (q.line_items ?? []).some((li) => {
+      if (li.line_state === 'DROPPED') return false;
+      const c = li.customization;
+      if (!c || c.mode === 'buyer_uploaded' || !c.artwork_ref) return false;
+      const needs =
+        li.needs_proof !== undefined
+          ? li.needs_proof
+          : Boolean(c.mode || c.artwork_ref || (c.reference_refs && c.reference_refs.length > 0));
+      return needs && !linedProofs.has(li.id);
+    });
+    if (!hasEligible) return;
+
+    autoStagedRef.current.add(q.id);
+    void autoStageProofs(q.id).then((staged) => {
+      if (staged > 0) {
+        toast({
+          title: `Staged ${staged} buyer design${staged === 1 ? '' : 's'} as draft proofs`,
+          description: 'Review each, then send to the buyer.',
+          tone: 'success',
+        });
+      }
+    });
+  }, [current, isStaff, autoStageProofs, toast]);
 
   const run = async (fn: () => Promise<void>, successMsg?: string) => {
     setBusy(true);
@@ -608,6 +655,17 @@ export default function QuoteDetailPage() {
   // adds the one Send button (all DRAFT->SENT in a single buyer email) plus an
   // unsent-DRAFT warning - shown in the proofing states, not on a plain DRAFT
   // quote where the buyer has not even accepted yet.
+  // Reason the Drop control is disabled, or undefined when droppable. Two gates:
+  // the editor must be reachable (`canEditLines`), and an order must keep at
+  // least one line - so the sole remaining line can't be dropped (the server
+  // rejects it anyway; disabling here makes that obvious up front).
+  const isOnlyLine = (quote.line_items?.length ?? 0) <= 1;
+  const dropDisabledReason = !canEditLines
+    ? 'Items can only be changed while the order is a draft.'
+    : isOnlyLine
+      ? 'An order must keep at least one item — the only line can’t be dropped.'
+      : undefined;
+
   const perLineProofPanel = (showSend: boolean) => (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-fg-muted">
@@ -626,11 +684,11 @@ export default function QuoteDetailPage() {
             busy={busy}
             onStage={(ref) => void run(() => stageProof(quote.id, line.id, ref), 'Proof staged')}
             onPickExisting={() => setPickerLineId(line.id)}
-            // Dropping a line only works while the line editor is reachable
-            // (`canEditLines`) - past that (e.g. a plain staff_admin once the
-            // order has been sent) the control used to be a silent no-op, so
-            // it is hidden rather than newly permitted.
-            onDrop={canEditLines ? () => setEditingLines(true) : undefined}
+            // Dropping opens the line editor (and scrolls to it). Shown always so
+            // staff know the control exists, but disabled with a reason when the
+            // editor isn't reachable or the line is the last one (see above).
+            onDrop={openLineEditor}
+            dropDisabledReason={dropDisabledReason}
           />
         ))}
       </div>
@@ -1326,7 +1384,10 @@ export default function QuoteDetailPage() {
         {/* Line items */}
         <Motion variants={staggerItem}>
           <Card padding="none" className="overflow-hidden">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div
+              ref={linesSectionRef}
+              className="flex items-center justify-between gap-3 border-b border-border px-5 py-4"
+            >
               <h2 className="font-display text-xl text-fg">Items</h2>
               <div className="flex items-center gap-2">
                 {/* Staff-only edit trail for DRAFT amendments, opened as a

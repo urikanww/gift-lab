@@ -286,6 +286,11 @@ export default function QuoteLineEditor({
                 <Button
                   variant="ghost"
                   size="sm"
+                  // An order must keep at least one line - block removing the last
+                  // remaining one (the server rejects it too). Add another line
+                  // first to swap the last item out.
+                  disabled={live.length === 1}
+                  title={live.length === 1 ? 'An order must keep at least one item.' : undefined}
                   onClick={() =>
                     row.lineId === undefined
                       ? setRows((rs) => rs.filter((r) => r.key !== row.key))
@@ -430,10 +435,17 @@ export default function QuoteLineEditor({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
-        {dirty && live.length > 0 && !remarkValid && (
-          <span className="mr-auto text-xs text-fg-subtle">
-            Add a remark of more than 10 characters to save.
+        {live.length === 0 ? (
+          <span className="mr-auto text-xs text-danger">
+            An order must keep at least one item — restore or add a line to save.
           </span>
+        ) : (
+          dirty &&
+          !remarkValid && (
+            <span className="mr-auto text-xs text-fg-subtle">
+              Add a remark of more than 10 characters to save.
+            </span>
+          )
         )}
         <Button variant="ghost" onClick={onCancel} disabled={saving}>
           Cancel
