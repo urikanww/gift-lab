@@ -26,12 +26,16 @@ interface LineProofRowProps {
   /** Open the existing-artwork picker for this line. */
   onPickExisting: () => void;
   /**
-   * Drop this line (existing cancel-line flow). Undefined when the caller
-   * cannot currently act on a drop (e.g. the line editor isn't reachable for
-   * this staff member/order state) - the control is hidden rather than
-   * rendered as a dead click.
+   * Drop this line: opens the line editor. Undefined hides the control
+   * entirely (non-staff contexts). When present but `dropDisabledReason` is
+   * set, the button renders disabled with that reason as a caption.
    */
   onDrop?: () => void;
+  /**
+   * When set, the Drop button is disabled and this text is shown beneath it as
+   * the reason (e.g. the line editor isn't reachable in the current state).
+   */
+  dropDisabledReason?: string;
 }
 
 /** Badge label + tone for a line's proof state; neutral when none exists yet. */
@@ -58,6 +62,7 @@ export default function LineProofRow({
   onStage,
   onPickExisting,
   onDrop,
+  dropDisabledReason,
 }: LineProofRowProps) {
   const productName = line.product?.name ?? `Line #${line.id}`;
   const badge = proofBadge(proof?.state ?? null);
@@ -102,9 +107,19 @@ export default function LineProofRow({
           </Button>
         )}
         {onDrop && (
-          <Button variant="danger" size="sm" disabled={busy} onClick={onDrop}>
-            Drop item
-          </Button>
+          <div className="flex flex-col items-start gap-1 sm:ml-auto sm:items-end">
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={busy || Boolean(dropDisabledReason)}
+              onClick={onDrop}
+            >
+              Drop item
+            </Button>
+            {dropDisabledReason && (
+              <span className="max-w-[16rem] text-xs text-fg-subtle">{dropDisabledReason}</span>
+            )}
+          </div>
         )}
       </div>
     </div>

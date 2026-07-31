@@ -116,3 +116,12 @@ it('fires onDrop from the drop control', async () => {
   await userEvent.click(screen.getByRole('button', { name: /drop item/i }));
   expect(onDrop).toHaveBeenCalled();
 });
+
+it('disables the drop control and shows the reason when dropDisabledReason is set', async () => {
+  const { onDrop } = renderRow({ dropDisabledReason: 'Items can only be changed while the order is a draft.' });
+  const btn = screen.getByRole('button', { name: /drop item/i });
+  expect(btn).toBeDisabled();
+  expect(screen.getByText(/only be changed while the order is a draft/i)).toBeInTheDocument();
+  await userEvent.click(btn);
+  expect(onDrop).not.toHaveBeenCalled();
+});
