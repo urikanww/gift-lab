@@ -41,6 +41,21 @@ class ProofController extends Controller
     }
 
     /**
+     * Auto-stage the buyer's own designer artwork as a DRAFT proof for every
+     * eligible line with none yet, so staff review-and-send instead of hand-
+     * picking. Staff-only (the route also carries permission:quotes.edit);
+     * idempotent, so a repeat call after everything is staged is a harmless 0.
+     */
+    public function autoStage(Request $request, Quote $quote): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $staged = $this->quotes->autoStageDesignerProofs($quote);
+
+        return response()->json(['staged' => $staged]);
+    }
+
+    /**
      * Send the staged round: flip every DRAFT proof to SENT, move the order into
      * PROOFING, and email the buyer once. Staff-only - the route also carries
      * permission:quotes.edit, this floor stops a buyer that middleware lets by.
