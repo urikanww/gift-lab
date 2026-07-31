@@ -262,9 +262,10 @@ export default function QuoteDetailPage() {
 
   // Every artwork already on the order that staff can attach as the proof
   // instead of re-uploading: the buyer's line designs (print-usable designer
-  // PNGs - `buyer_uploaded` reference photos are excluded, they are a
-  // finished-look intent, not print-ready), images the buyer attached to
-  // change requests (newest bounce first), and previously issued proof
+  // PNGs), the buyer's finished-look logo + reference photos on a buyer_uploaded
+  // line (selectable as a proof starting point - they are a look, not print-
+  // ready, but staff asked to be able to pick them), images the buyer attached
+  // to change requests (newest bounce first), and previously issued proof
   // versions (newest first). Deduped by ref so the same file lists once under
   // its first (most authoritative) source.
   const seenArtworkRefs = new Set<string>();
@@ -275,15 +276,40 @@ export default function QuoteDetailPage() {
     artworkOptions.push(option);
   };
   for (const li of quote.line_items ?? []) {
-    const ref =
-      li.customization?.mode !== 'buyer_uploaded' ? li.customization?.artwork_ref ?? null : null;
-    if (!ref) continue;
-    addArtworkOption({
-      ref,
-      name: `Buyer’s design — ${li.product?.name ?? `Line #${li.id}`}`,
-      detail: 'From the order line',
-      productImageUrl: li.product?.image_url ?? null,
-    });
+    const c = li.customization;
+    if (!c) continue;
+    const lineName = li.product?.name ?? `Line #${li.id}`;
+
+    if (c.mode !== 'buyer_uploaded') {
+      // Self-designed line: its captured designer PNG, print-ready.
+      if (c.artwork_ref) {
+        addArtworkOption({
+          ref: c.artwork_ref,
+          name: `Buyer’s design — ${lineName}`,
+          detail: 'From the order line',
+          productImageUrl: li.product?.image_url ?? null,
+        });
+      }
+      continue;
+    }
+
+    // buyer_uploaded ("finished look") line: the buyer's own logo, then each
+    // finished-look reference photo, are selectable as the proof. These are a
+    // brief, not print-ready, so they are offered AFTER designer art elsewhere.
+    if (c.artwork_ref) {
+      addArtworkOption({
+        ref: c.artwork_ref,
+        name: `Buyer’s logo — ${lineName}`,
+        detail: 'Uploaded with the finished-look brief',
+      });
+    }
+    (c.reference_refs ?? []).forEach((r, i) =>
+      addArtworkOption({
+        ref: r,
+        name: `Buyer’s reference ${i + 1} — ${lineName}`,
+        detail: 'Uploaded finished-look reference',
+      }),
+    );
   }
   const proofsNewestFirst = [...(quote.proofs ?? [])].sort((a, b) => b.version - a.version);
   for (const p of proofsNewestFirst) {

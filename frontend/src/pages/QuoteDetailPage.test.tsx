@@ -1321,6 +1321,28 @@ it('disables the Drop item control (with a reason) when only one line remains', 
   expect(screen.getByText(/must keep at least one item/i)).toBeInTheDocument();
 });
 
+it('offers the buyer finished-look references as selectable proof artwork', async () => {
+  asStaff();
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      line_items: [
+        customisedLine({
+          customization: { mode: 'buyer_uploaded', reference_refs: ['ref/look-a.png', 'ref/look-b.png'] },
+        }),
+      ],
+    },
+  } as any);
+  renderPage();
+  const user = userEvent.setup();
+
+  // The reference photos are now artwork options, so the picker is offered.
+  await user.click(screen.getByRole('button', { name: /use existing artwork/i }));
+  expect(screen.getByText(/reference 1 —/i)).toBeInTheDocument();
+  expect(screen.getByText(/reference 2 —/i)).toBeInTheDocument();
+});
+
 // Bug: the DRAFT-send helper told staff the buyer could "accept it or request
 // changes" at the price-quote stage - but the SENT buyer card only offers
 // "Accept quote"; request-changes exists only later, against the proof. Fix
