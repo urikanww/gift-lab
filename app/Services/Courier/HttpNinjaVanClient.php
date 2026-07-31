@@ -120,6 +120,10 @@ final class HttpNinjaVanClient implements CourierClient
         // "courier"), each falling back to config('services.ninjavan.*').
         $pickup = CourierConfig::pickup();
         $timeslot = CourierConfig::timeslot();
+        // Pickup collection window - normally identical to the delivery window,
+        // but NinjaVan validates the two separately, so this can diverge when a
+        // distinct pickup window is configured (see CourierConfig::pickupTimeslot).
+        $pickupTimeslot = CourierConfig::pickupTimeslot();
         // One dispatch day for both legs: snapped to the configured preferred
         // weekday and rolled past weekends/holidays (courier can't work them).
         $dispatchDate = CourierConfig::resolveDispatchDate($shipment->deliveryStartDate);
@@ -170,11 +174,12 @@ final class HttpNinjaVanClient implements CourierClient
                     'pickup_service_type' => (string) config('services.ninjavan.pickup_service_type', 'Parcel'),
                     'pickup_service_level' => (string) config('services.ninjavan.pickup_service_level', 'Standard'),
                     'pickup_date' => $dispatchDate,
-                    // Same staff-configured window drives collection and delivery.
+                    // Collection window (defaults to the delivery window unless a
+                    // distinct pickup window is configured).
                     'pickup_timeslot' => [
-                        'start_time' => $timeslot['start'],
-                        'end_time' => $timeslot['end'],
-                        'timezone' => $timeslot['timezone'],
+                        'start_time' => $pickupTimeslot['start'],
+                        'end_time' => $pickupTimeslot['end'],
+                        'timezone' => $pickupTimeslot['timezone'],
                     ],
                     'delivery_start_date' => $dispatchDate,
                     'delivery_timeslot' => [

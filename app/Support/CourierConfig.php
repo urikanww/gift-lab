@@ -208,4 +208,40 @@ final class CourierConfig
 
         return $out;
     }
+
+    /**
+     * The pickup (collection) window. NinjaVan models the pickup and delivery
+     * windows separately and can validate them against different values (their
+     * audit scenario, e.g., wants pickup 09:00-18:00 but delivery 09:00-22:00).
+     * We only diverge when a distinct "pickup_timeslot" row is stored; otherwise
+     * this returns the delivery window, so the long-standing "one window for
+     * both legs" behaviour is unchanged for every account that hasn't set one.
+     *
+     * @return array{start: string, end: string, timezone: string}
+     */
+    public static function pickupTimeslot(): array
+    {
+        $delivery = self::timeslot();
+
+        $stored = PricingConfig::value(self::GROUP, 'pickup_timeslot', []);
+        if (! is_array($stored)) {
+            return $delivery;
+        }
+
+        $out = $delivery;
+        foreach (['start', 'end', 'timezone'] as $field) {
+            $v = $stored[$field] ?? null;
+            if (is_string($v) && trim($v) !== '') {
+                $out[$field] = trim($v);
+            }
+        }
+
+        // A stored-but-invalid window falls back to the delivery window rather
+        // than 400-ing the whole booking.
+        if (! self::isValidTimeslot($out['start'], $out['end'])) {
+            return $delivery;
+        }
+
+        return $out;
+    }
 }
