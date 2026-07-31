@@ -134,4 +134,20 @@ enum OrderMilestone: string
     {
         return $this !== self::LineChanged;
     }
+
+    /**
+     * Whether this milestone is delivered by its own dedicated mailable rather
+     * than the generic OrderMilestoneMail.
+     *
+     * ProofIssued is the sole exception: the proof-ready email is the richer
+     * QuoteReadyMail (proof thumbnails + quote summary), sent by
+     * QuoteService::emailProofsReady. It must never be routed through the generic
+     * template — doing so would drop the proof. Keeping the distinction on the
+     * enum means callers (OrderNotifier::send) stop re-deriving it from "which
+     * cases happen to be absent from the state map".
+     */
+    public function rendersOwnMailable(): bool
+    {
+        return $this === self::ProofIssued;
+    }
 }

@@ -1486,6 +1486,9 @@ export default function QuoteDetailPage() {
             state={quote.state}
             history={history}
             audience={isStaff ? 'staff' : 'buyer'}
+            // Plain-stock orders (no proof-needing line) drop the buyer stepper's
+            // Proof stage. Absent flag (lineItems not loaded) keeps it. (#5)
+            needsProof={quote.needs_proof ?? true}
             note={
               !isStaff && !(quote.state === 'PROOFING' && latestOpenProof(quote.proofs))
                 ? BUYER_STATUS_NOTE[quote.state]

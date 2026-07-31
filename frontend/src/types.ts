@@ -386,6 +386,10 @@ export interface Quote {
   /** LT16: personalisation/decoration fee folded into subtotal, surfaced as its
    *  own row so item lines + this = subtotal. Present only when lineItems load. */
   customization_fee?: string;
+  /** Whether any non-dropped line needs a proof. A plain-stock order skips
+   *  proofing, so the buyer stepper hides its "Proof" stage. Present only when
+   *  lineItems load; absent → keep the stage. */
+  needs_proof?: boolean;
   delivery: string;
   /**
    * GST amount, already folded into `total`. Snapshotted at create/amend time

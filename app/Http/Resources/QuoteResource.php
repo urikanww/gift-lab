@@ -47,6 +47,18 @@ class QuoteResource extends JsonResource
                 $this->relationLoaded('lineItems'),
                 fn (): string => $this->customizationFeeTotal(),
             ),
+            // Whether any non-dropped artwork line on this order requires a proof.
+            // A plain-stock order skips proofing entirely (Accepted auto-advances
+            // past it), so the buyer's progress stepper hides its "Proof" stage.
+            // Mirrors Quote::recomputeProofState's counting-lines rule. Only
+            // meaningful with lineItems loaded; omitted otherwise, and the client
+            // then keeps the stage rather than guessing it away.
+            'needs_proof' => $this->when(
+                $this->relationLoaded('lineItems'),
+                fn (): bool => $this->lineItems->contains(
+                    fn ($line): bool => $line->needsProof() && $line->line_state !== LineItemState::Dropped,
+                ),
+            ),
             'delivery' => $this->delivery,
             // GST amount + rate (pct, e.g. "9.00") snapshotted at create/amend
             // time by QuoteService - see PricingService::quoteTotals(). Rate is
