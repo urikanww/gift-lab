@@ -337,7 +337,7 @@ it('sends a plain quote when staff leaves the artwork reference blank on DRAFT',
   asStaff();
   renderPage();
 
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+  await userEvent.click(screen.getByRole('button', { name: /send price quote/i }));
 
   expect(send).toHaveBeenCalledWith(42);
 });
@@ -401,10 +401,44 @@ it('DRAFT "Send to buyer" is a plain param-less send, not a proof send', async (
   asStaff();
   renderPage();
 
-  await userEvent.click(screen.getByRole('button', { name: /send to buyer/i }));
+  await userEvent.click(screen.getByRole('button', { name: /send price quote/i }));
 
   expect(send).toHaveBeenCalledWith(42);
   expect(sendProofs).not.toHaveBeenCalled();
+});
+
+it('proof-first DRAFT gates "Send proofs" until every line is staged', () => {
+  asStaff();
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      approval_order: 'proof_first',
+      line_items: [customisedLine()],
+      proofs: [],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.getByRole('button', { name: /send proofs/i })).toBeDisabled();
+  expect(screen.getByText(/still need/i)).toBeInTheDocument();
+});
+
+it('proof-first DRAFT enables "Send proofs" once the line has a staged proof', () => {
+  asStaff();
+  seedQuote('DRAFT');
+  useQuoteStore.setState({
+    current: {
+      ...useQuoteStore.getState().current!,
+      approval_order: 'proof_first',
+      line_items: [customisedLine()],
+      proofs: [lineProof({ state: 'DRAFT' })],
+    },
+  } as any);
+  renderPage();
+
+  expect(screen.getByRole('button', { name: /send proofs/i })).toBeEnabled();
+  expect(screen.getByText(/ready to send/i)).toBeInTheDocument();
 });
 
 it('DRAFT staff panel: activating "Proof first" sets the approval order', async () => {
@@ -1357,7 +1391,7 @@ it('does not claim the buyer can request changes at the price-quote (DRAFT-send)
   expect(
     screen.queryByText(/they can then accept it or request changes/i),
   ).not.toBeInTheDocument();
-  expect(screen.getByText(/they accept the price to move into proofing/i)).toBeInTheDocument();
+  expect(screen.getByText(/emails the buyer the price quote/i)).toBeInTheDocument();
 });
 
 it('gives a superadmin resend + approve-on-behalf actions while a proof is open', async () => {

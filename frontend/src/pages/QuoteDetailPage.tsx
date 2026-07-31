@@ -82,6 +82,15 @@ function ProofArtworkThumb({ url, version }: { url: string; version: number }) {
   );
 }
 
+/** Small numbered badge for the DRAFT send-flow steps (Approval → Proofs → Send). */
+function StepDot({ n }: { n: number }) {
+  return (
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xs font-medium text-primary">
+      {n}
+    </span>
+  );
+}
+
 export default function QuoteDetailPage() {
   // Buyer/public URLs carry the opaque order reference; the API resolves it
   // (or a numeric id) server-side. Once loaded, actions use the quote's real id.
@@ -742,6 +751,16 @@ export default function QuoteDetailPage() {
     </div>
   );
 
+  // DRAFT send flow, derived once for the reworked panel. proofFirst is the
+  // ordering that actually sends a proof round on send (proof_first WITH lines
+  // to proof); allProofsStaged gates that send so an empty/partial round can't
+  // go out. A price-first (or plain-stock) order sends the price quote instead.
+  const approvalMode = quote.approval_order;
+  const proofFirst = approvalMode === 'proof_first' && proofLines.length > 0;
+  const allProofsStaged = proofLines.length > 0 && stagedCount === proofLines.length;
+  const sendBlockedProofFirst = proofFirst && !allProofsStaged;
+  const unstagedProofCount = proofLines.length - stagedCount;
+
   // Staff workflow panel, folded INTO the status card (the old standalone "Staff
   // actions" card is gone). The per-state controls carry their own description,
   // which now reads directly under the status badge. The buyer-notification
@@ -754,24 +773,60 @@ export default function QuoteDetailPage() {
           still enforces the superadmin override, so no client-side signal for
           that is surfaced here - staff just see the control disabled. */}
       <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-fg">Approval order</span>
-        <div role="radiogroup" aria-label="Approval order" className="flex gap-2">
-          {(['price_first', 'proof_first'] as const).map((order) => {
+        <div className="flex items-center gap-2">
+          {quote.state === 'DRAFT' && <StepDot n={1} />}
+          <span className="text-sm font-medium text-fg">Approval order</span>
+          {quote.state !== 'DRAFT' && (
+            <span className="ml-auto text-xs text-fg-subtle">Locked once sent</span>
+          )}
+        </div>
+        {/* Consequence-first cards: staff pick the order by what the BUYER does
+            first, not an unlabelled toggle. Editable only while DRAFT. */}
+        <div role="radiogroup" aria-label="Approval order" className="grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              {
+                order: 'price_first',
+                title: 'Price first',
+                consequence: 'Buyer agrees the price first, then approves the proof.',
+                badge: 'Default',
+              },
+              {
+                order: 'proof_first',
+                title: 'Proof first',
+                consequence: 'Buyer approves the design first, then agrees the price.',
+                badge: undefined,
+              },
+            ] as const
+          ).map(({ order, title, consequence, badge }) => {
             const active = quote.approval_order === order;
             return (
-              <Button
+              <button
                 key={order}
+                type="button"
                 role="radio"
                 aria-checked={active}
-                size="sm"
-                variant={active ? 'primary' : 'outline'}
                 disabled={quote.state !== 'DRAFT' || busy}
                 onClick={() => {
                   if (!active) void run(() => setApprovalOrder(quote.id, order), 'Approval order updated');
                 }}
+                className={
+                  'rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ' +
+                  (active
+                    ? 'border-2 border-primary bg-primary/5'
+                    : 'border-border hover:bg-surface-2')
+                }
               >
-                {order === 'price_first' ? 'Price first' : 'Proof first'}
-              </Button>
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-fg">{title}</span>
+                  {badge && active && (
+                    <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
+                      {badge}
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1.5 block text-xs text-fg-muted">{consequence}</span>
+              </button>
             );
           })}
         </div>
@@ -779,44 +834,86 @@ export default function QuoteDetailPage() {
       <div>
         {quote.state === 'DRAFT' && (
           <div className="flex flex-col gap-4">
-            {/* Optional pre-staging: proofs are per-line and can be prepared
-                before the buyer accepts. Sending the quote below is a separate,
-                param-less send - it does NOT send proofs (those go out once the
-                order is in proofing). */}
+            {/* Step 2 - Prepare proofs. Framing follows the chosen order: on
+                proof_first the round is SENT on send (required first), on
+                price_first it is optional pre-staging sent later. */}
             {proofLines.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-fg">Prepare proofs (optional)</span>
-                {perLineProofPanel(false)}
+                <div className="flex items-center gap-2">
+                  <StepDot n={2} />
+                  <span className="text-sm font-medium text-fg">Prepare proofs</span>
+                  <span
+                    className={
+                      'ml-auto rounded-full px-2 py-0.5 text-2xs font-medium ' +
+                      (proofFirst
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-warning-bg text-warning')
+                    }
+                  >
+                    {proofFirst ? 'Required before send' : 'Optional now'}
+                  </span>
+                </div>
                 <p className="text-xs text-fg-subtle">
-                  Stage a proof for each customised line now if you like — you can also do this after
-                  the buyer accepts. Sending the quote does not send proofs.
+                  {proofFirst
+                    ? 'These are sent to the buyer when you send. Stage a proof for every customised line first.'
+                    : 'Prepare now or after the buyer accepts the price — proofs are sent later, once they agree the price.'}
                 </p>
+                {perLineProofPanel(false)}
+                {proofFirst &&
+                  (allProofsStaged ? (
+                    <p className="text-xs text-success">
+                      Every line is staged — ready to send.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-warning">
+                      {unstagedProofCount} line{unstagedProofCount === 1 ? '' : 's'} still need
+                      {unstagedProofCount === 1 ? 's' : ''} a proof before you can send.
+                    </p>
+                  ))}
               </div>
             )}
+            {/* Step 3 - Send. The callout spells out exactly what the click does
+                and what the buyer is asked next; the button + action follow the
+                mode. proof_first send is gated until every line is staged. */}
             <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <StepDot n={3} />
+                <span className="text-sm font-medium text-fg">Send</span>
+              </div>
+              <div className="rounded-md border-l-2 border-primary bg-surface-2/60 px-3 py-2">
+                <p className="text-xs text-fg">
+                  <span className="font-medium">Next:</span>{' '}
+                  {proofFirst
+                    ? 'sends the proof round to the buyer. They approve the design; you agree the price after.'
+                    : proofLines.length > 0
+                      ? 'emails the buyer the price quote. They accept the price to move into proofing — proofs are sent later.'
+                      : 'emails the buyer the price quote for them to accept.'}
+                </p>
+              </div>
               <div>
                 <Button
                   variant="primary"
                   loading={busy}
-                  disabled={busy}
+                  disabled={busy || sendBlockedProofFirst}
                   onClick={() => {
                     // proof_first WITH customised lines sends the proof round;
                     // otherwise (price_first, or plain stock with no proofs) it
                     // is the ordinary param-less quote send.
-                    if (quote.approval_order === 'proof_first' && proofLines.length > 0) {
+                    if (proofFirst) {
                       void run(() => sendProofs(quote.id), 'Proofs sent to buyer');
                     } else {
                       void run(() => send(quote.id), 'Sent to buyer');
                     }
                   }}
                 >
-                  Send to buyer
+                  {proofFirst ? 'Send proofs' : 'Send price quote'}
                 </Button>
+                {sendBlockedProofFirst && (
+                  <p className="mt-1.5 text-xs text-fg-subtle">
+                    Stage a proof for every line to enable this.
+                  </p>
+                )}
               </div>
-              <p className="text-xs text-fg-subtle">
-                Emails the quote to the buyer and moves it to Sent. They accept the price to move into
-                proofing — changes are requested later, against the proof.
-              </p>
             </div>
           </div>
         )}
