@@ -141,7 +141,7 @@ it('passes the typed term to fetchQuotes', async () => {
   fireEvent.change(searchBox(), { target: { value: 'ABC123' } });
   await tick(300);
 
-  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123', undefined);
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123', {});
 });
 
 it('debounces typing into one request rather than one per keystroke', async () => {
@@ -161,7 +161,7 @@ it('debounces typing into one request rather than one per keystroke', async () =
   await tick(300);
 
   expect(fetchQuotes).toHaveBeenCalledTimes(1);
-  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123', undefined);
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC123', {});
 });
 
 // The effect keys on the TRIMMED term, so an edit that leaves it identical must
@@ -180,7 +180,7 @@ it('does not re-fetch when an edit leaves the trimmed term unchanged', async () 
   await tick(300);
 
   expect(fetchQuotes).toHaveBeenCalledTimes(1);
-  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC', undefined);
+  expect(fetchQuotes).toHaveBeenCalledWith(1, 'ABC', {});
 });
 
 // A filtered miss must not claim the order history is empty: a buyer with a
@@ -196,10 +196,8 @@ it('shows search-specific empty copy when a term matches nothing', async () => {
   fireEvent.change(searchBox(), { target: { value: 'ZZZNOPE' } });
   await tick(300);
 
-  expect(screen.getByText(/no orders match that search/i)).toBeInTheDocument();
-  // Scoped to the description: the sr-only status region names the term too.
-  expect(screen.getByText(/nothing matches "ZZZNOPE"/i)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /clear search/i })).toBeInTheDocument();
+  expect(screen.getByText(/no orders match those filters/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /clear search .* filters/i })).toBeInTheDocument();
   // The no-orders-at-all copy must NOT appear - that is the false, alarming one.
   expect(screen.queryByText(/no quotes yet/i)).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /browse catalogue/i })).not.toBeInTheDocument();
@@ -253,7 +251,7 @@ it('carries the active search term when paging to the next page', async () => {
   await tick(300);
   fireEvent.click(screen.getByRole('button', { name: /next/i }));
 
-  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123', undefined);
+  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123', {});
   expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
 });
 
@@ -309,12 +307,13 @@ it('ignores a stale response that resolves after a newer request', async () => {
 // refetch that runs when the socket reconnects after a drop; it reads page and
 // term from store state, so a component-local term would be invisible to it and
 // the user's filtered list would silently reset to every order.
-it('re-applies the search term when the socket reconnects', async () => {
+it('re-applies the search term AND filters when the socket reconnects', async () => {
   const fetchQuotes = vi.fn(async () => {});
   useQuoteStore.setState({
     fetchQuotes,
     page: 2,
     searchTerm: 'ABC123',
+    listParams: { status: 'DRAFT' },
     current: null,
     subscribedCompany: null,
   } as any);
@@ -325,7 +324,7 @@ it('re-applies the search term when the socket reconnects', async () => {
   // Fire the store's own reconnect closure, as lib/echo would on re-connect.
   capturedReconnect!();
 
-  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123', undefined);
+  expect(fetchQuotes).toHaveBeenCalledWith(2, 'ABC123', { status: 'DRAFT' });
   expect(fetchQuotes).not.toHaveBeenCalledWith(2, undefined);
 });
 
@@ -346,9 +345,15 @@ it('identifies orders by reference, never by the sequential id', () => {
   expect(screen.queryByText(/#\d+/)).not.toBeInTheDocument();
 });
 
-it('F9: opens pre-filtered by delivered_unpaid, threads the filter and shows the banner', async () => {
+it('F9: opens pre-filtered by delivered_unpaid — seeds the status/payment filters and shows badges', async () => {
   vi.useFakeTimers();
   const fetchQuotes = vi.fn(async () => {});
+  // Staff so the payment filter (staff-only) is part of the config.
+  useAuthStore.setState({
+    user: { id: 1, company_id: null, name: 'Ops', email: 'ops@x.test', role: 'staff_admin' },
+    status: 'ready',
+    error: null,
+  });
   seedQuotes();
   useQuoteStore.setState({ fetchQuotes } as any);
 
@@ -363,7 +368,14 @@ it('F9: opens pre-filtered by delivered_unpaid, threads the filter and shows the
     vi.advanceTimersByTime(300);
   });
 
-  expect(fetchQuotes).toHaveBeenCalledWith(1, undefined, 'delivered_unpaid');
-  expect(screen.getByText(/outstanding balance/i)).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: /clear filter/i })).toBeInTheDocument();
+  // The tile's deep-link becomes real filter params (CLOSED + unpaid/partial,
+  // oldest first), and the active filters show as removable badges.
+  expect(fetchQuotes).toHaveBeenCalledWith(1, undefined, {
+    status: 'CLOSED',
+    payment: 'UNPAID,PARTIAL',
+    sort: 'created_asc',
+  });
+  expect(screen.getByText(/status: closed/i)).toBeInTheDocument();
+  expect(screen.getByText(/payment: unpaid/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /remove filter status: closed/i })).toBeInTheDocument();
 });

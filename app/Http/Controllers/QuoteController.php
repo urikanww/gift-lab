@@ -100,9 +100,45 @@ class QuoteController extends Controller
                     }
                 });
             })
-            ->latest()
-            ->paginate(20)
-            ->withQueryString();
+            // Generic staff-list filters — all optional, all narrowing. Values
+            // arrive comma-separated; unknown values simply match nothing. The
+            // company scope above still bounds everything for a buyer.
+            ->when($request->filled('status'), fn ($query) => $query->whereIn(
+                'state',
+                array_values(array_filter(explode(',', (string) $request->query('status')))),
+            ))
+            ->when($request->filled('payment'), function ($query) use ($request): void {
+                $states = array_values(array_intersect(
+                    array_map('strtoupper', array_filter(explode(',', (string) $request->query('payment')))),
+                    ['UNPAID', 'PARTIAL', 'PAID', 'VOID'],
+                ));
+                if ($states === []) {
+                    return;
+                }
+                // Eager-load the invoice so the row can show the balance owed.
+                $query->whereHas('purchaseOrders', fn ($w) => $w->whereIn('payment_state', $states))
+                    ->with('purchaseOrders');
+            })
+            ->when($request->filled('company_id'), fn ($query) => $query->where('company_id', (int) $request->query('company_id')))
+            ->when($request->filled('company'), fn ($query) => $query->whereHas(
+                'company',
+                fn ($w) => $w->where('name', 'like', '%'.addcslashes((string) $request->query('company'), '%_\\').'%'),
+            ))
+            ->when($request->filled('created_from'), fn ($query) => $query->whereDate('created_at', '>=', (string) $request->query('created_from')))
+            ->when($request->filled('created_to'), fn ($query) => $query->whereDate('created_at', '<=', (string) $request->query('created_to')))
+            ->when($request->filled('needed_from'), fn ($query) => $query->whereDate('needed_by', '>=', (string) $request->query('needed_from')))
+            ->when($request->filled('needed_to'), fn ($query) => $query->whereDate('needed_by', '<=', (string) $request->query('needed_to')))
+            ->when($request->filled('min_total'), fn ($query) => $query->where('total', '>=', (float) $request->query('min_total')))
+            ->when($request->filled('max_total'), fn ($query) => $query->where('total', '<=', (float) $request->query('max_total')));
+
+        // Sort — a small allowlist, default newest-first. created_asc doubles as
+        // the "oldest first" aging order for chasing the oldest unpaid orders (#2).
+        $quotes = (match ((string) $request->query('sort', 'created_desc')) {
+            'created_asc' => $quotes->oldest(),
+            'total_desc' => $quotes->orderByDesc('total'),
+            'total_asc' => $quotes->orderBy('total'),
+            default => $quotes->latest(),
+        })->paginate(20)->withQueryString();
 
         return QuoteResource::collection($quotes);
     }

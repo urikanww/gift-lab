@@ -220,3 +220,47 @@ it('F9: the delivered_unpaid list exposes the outstanding balance per row', func
         ->assertJsonPath('data.0.reference', 'BALANCEEEE')
         ->assertJsonPath('data.0.invoice.balance_owed', 400);
 });
+
+it('filters quotes by status (comma-separated)', function (): void {
+    $staff = User::factory()->staffAdmin()->create();
+    Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT', 'reference' => 'DRAFTAAAAA']);
+    Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'SENT', 'reference' => 'SENTBBBBBB']);
+    Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'CLOSEDCCCC']);
+    Sanctum::actingAs($staff);
+
+    $refs = collect($this->getJson('/api/quotes?status=DRAFT,SENT')->assertOk()->json('data'))
+        ->pluck('reference')->all();
+
+    expect($refs)->toContain('DRAFTAAAAA', 'SENTBBBBBB')->not->toContain('CLOSEDCCCC');
+});
+
+it('filters quotes by payment state and sorts oldest first', function (): void {
+    $staff = User::factory()->staffAdmin()->create();
+    $old = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'OLDUNPAIDA', 'created_at' => now()->subDays(10)]);
+    App\Models\Invoice::create(['quote_id' => $old->id, 'po_ref' => 'PO-1', 'payment_state' => 'UNPAID', 'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+    $new = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'NEWUNPAIDB', 'created_at' => now()->subDay()]);
+    App\Models\Invoice::create(['quote_id' => $new->id, 'po_ref' => 'PO-2', 'payment_state' => 'PARTIAL', 'amount_paid' => 100, 'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+    $paid = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'CLOSED', 'reference' => 'PAIDCCCCCC']);
+    App\Models\Invoice::create(['quote_id' => $paid->id, 'po_ref' => 'PO-3', 'payment_state' => 'PAID', 'amount_paid' => 500, 'amount' => 500, 'gst_amount' => 41, 'gst_rate' => 9, 'currency' => 'SGD', 'issued_at' => now()]);
+    Sanctum::actingAs($staff);
+
+    $refs = collect($this->getJson('/api/quotes?payment=UNPAID,PARTIAL&sort=created_asc')->assertOk()->json('data'))
+        ->pluck('reference')->all();
+
+    expect($refs)->toBe(['OLDUNPAIDA', 'NEWUNPAIDB']);
+});
+
+it('filters quotes by company name and order value range', function (): void {
+    $staff = User::factory()->staffAdmin()->create();
+    $acme = App\Models\Company::factory()->create(['name' => 'Acme Widgets']);
+    $other = App\Models\Company::factory()->create(['name' => 'Globex']);
+    Quote::factory()->create(['company_id' => $acme->id, 'reference' => 'ACMELOWAAA', 'total' => 50]);
+    Quote::factory()->create(['company_id' => $acme->id, 'reference' => 'ACMEHIGHBB', 'total' => 500]);
+    Quote::factory()->create(['company_id' => $other->id, 'reference' => 'GLOBEXCCCC', 'total' => 500]);
+    Sanctum::actingAs($staff);
+
+    $refs = collect($this->getJson('/api/quotes?company=acme&min_total=100')->assertOk()->json('data'))
+        ->pluck('reference')->all();
+
+    expect($refs)->toBe(['ACMEHIGHBB']);
+});

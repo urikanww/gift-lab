@@ -15,6 +15,13 @@ import {
   useReducedMotionSafe,
 } from '../motion';
 import { humanizeState, quoteStateTone } from '../lib/quoteStatus';
+import ListFilters from '../components/filters/ListFilters';
+import type { FilterValues } from '../components/filters/types';
+import {
+  quoteFilterFields,
+  quoteFiltersToParams,
+  deliveredUnpaidSeed,
+} from '../lib/quoteListFilters';
 import type { Quote } from '../types';
 
 function formatDate(iso: string | null): string {
@@ -27,11 +34,14 @@ export default function QuoteListPage() {
   const shouldAnimate = useReducedMotionSafe();
   const staff = isStaffRole(useAuthStore((s) => s.user?.role));
 
-  // F9: the dashboard "Delivered · unpaid" tile links here with ?filter=… so the
-  // list opens pre-scoped to those orders instead of dumping the whole pipeline.
+  // The dashboard "Delivered · unpaid" tile deep-links with ?filter=delivered_unpaid;
+  // seed the filter state from it so the list opens pre-scoped and its badges show.
   const [searchParams] = useSearchParams();
-  const filter = searchParams.get('filter') ?? undefined;
-  const deliveredUnpaid = filter === 'delivered_unpaid';
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    searchParams.get('filter') === 'delivered_unpaid' ? deliveredUnpaidSeed() : {},
+  );
+  const params = quoteFiltersToParams(filters);
+  const paramsKey = JSON.stringify(params);
 
   const [term, setTerm] = useState('');
 
@@ -53,10 +63,14 @@ export default function QuoteListPage() {
   // effective term identical, and re-running on that would bounce a user sitting
   // on page 2 of filtered results back to page 1 for a keystroke that changed
   // nothing.
+  // Debounced so typing coalesces to one request; re-runs when the applied
+  // filters change too (paramsKey), always resetting to page 1. `params` is read
+  // from the closure — paramsKey is the value that actually changed.
   useEffect(() => {
-    const id = setTimeout(() => void fetchQuotes(1, activeTerm, filter), 300);
+    const id = setTimeout(() => void fetchQuotes(1, activeTerm, params), 300);
     return () => clearTimeout(id);
-  }, [activeTerm, filter, fetchQuotes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTerm, paramsKey, fetchQuotes]);
 
   return (
     <section aria-labelledby="quotes-heading">
@@ -85,27 +99,20 @@ export default function QuoteListPage() {
         </p>
       </Motion>
 
-      {deliveredUnpaid && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning-bg px-3 py-2">
-          <span className="text-sm text-fg">
-            Showing <span className="font-medium">delivered orders with an outstanding balance</span>.
-          </span>
-          <Link to="/quotes" className="text-sm font-medium text-primary hover:underline">
-            Clear filter
-          </Link>
+      {/* Search + filters. Both stay on screen through empty/loading states so a
+          zero-result filter can still be cleared. Filters open in a popup and
+          apply on submit; active ones show as removable badges (ListFilters). */}
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="max-w-sm">
+          <Input
+            type="search"
+            label="Search orders"
+            placeholder="Search by order reference or id"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
         </div>
-      )}
-
-      {/* Outside the loading/empty branches below: a search that matches nothing
-          must keep its own box on screen so the user can clear or amend the term. */}
-      <div className="mb-4 max-w-sm">
-        <Input
-          type="search"
-          label="Search orders"
-          placeholder="Search by order reference or id"
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-        />
+        <ListFilters fields={quoteFilterFields(staff)} value={filters} onChange={setFilters} />
       </div>
 
       {/* Focus stays in the input while the list is replaced underneath it, and
@@ -127,18 +134,24 @@ export default function QuoteListPage() {
       {loading ? (
         <QuoteListSkeleton />
       ) : error ? (
-        <ErrorState message={error} onRetry={() => fetchQuotes(page, activeTerm, filter)} />
+        <ErrorState message={error} onRetry={() => fetchQuotes(page, activeTerm, params)} />
       ) : quotes.length === 0 ? (
-        // A search that matches nothing is NOT an empty order history. Telling a
-        // buyer with twelve orders that theirs is empty is both false and
-        // alarming, so the filtered miss gets its own copy and a way back out.
-        activeTerm ? (
+        // A search/filter that matches nothing is NOT an empty order history.
+        // Telling a buyer with twelve orders that theirs is empty is both false
+        // and alarming, so a filtered miss gets its own copy and a way back out.
+        activeTerm || Object.keys(params).length > 0 ? (
           <EmptyState
-            title={staff ? 'No quotes match that search' : 'No orders match that search'}
-            description={`Nothing matches "${activeTerm}". Check the reference, or clear the search to see everything.`}
+            title={staff ? 'No quotes match those filters' : 'No orders match those filters'}
+            description="Nothing matches the current search and filters. Adjust or clear them to see more."
             action={
-              <Button variant="outline" onClick={() => setTerm('')}>
-                Clear search
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setTerm('');
+                  setFilters({});
+                }}
+              >
+                Clear search &amp; filters
               </Button>
             }
           />
@@ -219,7 +232,7 @@ export default function QuoteListPage() {
                 variant="outline"
                 size="sm"
                 disabled={loading || page <= 1}
-                onClick={() => void fetchQuotes(page - 1, activeTerm, filter)}
+                onClick={() => void fetchQuotes(page - 1, activeTerm, params)}
               >
                 Previous
               </Button>
@@ -230,7 +243,7 @@ export default function QuoteListPage() {
                 variant="outline"
                 size="sm"
                 disabled={loading || page >= lastPage}
-                onClick={() => void fetchQuotes(page + 1, activeTerm, filter)}
+                onClick={() => void fetchQuotes(page + 1, activeTerm, params)}
               >
                 Next
               </Button>

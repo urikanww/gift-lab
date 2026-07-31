@@ -95,11 +95,11 @@ interface QuoteStoreState {
    * while their term sat in the input.
    */
   searchTerm: string | undefined;
-  /** Active list filter (e.g. 'delivered_unpaid'), carried through reconnect refetches. */
-  listFilter: string | undefined;
+  /** Active list filter params (status, payment, sort, …), carried through reconnect refetches. */
+  listParams: Record<string, string> | undefined;
 
   /** `term` filters by partial reference or exact id; omitted means no filter. */
-  fetchQuotes: (page?: number, term?: string, filter?: string) => Promise<void>;
+  fetchQuotes: (page?: number, term?: string, params?: Record<string, string>) => Promise<void>;
   fetchSummary: () => Promise<void>;
   /** Accepts an opaque order reference (buyer URLs) or a numeric id. */
   fetchQuote: (idOrRef: string | number) => Promise<void>;
@@ -195,22 +195,22 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
   subscribedCompany: null,
   summary: null,
   searchTerm: undefined,
-  listFilter: undefined,
+  listParams: undefined,
 
   clearActionError: () => set({ actionError: null }),
 
-  fetchQuotes: async (page = 1, term, filter) => {
+  fetchQuotes: async (page = 1, term, params) => {
     const seq = ++fetchQuotesSeq;
-    set({ loading: true, error: null, searchTerm: term, listFilter: filter });
+    set({ loading: true, error: null, searchTerm: term, listParams: params });
     try {
       // Omitted rather than sent empty: the API treats a blank q as no filter,
-      // but keeping it out of the query string keeps the URL honest. `filter`
-      // (e.g. 'delivered_unpaid') is threaded through the same way.
+      // but keeping it out of the query string keeps the URL honest. `params`
+      // (status, payment, sort, date/value ranges) is spread in the same way.
       const { data } = await api.get<Paginated<Quote>>('/quotes', {
         params: {
           page,
           ...(term ? { q: term } : {}),
-          ...(filter ? { filter } : {}),
+          ...(params ?? {}),
         },
       });
       if (seq !== fetchQuotesSeq) return;
@@ -535,7 +535,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       // Carry the active search through the reconnect refetch, or a socket drop
       // silently resets the user's filtered list to every order while their term
       // sits in the box.
-      void get().fetchQuotes(get().page, get().searchTerm, get().listFilter);
+      void get().fetchQuotes(get().page, get().searchTerm, get().listParams);
       const current = get().current;
       if (current) void get().fetchQuote(current.id);
     });
