@@ -23,6 +23,8 @@ interface LineProofRowProps {
   busy: boolean;
   /** Stage/replace this line's DRAFT from an uploaded artwork ref. */
   onStage: (artworkRef: string) => void;
+  /** Remove this line's staged DRAFT proof (server-side). */
+  onRemove: () => void;
   /** Open the existing-artwork picker for this line. */
   onPickExisting: () => void;
   /**
@@ -60,6 +62,7 @@ export default function LineProofRow({
   artworkOptions,
   busy,
   onStage,
+  onRemove,
   onPickExisting,
   onDrop,
   dropDisabledReason,
@@ -114,10 +117,11 @@ export default function LineProofRow({
         valueLabel={proof?.state === 'DRAFT' ? `Staged ${productName} artwork` : undefined}
         disabled={busy}
         onChange={(ref) => {
-          // Only staging matters here; a clear is a no-op (nothing to unstage
-          // client-side - the DRAFT lives server-side until Send).
+          // Staging an uploaded ref goes through onStage; removal is handled by
+          // onRemove (the staged DRAFT lives server-side, not locally).
           if (ref) onStage(ref);
         }}
+        onRemove={onRemove}
         // Sits on the field row, right of Remove/the picker, so upload and
         // "reuse what's on the order" read as the two ways to fill the proof.
         trailing={

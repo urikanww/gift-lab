@@ -175,6 +175,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Proofs
     // Stage artwork for one line (DRAFT), then send the whole round in one email.
     Route::post('/quotes/{quote}/lines/{lineItem}/proofs', [ProofController::class, 'stage'])->middleware('permission:quotes.edit');
+    Route::delete('/quotes/{quote}/lines/{lineItem}/proofs', [ProofController::class, 'unstage'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/proofs/send', [ProofController::class, 'send'])->middleware('permission:quotes.edit');
     // Auto-stage buyer's own designer art as DRAFT proofs (staff review then send).
     Route::post('/quotes/{quote}/proofs/auto-stage', [ProofController::class, 'autoStage'])->middleware('permission:quotes.edit');

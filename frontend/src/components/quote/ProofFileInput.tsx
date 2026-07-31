@@ -32,6 +32,7 @@ export default function ProofFileInput({
   accept = ACCEPT,
   maxBytes = MAX_BYTES,
   trailing,
+  onRemove,
 }: {
   label: string;
   hint?: string;
@@ -55,6 +56,12 @@ export default function ProofFileInput({
   /** Action rendered on the field row, right of the input/Remove (e.g. a
    *  "Use existing artwork" picker button) so the two proof sources sit together. */
   trailing?: ReactNode;
+  /**
+   * Server-side removal for a value set from OUTSIDE (a staged DRAFT proof).
+   * When set, "Remove" calls this instead of just clearing the field locally -
+   * the staged value lives server-side, so a local clear alone does nothing.
+   */
+  onRemove?: () => void;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +103,10 @@ export default function ProofFileInput({
   const clear = () => {
     setFileName(null);
     setLocalError(undefined);
-    onChange('', null);
+    // A value set from outside (a staged DRAFT proof) lives server-side, so a
+    // local clear does nothing - route Remove to the server unstage instead.
+    if (onRemove) onRemove();
+    else onChange('', null);
     // Reset the native input, or picking the same file again fires no change.
     if (inputRef.current) inputRef.current.value = '';
   };

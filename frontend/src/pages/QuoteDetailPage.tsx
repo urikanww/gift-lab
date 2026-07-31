@@ -107,6 +107,7 @@ export default function QuoteDetailPage() {
     accept,
     procure,
     stageProof,
+    unstageProof,
     autoStageProofs,
     sendProofs,
     setApprovalOrder,
@@ -718,6 +719,7 @@ export default function QuoteDetailPage() {
             artworkOptions={optionsForLine(line)}
             busy={busy}
             onStage={(ref) => void run(() => stageProof(quote.id, line.id, ref), 'Proof staged')}
+            onRemove={() => void run(() => unstageProof(quote.id, line.id), 'Proof removed')}
             onPickExisting={() => setPickerLineId(line.id)}
             // Dropping opens the line editor (and scrolls to it). Shown always so
             // staff know the control exists, but disabled with a reason when the

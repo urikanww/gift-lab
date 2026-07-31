@@ -68,6 +68,7 @@ function renderRow(overrides: Partial<ComponentProps<typeof LineProofRow>> = {})
     artworkOptions: [],
     busy: false,
     onStage: vi.fn(),
+    onRemove: vi.fn(),
     onPickExisting: vi.fn(),
     onDrop: vi.fn(),
     ...overrides,

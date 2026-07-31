@@ -127,6 +127,8 @@ interface QuoteStoreState {
    * Per-line: proofs are prepared line by line, then sent together.
    */
   stageProof: (quoteId: number, lineId: number, artworkRef: string) => Promise<void>;
+  /** Remove a line's open DRAFT proof (the staged-proof "Remove" control). */
+  unstageProof: (quoteId: number, lineId: number) => Promise<void>;
   /**
    * Auto-stage the buyer's own designer artwork as DRAFT proofs for every
    * eligible line with none yet (staff review, then send). Idempotent; returns
@@ -336,6 +338,17 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
       await api.post(`/quotes/${quoteId}/lines/${lineId}/proofs`, {
         artwork_version_ref: artworkRef,
       });
+      await get().fetchQuote(quoteId);
+    } catch (err) {
+      set({ actionError: apiError(err) });
+    }
+  },
+
+  unstageProof: async (quoteId, lineId) => {
+    set({ actionError: null });
+    try {
+      await ensureCsrf();
+      await api.delete(`/quotes/${quoteId}/lines/${lineId}/proofs`);
       await get().fetchQuote(quoteId);
     } catch (err) {
       set({ actionError: apiError(err) });

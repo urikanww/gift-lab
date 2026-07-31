@@ -41,6 +41,20 @@ class ProofController extends Controller
     }
 
     /**
+     * Remove a line's open DRAFT proof (the staged-proof "Remove" control).
+     * Staff-only; only a DRAFT is removable - a proof the buyer has seen is not.
+     */
+    public function unstage(Request $request, Quote $quote, LineItem $lineItem): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+        abort_unless($lineItem->quote_id === $quote->id, 404);
+
+        $this->quotes->unstageProof($quote, $lineItem);
+
+        return response()->json(['message' => 'Proof removed.']);
+    }
+
+    /**
      * Auto-stage the buyer's own designer artwork as a DRAFT proof for every
      * eligible line with none yet, so staff review-and-send instead of hand-
      * picking. Staff-only (the route also carries permission:quotes.edit);

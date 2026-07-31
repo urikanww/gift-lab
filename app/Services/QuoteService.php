@@ -922,6 +922,29 @@ final class QuoteService
     }
 
     /**
+     * Remove the line's open DRAFT proof (the "Remove" control on a staged
+     * proof). Only a DRAFT can be unstaged - a SENT/APPROVED/in-changes proof
+     * the buyer has seen is never silently dropped. Soft-deletes so history is
+     * kept; idempotent when nothing is staged.
+     */
+    public function unstageProof(Quote $quote, LineItem $line): void
+    {
+        $draft = $line->proofs()
+            ->where('state', ProofState::Draft->value)
+            ->orderByDesc('version')
+            ->first();
+
+        if ($draft === null) {
+            return;
+        }
+
+        DB::transaction(function () use ($draft, $quote): void {
+            $draft->delete();
+            DB::afterCommit(fn () => Broadcasting::dispatch(fn () => ProofStatusChanged::dispatch($draft, $quote->company_id)));
+        });
+    }
+
+    /**
      * Auto-stage the buyer's own designer artwork as a DRAFT proof for every
      * eligible line that has none yet. A buyer-authored in-app design is already
      * the thing to sign off, so staff shouldn't have to hand-pick it - they just

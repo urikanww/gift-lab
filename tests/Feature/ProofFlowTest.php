@@ -167,3 +167,42 @@ it('blocks a buyer from auto-staging proofs', function (): void {
 
     $this->postJson("/api/quotes/{$quote->id}/proofs/auto-stage")->assertForbidden();
 });
+
+it('removes a staged DRAFT proof and keeps sent proofs intact', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    $draft = Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'state' => 'DRAFT']);
+
+    $this->deleteJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs")->assertOk();
+
+    expect(Proof::where('line_item_id', $line->id)->exists())->toBeFalse()
+        ->and(Proof::withTrashed()->find($draft->id)->trashed())->toBeTrue();
+});
+
+it('never removes a proof the buyer has already seen (SENT)', function (): void {
+    Sanctum::actingAs($this->staff);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'PROOFING']);
+    $line = LineItem::factory()->create([
+        'quote_id' => $quote->id,
+        'customization' => ['mode' => 'designer', 'artwork_ref' => 'artwork/x.png'],
+        'line_state' => 'PENDING',
+    ]);
+    Proof::factory()->create(['quote_id' => $quote->id, 'line_item_id' => $line->id, 'state' => 'SENT']);
+
+    $this->deleteJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs")->assertOk();
+
+    expect(Proof::where('line_item_id', $line->id)->where('state', 'SENT')->exists())->toBeTrue();
+});
+
+it('blocks a buyer from removing a staged proof', function (): void {
+    Sanctum::actingAs($this->buyer);
+    $quote = Quote::factory()->create(['company_id' => $this->company->id, 'state' => 'DRAFT']);
+    $line = LineItem::factory()->create(['quote_id' => $quote->id, 'line_state' => 'PENDING']);
+
+    $this->deleteJson("/api/quotes/{$quote->id}/lines/{$line->id}/proofs")->assertForbidden();
+});

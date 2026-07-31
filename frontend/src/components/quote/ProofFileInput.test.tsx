@@ -91,3 +91,18 @@ it('clears an attached proof back to empty', async () => {
 
   expect(onChange).toHaveBeenCalledWith('', null);
 });
+
+// A staged DRAFT proof lives server-side; a local clear does nothing, so Remove
+// must route to onRemove (the server unstage) instead of a no-op onChange('').
+it('routes Remove to onRemove when given, not a local clear', async () => {
+  const onChange = vi.fn();
+  const onRemove = vi.fn();
+  render(
+    <ProofFileInput label="Proof artwork" value="proofs/abc.pdf" onChange={onChange} onRemove={onRemove} />,
+  );
+
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Remove' }));
+
+  expect(onRemove).toHaveBeenCalledTimes(1);
+  expect(onChange).not.toHaveBeenCalled();
+});
