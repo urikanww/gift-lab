@@ -232,7 +232,20 @@ Surfaced by driving the running app. These are **new** (the code sweeps didn't c
 
 Already verified done before this batch (no new code): **F8** (Commit PO field required), **F10** (returned-parcel resolution UI), and parked **P1/P2/P3/P6/P7/P8** (orderability gate, buyer next-step card, buyer table view, NinjaVan confirm modal, tracker names×qty, reorder-rail thumbnails).
 
-**Owner-deferred (decision recorded, intentionally NOT built):** **M1** (pay-now B2C/B2B gating — kept as one global switch, default OFF; per-company flag not built), and a **high-value/high-risk manual-review payment hold** (never specced into code).
+**Batch 8 — 2026-07-31 (staff list filters + post-audit refinements).** Shipped as PRs #21–#24, each with tests; `tsc` + full suites green (backend 1116, frontend 521).
+
+- **PR #21 / #22 — staff-list filter system (owner request: "more complete filters than a search box — status, sort, etc.; popup that only hits the API on submit; active filters as removable badges").**
+  - New shared `ListFilters` popup + removable `FilterBadges` (config-driven `FilterField[]`; applying or removing a badge is the only thing that fetches). Rolled to five staff menus: **Quotes** (status, payment, company, value, created/needed dates, sort), **Procurement** (search, updated range, sort), **Buy-list** (search, kind, state, negative-on-hand, created, sort), **Production** (track, print method, ready date — client-side board filter), **Users** (status/role/company refactored into the popup + joined range + sort). Search stays its own input; free-text `q` is defensively ignored if passed as an array.
+  - Left as-is by decision: the bespoke **Products** / **Catalogue-gate** filter systems (already working, carry features — bulk-archive, sort-with-dir — the shared popup doesn't cover).
+- **PR #23 — refinements #1 / #5 / #6:**
+  - **#1** — the "Personalisation" fee row was hand-rolled in the cart estimate and the order-detail summary with divergent formatting (`toFixed(2)` vs a raw string); extracted one shared `<FeeLine>` (guards on `> 0`, formats to 2dp) used by both.
+  - **#5** — the buyer progress stepper always showed a **Proof** stage, even for a plain-stock order that skips proofing (a step never reached); `QuoteResource` now exposes a `needs_proof` aggregate and `BuyerProgress` drops the Proof stage when false. *(Extends F4.)*
+  - **#6** — the "renders its own mailable vs the generic `OrderMilestoneMail`" distinction was implicit across the state map and call sites; made explicit as `OrderMilestone::rendersOwnMailable()` (true only for `ProofIssued` → `QuoteReadyMail`), and `OrderNotifier::send()` now guards against routing an own-mailable milestone through the generic template. *(Builds on M18.)*
+- **PR #24 — refinement #3:** the buyer's designer art was auto-staged as DRAFT proofs by a client-side page-load `useEffect`; moved the trigger server-side onto the accept choke point (`QuoteService::accept` → `autoStageDesignerProofs`), so staff open the proofing desk to the drafts already there. Removed the client `useEffect` + store action; kept the (still-tested, idempotent) endpoint as a manual re-stage.
+
+**Owner-deferred (decision recorded, intentionally NOT built):** **M1 / #8** (pay-now B2C/B2B gating — one global switch, default OFF; per-company flag and pay-now eligibility left until card payments are enabled), a **high-value/high-risk manual-review payment hold** (never specced into code), and refinement **#7** (Shopee affiliate-link staff stock-check — owner opted to use affiliate links via a non-affiliate buyer account; the self-referral risk is knowingly accepted, not mitigated in code).
+
+**Declined by decision (not a defect):** refinement **#4** (production queue → real `<table>`) — the board deliberately keeps card+grid rows because each job carries rich controls (expandable customization, per-artwork downloads, ship-address + mark-shipped forms, split-shipment) that don't fit `<td>`/`<tr>`; the aligned `<dl>` grid (P5) already gives the table-scan without the regression risk.
 
 **Reviewed, left by design (no code change):** L5, L8, L9, L17 (see notes above/in the register).
 
