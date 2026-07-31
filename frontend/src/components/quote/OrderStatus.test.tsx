@@ -71,6 +71,20 @@ it('shows a buyer four-stage progress with the current stage active', () => {
   expect(within(progress).getByText('Delivered')).toBeInTheDocument();
 });
 
+// #5: a plain-stock order (no line needs a proof) skips proofing entirely, so
+// the stepper drops the Proof stage rather than dangling a step never reached.
+it('drops the Proof stage for a plain-stock order (needsProof=false)', () => {
+  render(
+    <OrderStatus state="CONFIRMED" history={empty} audience="buyer" needsProof={false} />,
+  );
+
+  const progress = screen.getByRole('list', { name: /order progress/i });
+  expect(within(progress).queryByText('Proof')).not.toBeInTheDocument();
+  expect(within(progress).getByText('Quote')).toBeInTheDocument();
+  expect(within(progress).getByText('Production')).toBeInTheDocument();
+  expect(within(progress).getByText('Delivered')).toBeInTheDocument();
+});
+
 it('shows the staff internal glance unchanged (default audience)', () => {
   renderStatus('PROOFING');
 

@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Badge } from '../../ui';
 import { humanizeState, lineStateTone } from '../../lib/quoteStatus';
 import CustomizationPreview from '../CustomizationPreview';
+import { FeeLine } from '../FeeLine';
 import ProductThumb from '../product/ProductThumb';
 import { ShopeeLink } from '../ShopeeLink';
 import { safeHref } from '../../lib/safeHref';
@@ -230,14 +231,7 @@ export function PricingSummary({ quote }: { quote: Quote }) {
         {/* LT16: the personalisation fee is folded into subtotal - show it as
             its own row so the item lines above + this reconcile to Subtotal,
             instead of an unexplained gap. Hidden when there's no fee. */}
-        {quote.customization_fee !== undefined && Number(quote.customization_fee) > 0 && (
-          <div className="flex justify-between text-sm">
-            <dt className="text-fg-muted">Personalisation</dt>
-            <dd className="tabular-nums text-fg">
-              {quote.currency} {quote.customization_fee}
-            </dd>
-          </div>
-        )}
+        <FeeLine amount={quote.customization_fee} currency={quote.currency} />
         <div className="flex justify-between text-sm">
           <dt className="text-fg-muted">Subtotal</dt>
           <dd className="tabular-nums text-fg">

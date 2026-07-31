@@ -82,6 +82,14 @@ class OrderNotifier
      */
     public function send(Quote $quote, OrderMilestone $milestone, array $context = []): void
     {
+        // A milestone with its own dedicated mailable (ProofIssued → QuoteReadyMail,
+        // sent by QuoteService::emailProofsReady) must never be routed through the
+        // generic OrderMilestoneMail here — that would send the plain template in
+        // place of the proof. Such milestones reach the buyer by their own path.
+        if ($milestone->rendersOwnMailable()) {
+            return;
+        }
+
         if (! $this->isEnabled($milestone)) {
             return;
         }

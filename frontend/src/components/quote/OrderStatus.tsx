@@ -47,6 +47,10 @@ function isOnPath(state: QuoteState): boolean {
  * Buyer-facing progress (F4). The eight internal states collapse to four plain
  * stages a customer understands; the raw state name + "step N of 8" counter are
  * staff-only. -1 = off-track (CANCELLED), rendered as a plain note instead.
+ *
+ * A plain-stock order (no line needs a proof) skips proofing entirely — Accepted
+ * auto-advances straight past it — so its "Proof" stage is dropped rather than
+ * left dangling as a step the order will never reach (#5).
  */
 const BUYER_STAGES = ['Quote', 'Proof', 'Production', 'Delivered'] as const;
 
@@ -71,12 +75,16 @@ function buyerStageIndex(state: QuoteState): number {
   }
 }
 
-function BuyerProgress({ state }: { state: QuoteState }) {
-  const current = buyerStageIndex(state);
+function BuyerProgress({ state, needsProof }: { state: QuoteState; needsProof: boolean }) {
+  // Drop the Proof stage for a plain-stock order. Everything after it shifts
+  // down one, so the four-stage index maps onto the three-stage list.
+  const stages = needsProof ? BUYER_STAGES : BUYER_STAGES.filter((s) => s !== 'Proof');
+  const full = buyerStageIndex(state);
+  const current = needsProof ? full : full <= 0 ? 0 : full - 1;
   const complete = state === 'CLOSED';
   return (
     <ol className="mt-3 flex items-center gap-2" aria-label="Order progress">
-      {BUYER_STAGES.map((label, i) => {
+      {stages.map((label, i) => {
         const done = i < current || complete;
         const active = i === current && !complete;
         return (
@@ -96,7 +104,7 @@ function BuyerProgress({ state }: { state: QuoteState }) {
             >
               {label}
             </span>
-            {i < BUYER_STAGES.length - 1 && (
+            {i < stages.length - 1 && (
               <span
                 aria-hidden="true"
                 className={'h-px flex-1 ' + (done ? 'bg-primary' : 'bg-border')}
@@ -147,9 +155,14 @@ export default function OrderStatus({
   trailing,
   children,
   audience = 'staff',
+  needsProof = true,
 }: {
   state: QuoteState;
   history: QuoteHistory;
+  /** Whether this order has a proofing stage. Plain-stock orders (no proof-
+   *  needing line) drop the buyer stepper's "Proof" stage. Defaults true so a
+   *  caller without the aggregate keeps the stage. */
+  needsProof?: boolean;
   /**
    * Who's looking. 'staff' gets the full internal glance (next state, step N of
    * 8, status-history trail); 'buyer' gets the friendly stage progress only -
@@ -240,7 +253,7 @@ export default function OrderStatus({
       </div>
 
       {/* Buyer-facing friendly progress (F4), in place of the internal counter. */}
-      {!isStaffView && !cancelled && <BuyerProgress state={state} />}
+      {!isStaffView && !cancelled && <BuyerProgress state={state} needsProof={needsProof} />}
 
       {/* Under the badge: the buyer's passive note OR the staff state
           description - never both, as a page passes one or the other. */}

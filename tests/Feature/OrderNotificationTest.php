@@ -211,3 +211,35 @@ it('emails the buyer the batched proofs-ready mail on every round, not just the 
     Mail::assertQueued(QuoteReadyMail::class, 2);
     Mail::assertNotQueued(OrderMilestoneMail::class);
 });
+
+// #6: the "renders its own mailable" distinction lives on the enum as a single
+// source of truth. ProofIssued is the sole case delivered by a dedicated
+// mailable (QuoteReadyMail); every other milestone uses the generic template.
+it('marks only ProofIssued as rendering its own mailable', function (): void {
+    expect(OrderMilestone::ProofIssued->rendersOwnMailable())->toBeTrue();
+
+    foreach (OrderMilestone::cases() as $milestone) {
+        if ($milestone === OrderMilestone::ProofIssued) {
+            continue;
+        }
+        expect($milestone->rendersOwnMailable())->toBeFalse();
+    }
+});
+
+// Even called directly with ProofIssued enabled, OrderNotifier::send must not
+// queue the generic OrderMilestoneMail — that would send the plain template in
+// place of the proof. The proof-ready email travels its own path.
+it('never routes an own-mailable milestone through the generic template', function (): void {
+    $quote = quoteIn(QuoteState::Proofing);
+
+    // Force the preference on, so the only thing stopping the generic mail is
+    // the rendersOwnMailable guard, not the enabled check.
+    PricingConfig::updateOrCreate(
+        ['group' => 'notifications', 'key' => OrderMilestone::ProofIssued->value],
+        ['value' => true],
+    );
+
+    app(OrderNotifier::class)->send($quote, OrderMilestone::ProofIssued);
+
+    Mail::assertNotQueued(OrderMilestoneMail::class);
+});

@@ -9,6 +9,7 @@ import {
   customizationLabel,
   optionsLabel,
 } from '../components/cart/CartSummary';
+import { FeeLine } from '../components/FeeLine';
 import CustomizationPreview from '../components/CustomizationPreview';
 import ProductThumb from '../components/product/ProductThumb';
 import { DELIVERY_NOTE_RELIABLE, DELIVERY_NOTE_UNRELIABLE } from '../lib/deliveryCopy';
@@ -171,12 +172,7 @@ export default function CartPage() {
                   {/* F3: the personalisation/setup fee is folded into subtotal;
                       show it on its own line (as the order page does) so the item
                       prices above + this reconcile to the subtotal. */}
-                  {estimate.customization_fee > 0 && (
-                    <SummaryRow
-                      label="Personalisation"
-                      value={`${estimate.currency} ${estimate.customization_fee.toFixed(2)}`}
-                    />
-                  )}
+                  <FeeLine amount={estimate.customization_fee} currency={estimate.currency} />
                   <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
                   <SummaryRow
                     label="Estimated delivery"
