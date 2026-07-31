@@ -184,3 +184,11 @@ it('probes the derived quantities in a single batched request', async () => {
   expect(stripCalls).toHaveLength(1);
   expect(stripCalls[0][2]).toEqual([25, 50]);
 });
+
+it('F2: writes a singular "1 pc" (not "1 pcs") for a quantity-of-one tier', async () => {
+  stubPdp({ minOrderQty: 1, bulk: { bulkQty: 50, discountPct: 10 } });
+  await renderPdp();
+
+  await waitFor(() => expect(screen.getByRole('button', { name: /1 pc\b/i })).toBeInTheDocument());
+  expect(screen.queryByText(/1 pcs/)).not.toBeInTheDocument();
+});

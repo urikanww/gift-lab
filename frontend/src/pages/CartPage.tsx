@@ -168,6 +168,15 @@ export default function CartPage() {
                 </div>
               ) : estimate ? (
                 <dl className="flex flex-col gap-3">
+                  {/* F3: the personalisation/setup fee is folded into subtotal;
+                      show it on its own line (as the order page does) so the item
+                      prices above + this reconcile to the subtotal. */}
+                  {estimate.customization_fee > 0 && (
+                    <SummaryRow
+                      label="Personalisation"
+                      value={`${estimate.currency} ${estimate.customization_fee.toFixed(2)}`}
+                    />
+                  )}
                   <SummaryRow label="Subtotal" value={`${estimate.currency} ${estimate.subtotal.toFixed(2)}`} />
                   <SummaryRow
                     label="Estimated delivery"
