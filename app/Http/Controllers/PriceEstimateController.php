@@ -88,6 +88,7 @@ class PriceEstimateController extends Controller
             'currency' => 'SGD',
             'lines' => $totals['lines'],
             'subtotal' => $totals['subtotal'],
+            'customization_fee' => $totals['customization_fee'],
             'delivery' => $totals['delivery'],
             'gst' => $totals['gst'],
             'gst_rate' => $totals['gst_rate'],

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api, { apiError, ensureCsrf } from '../lib/api';
+import api, { apiError, apiFieldErrors, ensureCsrf } from '../lib/api';
 import { disconnectEcho } from '../lib/echo';
 import type { User } from '../types';
 
@@ -20,7 +20,7 @@ interface AuthState {
   error: string | null;
   fetchUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (payload: RegisterPayload) => Promise<boolean>;
+  register: (payload: RegisterPayload) => Promise<{ ok: boolean; fieldErrors: Record<string, string> }>;
   logout: () => Promise<void>;
 }
 
@@ -79,10 +79,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       // /register signs the new buyer in and returns the user, mirroring /login.
       const { data } = await api.post<{ user: User }>('/register', payload);
       set({ user: data.user, status: 'ready' });
-      return true;
+      return { ok: true, fieldErrors: {} };
     } catch (err) {
-      set({ error: apiError(err) });
-      return false;
+      // Field-level messages render inline on the form (F1); only a non-field
+      // failure (network, 500) falls back to the general error banner.
+      const fieldErrors = apiFieldErrors(err);
+      set({ error: Object.keys(fieldErrors).length > 0 ? null : apiError(err) });
+      return { ok: false, fieldErrors };
     }
   },
 

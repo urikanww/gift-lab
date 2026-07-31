@@ -589,6 +589,11 @@ export interface PriceEstimate {
   currency: string;
   lines: PriceEstimateLine[];
   subtotal: number;
+  /**
+   * Personalisation/setup fee already folded into `subtotal`, exposed so the
+   * cart can show it on its own line and reconcile items + fee = subtotal (F3).
+   */
+  customization_fee: number;
   delivery: number;
   /**
    * GST amount, already folded into `total`. Computed on the fee-inclusive

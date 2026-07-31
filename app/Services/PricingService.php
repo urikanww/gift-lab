@@ -222,6 +222,11 @@ final class PricingService
     {
         $priced = [];
         $subtotal = 0.0;
+        // The personalisation/decoration portion of the subtotal (per-line
+        // customization fees + the flat setup fee), surfaced as its own figure
+        // so a cart/estimate can show it on its own line and reconcile items +
+        // fee = subtotal (F3), matching the order page.
+        $customizationFee = 0.0;
         $totalWeightG = 0.0;
         // The scraped catalogue seeds placeholder weight/dimensions on some
         // products (e.g. 0.5 g / a 1 cm cube), which collapse the chargeable
@@ -233,15 +238,15 @@ final class PricingService
 
         foreach ($lines as $line) {
             $unit = $this->unitPrice($line['product'], $line['variant'], $line['qty'], $line['has_customization']);
-            $lineTotal = $unit * $line['qty'] + $this->lineCustomizationFee(
+            $lineFee = $this->lineCustomizationFee(
                 $line['product'],
                 $line['qty'],
                 $line['has_customization'],
                 $line['logo_size'] ?? null,
                 $line['has_text'] ?? false,
             );
-
-            $lineTotal = round($lineTotal, 2);
+            $customizationFee += $lineFee;
+            $lineTotal = round($unit * $line['qty'] + $lineFee, 2);
             $subtotal += $lineTotal;
             // Shipment weight is the chargeable (max of actual + volumetric)
             // weight so a light-but-bulky item ships at its volume; MODEL_3D with
@@ -255,7 +260,9 @@ final class PricingService
             $priced[] = ['unit_price' => $unit, 'line_total' => $lineTotal];
         }
 
-        $subtotal = round($subtotal + $this->setupFee(), 2);
+        $setupFee = $this->setupFee();
+        $customizationFee = round($customizationFee + $setupFee, 2);
+        $subtotal = round($subtotal + $setupFee, 2);
         $delivery = $this->deliveryFor($totalWeightG);
 
         $rate = $this->gstRate();
@@ -265,6 +272,8 @@ final class PricingService
         return [
             'lines' => $priced,
             'subtotal' => $subtotal,
+            // Part of subtotal, shown separately so items + fee reconcile (F3).
+            'customization_fee' => $customizationFee,
             'delivery' => $delivery,
             'gst' => $gst,
             'gst_rate' => round($rate * 100, 2),

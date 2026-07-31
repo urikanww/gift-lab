@@ -463,7 +463,9 @@ export default function ProductDetailPage() {
                             : 'border-border bg-surface hover:border-primary/50',
                         )}
                       >
-                        <span className="text-sm font-semibold text-fg">{t.qty} pcs</span>
+                        <span className="text-sm font-semibold text-fg">
+                          {t.qty} {t.qty === 1 ? 'pc' : 'pcs'}
+                        </span>
                         <span className="text-xs text-fg-muted">
                           {t.currency} {t.unitPrice.toFixed(2)} <span className="text-fg-subtle">/ unit</span>
                         </span>

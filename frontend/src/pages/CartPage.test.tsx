@@ -111,3 +111,50 @@ it('hides the GST row when delivery is deferred (unreliable estimate)', () => {
 
   expect(screen.queryByText(/^GST/)).not.toBeInTheDocument();
 });
+
+// F3: the personalisation/setup fee is folded into subtotal; the cart shows it
+// on its own line (as the order page does) so items + fee reconcile.
+it('shows a Personalisation line when the estimate carries a customization fee', () => {
+  useCartStore.setState({
+    lines: [LINE],
+    estimate: {
+      currency: 'SGD',
+      lines: [{ unit_price: 10, line_total: 10 }],
+      subtotal: 35,
+      customization_fee: 25,
+      delivery: 5,
+      gst: 3.6,
+      gst_rate: 9,
+      total: 43.6,
+      delivery_reliable: true,
+    } as any,
+    estimateError: null,
+  });
+
+  renderCart();
+
+  expect(screen.getByText('Personalisation')).toBeInTheDocument();
+  expect(screen.getByText('SGD 25.00')).toBeInTheDocument();
+});
+
+it('hides the Personalisation line when there is no customization fee', () => {
+  useCartStore.setState({
+    lines: [LINE],
+    estimate: {
+      currency: 'SGD',
+      lines: [{ unit_price: 10, line_total: 10 }],
+      subtotal: 10,
+      customization_fee: 0,
+      delivery: 5,
+      gst: 1.35,
+      gst_rate: 9,
+      total: 16.35,
+      delivery_reliable: true,
+    } as any,
+    estimateError: null,
+  });
+
+  renderCart();
+
+  expect(screen.queryByText('Personalisation')).not.toBeInTheDocument();
+});

@@ -33,12 +33,16 @@ export default function RegisterPage() {
   const [companyName, setCompanyName] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // F1: per-field validation messages, keyed as the API sends them, so each
+  // input shows its own error inline instead of one lumped banner.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
     setSubmitting(true);
-    const ok = await register({
+    setFieldErrors({});
+    const res = await register({
       name,
       email,
       password,
@@ -47,8 +51,10 @@ export default function RegisterPage() {
       company_phone: companyPhone || undefined,
     });
     setSubmitting(false);
-    if (ok) {
+    if (res.ok) {
       navigate(from ?? '/quotes', { replace: true });
+    } else {
+      setFieldErrors(res.fieldErrors);
     }
   };
 
@@ -71,6 +77,7 @@ export default function RegisterPage() {
             <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
               <Input
                 label="Company name"
+                error={fieldErrors.company_name}
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 required
@@ -81,6 +88,7 @@ export default function RegisterPage() {
               />
               <Input
                 label="Your name"
+                error={fieldErrors.name}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -91,6 +99,7 @@ export default function RegisterPage() {
               <Input
                 type="email"
                 label="Work email"
+                error={fieldErrors.email}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -101,6 +110,7 @@ export default function RegisterPage() {
               <Input
                 type="tel"
                 label="Phone (optional)"
+                error={fieldErrors.company_phone}
                 value={companyPhone}
                 onChange={(e) => setCompanyPhone(e.target.value)}
                 autoComplete="tel"
@@ -110,6 +120,7 @@ export default function RegisterPage() {
               <Input
                 type="password"
                 label="Password"
+                error={fieldErrors.password}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -120,6 +131,7 @@ export default function RegisterPage() {
               <Input
                 type="password"
                 label="Confirm password"
+                error={fieldErrors.password_confirmation}
                 value={passwordConfirmation}
                 onChange={(e) => setPasswordConfirmation(e.target.value)}
                 required
