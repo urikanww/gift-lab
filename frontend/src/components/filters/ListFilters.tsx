@@ -16,10 +16,6 @@ import type {
 
 type Piece = { label: string; onRemove: () => void };
 
-function asArray(v: unknown): string[] {
-  return Array.isArray(v) ? (v as string[]) : [];
-}
-
 function optionLabel(field: FilterField, value: string): string {
   return field.options?.find((o) => o.value === value)?.label ?? value;
 }
@@ -31,11 +27,17 @@ function fieldPieces(field: FilterField, values: FilterValues, commit: (v: Filte
 
   switch (field.type) {
     case 'multiselect': {
-      const arr = asArray(v);
-      return arr.map((val) => ({
-        label: `${field.label}: ${optionLabel(field, val)}`,
-        onRemove: () => clear(arr.filter((x) => x !== val)),
-      }));
+      // undefined = "all" (no filter, the default). A partial selection is the
+      // only thing that narrows, shown as one summary badge that clears back to
+      // all. (The dropdown never stores an empty or full array — see toggle.)
+      const arr = Array.isArray(v) ? (v as string[]) : undefined;
+      const total = field.options?.length ?? 0;
+      if (!arr || arr.length === 0 || arr.length === total) return [];
+      const shown =
+        arr.length <= 2
+          ? arr.map((val) => optionLabel(field, val)).join(', ')
+          : `${arr.length} selected`;
+      return [{ label: `${field.label}: ${shown}`, onRemove: () => clear(undefined) }];
     }
     case 'select':
     case 'text': {
@@ -63,6 +65,75 @@ function countActive(fields: FilterField[], values: FilterValues): number {
   return fields.reduce((n, f) => n + fieldPieces(f, values, () => {}).length, 0);
 }
 
+/**
+ * Multi-select as a compact dropdown: a summary trigger that expands an inline
+ * checklist. Default is "all" (stored as undefined = no filter); a partial
+ * selection narrows. Unchecking to empty or re-checking all normalises back to
+ * "all", so there is never a confusing "none selected shows everything" state.
+ */
+function MultiSelectField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FilterField;
+  value: FilterValues[string];
+  onChange: (v: FilterValues[string]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const options = field.options ?? [];
+  const selected = Array.isArray(value) ? (value as string[]) : undefined;
+  const checked = new Set(selected ?? options.map((o) => o.value));
+  const summary = !selected ? 'All' : `${selected.length} selected`;
+
+  const toggle = (val: string) => {
+    const next = new Set(checked);
+    if (next.has(val)) next.delete(val);
+    else next.add(val);
+    const arr = options.map((o) => o.value).filter((x) => next.has(x));
+    onChange(arr.length === 0 || arr.length === options.length ? undefined : arr);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-fg">{field.label}</span>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-9 items-center justify-between rounded-md border border-border-strong bg-surface px-3 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span>{summary}</span>
+        <span aria-hidden="true" className="text-fg-subtle">▾</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface p-2">
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="mb-0.5 self-start text-xs font-medium text-primary hover:underline"
+          >
+            Select all
+          </button>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            {options.map((o) => (
+              <label key={o.value} className="inline-flex items-center gap-2 text-sm text-fg">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={checked.has(o.value)}
+                  onChange={() => toggle(o.value)}
+                />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One editable control in the popup, bound to the draft. */
 function FieldControl({
   field,
@@ -86,29 +157,8 @@ function FieldControl({
           options={[{ value: '', label: field.placeholder ?? 'Any' }, ...(field.options ?? [])]}
         />
       );
-    case 'multiselect': {
-      const arr = asArray(v);
-      return (
-        <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1 text-sm font-medium text-fg">{field.label}</legend>
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            {(field.options ?? []).map((o) => (
-              <label key={o.value} className="inline-flex items-center gap-2 text-sm text-fg">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={arr.includes(o.value)}
-                  onChange={(e) =>
-                    set(e.target.checked ? [...arr, o.value] : arr.filter((x) => x !== o.value))
-                  }
-                />
-                {o.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      );
-    }
+    case 'multiselect':
+      return <MultiSelectField field={field} value={v} onChange={set} />;
     case 'daterange': {
       const r = (v as RangeValue) ?? {};
       return (
@@ -207,7 +257,7 @@ export default function ListFilters({
             and the popup stays short; multi-selects span the full width. */}
         <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           {fields.map((f) => (
-            <div key={f.key} className={f.type === 'multiselect' ? 'sm:col-span-2' : ''}>
+            <div key={f.key} className={f.type === 'daterange' ? 'sm:col-span-2' : ''}>
               <FieldControl field={f} draft={draft} setDraft={setDraft} />
             </div>
           ))}

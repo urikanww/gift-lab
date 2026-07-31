@@ -43,11 +43,13 @@ function renderBadges(value: FilterValues = {}, onChange = vi.fn()) {
   return onChange;
 }
 
-it('applies a chosen filter only on Apply, not while editing', () => {
+it('multi-select defaults to all; unchecking one narrows, and only Apply commits', () => {
   const onChange = renderFilters();
 
   fireEvent.click(screen.getByRole('button', { name: /^filters/i }));
-  fireEvent.click(screen.getByLabelText('Draft'));
+  // Status defaults to "All" (no filter); expand it and uncheck one option.
+  fireEvent.click(screen.getByRole('button', { name: 'All' }));
+  fireEvent.click(screen.getByLabelText('Sent')); // was checked (all) → now just Draft
   // Editing inside the popup must not have fired anything yet.
   expect(onChange).not.toHaveBeenCalled();
 
@@ -55,14 +57,13 @@ it('applies a chosen filter only on Apply, not while editing', () => {
   expect(onChange).toHaveBeenCalledWith({ status: ['DRAFT'] });
 });
 
-it('renders an active filter as a badge and removes just that one on ×', () => {
-  const onChange = renderBadges({ status: ['DRAFT', 'SENT'] });
+it('renders a partial multi-select as one summary badge that clears back to all', () => {
+  const onChange = renderBadges({ status: ['DRAFT'] });
 
   expect(screen.getByText('Status: Draft')).toBeInTheDocument();
-  expect(screen.getByText('Status: Sent')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Remove filter Status: Draft' }));
-  expect(onChange).toHaveBeenCalledWith({ status: ['SENT'] });
+  expect(onChange).toHaveBeenCalledWith({ status: undefined });
 });
 
 it('shows the active-filter count on the trigger button', () => {
