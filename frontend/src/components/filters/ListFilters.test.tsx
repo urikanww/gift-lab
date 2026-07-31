@@ -47,8 +47,7 @@ it('multi-select defaults to all; unchecking one narrows, and only Apply commits
   const onChange = renderFilters();
 
   fireEvent.click(screen.getByRole('button', { name: /^filters/i }));
-  // Status defaults to "All" (no filter); expand it and uncheck one option.
-  fireEvent.click(screen.getByRole('button', { name: 'All' }));
+  // Status defaults to all-checked (no filter); unchecking one narrows it.
   fireEvent.click(screen.getByLabelText('Sent')); // was checked (all) → now just Draft
   // Editing inside the popup must not have fired anything yet.
   expect(onChange).not.toHaveBeenCalled();

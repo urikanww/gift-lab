@@ -66,10 +66,11 @@ function countActive(fields: FilterField[], values: FilterValues): number {
 }
 
 /**
- * Multi-select as a compact dropdown: a summary trigger that expands an inline
- * checklist. Default is "all" (stored as undefined = no filter); a partial
- * selection narrows. Unchecking to empty or re-checking all normalises back to
- * "all", so there is never a confusing "none selected shows everything" state.
+ * Multi-select as an organised checkbox group. Default is "all" (stored as
+ * undefined = no filter), so every box shows checked on open; unchecking narrows
+ * and re-checking-all (or clearing to none) normalises back to "all" — there is
+ * never a confusing "none selected shows everything" state. A "Select all"
+ * shortcut appears once the selection is narrowed.
  */
 function MultiSelectField({
   field,
@@ -80,11 +81,9 @@ function MultiSelectField({
   value: FilterValues[string];
   onChange: (v: FilterValues[string]) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const options = field.options ?? [];
   const selected = Array.isArray(value) ? (value as string[]) : undefined;
   const checked = new Set(selected ?? options.map((o) => o.value));
-  const summary = !selected ? 'All' : `${selected.length} selected`;
 
   const toggle = (val: string) => {
     const next = new Set(checked);
@@ -95,42 +94,33 @@ function MultiSelectField({
   };
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-fg">{field.label}</span>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-9 items-center justify-between rounded-md border border-border-strong bg-surface px-3 text-sm text-fg hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span>{summary}</span>
-        <span aria-hidden="true" className="text-fg-subtle">▾</span>
-      </button>
-      {open && (
-        <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface p-2">
+    <fieldset className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <legend className="text-sm font-medium text-fg">{field.label}</legend>
+        {selected && (
           <button
             type="button"
             onClick={() => onChange(undefined)}
-            className="mb-0.5 self-start text-xs font-medium text-primary hover:underline"
+            className="text-xs font-medium text-primary hover:underline"
           >
             Select all
           </button>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            {options.map((o) => (
-              <label key={o.value} className="inline-flex items-center gap-2 text-sm text-fg">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={checked.has(o.value)}
-                  onChange={() => toggle(o.value)}
-                />
-                {o.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+        {options.map((o) => (
+          <label key={o.value} className="inline-flex items-center gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={checked.has(o.value)}
+              onChange={() => toggle(o.value)}
+            />
+            {o.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -257,7 +247,10 @@ export default function ListFilters({
             and the popup stays short; multi-selects span the full width. */}
         <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           {fields.map((f) => (
-            <div key={f.key} className={f.type === 'daterange' ? 'sm:col-span-2' : ''}>
+            <div
+              key={f.key}
+              className={f.type === 'multiselect' || f.type === 'daterange' ? 'sm:col-span-2' : ''}
+            >
               <FieldControl field={f} draft={draft} setDraft={setDraft} />
             </div>
           ))}
