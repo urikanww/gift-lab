@@ -6,10 +6,21 @@ import userEvent from '@testing-library/user-event';
 // Stub the uploader: attaching yields the ref the server would return, so the
 // row's onStage wiring can be exercised without a real upload round-trip.
 vi.mock('./ProofFileInput', () => ({
-  default: ({ label, onChange }: { label: string; onChange: (ref: string, name: string | null) => void }) => (
-    <button type="button" onClick={() => onChange('proofs/new.png', 'new.png')}>
-      {`attach:${label}`}
-    </button>
+  default: ({
+    label,
+    onChange,
+    trailing,
+  }: {
+    label: string;
+    onChange: (ref: string, name: string | null) => void;
+    trailing?: React.ReactNode;
+  }) => (
+    <div>
+      <button type="button" onClick={() => onChange('proofs/new.png', 'new.png')}>
+        {`attach:${label}`}
+      </button>
+      {trailing}
+    </div>
   ),
 }));
 

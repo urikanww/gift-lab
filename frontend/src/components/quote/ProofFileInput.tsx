@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import api, { apiError, ensureCsrf } from '../../lib/api';
 import { Button } from '../../ui';
 
@@ -31,6 +31,7 @@ export default function ProofFileInput({
   field = 'proof',
   accept = ACCEPT,
   maxBytes = MAX_BYTES,
+  trailing,
 }: {
   label: string;
   hint?: string;
@@ -51,6 +52,9 @@ export default function ProofFileInput({
   /** Accepted MIME list + size ceiling, mirroring the endpoint's own rules. */
   accept?: string;
   maxBytes?: number;
+  /** Action rendered on the field row, right of the input/Remove (e.g. a
+   *  "Use existing artwork" picker button) so the two proof sources sit together. */
+  trailing?: ReactNode;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -103,29 +107,34 @@ export default function ProofFileInput({
         {label}
       </label>
 
-      {value ? (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-border-strong bg-surface px-3 py-2">
-          <span className="truncate text-sm text-fg">{fileName ?? valueLabel ?? value}</span>
-          <Button variant="ghost" size="sm" onClick={clear} disabled={disabled || uploading}>
-            Remove
-          </Button>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          {value ? (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border-strong bg-surface px-3 py-2">
+              <span className="truncate text-sm text-fg">{fileName ?? valueLabel ?? value}</span>
+              <Button variant="ghost" size="sm" onClick={clear} disabled={disabled || uploading}>
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <input
+              id={inputId}
+              ref={inputRef}
+              type="file"
+              accept={accept}
+              disabled={disabled || uploading}
+              aria-invalid={shownError ? true : undefined}
+              aria-describedby={shownError ? `${inputId}-error` : undefined}
+              className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-fg hover:file:bg-surface-3"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void upload(file);
+              }}
+            />
+          )}
         </div>
-      ) : (
-        <input
-          id={inputId}
-          ref={inputRef}
-          type="file"
-          accept={accept}
-          disabled={disabled || uploading}
-          aria-invalid={shownError ? true : undefined}
-          aria-describedby={shownError ? `${inputId}-error` : undefined}
-          className="block w-full text-sm text-fg-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-2 file:text-sm file:font-medium file:text-fg hover:file:bg-surface-3"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void upload(file);
-          }}
-        />
-      )}
+        {trailing && <div className="shrink-0">{trailing}</div>}
+      </div>
 
       {uploading && <p className="text-sm text-fg-subtle">Uploading…</p>}
       {hint && !shownError && <p className="text-sm text-fg-subtle">{hint}</p>}

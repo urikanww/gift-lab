@@ -687,9 +687,9 @@ export default function QuoteDetailPage() {
   // rejects it anyway; disabling here makes that obvious up front).
   const isOnlyLine = (quote.line_items?.length ?? 0) <= 1;
   const dropDisabledReason = !canEditLines
-    ? 'Items can only be changed while the order is a draft.'
+    ? 'Editable only on draft orders.'
     : isOnlyLine
-      ? 'An order must keep at least one item — the only line can’t be dropped.'
+      ? 'Keep at least one item.'
       : undefined;
 
   const perLineProofPanel = (showSend: boolean) => (

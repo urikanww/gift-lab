@@ -14,16 +14,18 @@ vi.mock('../lib/quotes', async (importOriginal) => ({
 // The proof uploader has its own test; here it is stubbed so these tests stay
 // about the page's own logic. Attaching yields the ref the server would return.
 vi.mock('../components/quote/ProofFileInput', () => ({
-  default: ({ label, value, onChange }: {
+  default: ({ label, value, onChange, trailing }: {
     label: string;
     value: string;
     onChange: (ref: string, name: string | null) => void;
+    trailing?: React.ReactNode;
   }) => (
     <div>
       <button type="button" onClick={() => onChange('proofs/v1.pdf', 'v1.pdf')}>
         {`attach:${label}`}
       </button>
       <span data-testid={`ref:${label}`}>{value}</span>
+      {trailing}
     </div>
   ),
 }));
@@ -1278,7 +1280,7 @@ it('disables the Drop item control (with a reason) for a plain staff_admin past 
   renderPage();
 
   expect(screen.getByRole('button', { name: /drop item/i })).toBeDisabled();
-  expect(screen.getByText(/only be changed while the order is a draft/i)).toBeInTheDocument();
+  expect(screen.getByText(/editable only on draft/i)).toBeInTheDocument();
 });
 
 it('offers an enabled Drop item control on a multi-line DRAFT quote (plain staff_admin can edit lines)', () => {
@@ -1318,7 +1320,7 @@ it('disables the Drop item control (with a reason) when only one line remains', 
   renderPage();
 
   expect(screen.getByRole('button', { name: /drop item/i })).toBeDisabled();
-  expect(screen.getByText(/must keep at least one item/i)).toBeInTheDocument();
+  expect(screen.getByText(/keep at least one item/i)).toBeInTheDocument();
 });
 
 it('offers the buyer finished-look references as selectable proof artwork', async () => {

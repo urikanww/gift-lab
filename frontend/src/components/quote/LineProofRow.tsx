@@ -77,51 +77,57 @@ export default function LineProofRow({
             <span className="text-xs text-fg-muted tabular-nums">Qty {line.qty}</span>
           </div>
         </div>
-        <Badge tone={badge.tone} size="sm">
-          {badge.label}
-        </Badge>
+        {/* Line-level state + action live together in the header, away from the
+            proof-staging controls below, so neither row feels crowded. */}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <Badge tone={badge.tone} size="sm">
+            {badge.label}
+          </Badge>
+          {onDrop && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-danger hover:bg-danger-bg"
+              disabled={busy || Boolean(dropDisabledReason)}
+              title={dropDisabledReason}
+              onClick={onDrop}
+            >
+              Drop item
+            </Button>
+          )}
+          {onDrop && dropDisabledReason && (
+            <span className="max-w-[12rem] text-right text-2xs text-fg-subtle">
+              {dropDisabledReason}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* The buyer's brief (reference images + placement notes) when they asked
           us to do the design - staff produce the proof artwork from this. */}
       <BuyerBrief customization={line.customization} />
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="flex-1">
-          <ProofFileInput
-            label={`Proof for ${productName}`}
-            hint="PDF or image, up to 3 MB."
-            value={proof?.state === 'DRAFT' ? proof.artwork_version_ref : ''}
-            valueLabel={proof?.state === 'DRAFT' ? `Staged ${productName} artwork` : undefined}
-            disabled={busy}
-            onChange={(ref) => {
-              // Only staging matters here; a clear is a no-op (nothing to unstage
-              // client-side - the DRAFT lives server-side until Send).
-              if (ref) onStage(ref);
-            }}
-          />
-        </div>
-        {artworkOptions.length > 0 && (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={onPickExisting}>
-            Use existing artwork
-          </Button>
-        )}
-        {onDrop && (
-          <div className="flex flex-col items-start gap-1 sm:ml-auto sm:items-end">
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={busy || Boolean(dropDisabledReason)}
-              onClick={onDrop}
-            >
-              Drop item
+      <ProofFileInput
+        label={`Proof for ${productName}`}
+        hint="PDF or image, up to 3 MB."
+        value={proof?.state === 'DRAFT' ? proof.artwork_version_ref : ''}
+        valueLabel={proof?.state === 'DRAFT' ? `Staged ${productName} artwork` : undefined}
+        disabled={busy}
+        onChange={(ref) => {
+          // Only staging matters here; a clear is a no-op (nothing to unstage
+          // client-side - the DRAFT lives server-side until Send).
+          if (ref) onStage(ref);
+        }}
+        // Sits on the field row, right of Remove/the picker, so upload and
+        // "reuse what's on the order" read as the two ways to fill the proof.
+        trailing={
+          artworkOptions.length > 0 ? (
+            <Button variant="secondary" size="sm" disabled={busy} onClick={onPickExisting}>
+              Use existing artwork
             </Button>
-            {dropDisabledReason && (
-              <span className="max-w-[16rem] text-xs text-fg-subtle">{dropDisabledReason}</span>
-            )}
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+      />
     </div>
   );
 }
