@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\RegistrationSource;
 use App\Enums\UserRole;
 use App\Support\Permissions;
 use Database\Factories\UserFactory;
@@ -50,6 +51,8 @@ class User extends Authenticatable
             'password' => 'hashed',
             'role' => UserRole::class,
             'permissions' => 'array',
+            'consented_at' => 'datetime',
+            'registration_source' => RegistrationSource::class,
         ];
     }
 

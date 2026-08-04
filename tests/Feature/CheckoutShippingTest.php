@@ -50,6 +50,7 @@ it('snapshots the shipping address onto the quote', function (): void {
         'company_id' => $company->id,
         'line_items' => checkoutLineItems(),
         'shipping_address' => shippingPayload(['recipient_name' => 'Site B Reception']),
+        'recipient_consent' => true,
     ])->assertCreated();
 
     $quoteId = $response->json('data.id');
@@ -69,6 +70,7 @@ it('keeps the order address unchanged when a saved address is later edited', fun
         'company_id' => $company->id,
         'line_items' => checkoutLineItems(),
         'shipping_address' => shippingPayload(['recipient_name' => 'Original']),
+        'recipient_consent' => true,
     ])->assertCreated();
     $quoteId = $response->json('data.id');
 

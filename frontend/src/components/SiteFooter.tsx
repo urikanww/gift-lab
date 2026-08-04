@@ -16,6 +16,8 @@ const SHOP_LINKS = [
   { label: 'Cart', to: '/cart' },
 ];
 
+const LEGAL_LINKS = [{ label: 'Privacy Policy', to: '/privacy' }];
+
 export default function SiteFooter() {
   const user = useAuthStore((s) => s.user);
 
@@ -35,6 +37,7 @@ export default function SiteFooter() {
   const LINK_COLUMNS = [
     { heading: 'Shop', links: SHOP_LINKS },
     { heading: 'Account', links: accountLinks },
+    { heading: 'Legal', links: LEGAL_LINKS },
   ];
 
   return (

@@ -110,6 +110,7 @@ interface QuoteStoreState {
     neededBy?: string | null,
     idempotencyKey?: string | null,
     shippingAddress?: ShippingAddressInput | null,
+    recipientConsent?: boolean,
   ) => Promise<Quote | null>;
   /**
    * Staff amendment of a DRAFT's lines, delivery and notes.
@@ -247,7 +248,7 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
     }
   },
 
-  createQuote: async (companyId, lines, notes, neededBy = null, idempotencyKey = null, shippingAddress = null) => {
+  createQuote: async (companyId, lines, notes, neededBy = null, idempotencyKey = null, shippingAddress = null, recipientConsent = false) => {
     set({ actionError: null });
     try {
       await ensureCsrf();
@@ -261,6 +262,8 @@ export const useQuoteStore = create<QuoteStoreState>((set, get) => ({
         idempotency_key: idempotencyKey,
         // Buyer's checkout ship-to; snapshotted server-side onto the quote.
         shipping_address: shippingAddress,
+        // PDPA: buyer's acknowledgement they may share the recipient's details.
+        recipient_consent: recipientConsent,
         line_items: lines.map((l) => ({
           product_id: l.product.id,
           variant_id: l.variant?.id ?? null,

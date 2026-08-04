@@ -53,6 +53,7 @@ function buyerUploadedPayload(int $companyId, int $productId): array
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ];
 }
 
@@ -93,6 +94,7 @@ it('does NOT alert staff for an ordinary (self-designed or plain) line', functio
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ])->assertCreated();
 
     Event::assertNotDispatched(DesignRequested::class);

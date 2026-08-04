@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\RegistrationSource;
 use App\Enums\UserRole;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
@@ -65,6 +66,12 @@ class AuthController extends Controller
                 'password' => $request->string('password')->toString(),
                 'role' => UserRole::Buyer->value,
             ]);
+
+            $user->forceFill([
+                'consented_at' => now(),
+                'consent_policy_version' => config('privacy.version'),
+                'registration_source' => RegistrationSource::SelfRegistered,
+            ])->save();
 
             // Close the created_by loop now that the first user exists.
             $company->created_by = $user->id;

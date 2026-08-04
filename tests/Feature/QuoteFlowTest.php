@@ -42,6 +42,7 @@ it('lets a buyer create a draft quote priced from config', function (): void {
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ]);
 
     $response->assertCreated()->assertJsonPath('data.state', 'DRAFT');
@@ -95,6 +96,7 @@ it('creates a multi-line quote with batched product/variant lookups', function (
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ]);
 
     $response->assertCreated()->assertJsonPath('data.state', 'DRAFT');
@@ -129,6 +131,7 @@ it('persists the need-by deadline and returns it on fetch', function (): void {
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ])->assertCreated()->assertJsonPath('data.needed_by', $neededBy);
 
     // Round-trips create -> fetch (not just echoed from the request body).

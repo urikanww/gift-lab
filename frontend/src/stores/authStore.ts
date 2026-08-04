@@ -12,6 +12,7 @@ export interface RegisterPayload {
   company_registration_no?: string;
   company_phone?: string;
   company_address?: string;
+  consent: boolean;
 }
 
 interface AuthState {

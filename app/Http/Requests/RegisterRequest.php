@@ -42,6 +42,8 @@ class RegisterRequest extends FormRequest
             'company_registration_no' => ['nullable', 'string', 'max:50'],
             'company_phone' => ['nullable', 'string', 'max:50'],
             'company_address' => ['nullable', 'string', 'max:1000'],
+            // PDPA s.13-14: explicit, recorded consent at the point of collection.
+            'consent' => ['required', 'accepted'],
         ];
     }
 }

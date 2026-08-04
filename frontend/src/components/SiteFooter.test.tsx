@@ -13,3 +13,8 @@ it('links to track order', () => {
   render(<MemoryRouter><SiteFooter /></MemoryRouter>);
   expect(screen.getByRole('link', { name: /track order/i })).toHaveAttribute('href', '/track');
 });
+
+it('links to the privacy policy', () => {
+  render(<MemoryRouter><SiteFooter /></MemoryRouter>);
+  expect(screen.getByRole('link', { name: /privacy policy/i })).toHaveAttribute('href', '/privacy');
+});

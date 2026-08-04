@@ -117,14 +117,15 @@ it('blocks placing the order until the shipping address is valid', () => {
     </ThemeProvider>,
   );
 
-  // Place order is gated on the quote-request acknowledgement; tick it so the
-  // click reaches the shipping-address validation we're asserting here.
-  fireEvent.click(screen.getByRole('checkbox'));
+  // Place order is gated on both acknowledgements; tick them so the click
+  // reaches the shipping-address validation we're asserting here.
+  fireEvent.click(screen.getByRole('checkbox', { name: /quote request/i }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /recipient/i }));
   fireEvent.click(screen.getByRole('button', { name: /place order/i }));
   expect(screen.getByText(/complete the shipping address/i)).toBeInTheDocument();
 });
 
-it('keeps Place order disabled until the quote-request box is ticked', () => {
+it('keeps Place order disabled until both acknowledgements are ticked', () => {
   useSavedAddressStore.setState({ addresses: [], loading: false, error: null });
   useCartStore.setState({
     lines: [{ key: 'k', product: { id: 5, name: 'A5' } as any, variant: null, qty: 1, customization: {} }],
@@ -144,9 +145,12 @@ it('keeps Place order disabled until the quote-request box is ticked', () => {
     </ThemeProvider>,
   );
 
-  expect(screen.getByRole('button', { name: /place order/i })).toBeDisabled();
-  fireEvent.click(screen.getByRole('checkbox'));
-  expect(screen.getByRole('button', { name: /place order/i })).toBeEnabled();
+  const placeBtn = () => screen.getByRole('button', { name: /place order/i });
+  expect(placeBtn()).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox', { name: /quote request/i }));
+  expect(placeBtn()).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox', { name: /recipient/i }));
+  expect(placeBtn()).toBeEnabled();
 });
 
 // createQuote rejects server-side (unpublished product, raised MOQ, removed
@@ -163,7 +167,8 @@ it('shows the store\'s specific rejection reason when the order is rejected', as
     },
   } as any);
 
-  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('checkbox', { name: /quote request/i }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /recipient/i }));
   fireEvent.click(screen.getByRole('button', { name: /place order/i }));
 
   expect(
@@ -180,7 +185,8 @@ it('falls back to the generic message when the store has no specific reason', as
     createQuote: async () => null,
   } as any);
 
-  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('checkbox', { name: /quote request/i }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /recipient/i }));
   fireEvent.click(screen.getByRole('button', { name: /place order/i }));
 
   expect(

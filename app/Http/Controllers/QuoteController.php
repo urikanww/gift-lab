@@ -205,6 +205,11 @@ class QuoteController extends Controller
         // cross-company quote by bypassing the FormRequest.
         $this->authorize('create', [Quote::class, $companyId]);
 
+        // PDPA: recipient consent is stamped inside QuoteService's own create
+        // transaction (fresh-create path only), not here - a retry/idempotency
+        // replay must return the original quote untouched, and a stamp failure
+        // must roll back the whole quote rather than leave it committed with a
+        // null ack. Staff-raised quotes never send it (requiredIf).
         $quote = $this->quotes->create(
             $companyId,
             $request->array('line_items'),
@@ -212,6 +217,7 @@ class QuoteController extends Controller
             $request->input('needed_by'),
             $request->input('idempotency_key'),
             $request->input('shipping_address'),
+            $request->boolean('recipient_consent'),
         );
 
         return (new QuoteResource($quote->load('lineItems')))

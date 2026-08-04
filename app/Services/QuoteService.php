@@ -63,10 +63,13 @@ final class QuoteService
      *
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
-    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null, ?string $idempotencyKey = null, ?array $shipping = null): Quote
+    public function create(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy = null, ?string $idempotencyKey = null, ?array $shipping = null, bool $recipientConsent = false): Quote
     {
         // Replay of an already-submitted cart (double-click / network retry)
         // returns the original draft instead of minting a duplicate (audit A12).
+        // Deliberately NOT re-stamped with consent: the row already carries the
+        // original checkout's recipient_consent_ack_at, and overwriting it here
+        // would silently move a buyer's consent timestamp on every retry.
         if ($idempotencyKey !== null) {
             $existing = Quote::query()
                 ->where('company_id', $companyId)
@@ -79,7 +82,7 @@ final class QuoteService
         }
 
         try {
-            return $this->createFresh($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey, $shipping);
+            return $this->createFresh($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey, $shipping, $recipientConsent);
         } catch (UniqueConstraintViolationException $e) {
             // Two identical submits raced past the lookup; the loser lands
             // here and returns the winner's quote.
@@ -154,15 +157,17 @@ final class QuoteService
 
         // Fresh draft: no notes, needed-by, idempotency key or shipping carried
         // over - a reorder is a new order, not a resubmission of the old one.
-        return $this->create($source->company_id, $specs, null, null, null, null);
+        // recipientConsent is false: a reorder mints a draft, not a checkout,
+        // so there is no new recipient-consent acknowledgement to record.
+        return $this->create($source->company_id, $specs, null, null, null, null, false);
     }
 
     /**
      * @param  array<int, array{product_id: int, variant_id: ?int, qty: int, customization: ?array<string, mixed>}>  $lineSpecs
      */
-    private function createFresh(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy, ?string $idempotencyKey, ?array $shipping): Quote
+    private function createFresh(int $companyId, array $lineSpecs, ?string $notes, ?string $neededBy, ?string $idempotencyKey, ?array $shipping, bool $recipientConsent = false): Quote
     {
-        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey, $shipping): Quote {
+        return DB::transaction(function () use ($companyId, $lineSpecs, $notes, $neededBy, $idempotencyKey, $shipping, $recipientConsent): Quote {
             // Batch-load products/variants once (two queries) instead of one
             // query per line - same pattern as PriceEstimateController.
             $productIds = array_values(array_unique(array_map(
@@ -298,6 +303,21 @@ final class QuoteService
             // commit so the quote + lines are settled before the alert lands.
             if ($designRequestLines !== []) {
                 DB::afterCommit(fn () => $this->staffNotifier->designRequested($quote, $designRequestLines));
+            }
+
+            // PDPA: record the buyer's recipient-consent acknowledgement in the
+            // same transaction as the quote it was made for. Stamped only on
+            // this fresh-create path - the idempotency replay and unique-
+            // violation race-loser paths above return an existing quote
+            // untouched, so a retry never re-stamps (and can't overwrite) the
+            // original consent timestamp. If the save below throws, the whole
+            // transaction rolls back rather than leaving a non-compliant quote
+            // committed with a null ack.
+            if ($recipientConsent) {
+                $quote->forceFill([
+                    'recipient_consent_ack_at' => now(),
+                    'recipient_consent_version' => config('privacy.version'),
+                ])->save();
             }
 
             return $quote->fresh(['lineItems']);

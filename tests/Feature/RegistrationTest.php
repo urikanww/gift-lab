@@ -18,6 +18,7 @@ it('registers a new corporate buyer with their company', function (): void {
         'password_confirmation' => 'super-secret-1',
         'company_name' => 'Acme Pte Ltd',
         'company_phone' => '+65 6123 4567',
+        'consent' => true,
     ]);
 
     $response->assertCreated()
