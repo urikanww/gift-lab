@@ -88,14 +88,14 @@ final class Permissions
                 'manage' => 'Edit the pickup address & collection window',
             ],
         ],
+        // Sensitive - see SENSITIVE_SECTIONS. Grantable, but never by default and
+        // only by a superadmin.
         'reports' => [
             'label' => 'Reports',
             'actions' => [
                 'view' => 'View business reports & exports',
             ],
         ],
-        // Sensitive - see SENSITIVE_SECTIONS. Grantable, but never by default and
-        // only by a superadmin.
         'pricing' => [
             'label' => 'Pricing',
             'actions' => [
