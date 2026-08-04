@@ -15,5 +15,9 @@ enum RegistrationSource: string
 {
     case SelfRegistered = 'self_registered';
     case StaffCreated = 'staff_created';
+    // DB default. Backfills pre-consent rows, and the only re-consent target.
+    // Footgun: any NEW user-creation path that forgets to stamp a source reads
+    // as legacy too - stamp explicitly (self_registered / staff_created) when
+    // adding one, or it will be miscategorised for re-consent.
     case Legacy = 'legacy';
 }
