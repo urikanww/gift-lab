@@ -185,3 +185,16 @@ it('422s on an inverted date range', function (): void {
     $this->getJson('/api/admin/reports?from=2026-07-31&to=2026-06-01')
         ->assertStatus(422)->assertJsonValidationErrors('to');
 });
+
+it('defaults to roughly the last 90 days when no range is given', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
+
+    $range = $this->getJson('/api/admin/reports')->assertOk()->json('range');
+    $from = Carbon::parse($range['from']);
+    $to = Carbon::parse($range['to']);
+
+    // "to" is today; the window spans ~90 days (89-91 tolerates the day-bound edges).
+    expect($to->toDateString())->toBe(Carbon::now()->toDateString())
+        ->and($from->diffInDays($to))->toBeGreaterThanOrEqual(89)
+        ->and($from->diffInDays($to))->toBeLessThanOrEqual(91);
+});
