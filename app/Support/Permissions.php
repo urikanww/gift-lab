@@ -29,7 +29,7 @@ final class Permissions
      *
      * @var list<string>
      */
-    public const SENSITIVE_SECTIONS = ['pricing', 'users'];
+    public const SENSITIVE_SECTIONS = ['pricing', 'users', 'reports'];
 
     /**
      * Grouped for display AND enforcement. Order here is the order the access
@@ -86,6 +86,12 @@ final class Permissions
             'actions' => [
                 'view' => 'View courier & pickup settings',
                 'manage' => 'Edit the pickup address & collection window',
+            ],
+        ],
+        'reports' => [
+            'label' => 'Reports',
+            'actions' => [
+                'view' => 'View business reports & exports',
             ],
         ],
         // Sensitive - see SENSITIVE_SECTIONS. Grantable, but never by default and
