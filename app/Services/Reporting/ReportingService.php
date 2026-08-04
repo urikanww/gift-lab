@@ -84,6 +84,10 @@ class ReportingService
     {
         return LineItem::query()
             ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
+            // Raw join bypasses Product's SoftDeletingScope, so a soft-deleted
+            // product keeps its historical revenue under its real name.
+            // leftJoin (not join) also survives the theoretical missing-product
+            // row, though restrictOnDelete on line_items.product_id prevents that.
             ->leftJoin('products', 'products.id', '=', 'line_items.product_id')
             ->whereNotNull('quotes.accepted_at')
             ->where('quotes.state', '!=', 'CANCELLED')

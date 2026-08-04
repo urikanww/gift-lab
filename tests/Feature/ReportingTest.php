@@ -99,14 +99,31 @@ it('ranks top products by net goods revenue over the range', function (): void {
     LineItem::factory()->create(['quote_id' => $order->id, 'product_id' => $mug->id, 'qty' => 10, 'unit_price' => 5]);
     LineItem::factory()->create(['quote_id' => $order->id, 'product_id' => $pen->id, 'qty' => 100, 'unit_price' => 2]);
 
+    // Must NOT appear: a cancelled order, and an in-catalogue order outside the range.
+    $ghost = Product::factory()->create(['name' => 'Ghost']);
+    $cancelled = Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'CANCELLED', 'accepted_at' => Carbon::parse('2026-07-09'),
+    ]);
+    LineItem::factory()->create(['quote_id' => $cancelled->id, 'product_id' => $ghost->id, 'qty' => 999, 'unit_price' => 9]);
+    $outOfRange = Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-05-01'),
+    ]);
+    LineItem::factory()->create(['quote_id' => $outOfRange->id, 'product_id' => $ghost->id, 'qty' => 999, 'unit_price' => 9]);
+
+    // Soft-deleting a product must NOT drop its historical revenue (leftJoin +
+    // restrictOnDelete): the report still names it.
+    $mug->delete();
+
     $top = app(ReportingService::class)->topProducts(
         Carbon::parse('2026-07-01'), Carbon::parse('2026-07-31')
     );
 
-    expect($top[0]['name'])->toBe('Pen')
+    expect($top)->toHaveCount(2)                       // Ghost (cancelled + out-of-range) excluded
+        ->and(collect($top)->pluck('name'))->not->toContain('Ghost')
+        ->and($top[0]['name'])->toBe('Pen')
         ->and($top[0]['revenue'])->toBe(200.0)
         ->and($top[0]['units'])->toBe(100)
-        ->and($top[1]['name'])->toBe('Mug');
+        ->and($top[1]['name'])->toBe('Mug');            // soft-deleted, still shown
 });
 
 it('computes lifetime repeat-customer rate among range-active companies', function (): void {
@@ -116,6 +133,9 @@ it('computes lifetime repeat-customer rate among range-active companies', functi
     Quote::factory()->create(['company_id' => $repeat->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-01-05')]);
     Quote::factory()->create(['company_id' => $repeat->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-07-10')]);
     Quote::factory()->create(['company_id' => $once->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-07-12')]);
+    // A cancelled order in range must not make its company count as active.
+    $cancelledCo = Company::factory()->create();
+    Quote::factory()->create(['company_id' => $cancelledCo->id, 'state' => 'CANCELLED', 'accepted_at' => Carbon::parse('2026-07-13')]);
 
     $r = app(ReportingService::class)->repeatCustomerRate(
         Carbon::parse('2026-07-01'), Carbon::parse('2026-07-31')
