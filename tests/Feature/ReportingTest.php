@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Reporting\ReportingService;
 use App\Support\Permissions;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
 
 it('registers a sensitive reports.view permission', function (): void {
@@ -156,6 +157,25 @@ it('reports a zero repeat rate when no companies are active in range', function 
     expect($r['activeCompanies'])->toBe(0)->and($r['rate'])->toBe(0.0);
 });
 
+it('caches revenueTrend per range so a repeat call hits the cache', function (): void {
+    $company = Company::factory()->create();
+    Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'ACCEPTED',
+        'accepted_at' => Carbon::parse('2026-07-10'), 'total' => 109, 'gst_amount' => 9,
+    ]);
+
+    $from = Carbon::parse('2026-07-01')->startOfDay();
+    $to = Carbon::parse('2026-07-31')->endOfDay();
+
+    $service = app(ReportingService::class);
+    $first = $service->revenueTrend($from, $to);
+
+    expect(Cache::has("reports.revenueTrend.{$from->timestamp}.{$to->timestamp}"))->toBeTrue();
+
+    $second = $service->revenueTrend($from, $to);
+    expect($second)->toBe($first);
+});
+
 it('returns the three reports as JSON to a superadmin', function (): void {
     Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
 
@@ -184,6 +204,18 @@ it('422s on an inverted date range', function (): void {
     Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
     $this->getJson('/api/admin/reports?from=2026-07-31&to=2026-06-01')
         ->assertStatus(422)->assertJsonValidationErrors('to');
+});
+
+it('422s when the range spans more than roughly 3 years', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
+    $this->getJson('/api/admin/reports?from=2000-01-01&to=2026-01-01')
+        ->assertStatus(422)->assertJsonValidationErrors('to');
+});
+
+it('allows a normal 90-day range through the max-range guard', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
+    $this->getJson('/api/admin/reports?from=2026-05-01&to=2026-07-30')
+        ->assertOk();
 });
 
 it('defaults to roughly the last 90 days when no range is given', function (): void {

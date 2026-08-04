@@ -6,6 +6,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Validator;
 
 /**
  * Validates + resolves the reporting date range. Defaults to the last 90 days
@@ -15,6 +16,9 @@ use Illuminate\Support\Carbon;
  */
 class ReportRequest extends FormRequest
 {
+    /** Sane upper bound on range width - roughly 3 years - to keep the CSV export and aggregates bounded. */
+    private const MAX_RANGE_DAYS = 1100;
+
     public function authorize(): bool
     {
         return true;
@@ -27,6 +31,22 @@ class ReportRequest extends FormRequest
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
         ];
+    }
+
+    protected function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            if (! $this->filled('from') || ! $this->filled('to')) {
+                return;
+            }
+
+            $from = Carbon::parse($this->string('from')->toString());
+            $to = Carbon::parse($this->string('to')->toString());
+
+            if ($from->diffInDays($to) > self::MAX_RANGE_DAYS) {
+                $validator->errors()->add('to', 'The date range must not span more than roughly 3 years.');
+            }
+        });
     }
 
     /**

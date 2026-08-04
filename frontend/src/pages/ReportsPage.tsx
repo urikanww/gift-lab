@@ -18,15 +18,39 @@ const PRESETS: Record<string, () => { from: string; to: string }> = {
     const now = new Date();
     return { from: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)), to: isoDate(now) };
   },
+  'Last month': () => {
+    const now = new Date();
+    // Day 0 of the current month is the last day of the previous month.
+    return {
+      from: isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+      to: isoDate(new Date(now.getFullYear(), now.getMonth(), 0)),
+    };
+  },
   'Year to date': () => {
     const now = new Date();
     return { from: isoDate(new Date(now.getFullYear(), 0, 1)), to: isoDate(now) };
   },
 };
 
+const CUSTOM = 'Custom';
+
 export default function ReportsPage() {
   const [preset, setPreset] = useState<string>('Last 90 days');
-  const range = useMemo(() => PRESETS[preset](), [preset]);
+  // Custom range inputs, defaulted to the Last-90-days window until the user
+  // edits them so switching to Custom never fires a blank-date fetch.
+  const defaultCustom = useMemo(() => PRESETS['Last 90 days'](), []);
+  const [customFrom, setCustomFrom] = useState(defaultCustom.from);
+  const [customTo, setCustomTo] = useState(defaultCustom.to);
+
+  const range = useMemo(() => {
+    if (preset === CUSTOM) return { from: customFrom, to: customTo };
+    return PRESETS[preset]();
+  }, [preset, customFrom, customTo]);
+
+  // Blank/invalid dates (mid-edit) must never trigger a fetch with an empty
+  // range parameter.
+  const isValidRange = Boolean(range.from && range.to);
+
   const [data, setData] = useState<ReportsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +66,7 @@ export default function ReportsPage() {
   // previous range's numbers) the instant `loading` or `error` is truthy, so
   // stale numbers are never shown as if they were current.
   const load = useCallback(() => {
+    if (!isValidRange) return Promise.resolve();
     const id = ++requestId.current;
     setLoading(true);
     setError(null);
@@ -55,7 +80,7 @@ export default function ReportsPage() {
       .finally(() => {
         if (requestId.current === id) setLoading(false);
       });
-  }, [range.from, range.to]);
+  }, [range.from, range.to, isValidRange]);
 
   useEffect(() => {
     void load();
@@ -87,7 +112,30 @@ export default function ReportsPage() {
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-fg"
           >
             {Object.keys(PRESETS).map((p) => <option key={p} value={p}>{p}</option>)}
+            <option value={CUSTOM}>{CUSTOM}</option>
           </select>
+          {preset === CUSTOM && (
+            <div className="flex items-center gap-1.5">
+              <label className="text-sm text-fg-muted" htmlFor="reports-custom-from">From</label>
+              <input
+                id="reports-custom-from"
+                aria-label="From"
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-fg"
+              />
+              <label className="text-sm text-fg-muted" htmlFor="reports-custom-to">To</label>
+              <input
+                id="reports-custom-to"
+                aria-label="To"
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-fg"
+              />
+            </div>
+          )}
           <a
             href={reportsExportUrl(range.from, range.to)}
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-fg hover:border-primary/50"

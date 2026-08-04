@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -52,6 +52,32 @@ describe('ReportsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not load reports/i);
     // The prior range's numbers must not linger behind/under the error banner.
     expect(screen.queryByText('Pen')).not.toBeInTheDocument();
+  });
+
+  it('offers Last month and Custom presets alongside the existing ones', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>);
+    await screen.findByText('Pen');
+
+    const select = screen.getByLabelText('Date range');
+    expect(screen.getByRole('option', { name: 'Last month' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Custom' })).toBeInTheDocument();
+    void select;
+  });
+
+  it('refetches with the entered dates when Custom is selected', async () => {
+    render(<MemoryRouter><ReportsPage /></MemoryRouter>);
+    await screen.findByText('Pen');
+    fetchReportsMock().mockClear();
+
+    await userEvent.selectOptions(screen.getByLabelText('Date range'), 'Custom');
+
+    const fromInput = screen.getByLabelText(/from/i);
+    const toInput = screen.getByLabelText(/to/i);
+
+    fireEvent.change(fromInput, { target: { value: '2026-02-01' } });
+    fireEvent.change(toInput, { target: { value: '2026-02-28' } });
+
+    await waitFor(() => expect(reports.fetchReports).toHaveBeenCalledWith('2026-02-01', '2026-02-28'));
   });
 
   it('shows an empty state instead of header-only tables when a range has no activity', async () => {

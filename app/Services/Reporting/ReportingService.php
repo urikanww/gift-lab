@@ -9,6 +9,7 @@ use App\Models\LineItem;
 use App\Models\Quote;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Read-only business reports over a date range. Mirrors DashboardMetrics'
@@ -21,6 +22,9 @@ use Illuminate\Support\Carbon;
  */
 class ReportingService
 {
+    /** Aggregates are historical, not point-in-time; a few minutes is plenty fresh. */
+    private const CACHE_TTL_SECONDS = 300;
+
     /**
      * @return array<int, array{month: string, bookings: float, billed: float}>
      *
@@ -33,44 +37,50 @@ class ReportingService
      */
     public function revenueTrend(CarbonInterface $from, CarbonInterface $to): array
     {
-        $months = $this->monthBuckets($from, $to);
+        return Cache::remember(
+            "reports.revenueTrend.{$from->timestamp}.{$to->timestamp}",
+            self::CACHE_TTL_SECONDS,
+            function () use ($from, $to): array {
+                $months = $this->monthBuckets($from, $to);
 
-        $bookings = Quote::query()
-            ->whereNotNull('accepted_at')
-            ->where('state', '!=', 'CANCELLED')
-            ->whereBetween('accepted_at', [$from, $to])
-            ->get(['accepted_at', 'total', 'gst_amount']);
+                $bookings = Quote::query()
+                    ->whereNotNull('accepted_at')
+                    ->where('state', '!=', 'CANCELLED')
+                    ->whereBetween('accepted_at', [$from, $to])
+                    ->get(['accepted_at', 'total', 'gst_amount']);
 
-        foreach ($bookings as $q) {
-            $key = Carbon::parse((string) $q->accepted_at)->format('Y-m');
-            if (isset($months[$key])) {
-                $months[$key]['bookings'] += (float) $q->total - (float) $q->gst_amount;
+                foreach ($bookings as $q) {
+                    $key = Carbon::parse((string) $q->accepted_at)->format('Y-m');
+                    if (isset($months[$key])) {
+                        $months[$key]['bookings'] += (float) $q->total - (float) $q->gst_amount;
+                    }
+                }
+
+                $billed = Invoice::query()
+                    ->where('payment_state', '!=', 'VOID')
+                    ->whereNotNull('issued_at')
+                    ->whereBetween('issued_at', [$from, $to])
+                    ->get(['issued_at', 'amount', 'gst_amount']);
+
+                foreach ($billed as $inv) {
+                    $key = Carbon::parse((string) $inv->issued_at)->format('Y-m');
+                    if (isset($months[$key])) {
+                        $months[$key]['billed'] += (float) $inv->amount - (float) $inv->gst_amount;
+                    }
+                }
+
+                $out = [];
+                foreach ($months as $month => $v) {
+                    $out[] = [
+                        'month' => $month,
+                        'bookings' => round($v['bookings'], 2),
+                        'billed' => round($v['billed'], 2),
+                    ];
+                }
+
+                return $out;
             }
-        }
-
-        $billed = Invoice::query()
-            ->where('payment_state', '!=', 'VOID')
-            ->whereNotNull('issued_at')
-            ->whereBetween('issued_at', [$from, $to])
-            ->get(['issued_at', 'amount', 'gst_amount']);
-
-        foreach ($billed as $inv) {
-            $key = Carbon::parse((string) $inv->issued_at)->format('Y-m');
-            if (isset($months[$key])) {
-                $months[$key]['billed'] += (float) $inv->amount - (float) $inv->gst_amount;
-            }
-        }
-
-        $out = [];
-        foreach ($months as $month => $v) {
-            $out[] = [
-                'month' => $month,
-                'bookings' => round($v['bookings'], 2),
-                'billed' => round($v['billed'], 2),
-            ];
-        }
-
-        return $out;
+        );
     }
 
     /**
@@ -82,30 +92,34 @@ class ReportingService
      */
     public function topProducts(CarbonInterface $from, CarbonInterface $to, int $limit = 10): array
     {
-        return LineItem::query()
-            ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
-            // Raw join bypasses Product's SoftDeletingScope, so a soft-deleted
-            // product keeps its historical revenue under its real name.
-            // leftJoin (not join) also survives the theoretical missing-product
-            // row, though restrictOnDelete on line_items.product_id prevents that.
-            ->leftJoin('products', 'products.id', '=', 'line_items.product_id')
-            ->whereNotNull('quotes.accepted_at')
-            ->where('quotes.state', '!=', 'CANCELLED')
-            ->whereBetween('quotes.accepted_at', [$from, $to])
-            ->groupBy('line_items.product_id', 'products.name')
-            ->selectRaw('line_items.product_id as product_id, products.name as name, '
-                .'SUM(line_items.qty) as units, '
-                .'SUM(line_items.unit_price * line_items.qty) as revenue')
-            ->orderByDesc('revenue')
-            ->limit($limit)
-            ->get()
-            ->map(fn ($r): array => [
-                'productId' => (int) $r->product_id,
-                'name' => $r->name,
-                'units' => (int) $r->units,
-                'revenue' => round((float) $r->revenue, 2),
-            ])
-            ->all();
+        return Cache::remember(
+            "reports.topProducts.{$from->timestamp}.{$to->timestamp}.{$limit}",
+            self::CACHE_TTL_SECONDS,
+            fn (): array => LineItem::query()
+                ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
+                // Raw join bypasses Product's SoftDeletingScope, so a soft-deleted
+                // product keeps its historical revenue under its real name.
+                // leftJoin (not join) also survives the theoretical missing-product
+                // row, though restrictOnDelete on line_items.product_id prevents that.
+                ->leftJoin('products', 'products.id', '=', 'line_items.product_id')
+                ->whereNotNull('quotes.accepted_at')
+                ->where('quotes.state', '!=', 'CANCELLED')
+                ->whereBetween('quotes.accepted_at', [$from, $to])
+                ->groupBy('line_items.product_id', 'products.name')
+                ->selectRaw('line_items.product_id as product_id, products.name as name, '
+                    .'SUM(line_items.qty) as units, '
+                    .'SUM(line_items.unit_price * line_items.qty) as revenue')
+                ->orderByDesc('revenue')
+                ->limit($limit)
+                ->get()
+                ->map(fn ($r): array => [
+                    'productId' => (int) $r->product_id,
+                    'name' => $r->name,
+                    'units' => (int) $r->units,
+                    'revenue' => round((float) $r->revenue, 2),
+                ])
+                ->all(),
+        );
     }
 
     /**
@@ -116,33 +130,39 @@ class ReportingService
      */
     public function repeatCustomerRate(CarbonInterface $from, CarbonInterface $to): array
     {
-        $activeIds = Quote::query()
-            ->whereNotNull('accepted_at')
-            ->where('state', '!=', 'CANCELLED')
-            ->whereBetween('accepted_at', [$from, $to])
-            ->distinct()
-            ->pluck('company_id')
-            ->all();
+        return Cache::remember(
+            "reports.repeatCustomerRate.{$from->timestamp}.{$to->timestamp}",
+            self::CACHE_TTL_SECONDS,
+            function () use ($from, $to): array {
+                $activeIds = Quote::query()
+                    ->whereNotNull('accepted_at')
+                    ->where('state', '!=', 'CANCELLED')
+                    ->whereBetween('accepted_at', [$from, $to])
+                    ->distinct()
+                    ->pluck('company_id')
+                    ->all();
 
-        $active = count($activeIds);
-        if ($active === 0) {
-            return ['activeCompanies' => 0, 'repeatCompanies' => 0, 'rate' => 0.0];
-        }
+                $active = count($activeIds);
+                if ($active === 0) {
+                    return ['activeCompanies' => 0, 'repeatCompanies' => 0, 'rate' => 0.0];
+                }
 
-        $repeat = Quote::query()
-            ->whereNotNull('accepted_at')
-            ->where('state', '!=', 'CANCELLED')
-            ->whereIn('company_id', $activeIds)
-            ->groupBy('company_id')
-            ->havingRaw('COUNT(*) >= 2')
-            ->pluck('company_id')
-            ->count();
+                $repeat = Quote::query()
+                    ->whereNotNull('accepted_at')
+                    ->where('state', '!=', 'CANCELLED')
+                    ->whereIn('company_id', $activeIds)
+                    ->groupBy('company_id')
+                    ->havingRaw('COUNT(*) >= 2')
+                    ->pluck('company_id')
+                    ->count();
 
-        return [
-            'activeCompanies' => $active,
-            'repeatCompanies' => $repeat,
-            'rate' => round($repeat / $active, 4),
-        ];
+                return [
+                    'activeCompanies' => $active,
+                    'repeatCompanies' => $repeat,
+                    'rate' => round($repeat / $active, 4),
+                ];
+            }
+        );
     }
 
     /**

@@ -20,9 +20,9 @@ use Illuminate\Validation\Rule;
  * granted the Users section (read on users.view, write on users.manage, gated by
  * route middleware). Because Users is delegable, sensitive actions carry extra
  * guards so a non-superadmin manager cannot escalate: they may not mint or
- * promote to superadmin, edit their OWN role or access, or hand out the
- * sensitive Pricing/Users permissions. Existing guards still hold - no self
- * lock-out, and never zero active superadmins.
+ * promote to superadmin, edit their OWN role or access, or hand out any
+ * sensitive-section permission (Pricing, Users, Reports). Existing guards
+ * still hold - no self lock-out, and never zero active superadmins.
  */
 class AdminUserController extends Controller
 {
@@ -186,13 +186,13 @@ class AdminUserController extends Controller
             if ($this->isSelf($request, $user) && array_key_exists('permissions', $validated)) {
                 return response()->json(['message' => 'You cannot change your own access.'], 422);
             }
-            // May not hand out the sensitive Pricing/Users permissions - only a
-            // superadmin delegates those.
+            // May not hand out any sensitive-section permission (Pricing, Users,
+            // Reports, ...) - only a superadmin delegates those.
             if (array_key_exists('permissions', $validated)) {
                 foreach ($validated['permissions'] as $key) {
                     if (Permissions::isSensitive((string) $key)) {
                         return response()->json([
-                            'message' => 'Only a superadmin can grant Pricing or Users access.',
+                            'message' => 'Only a superadmin can grant access to a sensitive section.',
                         ], 422);
                     }
                 }

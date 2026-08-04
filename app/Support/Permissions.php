@@ -10,11 +10,12 @@ namespace App\Support;
  * buyers have none of these (their access is governed by tenancy, not this
  * list).
  *
- * Two sections are SENSITIVE - Pricing (financial config) and Users (account
- * management). They are grantable, but only ever EXPLICITLY: they are excluded
- * from the grandfather default (see defaults()), so an existing staff_admin does
- * not silently gain them on rollout, and only a superadmin may delegate them
- * (enforced in AdminUserController) to stop staff spreading sensitive access.
+ * Three sections are SENSITIVE - Pricing (financial config), Users (account
+ * management), and Reports (business/financial reporting & exports). They are
+ * grantable, but only ever EXPLICITLY: they are excluded from the grandfather
+ * default (see defaults()), so an existing staff_admin does not silently gain
+ * them on rollout, and only a superadmin may delegate them (enforced in
+ * AdminUserController) to stop staff spreading sensitive access.
  *
  * Keys are "section.action". This is the single source of truth: the middleware
  * validates against it, the admin API rejects anything outside it, and the
@@ -133,7 +134,7 @@ final class Permissions
      * The grandfather default: every OPERATIONAL permission, excluding the
      * sensitive sections. A staff_admin with no explicit allowlist resolves to
      * this, so existing staff keep their operational access but never gain
-     * Pricing or Users without an explicit grant.
+     * Pricing, Users, or Reports without an explicit grant.
      *
      * @return list<string>
      */

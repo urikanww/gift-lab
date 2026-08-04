@@ -352,7 +352,7 @@ it('stops a delegated users manager from handing out sensitive access', function
     Sanctum::actingAs($this->staff);
 
     patchJson("/api/admin/users/{$target->id}", ['permissions' => ['quotes.view', 'pricing.manage']])
-        ->assertStatus(422)->assertJsonFragment(['message' => 'Only a superadmin can grant Pricing or Users access.']);
+        ->assertStatus(422)->assertJsonFragment(['message' => 'Only a superadmin can grant access to a sensitive section.']);
 });
 
 it('still lets a delegated users manager grant operational access to others', function (): void {
