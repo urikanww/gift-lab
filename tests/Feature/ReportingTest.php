@@ -48,3 +48,39 @@ it('builds a two-series revenue trend, net of GST, zero-filled', function (): vo
         ->and($july['bookings'])->toBe(200.0)
         ->and($july['billed'])->toBe(200.0);
 });
+
+it('zero-fills months with no activity, in ascending order', function (): void {
+    $company = Company::factory()->create();
+    // Only May has an order; June must still appear, zero-filled.
+    Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'ACCEPTED',
+        'accepted_at' => Carbon::parse('2026-05-15'), 'total' => 50, 'gst_amount' => 0,
+    ]);
+
+    $trend = app(ReportingService::class)->revenueTrend(
+        Carbon::parse('2026-05-01'), Carbon::parse('2026-07-31')
+    );
+
+    expect(array_column($trend, 'month'))->toBe(['2026-05', '2026-06', '2026-07']);
+    $june = collect($trend)->firstWhere('month', '2026-06');
+    expect($june['bookings'])->toBe(0.0)->and($june['billed'])->toBe(0.0);
+});
+
+it('excludes VOID invoices from billed revenue', function (): void {
+    $company = Company::factory()->create();
+    $q = Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'INVOICED',
+        'accepted_at' => Carbon::parse('2026-07-02'), 'total' => 109, 'gst_amount' => 9,
+    ]);
+    Invoice::create([
+        'quote_id' => $q->id, 'po_ref' => 'PO-VOID-1',
+        'issued_at' => Carbon::parse('2026-07-06'),
+        'amount' => 109, 'gst_amount' => 9, 'payment_state' => 'VOID',
+    ]);
+
+    $trend = app(ReportingService::class)->revenueTrend(
+        Carbon::parse('2026-07-01'), Carbon::parse('2026-07-31')
+    );
+
+    expect(collect($trend)->firstWhere('month', '2026-07')['billed'])->toBe(0.0);
+});

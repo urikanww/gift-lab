@@ -22,6 +22,13 @@ class ReportingService
 {
     /**
      * @return array<int, array{month: string, bookings: float, billed: float}>
+     *
+     * Timezone assumption: $from/$to and the stored timestamps must share a
+     * timezone (both UTC today, the app default). Month bucketing formats both
+     * bounds and rows in whatever tz they carry; a caller that builds $from/$to
+     * in a different tz than the DB stores (e.g. Asia/Singapore business-day
+     * bounds against UTC timestamps) could mis-bucket a row near a month edge.
+     * ReportRequest::range() must produce bounds in the app timezone.
      */
     public function revenueTrend(CarbonInterface $from, CarbonInterface $to): array
     {
