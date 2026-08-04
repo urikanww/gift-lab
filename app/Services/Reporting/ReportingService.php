@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Reporting;
 
 use App\Models\Invoice;
+use App\Models\LineItem;
 use App\Models\Quote;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -70,6 +71,74 @@ class ReportingService
         }
 
         return $out;
+    }
+
+    /**
+     * Top products by net goods revenue (unit_price * qty; unit_price is
+     * pre-GST, so this is net and excludes the flat customization/setup fee,
+     * which is not product revenue) over orders accepted in [from, to].
+     *
+     * @return array<int, array{productId: int, name: ?string, units: int, revenue: float}>
+     */
+    public function topProducts(CarbonInterface $from, CarbonInterface $to, int $limit = 10): array
+    {
+        return LineItem::query()
+            ->join('quotes', 'quotes.id', '=', 'line_items.quote_id')
+            ->leftJoin('products', 'products.id', '=', 'line_items.product_id')
+            ->whereNotNull('quotes.accepted_at')
+            ->where('quotes.state', '!=', 'CANCELLED')
+            ->whereBetween('quotes.accepted_at', [$from, $to])
+            ->groupBy('line_items.product_id', 'products.name')
+            ->selectRaw('line_items.product_id as product_id, products.name as name, '
+                .'SUM(line_items.qty) as units, '
+                .'SUM(line_items.unit_price * line_items.qty) as revenue')
+            ->orderByDesc('revenue')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($r): array => [
+                'productId' => (int) $r->product_id,
+                'name' => $r->name,
+                'units' => (int) $r->units,
+                'revenue' => round((float) $r->revenue, 2),
+            ])
+            ->all();
+    }
+
+    /**
+     * Of companies active in [from, to] (>=1 order accepted in range), the share
+     * whose LIFETIME order count (same order definition, all-time) is >= 2.
+     *
+     * @return array{activeCompanies: int, repeatCompanies: int, rate: float}
+     */
+    public function repeatCustomerRate(CarbonInterface $from, CarbonInterface $to): array
+    {
+        $activeIds = Quote::query()
+            ->whereNotNull('accepted_at')
+            ->where('state', '!=', 'CANCELLED')
+            ->whereBetween('accepted_at', [$from, $to])
+            ->distinct()
+            ->pluck('company_id')
+            ->all();
+
+        $active = count($activeIds);
+        if ($active === 0) {
+            return ['activeCompanies' => 0, 'repeatCompanies' => 0, 'rate' => 0.0];
+        }
+
+        $repeat = Quote::query()
+            ->whereNotNull('accepted_at')
+            ->where('state', '!=', 'CANCELLED')
+            ->whereIn('company_id', $activeIds)
+            ->groupBy('company_id')
+            ->havingRaw('COUNT(*) >= 2')
+            ->pluck('company_id')
+            ->count();
+
+        return [
+            'activeCompanies' => $active,
+            'repeatCompanies' => $repeat,
+            'rate' => round($repeat / $active, 4),
+        ];
     }
 
     /**

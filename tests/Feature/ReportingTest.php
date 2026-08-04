@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Models\LineItem;
+use App\Models\Product;
 use App\Models\Quote;
 use App\Services\Reporting\ReportingService;
 use App\Support\Permissions;
@@ -83,4 +85,51 @@ it('excludes VOID invoices from billed revenue', function (): void {
     );
 
     expect(collect($trend)->firstWhere('month', '2026-07')['billed'])->toBe(0.0);
+});
+
+it('ranks top products by net goods revenue over the range', function (): void {
+    $company = Company::factory()->create();
+    $mug = Product::factory()->create(['name' => 'Mug']);
+    $pen = Product::factory()->create(['name' => 'Pen']);
+
+    $order = Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'ACCEPTED',
+        'accepted_at' => Carbon::parse('2026-07-10'),
+    ]);
+    LineItem::factory()->create(['quote_id' => $order->id, 'product_id' => $mug->id, 'qty' => 10, 'unit_price' => 5]);
+    LineItem::factory()->create(['quote_id' => $order->id, 'product_id' => $pen->id, 'qty' => 100, 'unit_price' => 2]);
+
+    $top = app(ReportingService::class)->topProducts(
+        Carbon::parse('2026-07-01'), Carbon::parse('2026-07-31')
+    );
+
+    expect($top[0]['name'])->toBe('Pen')
+        ->and($top[0]['revenue'])->toBe(200.0)
+        ->and($top[0]['units'])->toBe(100)
+        ->and($top[1]['name'])->toBe('Mug');
+});
+
+it('computes lifetime repeat-customer rate among range-active companies', function (): void {
+    $repeat = Company::factory()->create();
+    $once = Company::factory()->create();
+
+    Quote::factory()->create(['company_id' => $repeat->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-01-05')]);
+    Quote::factory()->create(['company_id' => $repeat->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-07-10')]);
+    Quote::factory()->create(['company_id' => $once->id, 'state' => 'ACCEPTED', 'accepted_at' => Carbon::parse('2026-07-12')]);
+
+    $r = app(ReportingService::class)->repeatCustomerRate(
+        Carbon::parse('2026-07-01'), Carbon::parse('2026-07-31')
+    );
+
+    expect($r['activeCompanies'])->toBe(2)
+        ->and($r['repeatCompanies'])->toBe(1)
+        ->and($r['rate'])->toBe(0.5);
+});
+
+it('reports a zero repeat rate when no companies are active in range', function (): void {
+    $r = app(ReportingService::class)->repeatCustomerRate(
+        Carbon::parse('2026-07-01'), Carbon::parse('2026-07-31')
+    );
+
+    expect($r['activeCompanies'])->toBe(0)->and($r['rate'])->toBe(0.0);
 });
