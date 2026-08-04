@@ -214,6 +214,15 @@ class QuoteController extends Controller
             $request->input('shipping_address'),
         );
 
+        // PDPA: record the buyer's recipient-consent acknowledgement against the
+        // order it was made for. Staff-raised quotes never send it (requiredIf).
+        if ($request->boolean('recipient_consent')) {
+            $quote->forceFill([
+                'recipient_consent_ack_at' => now(),
+                'recipient_consent_version' => config('privacy.version'),
+            ])->save();
+        }
+
         return (new QuoteResource($quote->load('lineItems')))
             ->response()
             ->setStatusCode(201);

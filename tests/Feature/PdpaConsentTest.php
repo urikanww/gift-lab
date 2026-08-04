@@ -2,8 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Models\Company;
+use App\Models\Product;
+use App\Models\Quote;
 use App\Models\User;
+use App\Models\Variant;
 use Illuminate\Support\Facades\Schema;
+use Laravel\Sanctum\Sanctum;
 
 it('has the pdpa consent columns and a policy version', function (): void {
     expect(Schema::hasColumn('users', 'consented_at'))->toBeTrue()
@@ -36,4 +41,64 @@ it('stamps consented_at and the policy version on register', function (): void {
     $user = User::where('email', 'consented@acme.example')->firstOrFail();
     expect($user->consented_at)->not->toBeNull()
         ->and($user->consent_policy_version)->toBe(config('privacy.version'));
+});
+
+function pdpaLineItems(): array
+{
+    $product = Product::factory()->create(['publish_state' => 'PUBLISHED']);
+    Variant::factory()->create(['product_id' => $product->id]);
+
+    return [['product_id' => $product->id, 'variant_id' => null, 'qty' => 1]];
+}
+
+function pdpaShipping(): array
+{
+    return [
+        'recipient_name' => 'Rachel Tan',
+        'phone' => '+6591234567',
+        'line1' => '1 Marina Blvd',
+        'postal_code' => '018989',
+    ];
+}
+
+it('rejects a buyer checkout without recipient consent', function (): void {
+    seedPricing();
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']));
+
+    $this->postJson('/api/quotes', [
+        'company_id' => $company->id,
+        'line_items' => pdpaLineItems(),
+        'shipping_address' => pdpaShipping(),
+    ])->assertStatus(422)->assertJsonValidationErrors('recipient_consent');
+});
+
+it('stamps recipient consent on a buyer checkout', function (): void {
+    seedPricing();
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']));
+
+    $id = $this->postJson('/api/quotes', [
+        'company_id' => $company->id,
+        'line_items' => pdpaLineItems(),
+        'shipping_address' => pdpaShipping(),
+        'recipient_consent' => true,
+    ])->assertCreated()->json('data.id');
+
+    $quote = Quote::find($id);
+    expect($quote->recipient_consent_ack_at)->not->toBeNull()
+        ->and($quote->recipient_consent_version)->toBe(config('privacy.version'));
+});
+
+it('lets staff create a quote without recipient consent', function (): void {
+    seedPricing();
+    $company = Company::factory()->create(['address' => '10 Anson Rd']);
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+
+    $id = $this->postJson('/api/quotes', [
+        'company_id' => $company->id,
+        'line_items' => pdpaLineItems(),
+    ])->assertCreated()->json('data.id');
+
+    expect(Quote::find($id)->recipient_consent_ack_at)->toBeNull();
 });

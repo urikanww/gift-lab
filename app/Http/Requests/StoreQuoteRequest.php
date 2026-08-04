@@ -50,6 +50,17 @@ class StoreQuoteRequest extends FormRequest
 
         return [
             'company_id' => ['required', 'integer', 'exists:companies,id'],
+            // PDPA: buyer confirms they may share the recipient's delivery
+            // details. Required for buyers (mirrors the shipping_address
+            // requiredIf); staff raising a quote on a company's behalf are exempt.
+            // Note: 'accepted' is an implicit rule (validates even when the
+            // field is absent), so it must be wrapped in Rule::when rather than
+            // placed alongside requiredIf directly - otherwise a staff request
+            // that omits the field fails validation anyway.
+            'recipient_consent' => [
+                Rule::requiredIf(! ($this->user()?->isStaff() ?? false)),
+                Rule::when(! ($this->user()?->isStaff() ?? false), ['accepted']),
+            ],
             'notes' => ['nullable', 'string', 'max:2000'],
             // Buyer's "need it by" deadline (optional); can't be in the past.
             'needed_by' => ['nullable', 'date', 'after_or_equal:today'],
