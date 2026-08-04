@@ -23,11 +23,13 @@ class HealthController extends Controller
         try {
             $result = Cache::remember('health:probe', 5, fn (): array => $this->runChecks());
         } catch (Throwable) {
-            // The cache store itself is unreachable (default store is
-            // DB-backed, so a DB outage - the #1 thing this probe exists to
-            // catch - would otherwise throw here before a single check runs).
-            // Fall back to an uncached probe so a failed cache layer can
-            // never turn into an uncaught 500 instead of a graceful 503.
+            // The cache store itself is unreachable (e.g. the Redis cache
+            // connection is down in prod) - Cache::remember would otherwise
+            // throw before a single check runs. Fall back to an uncached
+            // probe so a degraded cache layer still yields a clean boolean
+            // 200/503 body instead of an uncaught 500. Note a pure DB outage
+            // does NOT need this path: Cache::remember still succeeds via
+            // Redis, and the closure below reports database:false on its own.
             $result = $this->runChecks();
         }
 

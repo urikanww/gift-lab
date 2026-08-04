@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\StaffNotifier;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
@@ -138,9 +139,10 @@ it('leaks no infra detail in the health body', function (): void {
 });
 
 it('falls back to an uncached probe when the cache store itself is unreachable', function (): void {
-    // Production's default cache store is DB-backed (config/cache.php), so a
-    // DB outage would otherwise throw inside Cache::remember before any check
-    // runs. The endpoint must still degrade to a clean 200/503 boolean body.
+    // Prod's cache store is Redis (deploy/.env.production.example), so a
+    // Redis cache outage would otherwise throw inside Cache::remember before
+    // any check runs. The endpoint must still degrade to a clean 200/503
+    // boolean body.
     Cache::shouldReceive('remember')->andThrow(new RuntimeException('cache store down'));
     Redis::shouldReceive('connection->ping')->andReturnTrue();
     Queue::shouldReceive('connection->size')->andReturn(0);
@@ -149,4 +151,21 @@ it('falls back to an uncached probe when the cache store itself is unreachable',
 
     $res->assertOk()
         ->assertJson(['ok' => true, 'checks' => ['database' => true, 'redis' => true, 'queue' => true]]);
+});
+
+it('returns a clean boolean 503 when the cache store AND the database are both down', function (): void {
+    // The compound failure the fallback path exists for: the cache store is
+    // unreachable (forcing the uncached fallback) while the database - the
+    // thing that failure is often correlated with - is also down. Must still
+    // read as a clean 503, never an uncaught 500 with infra detail leaked.
+    Cache::shouldReceive('remember')->andThrow(new RuntimeException('cache store down'));
+    DB::shouldReceive('connection->getPdo')->andThrow(new RuntimeException('database down'));
+    Redis::shouldReceive('connection->ping')->andReturnTrue();
+    Queue::shouldReceive('connection->size')->andReturn(0);
+
+    $body = $this->getJson('/api/health')->assertStatus(503)->json();
+
+    expect(array_keys($body))->toEqualCanonicalizing(['ok', 'checks'])
+        ->and($body['ok'])->toBeFalse()
+        ->and($body['checks'])->each->toBeBool();
 });

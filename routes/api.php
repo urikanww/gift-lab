@@ -49,7 +49,7 @@ use Illuminate\Support\Facades\Route;
 
 // Public deep health probe for an uptime monitor (no auth; boolean-only body,
 // short-cached to blunt an unauth request flood - see HealthController).
-Route::get('/health', HealthController::class);
+Route::get('/health', HealthController::class)->middleware('throttle:60,1');
 
 // Authentication (Sanctum stateful cookie).
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
