@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Card, Skeleton } from '../ui';
-import { ErrorState } from '../components/ui/States';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Card } from '../ui';
+import { AsyncBoundary } from '../components/ui/States';
 import { fetchReports, reportsExportUrl, type ReportsPayload } from '../lib/reports';
 
 function isoDate(d: Date): string {
@@ -30,21 +30,49 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Guards against a slow, now-superseded fetch (e.g. an earlier preset)
+  // clobbering a later one's result - each call to load() gets its own id and
+  // only the most recent is allowed to commit state.
+  const requestId = useRef(0);
 
-  useEffect(() => {
-    let live = true;
+  // Every call - initial mount AND a preset switch AND a manual retry - goes
+  // through here, so `loading`/`error` are always accurate for whatever fetch
+  // is currently in flight. Critically, on a refetch this does NOT clear
+  // `data` first: AsyncBoundary below hides `children` (and therefore the
+  // previous range's numbers) the instant `loading` or `error` is truthy, so
+  // stale numbers are never shown as if they were current.
+  const load = useCallback(() => {
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
-    fetchReports(range.from, range.to)
-      .then((d) => live && setData(d))
-      .catch(() => live && setError('Could not load reports.'))
-      .finally(() => live && setLoading(false));
-    return () => { live = false; };
+    return fetchReports(range.from, range.to)
+      .then((d) => {
+        if (requestId.current === id) setData(d);
+      })
+      .catch(() => {
+        if (requestId.current === id) setError('Could not load reports.');
+      })
+      .finally(() => {
+        if (requestId.current === id) setLoading(false);
+      });
   }, [range.from, range.to]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const maxRevenue = useMemo(
     () => Math.max(1, ...(data?.revenueTrend.flatMap((m) => [m.bookings, m.billed]) ?? [])),
     [data],
+  );
+
+  // "No activity in range": every month bucket is zero AND there were no
+  // product sales. revenueTrend is always zero-filled for the range (never a
+  // literally empty array), so an all-zero series is what "no rows" means here.
+  const isEmpty = Boolean(
+    data &&
+      data.topProducts.length === 0 &&
+      data.revenueTrend.every((m) => m.bookings === 0 && m.billed === 0),
   );
 
   return (
@@ -69,70 +97,72 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {loading && !data ? (
-        <div className="grid gap-4 sm:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height="8rem" />)}</div>
-      ) : error && !data ? (
-        <ErrorState message={error} />
-      ) : data ? (
-        <>
-          <Card padding="lg">
-            <h2 className="font-display text-xl text-fg">Revenue (net of GST)</h2>
-            <p className="mt-1 text-sm text-fg-muted">Bookings (accepted) vs Billed (invoiced), by month.</p>
-            <table className="mt-4 w-full text-sm">
-              <thead>
-                <tr className="text-left text-fg-subtle">
-                  <th className="py-1">Month</th><th className="py-1 text-right">Bookings</th><th className="py-1 text-right">Billed</th>
-                </tr>
-              </thead>
-              <tbody>
+      <AsyncBoundary loading={loading} error={error} isEmpty={isEmpty} emptyTitle="No orders in this range." onRetry={load}>
+        {data && (
+          <>
+            <Card padding="lg">
+              <h2 className="font-display text-xl text-fg">Revenue (net of GST)</h2>
+              <p className="mt-1 text-sm text-fg-muted">Bookings (accepted) vs Billed (invoiced), by month.</p>
+              <table className="mt-4 w-full text-sm">
+                <thead>
+                  <tr className="text-left text-fg-subtle">
+                    <th className="py-1">Month</th><th className="py-1 text-right">Bookings</th><th className="py-1 text-right">Billed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.revenueTrend.map((m) => (
+                    <tr key={m.month} className="border-t border-border">
+                      <td className="py-1.5">{m.month}</td>
+                      <td className="py-1.5 text-right tabular-nums">{m.bookings.toFixed(2)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{m.billed.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* Lightweight inline bars (no chart dep). */}
+              <div className="mt-4 flex items-end gap-3" aria-hidden="true">
                 {data.revenueTrend.map((m) => (
-                  <tr key={m.month} className="border-t border-border">
-                    <td className="py-1.5">{m.month}</td>
-                    <td className="py-1.5 text-right tabular-nums">{m.bookings.toFixed(2)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{m.billed.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {/* Lightweight inline bars (no chart dep). */}
-            <div className="mt-4 flex items-end gap-3" aria-hidden="true">
-              {data.revenueTrend.map((m) => (
-                <div key={m.month} className="flex flex-1 flex-col items-center gap-1">
-                  <div className="flex h-24 w-full items-end justify-center gap-0.5">
-                    <div className="w-1/3 bg-primary/70" style={{ height: `${(m.bookings / maxRevenue) * 100}%` }} />
-                    <div className="w-1/3 bg-accent-500/70" style={{ height: `${(m.billed / maxRevenue) * 100}%` }} />
+                  <div key={m.month} className="flex flex-1 flex-col items-center gap-1">
+                    <div className="flex h-24 w-full items-end justify-center gap-0.5">
+                      <div className="w-1/3 bg-primary/70" style={{ height: `${(m.bookings / maxRevenue) * 100}%` }} />
+                      <div className="w-1/3 bg-accent-500/70" style={{ height: `${(m.billed / maxRevenue) * 100}%` }} />
+                    </div>
+                    <span className="text-2xs text-fg-subtle">{m.month.slice(5)}</span>
                   </div>
-                  <span className="text-2xs text-fg-subtle">{m.month.slice(5)}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card padding="lg">
-            <h2 className="font-display text-xl text-fg">Top products</h2>
-            <table className="mt-4 w-full text-sm">
-              <thead><tr className="text-left text-fg-subtle"><th className="py-1">Product</th><th className="py-1 text-right">Units</th><th className="py-1 text-right">Revenue</th></tr></thead>
-              <tbody>
-                {data.topProducts.map((p) => (
-                  <tr key={p.productId} className="border-t border-border">
-                    <td className="py-1.5">{p.name ?? `Product #${p.productId}`}</td>
-                    <td className="py-1.5 text-right tabular-nums">{p.units}</td>
-                    <td className="py-1.5 text-right tabular-nums">{p.revenue.toFixed(2)}</td>
-                  </tr>
                 ))}
-              </tbody>
-            </table>
-          </Card>
+              </div>
+            </Card>
 
-          <Card padding="lg">
-            <h2 className="font-display text-xl text-fg">Repeat customers</h2>
-            <p className="mt-2 font-display text-3xl text-fg">{Math.round(data.repeatCustomerRate.rate * 100)}%</p>
-            <p className="text-sm text-fg-muted">
-              {data.repeatCustomerRate.repeatCompanies} of {data.repeatCustomerRate.activeCompanies} active companies have ordered 2+ times.
-            </p>
-          </Card>
-        </>
-      ) : null}
+            <Card padding="lg">
+              <h2 className="font-display text-xl text-fg">Top products</h2>
+              {data.topProducts.length === 0 ? (
+                <p className="mt-4 text-sm text-fg-muted">No product sales in this range.</p>
+              ) : (
+                <table className="mt-4 w-full text-sm">
+                  <thead><tr className="text-left text-fg-subtle"><th className="py-1">Product</th><th className="py-1 text-right">Units</th><th className="py-1 text-right">Revenue</th></tr></thead>
+                  <tbody>
+                    {data.topProducts.map((p) => (
+                      <tr key={p.productId} className="border-t border-border">
+                        <td className="py-1.5">{p.name ?? `Product #${p.productId}`}</td>
+                        <td className="py-1.5 text-right tabular-nums">{p.units}</td>
+                        <td className="py-1.5 text-right tabular-nums">{p.revenue.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+
+            <Card padding="lg">
+              <h2 className="font-display text-xl text-fg">Repeat customers</h2>
+              <p className="mt-2 font-display text-3xl text-fg">{Math.round(data.repeatCustomerRate.rate * 100)}%</p>
+              <p className="text-sm text-fg-muted">
+                {data.repeatCustomerRate.repeatCompanies} of {data.repeatCustomerRate.activeCompanies} active companies have ordered 2+ times.
+              </p>
+            </Card>
+          </>
+        )}
+      </AsyncBoundary>
     </div>
   );
 }

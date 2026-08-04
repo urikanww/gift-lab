@@ -27,13 +27,16 @@ it('grandfathers a staff_admin whose permissions are missing - but NOT sensitive
   const staff = { role: 'staff_admin' as const };
   expect(hasPermission(staff, 'production.manage')).toBe(true);
   expect(hasPermission(staff, 'products.approve')).toBe(true);
-  // ...but the sensitive Pricing/Users sections must be granted explicitly, so a
-  // missing array must NOT flash them open (mirrors the backend grandfather).
+  // ...but the sensitive Pricing/Users/Reports sections must be granted
+  // explicitly, so a missing array must NOT flash them open (mirrors the
+  // backend grandfather).
   expect(hasPermission(staff, 'pricing.view')).toBe(false);
   expect(hasPermission(staff, 'pricing.manage')).toBe(false);
   expect(hasPermission(staff, 'users.manage')).toBe(false);
+  expect(hasPermission(staff, 'reports.view')).toBe(false);
   // An explicit grant still works.
   expect(hasPermission({ role: 'staff_admin' as const, permissions: ['pricing.view'] }, 'pricing.view')).toBe(true);
+  expect(hasPermission({ role: 'staff_admin' as const, permissions: ['reports.view'] }, 'reports.view')).toBe(true);
 });
 
 it('denies buyers and unknown users', () => {
