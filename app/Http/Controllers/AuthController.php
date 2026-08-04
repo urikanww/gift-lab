@@ -66,6 +66,11 @@ class AuthController extends Controller
                 'role' => UserRole::Buyer->value,
             ]);
 
+            $user->forceFill([
+                'consented_at' => now(),
+                'consent_policy_version' => config('privacy.version'),
+            ])->save();
+
             // Close the created_by loop now that the first user exists.
             $company->created_by = $user->id;
             $company->save();
