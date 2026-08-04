@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\RegistrationSource;
 use App\Enums\UserRole;
 use App\Models\Company;
 use App\Models\User;
@@ -128,6 +129,8 @@ class AdminUserController extends Controller
             'role' => $validated['role'],
             'company_id' => $companyId,
         ]);
+
+        $user->forceFill(['registration_source' => RegistrationSource::StaffCreated])->save();
 
         $this->audit->log($user, 'user.created', null, ['email' => $user->email, 'role' => $user->role->value]);
 

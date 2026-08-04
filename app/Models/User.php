@@ -51,6 +51,7 @@ class User extends Authenticatable
             'role' => UserRole::class,
             'permissions' => 'array',
             'consented_at' => 'datetime',
+            'registration_source' => \App\Enums\RegistrationSource::class,
         ];
     }
 

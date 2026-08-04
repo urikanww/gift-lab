@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Enums\RegistrationSource;
 use App\Models\Company;
 use App\Models\Product;
 use App\Models\Quote;
@@ -146,4 +147,40 @@ it('does not re-stamp recipient consent when an idempotent checkout is replayed'
     expect($quote->recipient_consent_ack_at->equalTo($firstAck))->toBeTrue();
 
     expect(Quote::where('company_id', $company->id)->where('idempotency_key', 'checkout-replay-key')->count())->toBe(1);
+});
+
+it('marks a self-registered user as self_registered', function (): void {
+    $this->postJson('/api/register', [
+        'name' => 'Jane Tan',
+        'email' => 'source-self@acme.example',
+        'password' => 'super-secret-1',
+        'password_confirmation' => 'super-secret-1',
+        'company_name' => 'Acme Pte Ltd',
+        'consent' => true,
+    ])->assertCreated();
+
+    expect(User::where('email', 'source-self@acme.example')->firstOrFail()->registration_source)
+        ->toBe(RegistrationSource::SelfRegistered);
+});
+
+it('marks a staff-created buyer as staff_created with no consent', function (): void {
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->superadmin()->create());
+
+    $this->postJson('/api/admin/users', [
+        'name' => 'Contact Person',
+        'email' => 'source-staff@acme.example',
+        'password' => 'super-secret-1',
+        'role' => 'buyer',
+        'company_id' => $company->id,
+    ])->assertCreated();
+
+    $created = User::where('email', 'source-staff@acme.example')->firstOrFail();
+    expect($created->registration_source)->toBe(RegistrationSource::StaffCreated)
+        ->and($created->consented_at)->toBeNull();
+});
+
+it('defaults an existing/factory user to the legacy registration source', function (): void {
+    expect(User::factory()->create()->fresh()->registration_source)
+        ->toBe(RegistrationSource::Legacy);
 });
