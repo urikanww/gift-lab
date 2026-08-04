@@ -12,11 +12,12 @@ use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
+use App\Http\Controllers\CourierConfigController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GiftIdeasController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LeadTimeEstimateController;
 use App\Http\Controllers\NinjaVanWebhookController;
-use App\Http\Controllers\CourierConfigController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\PayNowController;
 use App\Http\Controllers\PriceEstimateController;
@@ -45,6 +46,10 @@ use Illuminate\Support\Facades\Route;
 | throttled tighter than authenticated ones; login is throttled hardest to
 | blunt credential stuffing.
 */
+
+// Public deep health probe for an uptime monitor (no auth; boolean-only body,
+// short-cached to blunt an unauth request flood - see HealthController).
+Route::get('/health', HealthController::class)->middleware('throttle:60,1');
 
 // Authentication (Sanctum stateful cookie).
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');

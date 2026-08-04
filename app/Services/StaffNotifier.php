@@ -10,6 +10,7 @@ use App\Events\JobFailedAlert;
 use App\Events\ParcelReturned;
 use App\Events\ProofChangesRequested;
 use App\Mail\DesignRequestedMail;
+use App\Mail\ExceptionAlertMail;
 use App\Mail\JobFailedAlertMail;
 use App\Mail\ParcelReturnedMail;
 use App\Mail\ProofChangesRequestedMail;
@@ -19,6 +20,7 @@ use App\Models\Quote;
 use App\Models\User;
 use App\Support\Broadcasting;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -195,6 +197,73 @@ class StaffNotifier
                 'error' => $unexpected->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Announce an unhandled (reportable) exception to the ops team. Invoked from
+     * the framework's report() pipeline, so — like jobFailed() — it MUST NEVER
+     * THROW, and it throttles by exception signature so a 500-storm can't flood
+     * the inbox (one email per identical signature per the configured window).
+     */
+    public function unexpectedException(Throwable $e, ?string $path = null): void
+    {
+        try {
+            // Key on the throw SITE (class + file:line), not the message: an
+            // exception message often carries dynamic content (ids, SQL, values)
+            // that would produce a fresh signature every time and defeat the
+            // throttle in exactly the storm it exists to contain. Same code path
+            // failing repeatedly => one alert. The full message still rides in
+            // the email body.
+            $signature = sha1($e::class.'|'.$e->getFile().':'.$e->getLine());
+            $ttl = now()->addMinutes((int) config('alerts.exception_throttle_minutes', 15));
+
+            // Cache::add is atomic "first one through the window wins": returns
+            // false if the key already exists, so a repeat is suppressed.
+            if (! Cache::add('ops-alert:'.$signature, true, $ttl)) {
+                Log::info('Ops exception alert throttled.', ['exception' => $e::class]);
+
+                return;
+            }
+
+            $recipients = $this->opsRecipients();
+            if ($recipients === []) {
+                Log::info('Ops exception alert: no recipient to email.', ['exception' => $e::class]);
+
+                return;
+            }
+
+            foreach ($recipients as $email) {
+                try {
+                    Mail::to($email)->queue(new ExceptionAlertMail($e::class, $e->getMessage(), $path));
+                } catch (Throwable $mailError) {
+                    Log::error('Ops exception alert failed to queue.', ['error' => $mailError->getMessage()]);
+                }
+            }
+        } catch (Throwable $unexpected) {
+            Log::error('StaffNotifier::unexpectedException itself failed; alert suppressed.', [
+                'error' => $unexpected->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Ops-alert recipients: the configured ops address if set, else every
+     * staff-admin/superadmin with an email (mirrors the jobFailed resolution).
+     *
+     * @return array<int, string>
+     */
+    private function opsRecipients(): array
+    {
+        $ops = config('alerts.ops_email');
+        if (is_string($ops) && $ops !== '') {
+            return [$ops];
+        }
+
+        return User::query()
+            ->whereIn('role', [UserRole::StaffAdmin->value, UserRole::Superadmin->value])
+            ->whereNotNull('email')
+            ->pluck('email')
+            ->all();
     }
 
     /**
