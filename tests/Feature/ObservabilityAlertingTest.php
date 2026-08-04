@@ -7,7 +7,10 @@ use App\Mail\ExceptionAlertMail;
 use App\Models\User;
 use App\Services\StaffNotifier;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Validation\ValidationException;
 
 it('exposes the alerts config', function (): void {
@@ -103,4 +106,47 @@ it('does not alert ops for a domain-rule exception', function (): void {
     app(ExceptionHandler::class)->report(new DomainRuleException('expected guard'));
 
     Mail::assertNotQueued(ExceptionAlertMail::class);
+});
+
+it('returns 200 with all-true checks when healthy', function (): void {
+    Redis::shouldReceive('connection->ping')->andReturnTrue();
+    Queue::shouldReceive('connection->size')->andReturn(0);
+
+    $res = $this->getJson('/api/health');
+
+    $res->assertOk()
+        ->assertJson(['ok' => true, 'checks' => ['database' => true, 'redis' => true, 'queue' => true]]);
+});
+
+it('returns 503 when a check fails', function (): void {
+    Redis::shouldReceive('connection->ping')->andThrow(new RuntimeException('redis down'));
+    Queue::shouldReceive('connection->size')->andReturn(0);
+
+    $res = $this->getJson('/api/health');
+
+    $res->assertStatus(503)->assertJson(['ok' => false, 'checks' => ['redis' => false]]);
+});
+
+it('leaks no infra detail in the health body', function (): void {
+    Redis::shouldReceive('connection->ping')->andReturnTrue();
+    Queue::shouldReceive('connection->size')->andReturn(0);
+
+    $body = $this->getJson('/api/health')->json();
+
+    expect(array_keys($body))->toEqualCanonicalizing(['ok', 'checks'])
+        ->and($body['checks'])->each->toBeBool();
+});
+
+it('falls back to an uncached probe when the cache store itself is unreachable', function (): void {
+    // Production's default cache store is DB-backed (config/cache.php), so a
+    // DB outage would otherwise throw inside Cache::remember before any check
+    // runs. The endpoint must still degrade to a clean 200/503 boolean body.
+    Cache::shouldReceive('remember')->andThrow(new RuntimeException('cache store down'));
+    Redis::shouldReceive('connection->ping')->andReturnTrue();
+    Queue::shouldReceive('connection->size')->andReturn(0);
+
+    $res = $this->getJson('/api/health');
+
+    $res->assertOk()
+        ->assertJson(['ok' => true, 'checks' => ['database' => true, 'redis' => true, 'queue' => true]]);
 });
