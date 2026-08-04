@@ -198,3 +198,36 @@ it('defaults to roughly the last 90 days when no range is given', function (): v
         ->and($from->diffInDays($to))->toBeGreaterThanOrEqual(89)
         ->and($from->diffInDays($to))->toBeLessThanOrEqual(91);
 });
+
+it('streams a CSV of orders in range with a GST column and both dates', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
+    $company = Company::factory()->create(['name' => 'Acme Pte Ltd']);
+    $q = Quote::factory()->create([
+        'company_id' => $company->id, 'state' => 'INVOICED',
+        'accepted_at' => Carbon::parse('2026-07-10'),
+        'subtotal' => 200, 'gst_amount' => 18, 'total' => 218, 'currency' => 'SGD',
+    ]);
+    Invoice::create([
+        'quote_id' => $q->id, 'po_ref' => 'PO-EXP-1', 'invoice_ref' => 'INV-1001',
+        'issued_at' => Carbon::parse('2026-07-11'), 'amount' => 218, 'gst_amount' => 18,
+        'amount_paid' => 0, 'payment_state' => 'UNPAID',
+    ]);
+
+    $res = $this->get('/api/admin/reports/export?from=2026-07-01&to=2026-07-31');
+
+    $res->assertOk();
+    expect($res->headers->get('content-type'))->toContain('text/csv');
+
+    $csv = $res->streamedContent();
+    expect($csv)->toContain('reference,company,accepted_at,invoice_ref,issued_at,state,payment_state,subtotal,gst_amount,total,amount_paid,currency')
+        ->and($csv)->toContain('Acme Pte Ltd')
+        ->and($csv)->toContain('INV-1001')
+        ->and($csv)->toContain('2026-07-10')
+        ->and($csv)->toContain('2026-07-11')
+        ->and($csv)->toContain('18');
+});
+
+it('blocks CSV export without reports.view', function (): void {
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->get('/api/admin/reports/export')->assertForbidden();
+});

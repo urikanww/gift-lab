@@ -332,6 +332,9 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Sensitive - not in the staff_admin grandfather default (see Permissions).
     Route::get('/admin/reports', [ReportsController::class, 'index'])->middleware('permission:reports.view');
 
+    // Streamed CSV order export - same permission gate + isStaff guard as index.
+    Route::get('/admin/reports/export', [ReportsController::class, 'export'])->middleware('permission:reports.view');
+
     // Superadmin user management (stricter than isStaff() - superadmin-only).
     Route::get('/admin/companies', [AdminUserController::class, 'companies'])->middleware('permission:users.view');
     // Grantable-permission catalogue for the access table.
