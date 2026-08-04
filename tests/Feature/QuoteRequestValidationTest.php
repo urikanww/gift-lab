@@ -42,6 +42,7 @@ function quotePayload(array $lineOverrides = [], array $overrides = []): array
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ], $overrides);
 }
 

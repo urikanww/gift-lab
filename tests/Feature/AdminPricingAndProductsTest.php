@@ -107,6 +107,7 @@ it('lets staff create a CORE product with a variant and stock, then a buyer quot
             'line1' => '1 Marina Blvd',
             'postal_code' => '018989',
         ],
+        'recipient_consent' => true,
     ])->assertCreated();
 });
 
