@@ -102,3 +102,48 @@ it('lets staff create a quote without recipient consent', function (): void {
 
     expect(Quote::find($id)->recipient_consent_ack_at)->toBeNull();
 });
+
+it('rejects a buyer checkout with recipient_consent explicitly false', function (): void {
+    seedPricing();
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']));
+
+    $this->postJson('/api/quotes', [
+        'company_id' => $company->id,
+        'line_items' => pdpaLineItems(),
+        'shipping_address' => pdpaShipping(),
+        'recipient_consent' => false,
+    ])->assertStatus(422)->assertJsonValidationErrors('recipient_consent');
+});
+
+it('does not re-stamp recipient consent when an idempotent checkout is replayed', function (): void {
+    seedPricing();
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->create(['company_id' => $company->id, 'role' => 'buyer']));
+
+    $payload = [
+        'company_id' => $company->id,
+        'line_items' => pdpaLineItems(),
+        'shipping_address' => pdpaShipping(),
+        'recipient_consent' => true,
+        'idempotency_key' => 'checkout-replay-key',
+    ];
+
+    $firstId = $this->postJson('/api/quotes', $payload)->assertCreated()->json('data.id');
+    $firstAck = Quote::find($firstId)->recipient_consent_ack_at;
+    expect($firstAck)->not->toBeNull();
+
+    // Simulate a double-click / network retry: the same payload + key again,
+    // some time later, must return the SAME quote with its ORIGINAL consent
+    // timestamp - not a fresh now() overwrite.
+    $this->travel(5)->minutes();
+
+    $secondId = $this->postJson('/api/quotes', $payload)->assertCreated()->json('data.id');
+
+    expect($secondId)->toBe($firstId);
+
+    $quote = Quote::find($secondId);
+    expect($quote->recipient_consent_ack_at->equalTo($firstAck))->toBeTrue();
+
+    expect(Quote::where('company_id', $company->id)->where('idempotency_key', 'checkout-replay-key')->count())->toBe(1);
+});
