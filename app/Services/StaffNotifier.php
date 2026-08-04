@@ -208,7 +208,13 @@ class StaffNotifier
     public function unexpectedException(Throwable $e, ?string $path = null): void
     {
         try {
-            $signature = sha1($e::class.'|'.$e->getMessage());
+            // Key on the throw SITE (class + file:line), not the message: an
+            // exception message often carries dynamic content (ids, SQL, values)
+            // that would produce a fresh signature every time and defeat the
+            // throttle in exactly the storm it exists to contain. Same code path
+            // failing repeatedly => one alert. The full message still rides in
+            // the email body.
+            $signature = sha1($e::class.'|'.$e->getFile().':'.$e->getLine());
             $ttl = now()->addMinutes((int) config('alerts.exception_throttle_minutes', 15));
 
             // Cache::add is atomic "first one through the window wins": returns

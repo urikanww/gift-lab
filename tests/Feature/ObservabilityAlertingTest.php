@@ -34,9 +34,11 @@ it('throttles a repeat of the same exception signature', function (): void {
     config()->set('alerts.exception_throttle_minutes', 15);
     Mail::fake();
 
+    // Same exception instance twice = same throw site = throttled to one email.
     $notifier = app(StaffNotifier::class);
-    $notifier->unexpectedException(new RuntimeException('same message'), 'api/quotes');
-    $notifier->unexpectedException(new RuntimeException('same message'), 'api/quotes');
+    $e = new RuntimeException('same message');
+    $notifier->unexpectedException($e, 'api/quotes');
+    $notifier->unexpectedException($e, 'api/quotes');
 
     Mail::assertQueued(ExceptionAlertMail::class, 1);
 });
@@ -45,9 +47,10 @@ it('does not throttle a different exception signature', function (): void {
     config()->set('alerts.ops_email', 'ops@nexgen.test');
     Mail::fake();
 
+    // Distinct exception classes = distinct signatures regardless of throw site.
     $notifier = app(StaffNotifier::class);
     $notifier->unexpectedException(new RuntimeException('first'), null);
-    $notifier->unexpectedException(new RuntimeException('second'), null);
+    $notifier->unexpectedException(new LogicException('second'), null);
 
     Mail::assertQueued(ExceptionAlertMail::class, 2);
 });
