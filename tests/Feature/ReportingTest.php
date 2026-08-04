@@ -231,3 +231,11 @@ it('blocks CSV export without reports.view', function (): void {
     Sanctum::actingAs(User::factory()->staffAdmin()->create());
     $this->get('/api/admin/reports/export')->assertForbidden();
 });
+
+it('blocks CSV export for a buyer', function (): void {
+    // EnsurePermission lets non-staff_admin through; the controller's isStaff()
+    // guard is the only thing blocking a buyer from this financial export.
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->create(['role' => 'buyer', 'company_id' => $company->id]));
+    $this->get('/api/admin/reports/export')->assertForbidden();
+});
