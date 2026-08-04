@@ -96,6 +96,9 @@ export default function CheckoutPage() {
   // paid order). Sets expectations and adds a small accountability step against
   // frivolous/junk orders, since there's no payment gate at this stage.
   const [agreed, setAgreed] = useState(false);
+  // PDPA: buyer confirms they hold the recipient's consent to share the
+  // recipient's delivery details (name/phone/address of a third party).
+  const [recipientConsent, setRecipientConsent] = useState(false);
   const [celebrating, setCelebrating] = useState<number | null>(null);
   // The full created quote is retained so the confirmation can surface its
   // signed tracking_link (Track button + QR); celebrating only holds the id.
@@ -191,6 +194,10 @@ export default function CheckoutPage() {
       setSubmitError('Please confirm you understand this is a quote request before placing it.');
       return;
     }
+    if (!recipientConsent) {
+      setSubmitError("Please confirm you have the recipient's consent to share their delivery details.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     const quote = await createQuote(
@@ -200,6 +207,7 @@ export default function CheckoutPage() {
       neededBy,
       idempotencyKey.current,
       toShippingInput(shipping),
+      recipientConsent,
     );
     setSubmitting(false);
     if (quote) {
@@ -450,12 +458,28 @@ export default function CheckoutPage() {
                       team confirms pricing, and I&rsquo;m not charged until I approve a formal quote.
                     </span>
                   </label>
+                  <label className="mb-3 flex items-start gap-2 text-2xs leading-snug text-fg-muted">
+                    <input
+                      type="checkbox"
+                      checked={recipientConsent}
+                      onChange={(e) => setRecipientConsent(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <span>
+                      I confirm I have this recipient&rsquo;s consent to share their delivery details, per
+                      the{' '}
+                      <a href="/privacy" className="font-medium text-primary underline">
+                        Privacy Policy
+                      </a>
+                      .
+                    </span>
+                  </label>
                   <Button
                     variant="primary"
                     fullWidth
                     onClick={placeOrder}
                     loading={submitting}
-                    disabled={submitting || !agreed}
+                    disabled={submitting || !agreed || !recipientConsent}
                   >
                     {submitting ? 'Placing order…' : 'Place order'}
                   </Button>
