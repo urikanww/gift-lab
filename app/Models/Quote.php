@@ -97,6 +97,7 @@ class Quote extends Model
             'accepted_at' => 'datetime',
             'stock_confirmed_at' => 'datetime',
             'last_reminded_at' => 'datetime',
+            'recipient_consent_ack_at' => 'datetime',
             'amendment_log' => 'array',
             'needed_by' => 'immutable_date',
         ];

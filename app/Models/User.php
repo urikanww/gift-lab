@@ -50,6 +50,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'role' => UserRole::class,
             'permissions' => 'array',
+            'consented_at' => 'datetime',
         ];
     }
 
