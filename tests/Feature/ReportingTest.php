@@ -7,9 +7,11 @@ use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\Quote;
+use App\Models\User;
 use App\Services\Reporting\ReportingService;
 use App\Support\Permissions;
 use Illuminate\Support\Carbon;
+use Laravel\Sanctum\Sanctum;
 
 it('registers a sensitive reports.view permission', function (): void {
     expect(Permissions::all())->toContain('reports.view')
@@ -152,4 +154,34 @@ it('reports a zero repeat rate when no companies are active in range', function 
     );
 
     expect($r['activeCompanies'])->toBe(0)->and($r['rate'])->toBe(0.0);
+});
+
+it('returns the three reports as JSON to a superadmin', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
+
+    $this->getJson('/api/admin/reports?from=2026-06-01&to=2026-07-31')
+        ->assertOk()
+        ->assertJsonStructure([
+            'revenueTrend' => [['month', 'bookings', 'billed']],
+            'topProducts',
+            'repeatCustomerRate' => ['activeCompanies', 'repeatCompanies', 'rate'],
+            'range' => ['from', 'to'],
+        ]);
+});
+
+it('rejects an unpermitted staff_admin from the reports endpoint', function (): void {
+    Sanctum::actingAs(User::factory()->staffAdmin()->create());
+    $this->getJson('/api/admin/reports')->assertForbidden();
+});
+
+it('rejects a buyer from the reports endpoint', function (): void {
+    $company = Company::factory()->create();
+    Sanctum::actingAs(User::factory()->create(['role' => 'buyer', 'company_id' => $company->id]));
+    $this->getJson('/api/admin/reports')->assertForbidden();
+});
+
+it('422s on an inverted date range', function (): void {
+    Sanctum::actingAs(User::factory()->create(['role' => 'superadmin']));
+    $this->getJson('/api/admin/reports?from=2026-07-31&to=2026-06-01')
+        ->assertStatus(422)->assertJsonValidationErrors('to');
 });
