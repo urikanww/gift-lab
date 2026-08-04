@@ -32,6 +32,7 @@ export default function RegisterPage() {
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
+  const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // F1: per-field validation messages, keyed as the API sends them, so each
   // input shows its own error inline instead of one lumped banner.
@@ -49,6 +50,7 @@ export default function RegisterPage() {
       password_confirmation: passwordConfirmation,
       company_name: companyName,
       company_phone: companyPhone || undefined,
+      consent,
     });
     setSubmitting(false);
     if (res.ok) {
@@ -152,7 +154,24 @@ export default function RegisterPage() {
                 </Motion>
               )}
 
-              <Button type="submit" fullWidth size="lg" loading={submitting}>
+              <label className="flex items-start gap-2 text-sm text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  disabled={submitting}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <span>
+                  I agree to the{' '}
+                  <Link to="/privacy" className="font-semibold text-brand-700 hover:underline">
+                    Privacy Policy
+                  </Link>
+                  .
+                </span>
+              </label>
+
+              <Button type="submit" fullWidth size="lg" loading={submitting} disabled={submitting || !consent}>
                 {submitting ? 'Creating account…' : 'Create account'}
               </Button>
             </form>

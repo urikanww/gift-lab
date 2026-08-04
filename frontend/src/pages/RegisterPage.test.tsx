@@ -34,9 +34,23 @@ it('shows per-field validation messages inline', async () => {
   useAuthStore.setState({ user: null, error: null, register } as any);
   renderPage();
 
+  // Consent gates submit; tick it so the form can be submitted at all.
+  fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }));
   fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
   expect(await screen.findByText('Please enter your company name')).toBeInTheDocument();
   expect(screen.getByText('That email is already registered')).toBeInTheDocument();
   expect(register).toHaveBeenCalledTimes(1);
+});
+
+// PDPA: registration requires explicit consent, gated client-side too.
+it('disables submit until the privacy-policy consent is ticked', () => {
+  useAuthStore.setState({ user: null, error: null } as any);
+  renderPage();
+
+  const submit = screen.getByRole('button', { name: /create account/i });
+  expect(submit).toBeDisabled();
+
+  fireEvent.click(screen.getByRole('checkbox', { name: /privacy policy/i }));
+  expect(submit).toBeEnabled();
 });
