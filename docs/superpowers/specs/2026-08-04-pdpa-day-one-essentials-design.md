@@ -187,3 +187,36 @@ cross-engine risk.
 
 - Company legal name, DPO name/role, DPO email, registered address.
 - Legal review of the drafted policy copy before launch.
+
+---
+
+## Amendment (2026-08-04) — staff-created buyers & `registration_source`
+
+**Trigger:** post-build review found a second buyer-creation path,
+`AdminUserController::store` (`app/Http/Controllers/AdminUserController.php`),
+driven by `UserAdminCreatePage.tsx` (role defaults to `buyer`). It creates a
+`buyer` user under a company with no consent stamp, so `consented_at` stays
+null — indistinguishable in the DB from a grandfathered pre-consent row.
+
+**PDPA basis (decision: not a consent path).** The data collected there — name,
+**work email**, company — for a corporate contact is **Business Contact
+Information (BCI)** under PDPA (s2 / s4(5)), which is excluded from the Consent,
+Purpose-Limitation and Notification obligations. A staff-added corporate buyer
+contact therefore does **not** require consent; the basis is the BCI exemption
+plus the existing B2B relationship. Faking consent (a staff member ticking a
+policy box on a third party's behalf) is meaningless and is deliberately **not**
+done.
+
+**Fix — provenance marker, not fake consent.** Add `users.registration_source`
+(enum `App\Enums\RegistrationSource`: `self_registered` / `staff_created` /
+`legacy`) so a null `consented_at` is always explainable:
+- `self_registered` — set in `AuthController::register`; carries a real consent
+  record.
+- `staff_created` — set in `AdminUserController::store`; BCI basis, no consent
+  needed by design.
+- `legacy` — DB default; existing pre-amendment rows backfill to this. The
+  future re-consent prompt (out of scope) targets `legacy` rows only.
+
+**Out of scope (further follow-up):** prompting a `staff_created` buyer to
+accept the Privacy Policy on first login, to capture real consent if they later
+use the account personally.
