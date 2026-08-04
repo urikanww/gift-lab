@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Exceptions\DomainRuleException;
 use App\Mail\ExceptionAlertMail;
 use App\Models\User;
 use App\Services\StaffNotifier;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 
 it('exposes the alerts config', function (): void {
     expect(config('alerts'))->toBeArray()
@@ -74,3 +77,30 @@ it('never throws when the mailer itself fails', function (): void {
 
     app(StaffNotifier::class)->unexpectedException(new RuntimeException('boom'), null);
 })->throwsNoExceptions();
+
+it('alerts ops when a reportable exception is reported through the handler', function (): void {
+    config()->set('alerts.ops_email', 'ops@nexgen.test');
+    Mail::fake();
+
+    app(ExceptionHandler::class)->report(new RuntimeException('an unhandled 500'));
+
+    Mail::assertQueued(ExceptionAlertMail::class, 1);
+});
+
+it('does not alert ops for a validation exception', function (): void {
+    config()->set('alerts.ops_email', 'ops@nexgen.test');
+    Mail::fake();
+
+    app(ExceptionHandler::class)->report(ValidationException::withMessages(['field' => 'bad']));
+
+    Mail::assertNotQueued(ExceptionAlertMail::class);
+});
+
+it('does not alert ops for a domain-rule exception', function (): void {
+    config()->set('alerts.ops_email', 'ops@nexgen.test');
+    Mail::fake();
+
+    app(ExceptionHandler::class)->report(new DomainRuleException('expected guard'));
+
+    Mail::assertNotQueued(ExceptionAlertMail::class);
+});

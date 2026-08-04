@@ -107,6 +107,15 @@ return Application::configure(basePath: dirname(__DIR__))
             if (app()->bound('sentry')) {
                 app('sentry')->captureException($e);
             }
+
+            // In-house ops alert (point 3): email the ops team on genuinely
+            // reportable exceptions. Domain guards are dontReport'd below and the
+            // framework never reports 4xx/validation/auth, so only real faults
+            // reach here. Runs in requests and workers alike; never throws.
+            app(\App\Services\StaffNotifier::class)->unexpectedException(
+                $e,
+                app()->runningInConsole() ? null : request()->path(),
+            );
         });
 
         // These are expected domain guards (already mapped to friendly 4xx
