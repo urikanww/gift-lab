@@ -34,6 +34,17 @@ class Product extends Model
 
     use SoftDeletes;
 
+    /**
+     * Buy-per-order is the business default (no held stock). The DB column still
+     * defaults to STOCKED for legacy rows; this makes every Eloquent-created
+     * product buy-per-order unless an importer sets it explicitly.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'stock_mode' => 'MAKE_TO_ORDER',
+    ];
+
     protected $fillable = [
         'name',
         'slug',
