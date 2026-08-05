@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import api from '../lib/api';
-import { Button, Card, Input, Logo } from '../ui';
-import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
+import { Button, Input } from '../ui';
+import { AuthLayout } from '../components/AuthLayout';
+import { Motion, fadeInUp, staggerItem } from '../motion';
 
 interface PendingProfile {
   name: string;
@@ -87,49 +88,41 @@ export default function GoogleCompletePage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center px-1 py-10">
-      <Motion variants={staggerContainer} initial="hidden" animate="visible">
-        <Motion variants={staggerItem} className="mb-8 text-center">
-          <Logo className="justify-center" markClassName="h-9 w-9" />
-          <h1 className="mt-5 font-display text-3xl text-fg sm:text-4xl">Finish your account</h1>
-          <p className="mt-2 text-sm text-fg-muted">
-            Just a few company details to complete your corporate buyer account.
-          </p>
+    <AuthLayout
+      title="Finish your account"
+      subtitle="Just a few company details to complete your corporate buyer account."
+    >
+      {phase === 'loading' && (
+        <Motion variants={staggerItem} className="text-center text-sm text-fg-muted lg:text-left" role="status">
+          Loading your sign-up…
         </Motion>
+      )}
 
-        {phase === 'loading' && (
-          <Motion variants={staggerItem} className="text-center text-sm text-fg-muted" role="status">
-            Loading your sign-up…
-          </Motion>
-        )}
+      {phase === 'expired' && (
+        <Motion variants={staggerItem} className="text-center lg:text-left">
+          <p className="text-sm text-fg-muted">
+            This Google sign-up link has expired or was already used. Please start again.
+          </p>
+          <Link
+            to="/register"
+            className="mt-4 inline-block font-semibold text-brand-700 hover:underline"
+          >
+            Back to sign up
+          </Link>
+        </Motion>
+      )}
 
-        {phase === 'expired' && (
-          <Motion variants={staggerItem}>
-            <Card padding="lg" className="text-center shadow-md">
-              <p className="text-sm text-fg-muted">
-                This Google sign-up link has expired or was already used. Please start again.
-              </p>
-              <Link
-                to="/register"
-                className="mt-4 inline-block font-semibold text-brand-700 hover:underline"
-              >
-                Back to sign up
-              </Link>
-            </Card>
-          </Motion>
-        )}
+      {phase === 'ready' && profile && (
+        <Motion variants={staggerItem}>
+          <div className="flex flex-col gap-5">
+            {/* Read-only identity from the verified Google profile. */}
+            <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
+              <span className="text-fg-muted">Signing up as </span>
+              <span className="font-medium text-fg">{profile.name}</span>
+              <span className="text-fg-muted"> ({profile.email})</span>
+            </div>
 
-        {phase === 'ready' && profile && (
-          <Motion variants={staggerItem}>
-            <Card padding="lg" className="shadow-md">
-              {/* Read-only identity from the verified Google profile. */}
-              <div className="mb-5 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
-                <span className="text-fg-muted">Signing up as </span>
-                <span className="font-medium text-fg">{profile.name}</span>
-                <span className="text-fg-muted"> ({profile.email})</span>
-              </div>
-
-              <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
+            <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
                 <Input
                   label="Company name"
                   error={fieldErrors.company_name}
@@ -198,20 +191,19 @@ export default function GoogleCompletePage() {
                   </span>
                 </label>
 
-                <Button
-                  type="submit"
-                  fullWidth
-                  size="lg"
-                  loading={submitting}
-                  disabled={submitting || !consent}
-                >
-                  {submitting ? 'Creating account…' : 'Create account'}
-                </Button>
-              </form>
-            </Card>
-          </Motion>
-        )}
-      </Motion>
-    </div>
+              <Button
+                type="submit"
+                fullWidth
+                size="lg"
+                loading={submitting}
+                disabled={submitting || !consent}
+              >
+                {submitting ? 'Creating account…' : 'Create account'}
+              </Button>
+            </form>
+          </div>
+        </Motion>
+      )}
+    </AuthLayout>
   );
 }

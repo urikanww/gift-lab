@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { Button, Card, Input } from '../ui';
+import { Button, Input } from '../ui';
+import { AuthLayout } from '../components/AuthLayout';
 import { GoogleAuthSection } from '../components/GoogleButton';
-import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
+import { Motion, fadeInUp, staggerItem } from '../motion';
 
 interface LocationState {
   from?: string;
@@ -62,24 +63,15 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center px-1 py-10">
-      <Motion variants={staggerContainer} initial="hidden" animate="visible">
-        <Motion variants={staggerItem} className="mb-8 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-2xs font-semibold uppercase tracking-wide text-brand-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" aria-hidden="true" />
-            Gift-Lab
-          </span>
-          <h1 className="mt-5 font-display text-3xl text-fg sm:text-4xl">Create your account</h1>
-          <p className="mt-2 text-sm text-fg-muted">
-            Set up your company to request quotes, approve proofs and track orders.
-          </p>
-        </Motion>
+    <AuthLayout
+      title="Create your account"
+      subtitle="Set up your company to request quotes, approve proofs and track orders."
+    >
+      <Motion variants={staggerItem}>
+        <div className="flex flex-col gap-5">
+          <GoogleAuthSection label="Sign up with Google" />
 
-        <Motion variants={staggerItem}>
-          <Card padding="lg" className="flex flex-col gap-5 shadow-md">
-            <GoogleAuthSection label="Sign up with Google" />
-
-            <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
+          <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
               <Input
                 label="Company name"
                 error={fieldErrors.company_name}
@@ -174,20 +166,19 @@ export default function RegisterPage() {
                 </span>
               </label>
 
-              <Button type="submit" fullWidth size="lg" loading={submitting} disabled={submitting || !consent}>
-                {submitting ? 'Creating account…' : 'Create account'}
-              </Button>
-            </form>
-          </Card>
-        </Motion>
-
-        <Motion variants={staggerItem} className="mt-6 text-center text-xs text-fg-subtle">
-          Already have an account?{' '}
-          <Link to="/login" state={{ from }} className="font-semibold text-brand-700 hover:underline">
-            Sign in
-          </Link>
-        </Motion>
+            <Button type="submit" fullWidth size="lg" loading={submitting} disabled={submitting || !consent}>
+              {submitting ? 'Creating account…' : 'Create account'}
+            </Button>
+          </form>
+        </div>
       </Motion>
-    </div>
+
+      <Motion variants={staggerItem} className="mt-6 text-center text-xs text-fg-subtle lg:text-left">
+        Already have an account?{' '}
+        <Link to="/login" state={{ from }} className="font-semibold text-brand-700 hover:underline">
+          Sign in
+        </Link>
+      </Motion>
+    </AuthLayout>
   );
 }
