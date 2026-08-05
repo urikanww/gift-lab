@@ -51,6 +51,9 @@ const UserAdminDetailPage = lazy(() => import('./pages/UserAdminDetailPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const GoogleCompletePage = lazy(() => import('./pages/GoogleCompletePage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const CylinderCalibrationSpike = lazy(() => import('./pages/CylinderCalibrationSpike'));
@@ -154,6 +157,9 @@ export default function App() {
             <Route path="gift-ideas" element={<GiftIdeasPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
+            <Route path="register/google" element={<GoogleCompletePage />} />
+            <Route path="forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="reset-password" element={<ResetPasswordPage />} />
             <Route path="privacy" element={<PrivacyPolicyPage />} />
             <Route path="catalogue" element={<Navigate to="/products" replace />} />
             <Route path="catalogue/:id" element={<RedirectCatalogueToProduct />} />

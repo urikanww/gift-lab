@@ -6,8 +6,9 @@
  * ============================================================================
  * GIFT-LAB DESIGN SYSTEM - TOKEN SOURCE OF TRUTH
  * ----------------------------------------------------------------------------
- * Aesthetic: "Bold Studio" - high-contrast, dark-default canvas, a punchy
- * coral (#ff4d6d) brand paired with an electric violet (#7c5cff) accent.
+ * Aesthetic: "Gift Lab blue" - a deep royal cobalt (#0b3fb0) brand drawn from
+ * the logo's gift box, paired with the logo heart's bright azure (#1e80f8)
+ * accent. Brand gradient runs box -> heart (cobalt -> azure).
  * Editorial display type (Fraunces) paired with a clean grotesk text face
  * (Inter). Layered shadows. Calm, deliberate motion.
  *
@@ -30,28 +31,28 @@
 
 :root,
 [data-theme='light'] {
-  /* --- Brand (coral) & accent (violet) - RGB channel triples ----------- */
-  --brand-50: 255 240 243;
-  --brand-100: 255 217 224;
-  --brand-200: 255 179 193;
-  --brand-300: 255 131 153;
-  --brand-400: 255 92 120;
-  --brand-500: 255 59 95; /* primary brand - Bold Studio coral (#ff3b5f) */
-  --brand-600: 232 45 80;
-  --brand-700: 195 31 63;
-  --brand-800: 151 25 48;
-  --brand-900: 110 21 36;
+  /* --- Brand (cobalt) & accent (azure) - RGB channel triples ----------- */
+  --brand-50: 238 243 253;
+  --brand-100: 213 224 249;
+  --brand-200: 170 192 240;
+  --brand-300: 120 151 226;
+  --brand-400: 61 104 205;
+  --brand-500: 11 63 176; /* primary brand - logo gift-box cobalt (#0b3fb0) */
+  --brand-600: 8 52 150;
+  --brand-700: 6 42 122;
+  --brand-800: 5 33 92;
+  --brand-900: 4 24 66;
 
-  --accent-50: 241 238 255;
-  --accent-100: 224 217 255;
-  --accent-200: 196 182 255;
-  --accent-300: 166 144 255;
-  --accent-400: 138 107 255;
-  --accent-500: 106 75 255; /* electric violet - secondary accent (#6a4bff) */
-  --accent-600: 88 54 230;
-  --accent-700: 68 41 192;
-  --accent-800: 52 31 149;
-  --accent-900: 40 24 113;
+  --accent-50: 238 246 255;
+  --accent-100: 213 233 254;
+  --accent-200: 176 214 254;
+  --accent-300: 124 188 253;
+  --accent-400: 72 160 252;
+  --accent-500: 30 128 248; /* logo heart azure - secondary accent (#1e80f8) */
+  --accent-600: 20 104 216;
+  --accent-700: 16 84 178;
+  --accent-800: 14 66 138;
+  --accent-900: 12 50 104;
 
   /* --- Neutral (ink) scale - RGB channel triples ---------------------- */
   --ink-0: 255 255 255;
@@ -77,8 +78,8 @@
   --color-fg-subtle: 138 138 153;
   --color-fg-onbrand: 255 255 255;
 
-  --color-primary: 255 59 95;
-  --color-primary-hover: 232 45 80;
+  --color-primary: 11 63 176;
+  --color-primary-hover: 8 52 150;
   --color-primary-fg: 255 255 255;
 
   --color-success: 31 143 99; /* jade - success / commerce (decoupled from accent) */
@@ -87,13 +88,13 @@
   --color-danger-bg: #fbeceb;
   --color-warning: 183 121 31;
   --color-warning-bg: #fdf3e2;
-  --color-info: 47 111 237;
-  --color-info-bg: #eaf1fd;
+  --color-info: 8 145 178; /* cyan - kept distinct from the new blue brand */
+  --color-info-bg: #e6f6fa;
 
-  --color-ring: 255 59 95;
+  --color-ring: 11 63 176;
 
-  /* --- Brand gradient ------------------------------------------------- */
-  --grad-brand: linear-gradient(135deg, #ff4d6d, #ff9e64);
+  /* --- Brand gradient (logo box cobalt -> heart azure) ---------------- */
+  --grad-brand: linear-gradient(135deg, #0b3fb0, #1e80f8);
 
   /* --- Radii ---------------------------------------------------------- */
   --radius-xs: 4px;
@@ -110,7 +111,7 @@
   --shadow-card: 0 1px 3px rgba(26, 23, 18, 0.07), 0 6px 16px -6px rgba(26, 23, 18, 0.12);
   --shadow-md: 0 4px 8px -2px rgba(26, 23, 18, 0.1), 0 12px 24px -8px rgba(26, 23, 18, 0.14);
   --shadow-lg: 0 8px 20px -6px rgba(26, 23, 18, 0.16), 0 24px 48px -12px rgba(26, 23, 18, 0.22);
-  --shadow-focus: 0 0 0 3px rgba(255, 59, 95, 0.35);
+  --shadow-focus: 0 0 0 3px rgba(11, 63, 176, 0.35);
 
   /* --- Typography ----------------------------------------------------- */
   --font-display: 'Fraunces', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
@@ -143,29 +144,29 @@
   --color-fg-subtle: 111 111 128; /* #6f6f80 */
   --color-fg-onbrand: 255 255 255;
 
-  --color-primary: 255 77 109; /* #ff4d6d */
-  --color-primary-hover: 255 99 130; /* #ff6382 */
+  --color-primary: 74 140 246; /* #4a8cf6 - brightened cobalt for dark canvas */
+  --color-primary-hover: 108 164 250; /* #6ca4fa */
   --color-primary-fg: 255 255 255;
 
   --color-success: 55 173 123; /* jade - #37ad7b (decoupled from accent) */
   --color-success-bg: rgba(31, 143, 99, 0.16);
   --color-danger: 255 107 107; /* #ff6b6b */
-  --color-danger-bg: rgba(255, 77, 109, 0.16);
+  --color-danger-bg: rgba(194, 59, 59, 0.2);
   --color-warning: 224 178 90; /* #e0b25a */
   --color-warning-bg: rgba(183, 121, 31, 0.18);
-  --color-info: 122 163 245; /* #7aa3f5 */
-  --color-info-bg: rgba(47, 111, 237, 0.18);
+  --color-info: 45 195 224; /* cyan #2dc3e0 - distinct from blue brand */
+  --color-info-bg: rgba(8, 145, 178, 0.18);
 
-  --color-ring: 255 77 109; /* #ff4d6d */
+  --color-ring: 74 140 246; /* #4a8cf6 */
 
-  --grad-brand: linear-gradient(135deg, #ff4d6d, #ff9e64);
+  --grad-brand: linear-gradient(135deg, #0b3fb0, #1e80f8);
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.45), 0 6px 16px -6px rgba(0, 0, 0, 0.6);
   --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.5), 0 12px 24px -8px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 8px 20px -6px rgba(0, 0, 0, 0.6), 0 24px 48px -12px rgba(0, 0, 0, 0.7);
-  --shadow-focus: 0 0 0 3px rgba(255, 77, 109, 0.4);
+  --shadow-focus: 0 0 0 3px rgba(74, 140, 246, 0.4);
 
   color-scheme: dark;
 }

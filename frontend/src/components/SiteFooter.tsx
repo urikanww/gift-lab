@@ -41,9 +41,9 @@ export default function SiteFooter() {
   ];
 
   return (
-    <footer className="mt-16 border-t border-border bg-surface text-fg-muted">
+    <footer className="mt-12 border-t border-border bg-surface text-fg-muted">
       <div className="mx-auto max-w-content px-4 py-10 sm:px-6">
-        <ul className="mb-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <ul className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {TRUST_BADGES.map((b) => (
             <li
               key={b.label}
@@ -57,8 +57,8 @@ export default function SiteFooter() {
           ))}
         </ul>
 
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
-          <div>
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
+          <div className="md:col-span-4">
             <Link
               to="/"
               aria-label="GiftLab home"
@@ -71,23 +71,27 @@ export default function SiteFooter() {
             </p>
           </div>
 
-          {LINK_COLUMNS.map((col) => (
-            <nav key={col.heading} aria-label={col.heading}>
-              <h2 className="mb-3 text-sm font-semibold text-fg">{col.heading}</h2>
-              <ul className="flex flex-col gap-2">
-                {col.links.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      to={link.to}
-                      className="text-sm transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          ))}
+          {/* Link columns cluster in the remaining two-thirds so the brand block
+              anchors the left instead of every column floating a quarter apart. */}
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:col-span-8">
+            {LINK_COLUMNS.map((col) => (
+              <nav key={col.heading} aria-label={col.heading}>
+                <h2 className="mb-3 text-sm font-semibold text-fg">{col.heading}</h2>
+                <ul className="flex flex-col gap-2">
+                  {col.links.map((link) => (
+                    <li key={link.label}>
+                      <Link
+                        to={link.to}
+                        className="text-sm transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ))}
+          </div>
         </div>
 
         <p className="mt-10 border-t border-border pt-6 text-xs">© 2026 GiftLab</p>

@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -6,6 +6,13 @@ import { ThemeProvider } from '../ui';
 import LoginPage from './LoginPage';
 import { useAuthStore } from '../stores/authStore';
 import type { User } from '../types';
+
+// LoginPage now renders the Google section, which probes /auth/providers on
+// mount. Stub it so these credential-flow tests don't fire a real request.
+vi.mock('../lib/socialAuth', () => ({
+  useGoogleEnabled: () => false,
+  googleRedirectUrl: () => 'http://localhost:8000/auth/google/redirect',
+}));
 
 const initialStore = useAuthStore.getState();
 afterEach(() => useAuthStore.setState(initialStore, true));

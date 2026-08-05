@@ -15,6 +15,15 @@ export interface RegisterPayload {
   consent: boolean;
 }
 
+export interface GoogleCompletePayload {
+  token: string;
+  company_name: string;
+  company_registration_no?: string;
+  company_phone?: string;
+  company_address?: string;
+  consent: boolean;
+}
+
 interface AuthState {
   user: User | null;
   status: 'idle' | 'loading' | 'ready';
@@ -22,7 +31,17 @@ interface AuthState {
   fetchUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   register: (payload: RegisterPayload) => Promise<{ ok: boolean; fieldErrors: Record<string, string> }>;
+  completeGoogle: (payload: GoogleCompletePayload) => Promise<{ ok: boolean; fieldErrors: Record<string, string> }>;
+  forgotPassword: (email: string) => Promise<{ ok: boolean; message: string }>;
+  resetPassword: (payload: ResetPasswordPayload) => Promise<{ ok: boolean; fieldErrors: Record<string, string>; message: string }>;
   logout: () => Promise<void>;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
 }
 
 // In-flight guard for the session probe. Concurrent callers - React 18
@@ -87,6 +106,47 @@ export const useAuthStore = create<AuthState>((set) => ({
       const fieldErrors = apiFieldErrors(err);
       set({ error: Object.keys(fieldErrors).length > 0 ? null : apiError(err) });
       return { ok: false, fieldErrors };
+    }
+  },
+
+  completeGoogle: async (payload) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      // Finishes the two-step Google sign-up: the backend holds the verified
+      // Google profile under `payload.token` and creates company + buyer, then
+      // signs in and returns the user - mirroring /register's response shape.
+      const { data } = await api.post<{ user: User }>('/auth/google/complete', payload);
+      set({ user: data.user, status: 'ready' });
+      return { ok: true, fieldErrors: {} };
+    } catch (err) {
+      const fieldErrors = apiFieldErrors(err);
+      set({ error: Object.keys(fieldErrors).length > 0 ? null : apiError(err) });
+      return { ok: false, fieldErrors };
+    }
+  },
+
+  // Pre-auth flows: they don't set `user`/`error` (no session yet), so they
+  // return their result to the caller instead of driving the global banner.
+  forgotPassword: async (email) => {
+    try {
+      await ensureCsrf();
+      // The endpoint always answers generically (anti-enumeration); surface
+      // whatever it returns verbatim.
+      const { data } = await api.post<{ message: string }>('/forgot-password', { email });
+      return { ok: true, message: data.message };
+    } catch (err) {
+      return { ok: false, message: apiError(err) };
+    }
+  },
+
+  resetPassword: async (payload) => {
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ message: string }>('/reset-password', payload);
+      return { ok: true, fieldErrors: {}, message: data.message };
+    } catch (err) {
+      return { ok: false, fieldErrors: apiFieldErrors(err), message: apiError(err) };
     }
   },
 

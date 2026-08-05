@@ -5,6 +5,13 @@ import { ThemeProvider } from '../ui';
 import RegisterPage from './RegisterPage';
 import { useAuthStore } from '../stores/authStore';
 
+// RegisterPage now renders the Google section, which probes /auth/providers on
+// mount. Stub it so these form tests don't fire a real request.
+vi.mock('../lib/socialAuth', () => ({
+  useGoogleEnabled: () => false,
+  googleRedirectUrl: () => 'http://localhost:8000/auth/google/redirect',
+}));
+
 const initial = useAuthStore.getState();
 afterEach(() => {
   useAuthStore.setState(initial, true);

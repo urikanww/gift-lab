@@ -10,6 +10,11 @@ export default function Layout() {
   // other route keeps the standard max-w-content chrome.
   const { pathname } = useLocation();
   const isStudio = pathname.startsWith('/design/');
+  // Auth pages run full-bleed (edge-to-edge split panel), so they opt out of the
+  // readable content cap AND the main padding - the AuthLayout owns its spacing.
+  const isAuth =
+    ['/login', '/register', '/forgot-password', '/reset-password'].includes(pathname) ||
+    pathname === '/register/google';
 
   return (
     <div className="min-h-screen bg-bg">
@@ -25,8 +30,9 @@ export default function Layout() {
       <main
         id="main-content"
         className={cn(
-          'mx-auto px-4 py-6 sm:px-6 sm:py-8',
-          isStudio ? 'max-w-[1600px]' : 'max-w-content',
+          isAuth
+            ? 'w-full'
+            : cn('mx-auto px-4 py-6 sm:px-6 sm:py-8', isStudio ? 'max-w-[1600px]' : 'max-w-content'),
         )}
       >
         <AnimatedOutlet />

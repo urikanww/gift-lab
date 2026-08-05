@@ -238,7 +238,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="grid gap-8 md:grid-cols-2 md:gap-12">
+      <div className="grid gap-6 md:grid-cols-2 md:gap-8">
         <span className="sr-only" role="status" aria-live="polite">
           Loading product…
         </span>
@@ -299,9 +299,9 @@ export default function ProductDetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-10 pb-24 md:pb-0">
+    <div className="flex flex-col gap-8 pb-24 md:pb-0">
       {/* ── Two-column: gallery + info ────────────────────────────────────── */}
-      <div className="grid items-start gap-8 md:grid-cols-2 md:gap-12">
+      <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8">
         {/* LEFT - gallery (sticky only at md+). */}
         <div className="self-start md:sticky md:top-20">
           <Motion variants={fadeInUp} initial="hidden" animate="visible" className="flex flex-col gap-4">

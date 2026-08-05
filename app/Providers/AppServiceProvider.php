@@ -31,6 +31,7 @@ use App\Services\Scraper\HttpLazadaAffiliateClient;
 use App\Services\Scraper\HttpShopeeAffiliateClient;
 use App\Services\StaffNotifier;
 use App\Support\Broadcasting;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobFailed;
@@ -164,6 +165,16 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Password reset links point at the decoupled SPA, and carry ONLY the
+        // opaque token - never the email. The reset form re-collects the email,
+        // so no PII rides in the URL / referer / browser history. (Default
+        // Laravel would build a backend URL with email in the query string.)
+        ResetPassword::createUrlUsing(function ($notifiable, string $token): string {
+            $base = rtrim((string) config('app.frontend_url', config('app.url')), '/');
+
+            return $base.'/reset-password?token='.$token;
+        });
+
         // Inline `throttle:N,1` middleware keys an ANONYMOUS request by IP alone
         // (sha1(domain|IP)) with no per-route prefix, and an AUTHENTICATED one by
         // user id alone - so every inline numeric throttle in routes/api.php shared

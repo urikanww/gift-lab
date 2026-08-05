@@ -2,12 +2,26 @@ import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
-import { Button, Card, Input, Logo } from '../ui';
-import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
+import { Button, Input } from '../ui';
+import { AuthLayout } from '../components/AuthLayout';
+import { GoogleAuthSection } from '../components/GoogleButton';
+import { Motion, fadeInUp, staggerItem } from '../motion';
 
 interface LocationState {
   from?: string;
 }
+
+// The Google callback bounces failures back to /login?error=<code>. Map each to
+// copy the buyer can act on. Unknown/absent code -> no banner.
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_email_exists:
+    'This email already has a password account. Sign in with your password below.',
+  google_unverified:
+    'Your Google email isn’t verified. Verify it with Google, or sign in with your password.',
+  google_not_allowed:
+    'Google sign-in isn’t available for this account. Please sign in with your password.',
+  google_failed: 'Google sign-in didn’t complete. Please try again.',
+};
 
 export default function LoginPage() {
   const { login, error, user } = useAuthStore();
@@ -22,6 +36,9 @@ export default function LoginPage() {
   const safeFromQuery =
     fromQuery && fromQuery.startsWith('/') && !fromQuery.startsWith('//') ? fromQuery : undefined;
   const from = (location.state as LocationState | null)?.from ?? safeFromQuery;
+  const googleError = GOOGLE_ERRORS[searchParams.get('error') ?? ''];
+  // Set by the reset-password flow after a successful reset.
+  const resetSuccess = searchParams.get('reset') === 'success';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -49,20 +66,32 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center px-1 py-10">
-      <Motion variants={staggerContainer} initial="hidden" animate="visible">
-        {/* Brand mark + welcome copy */}
-        <Motion variants={staggerItem} className="mb-8 text-center">
-          <Logo className="justify-center" markClassName="h-9 w-9" />
-          <h1 className="mt-5 font-display text-3xl text-fg sm:text-4xl">Welcome back</h1>
-          <p className="mt-2 text-sm text-fg-muted">
-            Sign in to manage quotes, proofs and production.
-          </p>
-        </Motion>
+    <AuthLayout title="Welcome back" subtitle="Sign in to manage quotes, proofs and production.">
+      <Motion variants={staggerItem}>
+        <div className="flex flex-col gap-5">
+          {resetSuccess && (
+            <div
+              className="rounded-md border border-success/30 bg-success-bg px-3 py-2 text-sm text-success"
+              role="status"
+            >
+              Your password has been reset. You can now sign in.
+            </div>
+          )}
+          {googleError && (
+            <Motion
+              variants={fadeInUp}
+              initial="hidden"
+              animate="visible"
+              className="rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+              role="alert"
+            >
+              {googleError}
+            </Motion>
+          )}
 
-        <Motion variants={staggerItem}>
-          <Card padding="lg" className="shadow-md">
-            <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
+          <GoogleAuthSection label="Sign in with Google" />
+
+          <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
               <Input
                 type="email"
                 label="Email"
@@ -85,6 +114,12 @@ export default function LoginPage() {
                 disabled={submitting}
               />
 
+              <div className="-mt-2 text-right text-xs">
+                <Link to="/forgot-password" className="font-medium text-brand-700 hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+
               {error && (
                 <Motion
                   variants={fadeInUp}
@@ -97,20 +132,19 @@ export default function LoginPage() {
                 </Motion>
               )}
 
-              <Button type="submit" fullWidth size="lg" loading={submitting}>
-                {submitting ? 'Signing in…' : 'Sign in'}
-              </Button>
-            </form>
-          </Card>
-        </Motion>
-
-        <Motion variants={staggerItem} className="mt-6 text-center text-xs text-fg-subtle">
-          New corporate buyer?{' '}
-          <Link to="/register" state={{ from }} className="font-semibold text-brand-700 hover:underline">
-            Create your company account
-          </Link>
-        </Motion>
+            <Button type="submit" fullWidth size="lg" loading={submitting}>
+              {submitting ? 'Signing in…' : 'Sign in'}
+            </Button>
+          </form>
+        </div>
       </Motion>
-    </div>
+
+      <Motion variants={staggerItem} className="mt-6 text-center text-xs text-fg-subtle lg:text-left">
+        New corporate buyer?{' '}
+        <Link to="/register" state={{ from }} className="font-semibold text-brand-700 hover:underline">
+          Create your company account
+        </Link>
+      </Motion>
+    </AuthLayout>
   );
 }

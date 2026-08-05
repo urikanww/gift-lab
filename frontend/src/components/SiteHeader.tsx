@@ -52,8 +52,9 @@ export default function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-header border-b border-border bg-surface/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-content items-center gap-4 px-4 sm:px-6">
+    <>
+      <header className="sticky top-0 z-header border-b border-border bg-surface/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-content items-center gap-4 px-4 sm:px-6">
         <Link
           to="/"
           aria-label="GiftLab home"
@@ -127,8 +128,13 @@ export default function SiteHeader() {
             </svg>
           </button>
         </div>
-      </div>
+        </div>
+      </header>
 
+      {/* Rendered OUTSIDE <header> on purpose: the header's `backdrop-blur`
+          (backdrop-filter) creates a containing block for position:fixed
+          descendants, which otherwise clamps this full-screen drawer + overlay
+          to the 64px header box. As a sibling it positions against the viewport. */}
       <MobileDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -136,7 +142,7 @@ export default function SiteHeader() {
         onSearch={onSearch}
         onLogout={onLogout}
       />
-    </header>
+    </>
   );
 }
 
