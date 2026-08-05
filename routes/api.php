@@ -11,6 +11,7 @@ use App\Http\Controllers\AdminReorderController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\CourierConfigController;
@@ -65,6 +66,12 @@ Route::post('/register', [AuthController::class, 'register'])->middleware('throt
 // the UI can hide the button when unconfigured, the pending-profile read-back for
 // the two-step sign-up form, and the completion POST that creates company +
 // consent. pending/complete are throttled like register to blunt abuse.
+// Forgot / reset password (Laravel broker). Public, throttled like login to
+// blunt abuse + enumeration; sendLink always answers generically. reset()
+// validates the emailed token against the user-supplied email.
+Route::post('/forgot-password', [PasswordResetController::class, 'sendLink'])->middleware('throttle:login');
+Route::post('/reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:login');
+
 Route::get('/auth/providers', [GoogleAuthController::class, 'providers'])->middleware('throttle:catalogue');
 Route::get('/auth/google/pending/{token}', [GoogleAuthController::class, 'pending'])->middleware('throttle:register');
 Route::post('/auth/google/complete', [GoogleAuthController::class, 'complete'])->middleware('throttle:register');
