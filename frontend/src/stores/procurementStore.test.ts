@@ -33,7 +33,59 @@ const alert = (overrides: Partial<ReconfirmAlert> = {}): ReconfirmAlert => ({
 beforeEach(() => {
   get.mockReset();
   post.mockReset();
-  useProcurementStore.setState({ alerts: [], error: null, loading: false });
+  useProcurementStore.setState({ alerts: [], buyList: [], error: null, loading: false });
+});
+
+it('fetchBuyList populates rows from the endpoint', async () => {
+  get.mockResolvedValue({
+    data: {
+      data: [
+        {
+          id: 1,
+          product_id: 9,
+          quote_id: 5,
+          quote_reference: 'GL-5',
+          qty: 2,
+          product: { name: 'Mug', class: 'SCRAPED_UV', source_url: 'x', affiliate_url: 'y' },
+        },
+      ],
+    },
+  });
+
+  await useProcurementStore.getState().fetchBuyList();
+
+  expect(useProcurementStore.getState().buyList).toHaveLength(1);
+  expect(get).toHaveBeenCalledWith('/procurement/buy-list');
+});
+
+it('markBought removes the bought row optimistically', async () => {
+  useProcurementStore.setState({
+    buyList: [
+      { id: 1, product_id: 9, quote_id: 5, quote_reference: 'GL-5', qty: 2, product: { name: 'Mug', class: 'SCRAPED_UV' } },
+    ],
+  });
+  post.mockResolvedValue({});
+
+  await useProcurementStore.getState().markBought(1);
+
+  expect(useProcurementStore.getState().buyList).toHaveLength(0);
+  expect(post).toHaveBeenCalledWith('/line-items/1/mark-bought');
+});
+
+it('markProductBought removes every row for the product', async () => {
+  useProcurementStore.setState({
+    buyList: [
+      { id: 1, product_id: 9, quote_id: 5, qty: 1, product: { name: 'Mug', class: 'SCRAPED_UV' } },
+      { id: 2, product_id: 9, quote_id: 6, qty: 1, product: { name: 'Mug', class: 'SCRAPED_UV' } },
+      { id: 3, product_id: 7, quote_id: 7, qty: 1, product: { name: 'Pen', class: 'SCRAPED_UV' } },
+    ],
+  });
+  post.mockResolvedValue({});
+
+  await useProcurementStore.getState().markProductBought(9);
+
+  expect(useProcurementStore.getState().buyList.map((r) => r.id)).toEqual([3]);
+  expect(post).toHaveBeenCalledWith('/procurement/buy-list/mark-product/9');
 });
 
 // P0-2: the desk had no data source, so a blocked line was visible only to
