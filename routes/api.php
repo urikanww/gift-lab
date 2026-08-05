@@ -214,6 +214,12 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::get('/procurement/awaiting-reconfirm', [ProcurementController::class, 'index'])->middleware('permission:procurement.view');
     Route::post('/line-items/{lineItem}/reconfirm', [ProcurementController::class, 'reconfirm'])->middleware('permission:procurement.manage');
 
+    // Buy list — the manual purchase worklist for approved orders. "Bought"
+    // raises the bill and pushes the item to the floor in one action.
+    Route::get('/procurement/buy-list', [ProcurementController::class, 'buyList'])->middleware('permission:procurement.view');
+    Route::post('/line-items/{lineItem}/mark-bought', [ProcurementController::class, 'markBought'])->middleware('permission:procurement.manage');
+    Route::post('/procurement/buy-list/mark-product/{product}', [ProcurementController::class, 'markProductBought'])->middleware('permission:procurement.manage');
+
     // Shared production queue
     Route::get('/production-queue', [ProductionQueueController::class, 'index'])->middleware('permission:production.view');
     // Jobs in transit (SHIPPED, awaiting delivery confirmation). Registered
