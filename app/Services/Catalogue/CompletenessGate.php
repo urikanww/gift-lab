@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Catalogue;
 
-use App\Enums\StockMode;
 use App\Models\Product;
 
 /**
  * Scraped-UV completeness gate (spec 6.4). Returns the reason tags blocking
  * publication; an empty array means the product is complete and publishable.
- * Reason tags: missing_price, missing_dimensions, not_printable,
- * stock_unreadable, source_dead.
+ * Reason tags: missing_price, missing_dimensions, not_printable, source_dead.
  */
 final class CompletenessGate
 {
@@ -35,14 +33,6 @@ final class CompletenessGate
 
         if (! $product->is_printable || $product->print_method === null) {
             $reasons[] = 'not_printable';
-        }
-
-        // Only STOCKED blanks need a readable stock estimate. A MAKE_TO_ORDER
-        // (buy-per-order) blank has no seller quantity to read - a null estimate
-        // is expected there, checked by a human at procurement - so it must not
-        // block publish; STOCKED items still gate on it.
-        if ($product->stock_mode === StockMode::Stocked && $product->stock_estimate === null) {
-            $reasons[] = 'stock_unreadable';
         }
 
         return $reasons;
