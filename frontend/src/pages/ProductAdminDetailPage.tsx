@@ -419,7 +419,7 @@ function EditableTitle({
   );
 }
 
-function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: () => void }) {
+export function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: () => void }) {
   const { toast } = useToast();
   const isSuperadmin = useAuthStore((s) => s.user?.role === 'superadmin');
   // Preserved on save (still sent) but no longer editable - see the hidden field note.
@@ -432,6 +432,10 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
   );
   const [category, setCategory] = useState(product.category ?? '');
   const [printMethod, setPrintMethod] = useState<string>(product.print_method ?? 'UV');
+  // Printable flag: with print_method, one of the two conditions the
+  // not_printable publish blocker gates on. Staff must be able to set it to
+  // clear that blocker (previously it had no control on this form).
+  const [isPrintable, setIsPrintable] = useState<boolean>(Boolean(product.is_printable));
   const [stockMode, setStockMode] = useState<string>(product.stock_mode ?? 'STOCKED');
   const [allowBackorder, setAllowBackorder] = useState<boolean>(Boolean(product.allow_backorder));
   const [l, setL] = useState(product.dimensions?.l != null ? String(product.dimensions.l) : '');
@@ -473,6 +477,7 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
       base_cost: cost,
       category: category || null,
       print_method: printMethod,
+      is_printable: isPrintable,
       stock_mode: stockMode,
       allow_backorder: allowBackorder,
       // Blank clears the affiliate link (null); the backend url-validates it.
@@ -546,6 +551,15 @@ function EditForm({ product, onChanged }: { product: AdminProduct; onChanged: ()
             <option value="UV">UV</option>
             <option value="FDM">FDM</option>
             <option value="RESIN">RESIN</option>
+          </Select>
+          <Select
+            label="Printable"
+            value={isPrintable ? 'yes' : 'no'}
+            onChange={(e) => setIsPrintable(e.target.value === 'yes')}
+            disabled={saving}
+          >
+            <option value="no">No - blocks publish</option>
+            <option value="yes">Yes - printable</option>
           </Select>
           <Select label="Stock mode" value={stockMode} onChange={(e) => setStockMode(e.target.value)} disabled={saving}>
             <option value="STOCKED">Stocked</option>
