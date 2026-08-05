@@ -38,7 +38,7 @@ export default function Layout() {
         <AnimatedOutlet />
       </main>
 
-      <SiteFooter />
+      {!isAuth && <SiteFooter />}
     </div>
   );
 }
