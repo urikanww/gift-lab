@@ -18,6 +18,17 @@ return [
         'key' => env('POSTMARK_API_KEY'),
     ],
 
+    // Google OAuth (Socialite) buyer sign-in. Empty client_id => the provider is
+    // considered unconfigured: GET /api/auth/providers reports google:false so
+    // the SPA hides the button, and the redirect/callback routes 404 rather than
+    // dead-ending at Google. Redirect URI defaults to APP_URL + the callback path
+    // and MUST match an Authorised redirect URI in the Google Cloud console.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', env('APP_URL').'/auth/google/callback'),
+    ],
+
     'resend' => [
         'key' => env('RESEND_API_KEY'),
     ],

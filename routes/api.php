@@ -10,6 +10,7 @@ use App\Http\Controllers\AdminProductController;
 use App\Http\Controllers\AdminReorderController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\BulkPricingController;
 use App\Http\Controllers\CatalogueController;
 use App\Http\Controllers\CourierConfigController;
@@ -57,6 +58,16 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 // Self-serve buyer registration (spec 6.1 Stage 0 - account created at
 // Request Quote). Throttled like login to blunt bulk account creation.
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
+
+// Google OAuth, BUYERS only. The redirect + callback are browser navigations and
+// live in routes/web.php (session group) so Socialite's stateful `state` check
+// and the login session work. These three are SPA-facing (XHR): a public flag so
+// the UI can hide the button when unconfigured, the pending-profile read-back for
+// the two-step sign-up form, and the completion POST that creates company +
+// consent. pending/complete are throttled like register to blunt abuse.
+Route::get('/auth/providers', [GoogleAuthController::class, 'providers'])->middleware('throttle:catalogue');
+Route::get('/auth/google/pending/{token}', [GoogleAuthController::class, 'pending'])->middleware('throttle:register');
+Route::post('/auth/google/complete', [GoogleAuthController::class, 'complete'])->middleware('throttle:register');
 
 // Public, no-account catalogue (browse + live estimate).
 Route::middleware('throttle:catalogue')->group(function (): void {

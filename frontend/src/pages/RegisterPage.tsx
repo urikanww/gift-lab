@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { Button, Card, Input } from '../ui';
+import { GoogleAuthSection } from '../components/GoogleButton';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 
 interface LocationState {
@@ -75,7 +76,9 @@ export default function RegisterPage() {
         </Motion>
 
         <Motion variants={staggerItem}>
-          <Card padding="lg" className="shadow-md">
+          <Card padding="lg" className="flex flex-col gap-5 shadow-md">
+            <GoogleAuthSection label="Sign up with Google" />
+
             <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
               <Input
                 label="Company name"

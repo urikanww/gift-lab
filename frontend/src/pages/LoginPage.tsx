@@ -3,11 +3,24 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react
 import { useAuthStore } from '../stores/authStore';
 import { isStaffRole } from '../lib/roles';
 import { Button, Card, Input, Logo } from '../ui';
+import { GoogleAuthSection } from '../components/GoogleButton';
 import { Motion, fadeInUp, staggerContainer, staggerItem } from '../motion';
 
 interface LocationState {
   from?: string;
 }
+
+// The Google callback bounces failures back to /login?error=<code>. Map each to
+// copy the buyer can act on. Unknown/absent code -> no banner.
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_email_exists:
+    'This email already has a password account. Sign in with your password below.',
+  google_unverified:
+    'Your Google email isn’t verified. Verify it with Google, or sign in with your password.',
+  google_not_allowed:
+    'Google sign-in isn’t available for this account. Please sign in with your password.',
+  google_failed: 'Google sign-in didn’t complete. Please try again.',
+};
 
 export default function LoginPage() {
   const { login, error, user } = useAuthStore();
@@ -22,6 +35,7 @@ export default function LoginPage() {
   const safeFromQuery =
     fromQuery && fromQuery.startsWith('/') && !fromQuery.startsWith('//') ? fromQuery : undefined;
   const from = (location.state as LocationState | null)?.from ?? safeFromQuery;
+  const googleError = GOOGLE_ERRORS[searchParams.get('error') ?? ''];
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -61,7 +75,21 @@ export default function LoginPage() {
         </Motion>
 
         <Motion variants={staggerItem}>
-          <Card padding="lg" className="shadow-md">
+          <Card padding="lg" className="flex flex-col gap-5 shadow-md">
+            {googleError && (
+              <Motion
+                variants={fadeInUp}
+                initial="hidden"
+                animate="visible"
+                className="rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+                role="alert"
+              >
+                {googleError}
+              </Motion>
+            )}
+
+            <GoogleAuthSection label="Sign in with Google" />
+
             <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
               <Input
                 type="email"

@@ -15,6 +15,15 @@ export interface RegisterPayload {
   consent: boolean;
 }
 
+export interface GoogleCompletePayload {
+  token: string;
+  company_name: string;
+  company_registration_no?: string;
+  company_phone?: string;
+  company_address?: string;
+  consent: boolean;
+}
+
 interface AuthState {
   user: User | null;
   status: 'idle' | 'loading' | 'ready';
@@ -22,6 +31,7 @@ interface AuthState {
   fetchUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   register: (payload: RegisterPayload) => Promise<{ ok: boolean; fieldErrors: Record<string, string> }>;
+  completeGoogle: (payload: GoogleCompletePayload) => Promise<{ ok: boolean; fieldErrors: Record<string, string> }>;
   logout: () => Promise<void>;
 }
 
@@ -84,6 +94,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err) {
       // Field-level messages render inline on the form (F1); only a non-field
       // failure (network, 500) falls back to the general error banner.
+      const fieldErrors = apiFieldErrors(err);
+      set({ error: Object.keys(fieldErrors).length > 0 ? null : apiError(err) });
+      return { ok: false, fieldErrors };
+    }
+  },
+
+  completeGoogle: async (payload) => {
+    set({ error: null });
+    try {
+      await ensureCsrf();
+      // Finishes the two-step Google sign-up: the backend holds the verified
+      // Google profile under `payload.token` and creates company + buyer, then
+      // signs in and returns the user - mirroring /register's response shape.
+      const { data } = await api.post<{ user: User }>('/auth/google/complete', payload);
+      set({ user: data.user, status: 'ready' });
+      return { ok: true, fieldErrors: {} };
+    } catch (err) {
       const fieldErrors = apiFieldErrors(err);
       set({ error: Object.keys(fieldErrors).length > 0 ? null : apiError(err) });
       return { ok: false, fieldErrors };
