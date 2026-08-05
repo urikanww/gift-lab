@@ -43,6 +43,7 @@ function useStaffNav(): NavItem[] {
     // Pricing and Users are sensitive: superadmin always, or a staff_admin a
     // superadmin has explicitly granted. Not part of the grandfather default.
     { to: '/pricing-admin', label: 'Pricing', permission: 'pricing.view' },
+    { to: '/reports', label: 'Reports', permission: 'reports.view' },
     { to: '/user-admin', label: 'Users', permission: 'users.view' },
   ];
   // Hide a section a restricted staff_admin has not been granted. Superadmin and

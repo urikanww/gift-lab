@@ -12,11 +12,12 @@ export function isStaffRole(role: UserRole | null | undefined): boolean {
 
 /**
  * Sections that are never grandfathered (L28) - mirrors the backend
- * Permissions::SENSITIVE_SECTIONS. Pricing (financial config) and Users
- * (account management) must be granted EXPLICITLY, so a payload missing the
- * permissions array must not flash a sensitive control open.
+ * Permissions::SENSITIVE_SECTIONS. Pricing (financial config), Users
+ * (account management), and Reports (business/financial reporting + CSV
+ * export) must be granted EXPLICITLY, so a payload missing the permissions
+ * array must not flash a sensitive control open.
  */
-const SENSITIVE_SECTIONS = ['pricing', 'users'];
+const SENSITIVE_SECTIONS = ['pricing', 'users', 'reports'];
 
 function isSensitiveKey(key: string): boolean {
   return SENSITIVE_SECTIONS.includes(key.split('.')[0]);
@@ -28,8 +29,8 @@ function isSensitiveKey(key: string): boolean {
  *  - superadmin: always true.
  *  - staff_admin: their allowlist; a MISSING array grandfathers the OPERATIONAL
  *    sections to true (so an older payload never hides the ordinary console) but
- *    NOT the sensitive Pricing/Users sections, which the backend also excludes
- *    from its grandfather default (L28).
+ *    NOT the sensitive Pricing/Users/Reports sections, which the backend also
+ *    excludes from its grandfather default (L28).
  *  - anyone else: false.
  *
  * Deny-by-default on shape: an unexpected/null user is not staff, so false.

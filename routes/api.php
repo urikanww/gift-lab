@@ -27,6 +27,7 @@ use App\Http\Controllers\ProductionQueueController;
 use App\Http\Controllers\ProofController;
 use App\Http\Controllers\ProofImageController;
 use App\Http\Controllers\QuoteController;
+use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\SavedAddressController;
 use App\Http\Controllers\ShippingAddressController;
 use App\Http\Controllers\StripeWebhookController;
@@ -326,6 +327,13 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
 
     // Staff console overview (read-only aggregate snapshot).
     Route::get('/admin/dashboard', [DashboardController::class, 'index']);
+
+    // Business reports (revenue trend, top products, repeat-customer rate).
+    // Sensitive - not in the staff_admin grandfather default (see Permissions).
+    Route::get('/admin/reports', [ReportsController::class, 'index'])->middleware('permission:reports.view');
+
+    // Streamed CSV order export - same permission gate + isStaff guard as index.
+    Route::get('/admin/reports/export', [ReportsController::class, 'export'])->middleware('permission:reports.view');
 
     // Superadmin user management (stricter than isStaff() - superadmin-only).
     Route::get('/admin/companies', [AdminUserController::class, 'companies'])->middleware('permission:users.view');
