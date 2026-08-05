@@ -42,3 +42,16 @@ it('shows no error banner for an unknown / absent error code', () => {
   renderLoginAt('/login');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+
+it('offers a forgot-password link', () => {
+  renderLoginAt('/login');
+  expect(screen.getByRole('link', { name: /forgot password/i })).toHaveAttribute(
+    'href',
+    '/forgot-password',
+  );
+});
+
+it('confirms a completed password reset via ?reset=success', () => {
+  renderLoginAt('/login?reset=success');
+  expect(screen.getByRole('status')).toHaveTextContent(/password has been reset/i);
+});
