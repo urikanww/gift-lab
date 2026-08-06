@@ -300,6 +300,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/products/{product}/image', [AdminProductController::class, 'uploadImage'])->middleware('permission:products.edit');
     Route::delete('/admin/products/{product}/image', [AdminProductController::class, 'removeImage'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant'])->middleware('permission:products.edit');
+    Route::post('/admin/products/{product}/variants/bulk', [AdminProductController::class, 'storeVariantsBulk'])->middleware('permission:products.edit');
     Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant'])->middleware('permission:products.edit');
 
     // Supplier reorder buy-list (staff): open reorder drafts raised by

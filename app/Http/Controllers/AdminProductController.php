@@ -11,6 +11,7 @@ use App\Enums\ProductClass;
 use App\Enums\PublishState;
 use App\Enums\StockMode;
 use App\Enums\StockMovementReason;
+use App\Http\Requests\StoreVariantsBulkRequest;
 use App\Jobs\EnrichImportedModel3dProduct;
 use App\Models\AuditLog;
 use App\Models\Product;
@@ -889,15 +890,13 @@ class AdminProductController extends Controller
 
         // Create at zero, then seed the opening balance through the ledger so the
         // cached stock_on_hand always equals SUM(delta) - never a direct write.
-        $variant = Variant::create([
-            'product_id' => $product->id,
-            'attributes' => $validated['attributes'],
-            'sku' => $validated['sku'] ?? null,
-            'stock_on_hand' => 0,
-            'reorder_threshold' => $validated['reorder_threshold'] ?? 0,
-            'price_delta' => $validated['price_delta'] ?? 0,
-            'currency' => 'SGD',
-        ]);
+        $variant = $this->makeVariant(
+            $product,
+            $validated['attributes'],
+            $validated['sku'] ?? null,
+            (int) ($validated['reorder_threshold'] ?? 0),
+            (float) ($validated['price_delta'] ?? 0),
+        );
 
         if ($validated['stock_on_hand'] > 0) {
             $this->ledger->record($variant, $validated['stock_on_hand'], StockMovementReason::Init);
@@ -910,6 +909,70 @@ class AdminProductController extends Controller
         ]);
 
         return response()->json(['data' => $variant], 201);
+    }
+
+    /**
+     * Shared variant row build. Always created at zero stock; callers seed the
+     * opening balance through the ledger so cached stock_on_hand always equals
+     * SUM(delta), never a direct write.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function makeVariant(Product $product, array $attributes, ?string $sku, int $reorderThreshold, float $priceDelta): Variant
+    {
+        return Variant::create([
+            'product_id' => $product->id,
+            'attributes' => $attributes,
+            'sku' => $sku,
+            'stock_on_hand' => 0,
+            'reorder_threshold' => $reorderThreshold,
+            'price_delta' => $priceDelta,
+            'currency' => 'SGD',
+        ]);
+    }
+
+    /**
+     * Bulk-create variants from a staff-built combo list (the matrix bulk-add).
+     * All land at stock 0 (buy-per-order). An option label already on the product
+     * - or repeated within the request - is skipped case-insensitively, so
+     * re-running never manufactures a duplicate.
+     */
+    public function storeVariantsBulk(StoreVariantsBulkRequest $request, Product $product): JsonResponse
+    {
+        $rows = $request->validated()['variants'];
+
+        $seen = $product->variants()->get()
+            ->map(fn (Variant $v): string => mb_strtolower((string) ($v->attributes['option'] ?? '')))
+            ->filter()
+            ->flip();
+
+        $created = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($product, $rows, $seen, &$created, &$skipped): void {
+            foreach ($rows as $row) {
+                $option = trim((string) $row['option']);
+                $key = mb_strtolower($option);
+
+                if ($option === '' || $seen->has($key)) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                $seen->put($key, true);
+                $this->makeVariant($product, ['option' => $option], null, 0, (float) ($row['price_delta'] ?? 0));
+                $created++;
+            }
+        });
+
+        $this->audit->log($product, 'variant.bulk_created', null, [
+            'product_id' => $product->id,
+            'created' => $created,
+            'skipped' => $skipped,
+        ]);
+
+        return response()->json(['data' => ['created' => $created, 'skipped' => $skipped]]);
     }
 
     public function updateVariant(Request $request, Variant $variant): JsonResponse
