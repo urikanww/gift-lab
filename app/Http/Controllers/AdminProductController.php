@@ -975,6 +975,27 @@ class AdminProductController extends Controller
         return response()->json(['data' => ['created' => $created, 'skipped' => $skipped]]);
     }
 
+    /**
+     * Archive (soft-delete) a variant: it leaves the product's variant list and
+     * can no longer be ordered, but historical line_items keep their variant_id
+     * (resolved withTrashed), so past orders stay intact. Not a hard delete.
+     */
+    public function archiveVariant(Request $request, Variant $variant): JsonResponse
+    {
+        abort_unless($request->user()->isStaff(), 403);
+
+        $label = implode(' / ', array_values((array) $variant->attributes)) ?: ($variant->sku ?? "#{$variant->id}");
+
+        $variant->delete();
+
+        $this->audit->log($variant, 'variant.archived', null, [
+            'product_id' => $variant->product_id,
+            'label' => $label,
+        ]);
+
+        return response()->json(['data' => ['archived' => true]]);
+    }
+
     public function updateVariant(Request $request, Variant $variant): JsonResponse
     {
         abort_unless($request->user()->isStaff(), 403);
