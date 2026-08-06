@@ -11,6 +11,7 @@ import StlModelViewer from '../components/StlModelViewer';
 import StlStudioViewer, { type StudioPart } from '../components/StlStudioViewer';
 import { useAuthStore } from '../stores/authStore';
 import type { AdminProduct, AdminVariant, HistoryEntry } from '../types';
+import { generateVariantLabels, type VariantAxis } from '../lib/variantMatrix';
 import { classLabel, IpRiskBadge, ItemThumb, LicenseTierBadge, PublishBadge } from './adminProductBadges';
 
 export default function ProductAdminDetailPage() {
@@ -749,7 +750,7 @@ function ImageSection({ product, onChanged }: { product: AdminProduct; onChanged
   );
 }
 
-function VariantsSection({
+export function VariantsSection({
   product,
   onChanged,
   disabled,
@@ -764,6 +765,45 @@ function VariantsSection({
   const [variantDelta, setVariantDelta] = useState('0');
   const [adding, setAdding] = useState(false);
   const variants = product.variants ?? [];
+
+  // Matrix bulk-add: staff enter axes (Size: S,M,L) which cross-product into
+  // combined-label variants ("M / Black") in one call. Labels only — nothing
+  // downstream changes. See lib/variantMatrix.
+  const [axes, setAxes] = useState<VariantAxis[]>([
+    { name: 'Size', values: '' },
+    { name: 'Colour', values: '' },
+  ]);
+  const [bulkDelta, setBulkDelta] = useState('0');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const labels = generateVariantLabels(axes);
+  const overCap = labels.length > 200;
+
+  const setAxis = (i: number, patch: Partial<VariantAxis>) =>
+    setAxes((a) => a.map((ax, j) => (j === i ? { ...ax, ...patch } : ax)));
+
+  const bulkAdd = async () => {
+    if (bulkBusy || labels.length === 0 || overCap) return;
+    setBulkBusy(true);
+    try {
+      await ensureCsrf();
+      const { data } = await api.post<{ data: { created: number; skipped: number } }>(
+        `/admin/products/${product.id}/variants/bulk`,
+        { variants: labels.map((option) => ({ option, price_delta: Number(bulkDelta) })) },
+      );
+      const { created, skipped } = data.data;
+      toast({
+        title: `Created ${created} variant${created === 1 ? '' : 's'}`,
+        description: skipped > 0 ? `${skipped} skipped, already existed` : undefined,
+        tone: 'success',
+      });
+      setAxes((a) => a.map((ax) => ({ ...ax, values: '' })));
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Bulk add failed', description: apiError(err), tone: 'danger' });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const addVariant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -812,6 +852,100 @@ function VariantsSection({
             <VariantRow key={v.id} variant={v} disabled={disabled} onSaveStock={(stock) => void updateStock(v, stock)} />
           ))}
         </ul>
+      )}
+
+      {!disabled && (
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+          <p className="flex items-center gap-2 text-sm font-medium text-fg">Bulk add (matrix)</p>
+          {axes.map((ax, i) => (
+            <div key={i} className="flex flex-wrap items-end gap-2">
+              <div className="w-28">
+                <Input
+                  label="Axis"
+                  value={ax.name ?? ''}
+                  onChange={(e) => setAxis(i, { name: e.target.value })}
+                  disabled={bulkBusy}
+                />
+              </div>
+              <div className="min-w-48 flex-1">
+                <Input
+                  label="Values (comma-separated)"
+                  placeholder="S, M, L"
+                  value={ax.values}
+                  onChange={(e) => setAxis(i, { values: e.target.value })}
+                  disabled={bulkBusy}
+                />
+              </div>
+              {axes.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove axis ${i + 1}`}
+                  disabled={bulkBusy}
+                  onClick={() => setAxes((a) => a.filter((_, j) => j !== i))}
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+          ))}
+
+          <div className="flex flex-wrap items-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={bulkBusy}
+              onClick={() => setAxes((a) => [...a, { name: '', values: '' }])}
+            >
+              Add axis
+            </Button>
+            <div className="w-36">
+              <Input
+                label="Price delta (all)"
+                type="number"
+                step="0.01"
+                value={bulkDelta}
+                onChange={(e) => setBulkDelta(e.target.value)}
+                disabled={bulkBusy}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md bg-surface-2 p-3 text-sm">
+            {labels.length === 0 ? (
+              <span className="text-fg-subtle">Enter axis values to preview the variants.</span>
+            ) : (
+              <>
+                <p className={overCap ? 'text-danger' : 'text-fg-muted'}>
+                  Will create {labels.length} variant{labels.length === 1 ? '' : 's'}
+                  {overCap ? ' — too many (max 200)' : ''}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {labels.slice(0, 40).map((l) => (
+                    <Badge key={l} tone="neutral" size="sm">
+                      {l}
+                    </Badge>
+                  ))}
+                  {labels.length > 40 && <span className="text-xs text-fg-subtle">+{labels.length - 40} more</span>}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              loading={bulkBusy}
+              disabled={bulkBusy || labels.length === 0 || overCap}
+              onClick={() => void bulkAdd()}
+            >
+              Create {labels.length} variant{labels.length === 1 ? '' : 's'}
+            </Button>
+          </div>
+        </div>
       )}
 
       {!disabled && (
