@@ -3,7 +3,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../lib/api', () => ({
-  default: { post: vi.fn().mockResolvedValue({ data: { data: { created: 6, skipped: 0 } } }) },
+  default: {
+    post: vi.fn().mockResolvedValue({ data: { data: { created: 6, skipped: 0 } } }),
+    patch: vi.fn().mockResolvedValue({ data: { data: {} } }),
+    delete: vi.fn().mockResolvedValue({ data: { data: { archived: true } } }),
+  },
   apiError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   ensureCsrf: async () => {},
 }));
@@ -64,5 +68,42 @@ describe('VariantsSection matrix bulk-add', () => {
         }),
       ),
     );
+  });
+});
+
+describe('VariantRow edit + archive', () => {
+  const spies = api as unknown as {
+    patch: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
+  const withVariant = {
+    ...product,
+    variants: [{ id: 7, attributes: { option: 'M' }, stock_on_hand: 3, price_delta: '1.00', sku: null }],
+  } as unknown as AdminProduct;
+
+  it('saves stock and price delta together', async () => {
+    spies.patch.mockClear();
+    wrap(<VariantsSection product={withVariant} onChanged={() => {}} disabled={false} />);
+
+    // Row delta renders before the single-add form's delta of the same label.
+    fireEvent.change(screen.getAllByLabelText('Price delta')[0], { target: { value: '2.5' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(spies.patch).toHaveBeenCalledWith(
+        '/admin/variants/7',
+        expect.objectContaining({ stock_on_hand: 3, price_delta: 2.5 }),
+      ),
+    );
+  });
+
+  it('archives a variant after confirm', async () => {
+    spies.delete.mockClear();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    wrap(<VariantsSection product={withVariant} onChanged={() => {}} disabled={false} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /archive/i }));
+
+    await waitFor(() => expect(spies.delete).toHaveBeenCalledWith('/admin/variants/7'));
   });
 });
