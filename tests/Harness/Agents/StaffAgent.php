@@ -106,25 +106,6 @@ final class StaffAgent
         return $invoice;
     }
 
-    public function procure(): void
-    {
-        $this->actAsStaff();
-        $this->ctx->test->postJson("/api/quotes/{$this->ctx->quote->id}/procure")->assertOk();
-        $this->ctx->record('staff.procure');
-    }
-
-    /**
-     * Confirm the goods are physically in hand. This is the gate that actually
-     * releases a fully-resolved PROCURING quote to the floor (CONFIRMED ->
-     * PROCURING -> READY no longer happens automatically inside procure()).
-     */
-    public function confirmStock(): void
-    {
-        $this->actAsStaff();
-        $this->ctx->test->postJson("/api/quotes/{$this->ctx->quote->id}/confirm-stock")->assertOk();
-        $this->ctx->record('staff.confirmStock');
-    }
-
     public function cancel(?string $reason = 'harness cancel'): void
     {
         $this->actAsStaff();
