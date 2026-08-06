@@ -35,7 +35,6 @@ const BuyerDashboardPage = lazy(() => import('./pages/BuyerDashboardPage'));
 const QuoteDetailPage = lazy(() => import('./pages/QuoteDetailPage'));
 const ProductionQueuePage = lazy(() => import('./pages/ProductionQueuePage'));
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'));
-const ReorderBuyListPage = lazy(() => import('./pages/ReorderBuyListPage'));
 const CatalogueAdminPage = lazy(() => import('./pages/CatalogueAdminPage'));
 const BlankRecommendationPage = lazy(() => import('./pages/BlankRecommendationPage'));
 const ProductAdminPage = lazy(() => import('./pages/ProductAdminPage'));
@@ -192,7 +191,6 @@ export default function App() {
                   /dashboard instead of mounting a page whose data call 403s. */}
               <Route path="production-queue" element={<ProtectedRoute permission="production.view"><ProductionQueuePage /></ProtectedRoute>} />
               <Route path="procurement" element={<ProtectedRoute permission="procurement.view"><ProcurementPage /></ProtectedRoute>} />
-              <Route path="reorders" element={<ProtectedRoute permission="reorders.view"><ReorderBuyListPage /></ProtectedRoute>} />
               <Route path="catalogue-admin" element={<ProtectedRoute permission="products.view"><CatalogueAdminPage /></ProtectedRoute>} />
               <Route path="blank-recommendations" element={<ProtectedRoute staffOnly><BlankRecommendationPage /></ProtectedRoute>} />
               <Route path="product-admin" element={<ProtectedRoute permission="products.view"><ProductAdminPage /></ProtectedRoute>} />
