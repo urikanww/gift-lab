@@ -1702,6 +1702,25 @@ final class QuoteService
     }
 
     /**
+     * Mark every buyable line on ONE quote bought — the single-order equivalent
+     * of the buy-list actions, used by the B2C payment path so a card-paid order
+     * follows the same gate as a manual buy (bill + build jobs + reach READY)
+     * instead of the legacy procure() strand. Returns the refreshed quote.
+     */
+    public function markQuoteBought(Quote $quote): Quote
+    {
+        $quote->loadMissing('lineItems');
+
+        foreach ($quote->lineItems as $line) {
+            if ($line->line_state === LineItemState::Pending || $line->line_state === LineItemState::Amended) {
+                $this->markLineBought($line);
+            }
+        }
+
+        return $quote->fresh(['lineItems', 'jobs.shipment']);
+    }
+
+    /**
      * Bulk "mark all bought" for one product across every eligible order (the
      * grouped buy-list view). Returns the number of lines advanced.
      */
