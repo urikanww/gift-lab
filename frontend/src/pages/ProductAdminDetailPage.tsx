@@ -828,14 +828,26 @@ export function VariantsSection({
     }
   };
 
-  const updateStock = async (variant: AdminVariant, stock: number) => {
+  const saveVariant = async (variant: AdminVariant, stock: number, delta: number) => {
     try {
       await ensureCsrf();
-      await api.patch(`/admin/variants/${variant.id}`, { stock_on_hand: stock });
-      toast({ title: 'Stock saved', tone: 'success' });
+      await api.patch(`/admin/variants/${variant.id}`, { stock_on_hand: stock, price_delta: delta });
+      toast({ title: 'Variant saved', tone: 'success' });
       onChanged();
     } catch (err) {
       toast({ title: 'Not saved', description: apiError(err), tone: 'danger' });
+    }
+  };
+
+  const archiveVariant = async (variant: AdminVariant) => {
+    if (!window.confirm('Archive this variant? Past orders keep it; it can’t be ordered again.')) return;
+    try {
+      await ensureCsrf();
+      await api.delete(`/admin/variants/${variant.id}`);
+      toast({ title: 'Variant archived', tone: 'success' });
+      onChanged();
+    } catch (err) {
+      toast({ title: 'Not archived', description: apiError(err), tone: 'danger' });
     }
   };
 
@@ -849,7 +861,13 @@ export function VariantsSection({
       {variants.length > 0 && (
         <ul className="flex flex-col gap-2">
           {variants.map((v) => (
-            <VariantRow key={v.id} variant={v} disabled={disabled} onSaveStock={(stock) => void updateStock(v, stock)} />
+            <VariantRow
+              key={v.id}
+              variant={v}
+              disabled={disabled}
+              onSave={(stock, delta) => void saveVariant(v, stock, delta)}
+              onArchive={() => void archiveVariant(v)}
+            />
           ))}
         </ul>
       )}
@@ -970,25 +988,33 @@ export function VariantsSection({
 
 function VariantRow({
   variant,
-  onSaveStock,
+  onSave,
+  onArchive,
   disabled,
 }: {
   variant: AdminVariant;
-  onSaveStock: (stock: number) => void;
+  onSave: (stock: number, delta: number) => void;
+  onArchive: () => void;
   disabled: boolean;
 }) {
   const [stock, setStock] = useState(String(variant.stock_on_hand));
+  const [delta, setDelta] = useState(String(variant.price_delta));
   const label = Object.values(variant.attributes ?? {}).join(' / ') || variant.sku || `#${variant.id}`;
 
   return (
     <li className="flex flex-wrap items-end gap-2 rounded-md border border-border p-2">
       <span className="min-w-24 text-sm font-medium text-fg">{label}</span>
-      <span className="text-xs text-fg-subtle">delta {variant.price_delta}</span>
-      <div className="w-28">
+      <div className="w-24">
         <Input label="Stock" type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} disabled={disabled} />
       </div>
-      <Button size="sm" variant="outline" disabled={disabled} onClick={() => onSaveStock(Number(stock))}>
-        Save stock
+      <div className="w-28">
+        <Input label="Price delta" type="number" step="0.01" value={delta} onChange={(e) => setDelta(e.target.value)} disabled={disabled} />
+      </div>
+      <Button size="sm" variant="outline" disabled={disabled} onClick={() => onSave(Number(stock), Number(delta))}>
+        Save
+      </Button>
+      <Button size="sm" variant="ghost" disabled={disabled} onClick={onArchive}>
+        Archive
       </Button>
     </li>
   );
@@ -1004,6 +1030,7 @@ const HISTORY_EVENT_LABELS: Record<string, string> = {
   'product.updated': 'Edited',
   'variant.created': 'Variant added',
   'variant.updated': 'Variant updated',
+  'variant.archived': 'Variant archived',
   'product.image_updated': 'Image updated',
   'product.image_removed': 'Image removed',
   'product.archived': 'Archived',

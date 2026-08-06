@@ -302,6 +302,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     Route::post('/admin/products/{product}/variants', [AdminProductController::class, 'storeVariant'])->middleware('permission:products.edit');
     Route::post('/admin/products/{product}/variants/bulk', [AdminProductController::class, 'storeVariantsBulk'])->middleware('permission:products.edit');
     Route::patch('/admin/variants/{variant}', [AdminProductController::class, 'updateVariant'])->middleware('permission:products.edit');
+    Route::delete('/admin/variants/{variant}', [AdminProductController::class, 'archiveVariant'])->middleware('permission:products.edit');
 
     // Supplier reorder buy-list (staff): open reorder drafts raised by
     // below-threshold / backorder procurement, and marking them received
