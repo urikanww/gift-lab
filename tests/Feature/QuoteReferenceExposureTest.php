@@ -6,6 +6,7 @@ use App\Events\ProductionQueueUpdated;
 use App\Events\ProofStatusChanged;
 use App\Models\Company;
 use App\Models\LineItem;
+use App\Models\Product;
 use App\Models\ProductionJob;
 use App\Models\Proof;
 use App\Models\Quote;
@@ -189,15 +190,23 @@ it('keeps the dashboard query count flat as at-risk jobs are added', function ()
 });
 
 it('exposes quote_reference on a line item payload', function (): void {
-    $quote = Quote::factory()->create(['company_id' => $this->company->id]);
-    $line = LineItem::factory()->awaitingReconfirm()->create([
+    seedPricing();
+    $quote = Quote::factory()->create([
+        'company_id' => $this->company->id,
+        'state' => 'PROOF_APPROVED',
+        'accepted_at' => now(),
+    ]);
+    $product = Product::factory()->create(['class' => 'SCRAPED_UV', 'print_method' => 'UV']);
+    $line = LineItem::factory()->create([
         'quote_id' => $quote->id,
+        'product_id' => $product->id,
         'qty' => 10,
-        'procured_qty' => 4,
+        'unit_price' => 5.00,
+        'line_state' => 'PENDING',
     ]);
 
     Sanctum::actingAs($this->staff);
-    $this->postJson("/api/line-items/{$line->id}/reconfirm", ['action' => 'approve'])
+    $this->postJson("/api/line-items/{$line->id}/mark-bought")
         ->assertOk()
         ->assertJsonPath('data.quote_id', $quote->id)
         ->assertJsonPath('data.quote_reference', $quote->reference);

@@ -26,9 +26,3 @@ Broadcast::channel('company.{companyId}', function (User $user, int $companyId):
 Broadcast::channel('staff.queue', function (User $user): bool {
     return $user->isStaff() && $user->hasPermission('production.view');
 });
-
-// Procurement desk: awaiting-reconfirm alerts. Mirrors the granular
-// permission:procurement.view gate on GET /api/procurement/awaiting-reconfirm.
-Broadcast::channel('staff.procurement', function (User $user): bool {
-    return $user->isStaff() && $user->hasPermission('procurement.view');
-});

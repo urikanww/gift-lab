@@ -22,8 +22,6 @@ use App\Services\Model3d\StubModel3dApiClient;
 use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Payment\FixturePaymentGateway;
 use App\Services\Payment\StripePaymentGateway;
-use App\Services\Procurement\Contracts\MarketplaceRechecker;
-use App\Services\Procurement\FixtureMarketplaceRechecker;
 use App\Services\Scraper\CompositeScraperClient;
 use App\Services\Scraper\Contracts\ScraperClient;
 use App\Services\Scraper\FixtureScraperClient;
@@ -72,9 +70,6 @@ class AppServiceProvider extends ServiceProvider
 
             return new CompositeScraperClient($shopee, $lazada, $app->make(FixtureScraperClient::class));
         });
-
-        $this->app->singleton(FixtureMarketplaceRechecker::class);
-        $this->app->singleton(MarketplaceRechecker::class, fn ($app) => $app->make(FixtureMarketplaceRechecker::class));
 
         $this->app->singleton(StubModel3dApiClient::class);
         $this->app->singleton(Model3dApiClient::class, function ($app) {

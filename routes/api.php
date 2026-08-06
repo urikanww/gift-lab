@@ -180,9 +180,6 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Manual B2B reconciliation: staff record the invoice's real-world payment
     // outcome (paid / partial / voided). No Stripe path exists for B2B.
     Route::post('/quotes/{quote}/payment', [QuoteController::class, 'reconcilePayment'])->middleware('permission:quotes.edit');
-    Route::post('/quotes/{quote}/procure', [QuoteController::class, 'procure'])->middleware('permission:quotes.edit');
-    // The production gate: a person confirming the goods are in hand.
-    Route::post('/quotes/{quote}/confirm-stock', [QuoteController::class, 'confirmStock'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/cancel', [QuoteController::class, 'cancel'])->middleware('permission:quotes.edit');
     Route::post('/quotes/{quote}/pay', [PayNowController::class, 'pay']);
 
@@ -209,10 +206,6 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function ()
     // Staff re-send the buyer's proof-review email (quotes.edit; buyers blocked
     // by the controller floor).
     Route::post('/proofs/{proof}/resend', [ProofController::class, 'resend'])->middleware('permission:quotes.edit');
-
-    // Procurement reconfirmation
-    Route::get('/procurement/awaiting-reconfirm', [ProcurementController::class, 'index'])->middleware('permission:procurement.view');
-    Route::post('/line-items/{lineItem}/reconfirm', [ProcurementController::class, 'reconfirm'])->middleware('permission:procurement.manage');
 
     // Buy list — the manual purchase worklist for approved orders. "Bought"
     // raises the bill and pushes the item to the floor in one action.
