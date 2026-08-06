@@ -28,6 +28,7 @@ use App\Models\Quote;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Variant;
+use App\Services\Procurement\BuyListQuery;
 use App\Services\Procurement\ProcurementManager;
 use App\Support\Broadcasting;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -55,6 +56,7 @@ final class QuoteService
         private readonly OrderNotifier $notifier,
         private readonly StaffNotifier $staffNotifier,
         private readonly ProofCompositeService $composites,
+        private readonly BuyListQuery $buyList,
     ) {}
 
     /**
@@ -1639,6 +1641,79 @@ final class QuoteService
         // jobs.shipment: QuoteResource::shipmentSummary reads each job's
         // shipment (Stage 2a), so load it here to avoid an N+1 per job.
         return $quote->fresh(['lineItems', 'jobs.shipment']);
+    }
+
+    /**
+     * Staff have bought this line from the buy list. Guarantee the order is
+     * billed (auto-issue the invoice with the order reference as PO), drive it
+     * into PROCURING, mark the line bought (no sourcing side effects), and — once
+     * every line is bought — treat the buy itself as the stock confirmation so
+     * the jobs build and the order rolls to READY. Idempotent: a line already
+     * past PENDING/AMENDED is skipped, and issueInvoice returns the existing
+     * invoice on retry.
+     */
+    public function markLineBought(LineItem $line): Quote
+    {
+        $quote = $line->quote()->firstOrFail();
+
+        if ($quote->state === QuoteState::ProofApproved) {
+            $this->issueInvoice($quote, (string) $quote->reference, null, null);
+            $quote = $quote->fresh();
+        }
+
+        if ($quote->state === QuoteState::Confirmed) {
+            DB::transaction(function () use ($quote): void {
+                $previous = $quote->state->value;
+                $quote->transitionTo(QuoteState::Procuring);
+                DB::afterCommit(fn () => Broadcasting::dispatch(fn () => QuoteStateChanged::dispatch($quote, $previous)));
+            });
+            $quote = $quote->fresh();
+        }
+
+        if ($line->line_state === LineItemState::Pending || $line->line_state === LineItemState::Amended) {
+            $this->procurement->markBought($line);
+        }
+
+        $quote = $quote->fresh(['lineItems']);
+
+        // The buy IS the confirmation that goods are in hand — the manual gate
+        // confirmStock() exists for. Set it once the last line is bought so
+        // tryQueue can build the jobs and advance the order to READY. Wrapped in
+        // a transaction so the save and its audit row commit together (mirrors
+        // confirmStock()) — a failed audit insert never strands a set
+        // stock_confirmed_at with no trail.
+        if ($this->isReadyForProduction($quote) && $quote->stock_confirmed_at === null) {
+            DB::transaction(function () use ($quote): void {
+                $quote->stock_confirmed_at = now();
+                $quote->stock_confirmed_by = Auth::id();
+                $quote->save();
+
+                $this->audit->log($quote, 'quote.stock_confirmed', null, [
+                    'confirmed_by' => $quote->stock_confirmed_by,
+                    'confirmed_at' => $quote->stock_confirmed_at?->toIso8601String(),
+                    'via' => 'buy_list',
+                ]);
+            });
+        }
+
+        $this->tryQueue($quote->fresh(['lineItems']));
+
+        return $quote->fresh(['lineItems', 'jobs.shipment']);
+    }
+
+    /**
+     * Bulk "mark all bought" for one product across every eligible order (the
+     * grouped buy-list view). Returns the number of lines advanced.
+     */
+    public function markProductBought(int $productId): int
+    {
+        $lines = $this->buyList->linesForProduct($productId)->get();
+
+        foreach ($lines as $line) {
+            $this->markLineBought($line);
+        }
+
+        return $lines->count();
     }
 
     /**

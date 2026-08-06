@@ -336,24 +336,22 @@ it('accepts a zero stock_estimate (readable, out of stock) and clears the block'
 });
 
 it('saves the fix but does not publish when an unfixable blocker remains', function (): void {
-    // A STOCKED blank: this call deliberately OMITS stock_estimate, so the null
-    // estimate keeps stock_unreadable and the row stays blocked - but the typed
-    // weight must still persist. (Passing a stock_estimate would clear it, and a
-    // MAKE_TO_ORDER blank waives stock_unreadable outright - see the resolve +
-    // CompletenessGate make-to-order tests.)
-    $product = blockedScrapedProduct(['stock_mode' => 'STOCKED', 'stock_estimate' => null]);
+    // This call fixes price/dimensions/weight but leaves the product not
+    // printable (is_printable false), so not_printable keeps the row blocked -
+    // yet the typed weight must still persist (work is never thrown away).
+    $product = blockedScrapedProduct();
 
     Sanctum::actingAs($this->staff);
     $this->postJson("/api/admin/products/{$product->id}/resolve-blockers", [
         'base_cost' => 12.5,
         'dimensions' => ['l' => 100, 'w' => 80, 'h' => 60],
         'weight' => 250,
-        'is_printable' => true,
+        'is_printable' => false,
         'print_method' => 'UV',
     ])
         ->assertOk()
         ->assertJsonPath('published', false)
-        ->assertJsonPath('cannot_publish_reasons', ['stock_unreadable']);
+        ->assertJsonPath('cannot_publish_reasons', ['not_printable']);
 
     $product->refresh();
     expect($product->publish_state->value)->toBe('CANNOT_PUBLISH')

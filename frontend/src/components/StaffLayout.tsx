@@ -34,8 +34,7 @@ function useStaffNav(): NavItem[] {
     // Drafts not yet sent + proofs bounced back for changes - the staff action.
     { to: '/quotes', label: 'Quotes', badge: quotesToAction || undefined, permission: 'quotes.view' },
     { to: '/production-queue', label: 'Production', badge: overdue || undefined, permission: 'production.view' },
-    { to: '/procurement', label: 'Procurement', badge: q?.procurementToReconfirm, permission: 'procurement.view' },
-    { to: '/reorders', label: 'Buy-list', badge: q?.reordersOpen, permission: 'reorders.view' },
+    { to: '/procurement', label: 'Buy list', permission: 'procurement.view' },
     // Products awaiting catalogue approval before they can go live.
     { to: '/product-admin', label: 'Products', badge: q?.cataloguePending, permission: 'products.view' },
     { to: '/notification-settings', label: 'Notifications', permission: 'notifications.view' },

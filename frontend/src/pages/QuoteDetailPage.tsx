@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useAuthStore } from '../stores/authStore';
-import { Badge, Button, Card, Input, Modal, Skeleton, Textarea, useToast } from '../ui';
+import { Badge, Button, Card, Modal, Skeleton, Textarea, useToast } from '../ui';
 import { EmptyState as LegacyEmpty, ErrorState } from '../components/ui/States';
 import { Motion, staggerContainer, staggerItem } from '../motion';
 import { safeHref } from '../lib/safeHref';
@@ -105,7 +105,6 @@ export default function QuoteDetailPage() {
     amend,
     send,
     accept,
-    procure,
     stageProof,
     unstageProof,
     sendProofs,
@@ -113,9 +112,7 @@ export default function QuoteDetailPage() {
     decideProof,
     approveAllProofs,
     resendProof,
-    issueInvoice,
     reconcilePayment,
-    confirmStock,
     markJobDelivered,
     payNow,
     cancelQuote,
@@ -162,18 +159,8 @@ export default function QuoteDetailPage() {
   // single shared proof field.
   const [pickerLineId, setPickerLineId] = useState<number | null>(null);
 
-  const [poRef, setPoRef] = useState('');
-  const [poRefError, setPoRefError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   // Staff-only cancel confirm modal.
-  // Committing is irreversible in practice (it opens production), so it is
-  // confirmed rather than fired straight from the button.
-  const [commitOpen, setCommitOpen] = useState(false);
-  // Set only from the commit modal's own confirm action, so a failure raised
-  // there is visible in the modal body itself - the modal used to have no
-  // body at all, so a duplicate PO reference only ever surfaced on the
-  // page-top banner, behind the modal overlay staff were still looking at.
-  const [commitError, setCommitError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   // Staff-only invoice payment reconciliation. Void is confirmed (terminal -
@@ -186,9 +173,8 @@ export default function QuoteDetailPage() {
   // was actually received.
   const [partialOpen, setPartialOpen] = useState(false);
   const [partialAmount, setPartialAmount] = useState('');
-  // Set only from the void modal's own confirm action, mirroring commitError:
-  // a rejected void should be visible in the modal body itself, not only
-  // behind it on the page banner.
+  // Set only from the void modal's own confirm action: a rejected void should
+  // be visible in the modal body itself, not only behind it on the page banner.
   const [voidError, setVoidError] = useState<string | null>(null);
   // Tracking link/QR moved out of a full-width card into a header button that
   // opens this modal, keeping the sharing affordance without the page real
@@ -220,13 +206,6 @@ export default function QuoteDetailPage() {
 
   const latestOpenProof = (proofs: Proof[] | undefined): Proof | null =>
     proofs?.find((p) => p.state === 'SENT') ?? null;
-
-  const validatePoRef = (value: string): string | undefined => {
-    const v = value.trim();
-    if (!v) return 'Enter the PO number.';
-    if (v.length > 64) return 'PO reference is too long (max 64 characters).';
-    return undefined;
-  };
 
   if (loading && !current) return <QuoteDetailSkeleton />;
   if (error) return <ErrorState message={error} onRetry={() => reference && fetchQuote(reference)} />;
@@ -360,11 +339,6 @@ export default function QuoteDetailPage() {
   const notPreparedCount = perLineProofs.filter(
     (x) => !x.proof || x.proof.state === 'DRAFT',
   ).length;
-  // A line still needing a staff decision blocks the production gate: the gate
-  // is a confirmation that everything is in hand, which is not yet true.
-  const awaitingDecision =
-    quote.line_items?.some((li) => li.line_state === 'AWAITING_RECONFIRM') ?? false;
-
   /**
    * Buyer per-line proof sign-off - the primary call to action on the whole page
    * while any line is awaiting the buyer. Each artwork line's current proof is
@@ -909,120 +883,23 @@ export default function QuoteDetailPage() {
           </div>
         )}
 
-        {/* Renamed from "Issue invoice": the same transaction drives the quote
-            through INVOICED to CONFIRMED - the production gate - so say so, and
-            confirm before it fires. */}
-        {quote.state === 'PROOF_APPROVED' && (
+        {/* Invoice, procurement, and stock confirmation are driven from the Buy
+            list now: buying an item there raises the bill and sends it to the
+            floor. The order page no longer duplicates those controls. */}
+        {(quote.state === 'PROOF_APPROVED' ||
+          quote.state === 'CONFIRMED' ||
+          quote.state === 'PROCURING') && (
           <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Input
-                  label="PO reference"
-                  required
-                  placeholder="PO number"
-                  hint="Required to raise the invoice and commit the order to production."
-                  value={poRef}
-                  error={poRefError}
-                  onChange={(e) => {
-                    setPoRef(e.target.value);
-                    setPoRefError(undefined);
-                  }}
-                />
-              </div>
-              <Button
-                variant="primary"
-                loading={busy}
-                disabled={busy || !poRef}
-                onClick={() => {
-                  const err = validatePoRef(poRef);
-                  if (err) {
-                    setPoRefError(err);
-                    return;
-                  }
-                  setCommitError(null);
-                  setCommitOpen(true);
-                }}
-              >
-                Commit order
-              </Button>
-            </div>
-            <p className="text-xs text-fg-subtle">
-              Raises the invoice and confirms the order for production. After this it can no longer be
-              edited — you’ll be asked to confirm first.
+            <p className="text-sm text-fg-muted">
+              This order is handled from the Buy list — buy each item there and mark it bought to
+              raise the bill and release it to production.
             </p>
-          </div>
-        )}
-
-        {quote.state === 'CONFIRMED' && (
-          <div className="flex flex-col gap-2">
-            <Button
-              variant="primary"
-              loading={busy}
-              disabled={busy}
-              onClick={() => run(() => procure(quote.id), 'Procurement started')}
+            <Link
+              to="/procurement"
+              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
             >
-              Run procurement
-            </Button>
-            <p className="text-xs text-fg-subtle">
-              Checks stock for every line and opens purchasing for anything short, moving the order
-              into procurement.
-            </p>
-          </div>
-        )}
-
-        {quote.state === 'PROCURING' && (
-          <div className="flex flex-col gap-2">
-            {awaitingDecision ? (
-              <>
-                <p className="text-sm text-fg-muted">
-                  One or more lines need a stock or price decision before this order can go to
-                  production.
-                </p>
-                <Link
-                  to="/procurement"
-                  className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                >
-                  Go to procurement desk →
-                </Link>
-              </>
-            ) : (
-              /* The production gate. Nothing reaches the floor on a stock figure
-                 alone - most goods are bought in after the order, so a person
-                 confirming they are here is the only reliable check. */
-              <>
-                <p className="text-sm text-fg-muted">
-                  Every line is resolved. Check the items above against what has actually arrived,
-                  then release the order to production.
-                </p>
-                <ul className="my-1 flex flex-col gap-1 text-sm text-fg">
-                  {quote.line_items
-                    ?.filter((li) => li.line_state === 'READY')
-                    .map((li) => (
-                      <li key={li.id} className="tabular-nums">
-                        {li.qty} × {li.product?.name ?? `Product #${li.product_id}`}
-                        {li.procurement_note && (
-                          <span className="ml-2 text-xs text-warning">⚠ {li.procurement_note}</span>
-                        )}
-                      </li>
-                    ))}
-                </ul>
-                <div>
-                  <Button
-                    variant="primary"
-                    loading={busy}
-                    disabled={busy}
-                    onClick={() =>
-                      run(() => confirmStock(quote.id), 'Stock confirmed — sent to production')
-                    }
-                  >
-                    Confirm stock and start production
-                  </Button>
-                </div>
-                <p className="text-xs text-fg-subtle">
-                  Your name and the time are recorded against this confirmation.
-                </p>
-              </>
-            )}
+              Manage in the Buy list →
+            </Link>
           </div>
         )}
 
@@ -1568,60 +1445,6 @@ export default function QuoteDetailPage() {
             merged status/actions card. See `proofsCard`/`staffPanel` above. */}
         {isStaff && proofsCard}
 
-        {/* The commitment step. Issuing the invoice also drives the order to
-            CONFIRMED, which opens production - previously with no indication
-            that pressing the button did anything beyond raising an invoice. */}
-        {isStaff && (
-          <Modal
-            open={commitOpen}
-            onClose={() => {
-              setCommitOpen(false);
-              setCommitError(null);
-            }}
-            title="Commit this order to production?"
-            description="This raises the invoice and confirms the order. Production can begin and the order can no longer be edited."
-            footer={
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setCommitOpen(false);
-                    setCommitError(null);
-                  }}
-                  disabled={busy}
-                >
-                  Back
-                </Button>
-                <Button
-                  variant="primary"
-                  loading={busy}
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await issueInvoice(quote.id, poRef.trim(), null);
-                      const err = useQuoteStore.getState().actionError;
-                      if (!err) {
-                        setPoRef('');
-                        setCommitOpen(false);
-                        setCommitError(null);
-                      } else {
-                        setCommitError(err);
-                      }
-                    }, 'Order committed to production')
-                  }
-                >
-                  Commit order
-                </Button>
-              </>
-            }
-          >
-            {commitError && (
-              <p className="rounded-md border border-danger/30 bg-danger-bg p-3 text-sm text-fg">
-                {commitError}
-              </p>
-            )}
-          </Modal>
-        )}
 
         {/* Voiding an invoice is terminal - it can never be reconciled to
             another state afterwards - so it is confirmed, like cancelling the

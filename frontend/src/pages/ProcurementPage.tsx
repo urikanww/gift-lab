@@ -1,54 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useProcurementStore } from '../stores/procurementStore';
-import { Badge, Button, Card, EmptyState, Input, Skeleton, useToast } from '../ui';
-import { Motion, fadeInUp, springSoft, useReducedMotionSafe } from '../motion';
-import ListFilters, { FilterBadges } from '../components/filters/ListFilters';
-import type { FilterValues } from '../components/filters/types';
-import {
-  procurementFilterFields,
-  procurementFiltersToParams,
-} from '../lib/procurementListFilters';
+import { useProcurementStore, type BuyListRow } from '../stores/procurementStore';
+import { Badge, Button, Card, EmptyState, Skeleton, useToast } from '../ui';
+import { Motion, fadeInUp } from '../motion';
 
-/** Raw enum -> human label. Distinct from the generic quoteStatus humanizer -
- * "qty_short" needs to read "Quantity short", not "Qty short". */
-const REASON_LABELS: Record<string, string> = {
-  qty_short: 'Quantity short',
-  price_jumped: 'Price jumped',
-};
-
-const reasonLabel = (reason: string): string => REASON_LABELS[reason] ?? reason;
+type BuyView = 'product' | 'order';
 
 /**
- * What "Accept as-is" actually does to the bill, per QuoteService::reconfirmLine's
- * approve branch: a quantity shortfall re-totals DOWN (qty is clamped to what was
- * procured); a price jump leaves qty untouched and absorbs the increase into
- * margin rather than passing it to the buyer.
+ * The buy link for a row: 3D items point at their source/model page; marketplace
+ * blanks prefer the staff-entered affiliate deeplink, falling back to the plain
+ * source URL. Null when neither is set (staff see a "no source link" note).
  */
-const ACCEPT_CONSEQUENCE: Record<string, string> = {
-  qty_short: 'Bill only what we can supply (quantity reduced, total lowered).',
-  price_jumped: 'Absorb the price rise (buyer pays the quoted price).',
-};
-
-interface ResolvedNotice {
-  lineItemId: number;
-  quoteReference: string | null;
-  message: string;
+function buyLink(product: BuyListRow['product']): string | null {
+  if (product.class === 'MODEL_3D') {
+    return product.source_url ?? null;
+  }
+  return product.affiliate_url ?? product.source_url ?? null;
 }
 
-function AlertsSkeleton() {
+function BuyListSkeleton() {
   return (
     <ul className="flex list-none flex-col gap-3 p-0" aria-hidden="true">
       {Array.from({ length: 3 }).map((_, i) => (
         <li key={i}>
           <Card padding="md" className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <Skeleton width="40%" height={18} />
-              <Skeleton width={90} height={22} />
-            </div>
-            <Skeleton width="100%" height={40} />
-            <Skeleton width="60%" height={36} />
+            <Skeleton width="40%" height={18} />
+            <Skeleton width="100%" height={36} />
           </Card>
         </li>
       ))}
@@ -57,128 +34,84 @@ function AlertsSkeleton() {
 }
 
 export default function ProcurementPage() {
-  const { alerts, loading, error, fetchAlerts, subscribe, unsubscribe, reconfirm } =
+  const { buyList, loading, error, fetchBuyList, markBought, markProductBought } =
     useProcurementStore();
-  const [amend, setAmend] = useState<Record<number, { qty: number; unit_price: number }>>({});
-  const [pendingId, setPendingId] = useState<number | null>(null);
-  const [pendingAction, setPendingAction] = useState<'amend' | 'approve' | 'drop' | null>(null);
-  const [lastResolved, setLastResolved] = useState<ResolvedNotice | null>(null);
   const { toast } = useToast();
-  const animate = useReducedMotionSafe();
+  const [view, setView] = useState<BuyView>('product');
+  const [busy, setBusy] = useState(false);
 
-  // Staff-list search + filters. Applying a filter (or the debounced search)
-  // refetches; typing inside the popup does not. `q` is folded into the same
-  // params object the store forwards to the index.
-  const [filters, setFilters] = useState<FilterValues>({});
-  const [term, setTerm] = useState('');
-  const params = procurementFiltersToParams(filters);
-  const activeTerm = term.trim();
-  const fetchParams = activeTerm ? { ...params, q: activeTerm } : params;
-  const paramsKey = JSON.stringify(fetchParams);
-  const filtersActive = activeTerm !== '' || Object.keys(params).length > 0;
-
-  // Subscribe once for the lifetime of the page - keeping this out of the fetch
-  // effect below means changing a filter doesn't churn the Reverb subscription.
   useEffect(() => {
-    subscribe(); // live awaiting-reconfirm alerts via Reverb
-    return () => unsubscribe();
-  }, [subscribe, unsubscribe]);
+    void fetchBuyList();
+  }, [fetchBuyList]);
 
-  // Fetch on mount and whenever the applied search/filters change. The
-  // subscription alone only ever showed lines that broke while this page
-  // happened to be open. Debounced so typing in the search box coalesces to one
-  // request; `fetchParams` is read from the closure - paramsKey is what changed.
-  useEffect(() => {
-    const id = setTimeout(() => void fetchAlerts(fetchParams), 300);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paramsKey, fetchAlerts]);
+  // Group by product (bulk-buy the same blank across orders) or by order
+  // (everything one customer needs). Grouping is a display concern only - the
+  // rows are the same line items either way.
+  const groups = useMemo(() => {
+    const map = new Map<string, BuyListRow[]>();
+    for (const row of buyList) {
+      const key = view === 'product' ? `p:${row.product_id}` : `o:${row.quote_reference ?? row.quote_id}`;
+      const bucket = map.get(key);
+      if (bucket) bucket.push(row);
+      else map.set(key, [row]);
+    }
+    return Array.from(map.values());
+  }, [buyList, view]);
 
-  const setAmendField = (id: number, field: 'qty' | 'unit_price', value: number) =>
-    setAmend((s) => {
-      const prev = s[id] ?? { qty: 0, unit_price: 0 };
-      return { ...s, [id]: { ...prev, [field]: value } };
-    });
-
-  // Single-flight guard so rapid double-clicks can't fire a mutation twice.
-  //
-  // Bug fixed: this used to infer success from `alerts.length` shrinking, but
-  // the live `.awaiting-reconfirm` subscription can add an unrelated alert
-  // mid-await, which made a genuine success show a red "Could not resolve"
-  // toast. The toast is now driven by reconfirm()'s real HTTP outcome.
-  const run = async (
-    lineItemId: number,
-    action: 'amend' | 'approve' | 'drop',
-    payload?: { qty: number; unit_price: number },
-  ) => {
-    if (pendingId !== null) return;
-    setPendingId(lineItemId);
-    setPendingAction(action);
+  const onBought = async (lineItemId: number) => {
+    if (busy) return;
+    setBusy(true);
     try {
-      const result = await reconfirm(lineItemId, action, payload);
-      if (!result.success) {
-        toast({ title: 'Could not resolve line', description: result.error, tone: 'danger' });
-      } else if (result.line_state === 'AWAITING_RECONFIRM') {
-        // An amend re-procure can fail its own re-check immediately; the line
-        // stays on the desk, so say so rather than claiming success.
-        toast({
-          title: `Line #${lineItemId} still needs a decision`,
-          description: 'The re-procure came back short again - amend, accept as-is, or drop.',
-          tone: 'warning',
-        });
-        setLastResolved(null);
-      } else {
-        const verb = action === 'drop' ? 'dropped' : action === 'approve' ? 'accepted' : 're-procured';
-        const nextStep =
-          action === 'drop'
-            ? 'If every line on this order is now dropped, it auto-cancels. Otherwise it still needs stock confirmation before it releases to the floor.'
-            : 'The order still needs stock confirmation before it releases to the floor.';
-        toast({ title: `Line #${lineItemId} ${verb}.`, description: nextStep, tone: 'success' });
-        setLastResolved({
-          lineItemId,
-          quoteReference: result.quote_reference ?? null,
-          message: nextStep,
-        });
-      }
+      await markBought(lineItemId);
+      toast({ title: 'Marked bought', description: 'Bill raised and item sent to production.', tone: 'success' });
+    } catch {
+      toast({ title: 'Could not mark bought', tone: 'danger' });
     } finally {
-      setPendingId(null);
-      setPendingAction(null);
+      setBusy(false);
     }
   };
 
-  const busy = (id: number, action: 'amend' | 'approve' | 'drop') =>
-    pendingId === id && pendingAction === action;
+  const onProductBought = async (productId: number) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await markProductBought(productId);
+      toast({ title: 'Marked all bought', description: 'Every order for this product was sent to production.', tone: 'success' });
+    } catch {
+      toast({ title: 'Could not mark bought', tone: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <section className="flex flex-col gap-6">
       <Motion variants={fadeInUp} initial="hidden" animate="visible">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-3xl text-fg sm:text-4xl">Procurement desk</h1>
-          {alerts.length > 0 && <Badge tone="warning">{alerts.length} awaiting</Badge>}
+          <h1 className="font-display text-3xl text-fg sm:text-4xl">Buy list</h1>
+          {buyList.length > 0 && <Badge tone="brand">{buyList.length} to buy</Badge>}
         </div>
         <p className="mt-1 text-sm text-fg-muted">
-          Resolve lines flagged during the stock/price re-check. One line never blocks the rest.
+          Items to buy for approved orders. Buy the blank, then mark it bought - that raises the bill
+          and sends it to the production floor.
         </p>
       </Motion>
 
-      {/* Search + filters. The Filters button sits on the same row as the search
-          box (bottom-aligned past its label); active filters wrap onto their own
-          line below as removable badges. Both stay on screen through empty/loading
-          states so a zero-result filter can still be cleared. */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full max-w-sm">
-            <Input
-              type="search"
-              label="Search lines"
-              placeholder="Search by order reference or product name"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-            />
-          </div>
-          <ListFilters fields={procurementFilterFields()} value={filters} onChange={setFilters} />
-        </div>
-        <FilterBadges fields={procurementFilterFields()} value={filters} onChange={setFilters} />
+      <div className="flex gap-2" role="tablist" aria-label="Buy list grouping">
+        <Button
+          variant={view === 'product' ? 'primary' : 'outline'}
+          aria-pressed={view === 'product'}
+          onClick={() => setView('product')}
+        >
+          By product
+        </Button>
+        <Button
+          variant={view === 'order' ? 'primary' : 'outline'}
+          aria-pressed={view === 'order'}
+          onClick={() => setView('order')}
+        >
+          By order
+        </Button>
       </div>
 
       {error && (
@@ -187,184 +120,85 @@ export default function ProcurementPage() {
         </p>
       )}
 
-      {lastResolved && (
-        <div
-          className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-fg-muted"
-          role="status"
-        >
-          <span>
-            Line #{lastResolved.lineItemId} resolved.
-            {lastResolved.quoteReference && (
-              <>
-                {' '}
-                <Link
-                  to={`/orders/${lastResolved.quoteReference}`}
-                  className="font-medium text-brand underline underline-offset-2"
-                >
-                  View order {lastResolved.quoteReference}
-                </Link>
-              </>
-            )}{' '}
-            {lastResolved.message}
-          </span>
-          <button
-            type="button"
-            className="ml-auto text-xs text-fg-subtle underline"
-            onClick={() => setLastResolved(null)}
-          >
-            Dismiss
-          </button>
-        </div>
+      {loading && buyList.length === 0 && <BuyListSkeleton />}
+
+      {!loading && !error && buyList.length === 0 && (
+        <EmptyState
+          title="Nothing to buy"
+          description="Items appear here once an order's artwork and price are both approved."
+        />
       )}
 
-      {/* Loading - skeletons on first load only, so a background refetch doesn't
-          flash the whole desk away. */}
-      {loading && alerts.length === 0 && <AlertsSkeleton />}
-
-      {/* Empty - only once we know it's actually empty (not loading, no error).
-          A search/filter that matches nothing is NOT an empty desk, so a filtered
-          miss gets its own copy and a way back out. */}
-      {!loading && !error && alerts.length === 0 && (
-        filtersActive ? (
-          <EmptyState
-            title="No lines match those filters"
-            description="Nothing matches the current search and filters. Adjust or clear them to see more."
-            action={
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setTerm('');
-                  setFilters({});
-                }}
-              >
-                Clear search &amp; filters
-              </Button>
-            }
-          />
-        ) : (
-          <EmptyState
-            title="No lines awaiting reconfirmation."
-            description="Quantity shortfalls and price jumps from stock re-checks appear here in real time."
-          />
-        )
-      )}
-
-      {alerts.length > 0 && (
+      {buyList.length > 0 && (
         <ul className="flex list-none flex-col gap-3 p-0">
-          <AnimatePresence initial={false} mode="popLayout">
-            {alerts.map((a) => {
-              const draft = amend[a.line_item_id];
-              const canAmend = Boolean(draft?.qty) && Boolean(draft?.unit_price);
-              const anyBusy = pendingId !== null;
-              // The backend rejects approve outright when nothing was sourced
-              // (reconfirmLine throws for procured_qty < 1) - disable up front
-              // and point staff at Drop instead of letting the request 422.
-              const canAcceptAsIs = (a.procured_qty ?? 0) >= 1;
-              return (
-                <motion.li
-                  key={a.line_item_id}
-                  layout={animate}
-                  initial={animate ? { opacity: 0, y: 12 } : false}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={animate ? { opacity: 0, x: 24 } : undefined}
-                  transition={springSoft}
-                >
-                  <Card padding="md" className="flex flex-col gap-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="font-display text-lg leading-tight text-fg">
-                          Line #{a.line_item_id}
-                        </p>
-                        <p className="text-sm text-fg-muted">Order {a.quote_reference}</p>
-                      </div>
-                      <Badge tone="warning">{reasonLabel(a.reason)}</Badge>
-                    </div>
+          {groups.map((rows) => {
+            const first = rows[0];
+            const heading =
+              view === 'product'
+                ? first.product.name
+                : `Order ${first.quote_reference ?? first.quote_id}`;
+            return (
+              <li key={view === 'product' ? `p:${first.product_id}` : `o:${first.quote_reference ?? first.quote_id}`}>
+                <Card padding="md" className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-display text-lg leading-tight text-fg">{heading}</p>
+                    {view === 'product' && (
+                      <Button disabled={busy} onClick={() => void onProductBought(first.product_id)}>
+                        Mark all bought
+                      </Button>
+                    )}
+                  </div>
 
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-                      <div>
-                        <dt className="text-fg-subtle">Ordered qty</dt>
-                        <dd className="font-medium text-fg">{a.ordered_qty}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-fg-subtle">Procurable</dt>
-                        <dd className="font-medium text-fg">{a.procured_qty ?? '-'}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-fg-subtle">Quoted price</dt>
-                        <dd className="font-medium text-fg">{a.unit_price}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-fg-subtle">Re-checked</dt>
-                        <dd className="font-medium text-fg">{a.procured_price ?? '-'}</dd>
-                      </div>
-                    </dl>
-
-                    <div className="flex flex-col gap-3 border-t border-border pt-4">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                        <Input
-                          type="number"
-                          min={1}
-                          label="Amend qty"
-                          placeholder="qty"
-                          value={draft?.qty ?? ''}
-                          disabled={anyBusy}
-                          onChange={(e) => setAmendField(a.line_item_id, 'qty', Number(e.target.value))}
-                        />
-                        <Input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          label="Unit price"
-                          placeholder="unit price"
-                          value={draft?.unit_price ?? ''}
-                          disabled={anyBusy}
-                          onChange={(e) =>
-                            setAmendField(a.line_item_id, 'unit_price', Number(e.target.value))
-                          }
-                        />
-                        <Button
-                          variant="outline"
-                          loading={busy(a.line_item_id, 'amend')}
-                          disabled={anyBusy || !canAmend}
-                          onClick={() => void run(a.line_item_id, 'amend', draft)}
+                  <ul className="flex list-none flex-col gap-2 p-0">
+                    {rows.map((row) => {
+                      const href = buyLink(row.product);
+                      return (
+                        <li
+                          key={row.id}
+                          className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 first:border-t-0 first:pt-0"
                         >
-                          Amend &amp; re-procure
-                        </Button>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <p className="text-xs text-fg-subtle">
-                          {canAcceptAsIs
-                            ? ACCEPT_CONSEQUENCE[a.reason] ??
-                              'Accept the line as procured; the quoted total stands.'
-                            : 'Nothing could be sourced for this line - use Drop instead.'}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            loading={busy(a.line_item_id, 'approve')}
-                            disabled={
-                              !canAcceptAsIs || (anyBusy && !busy(a.line_item_id, 'approve'))
-                            }
-                            onClick={() => void run(a.line_item_id, 'approve')}
-                          >
-                            Accept as-is
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            loading={busy(a.line_item_id, 'drop')}
-                            disabled={anyBusy && !busy(a.line_item_id, 'drop')}
-                            onClick={() => void run(a.line_item_id, 'drop')}
-                          >
-                            Drop line
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </motion.li>
-              );
-            })}
-          </AnimatePresence>
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-medium text-fg">
+                              {view === 'product' ? (
+                                <Link
+                                  to={`/orders/${row.quote_reference ?? row.quote_id}`}
+                                  className="text-brand underline underline-offset-2"
+                                >
+                                  {row.quote_reference ?? `#${row.quote_id}`}
+                                </Link>
+                              ) : (
+                                row.product.name
+                              )}
+                            </span>
+                            <span className="text-fg-muted">× {row.qty}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {href ? (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm font-medium text-brand underline underline-offset-2"
+                              >
+                                Buy
+                              </a>
+                            ) : (
+                              <span className="text-sm text-fg-subtle">No source link</span>
+                            )}
+                            {view === 'order' && (
+                              <Button variant="outline" disabled={busy} onClick={() => void onBought(row.id)}>
+                                Bought
+                              </Button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Card>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

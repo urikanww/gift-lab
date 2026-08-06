@@ -316,20 +316,6 @@ it('toasts "Payment received" when payment captures immediately', async () => {
 });
 
 
-it('rejects a whitespace-only PO reference without calling the API', async () => {
-  const issueInvoice = vi.fn(async () => {});
-  seedQuote('PROOF_APPROVED');
-  useQuoteStore.setState({ issueInvoice } as any);
-  asStaff();
-  renderPage();
-
-  await userEvent.type(screen.getByLabelText(/po reference/i), '   ');
-  await userEvent.click(screen.getByRole('button', { name: 'Commit order' }));
-
-  expect(issueInvoice).not.toHaveBeenCalled();
-  expect(screen.getByText(/enter the po number/i)).toBeInTheDocument();
-});
-
 it('sends a plain quote when staff leaves the artwork reference blank on DRAFT', async () => {
   const send = vi.fn(async () => {});
   seedQuote('DRAFT');
@@ -996,58 +982,8 @@ it('refreshes the status history when a broadcast moves the order underneath it'
   expect(within(statusRegion()).getByText('Sent')).toBeInTheDocument();
 });
 
-// A rejected write used to route through the store's `error`, which this page
-// renders as a full-page ErrorState. The staffer lost the order, the controls
-// and their typed input, and had to navigate back to find out what was wrong.
-// Write failures now land in `actionError` and render inline.
-it('keeps the order on screen when a write is rejected, and explains why', async () => {
-  asStaff();
-  seedQuote('PROOF_APPROVED');
-  useQuoteStore.setState({
-    issueInvoice: async () => {
-      useQuoteStore.setState({ actionError: 'PO reference has already been used.' } as any);
-    },
-  } as any);
-  renderPage();
-
-  const user = userEvent.setup();
-  await user.type(screen.getByLabelText(/PO reference/i), 'PO-1');
-  await user.click(screen.getByRole('button', { name: 'Commit order' }));
-  // Confirmation first: committing opens production and cannot be walked back.
-  await user.click(screen.getAllByRole('button', { name: 'Commit order' })[1]);
-
-  const alert = await screen.findByRole('alert');
-  expect(alert).toHaveTextContent('PO reference has already been used.');
-
-  // The order itself is still there - the whole point of the change.
-  expect(screen.getByRole('heading', { name: /Order 9BWVKWCDXH/i })).toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: 'Commit order' })[0]).toBeInTheDocument();
-});
-
-// Bug: the commit/confirm modal rendered no body at all, so a duplicate PO
-// reference (backend `unique` -> 422) only ever surfaced on the page-top
-// banner - behind the modal overlay staff were still looking at. The modal
-// must show its own failure, not leave staff to re-click into the same 422.
-it('shows the commit error inside the still-open modal, not only behind it on the page banner', async () => {
-  asStaff();
-  seedQuote('PROOF_APPROVED');
-  useQuoteStore.setState({
-    issueInvoice: async () => {
-      useQuoteStore.setState({ actionError: 'PO reference has already been used.' } as any);
-    },
-  } as any);
-  renderPage();
-
-  const user = userEvent.setup();
-  await user.type(screen.getByLabelText(/PO reference/i), 'PO-1');
-  await user.click(screen.getByRole('button', { name: 'Commit order' }));
-  await user.click(screen.getAllByRole('button', { name: 'Commit order' })[1]);
-
-  // The modal stays open on failure - and now shows the failure itself.
-  const dialog = await screen.findByRole('dialog', { name: /commit this order to production/i });
-  expect(within(dialog).getByText('PO reference has already been used.')).toBeInTheDocument();
-});
-
+// A rejected write lands in `actionError` and renders inline (not as a
+// full-page ErrorState that would lose the order and the controls).
 it('dismisses the inline write error without touching the order', async () => {
   asStaff();
   seedQuote('PROOF_APPROVED');
@@ -1105,6 +1041,28 @@ it('tells staff an artwork-approved order is waiting on the buyer', () => {
   expect(screen.queryByRole('button', { name: /Issue invoice/i })).not.toBeInTheDocument();
 });
 
+// The buy list now owns invoice -> procure -> stock-confirm -> floor. The order
+// page no longer duplicates those controls; it points staff to the buy list.
+it('points staff to the Buy list for invoice/procurement/stock states, with no manual buttons', () => {
+  for (const state of ['PROOF_APPROVED', 'CONFIRMED', 'PROCURING'] as const) {
+    asStaff();
+    seedQuote(state);
+    const { unmount } = renderPage();
+
+    expect(screen.getByRole('link', { name: /manage in the buy list/i })).toHaveAttribute(
+      'href',
+      '/procurement',
+    );
+    expect(screen.queryByRole('button', { name: /commit order/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /run procurement/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /confirm stock and start production/i }),
+    ).toBeNull();
+
+    unmount();
+  }
+});
+
 // CHANGES_REQUESTED was unrecoverable: no control performed a way out, so the
 // order had to be cancelled and rebuilt. Staging a revised proof per line and
 // re-sending is that way.
@@ -1124,110 +1082,6 @@ it('offers staff the per-line proof controls on a changes-requested order', () =
   expect(screen.getByRole('button', { name: 'attach:Proof for Enamel Mug' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /send proofs to buyer/i })).toBeInTheDocument();
   expect(screen.queryByText(/No staff action available/i)).not.toBeInTheDocument();
-});
-
-// Wave 3: the production gate. Jobs used to be built the moment the system
-// believed every line was resolved — a belief resting on stock figures nobody
-// maintains, since most goods are bought in after the order is placed.
-function seedProcuringQuote(lineState: string, procurementNote: string | null = null) {
-  useQuoteStore.setState({
-    current: {
-      ...useQuoteStore.getState().current!,
-      state: 'PROCURING',
-      line_items: [
-        {
-          id: 1,
-          product_id: 10,
-          qty: 5,
-          line_state: lineState,
-          procurement_note: procurementNote,
-          product: { name: 'Enamel Mug' },
-        },
-      ],
-    },
-  } as any);
-}
-
-it('offers the production gate once every line is resolved', async () => {
-  asStaff();
-  seedQuote('PROCURING');
-  seedProcuringQuote('READY');
-  const confirmStock = vi.fn(async () => {});
-  useQuoteStore.setState({ confirmStock } as any);
-  renderPage();
-
-  // The lines are listed to be checked off against what actually arrived.
-  expect(screen.getByText('5 × Enamel Mug')).toBeInTheDocument();
-  expect(screen.getByText(/Your name and the time are recorded/i)).toBeInTheDocument();
-
-  await userEvent
-    .setup()
-    .click(screen.getByRole('button', { name: /Confirm stock and start production/i }));
-
-  expect(confirmStock).toHaveBeenCalledWith(42);
-});
-
-// The gate asserts everything is in hand, which is not yet true while a line is
-// still awaiting a decision.
-it('withholds the production gate while a line still needs a decision', () => {
-  asStaff();
-  seedQuote('PROCURING');
-  seedProcuringQuote('AWAITING_RECONFIRM');
-  renderPage();
-
-  expect(
-    screen.queryByRole('button', { name: /Confirm stock and start production/i }),
-  ).not.toBeInTheDocument();
-  expect(screen.getByText(/need a stock or price decision/i)).toBeInTheDocument();
-});
-
-// A quantity shortfall no longer stops the order, so the gate is the moment it
-// gets seen — someone is looking at the goods right then.
-it('shows the advisory shortfall against the line at the gate', () => {
-  asStaff();
-  seedQuote('PROCURING');
-  seedProcuringQuote('READY', 'Only 2 of 5 on hand.');
-  renderPage();
-
-  expect(screen.getByText(/Only 2 of 5 on hand/i)).toBeInTheDocument();
-  // Advisory, not blocking: the gate is still offered.
-  expect(
-    screen.getByRole('button', { name: /Confirm stock and start production/i }),
-  ).toBeInTheDocument();
-});
-
-// Issuing the invoice also drives the order to CONFIRMED, the production gate.
-// The button said "Issue invoice" and gave no hint of that, so staff committed
-// orders without being told they had.
-it('confirms before committing an order to production', async () => {
-  asStaff();
-  seedQuote('PROOF_APPROVED');
-  const issueInvoice = vi.fn(async () => {});
-  useQuoteStore.setState({ issueInvoice } as any);
-  renderPage();
-
-  const user = userEvent.setup();
-  await user.type(screen.getByLabelText(/PO reference/i), 'PO-9');
-  await user.click(screen.getByRole('button', { name: 'Commit order' }));
-
-  // Nothing has happened yet - the confirmation explains what is about to.
-  expect(issueInvoice).not.toHaveBeenCalled();
-  expect(screen.getByText(/Production can begin/i)).toBeInTheDocument();
-
-  await user.click(screen.getAllByRole('button', { name: 'Commit order' })[1]);
-  expect(issueInvoice).toHaveBeenCalledWith(42, 'PO-9', null);
-});
-
-// F8: the PO reference is required to raise the invoice, so the field is marked
-// required at the commit step (mirrors the Commit button's disabled-when-empty
-// guard and validatePoRef).
-it('marks the PO reference field as required at the commit step', () => {
-  asStaff();
-  seedQuote('PROOF_APPROVED');
-  renderPage();
-
-  const po = screen.getByLabelText(/PO reference/i);
-  expect(po).toBeRequired();
 });
 
 it('shows the staff-only Edit history when the order carries an amendment log', () => {

@@ -39,17 +39,11 @@ it('flags not printable', function (): void {
         ->toContain('not_printable');
 });
 
-it('flags unreadable stock for a STOCKED blank', function (): void {
+it('never flags unreadable stock — the gate no longer checks stock at all', function (): void {
+    // Stock is bought per order, so the gate dropped stock_unreadable entirely.
+    // A null estimate must never block publish, whatever the stock_mode.
     expect((new CompletenessGate())->reasons(scrapedProduct(['stock_estimate' => null])))
-        ->toContain('stock_unreadable');
-});
-
-it('waives unreadable stock for a MAKE_TO_ORDER blank', function (): void {
-    $reasons = (new CompletenessGate())->reasons(
-        scrapedProduct(['stock_mode' => 'MAKE_TO_ORDER', 'stock_estimate' => null])
-    );
-
-    expect($reasons)->not->toContain('stock_unreadable');
+        ->not->toContain('stock_unreadable');
     expect((new CompletenessGate())->isComplete(
         scrapedProduct(['stock_mode' => 'MAKE_TO_ORDER', 'stock_estimate' => null])
     ))->toBeTrue();
