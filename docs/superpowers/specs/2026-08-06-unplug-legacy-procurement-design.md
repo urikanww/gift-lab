@@ -84,19 +84,20 @@ Three small, reversible edits.
 - Optional "lines to buy" badge on the Buy list nav item.
 - The full "rip out" (delete tables, strategies, refund logic, rewire payment) —
   its own spec when the dormant path is confirmed truly unused.
-- **B2C pay-now vs the buy list (known, dormant).** `PaymentService::confirmPaid`
-  still auto-calls `QuoteService::procure()` on card capture. That drives the
-  order to `PROCURING` with lines `READY` but no `stock_confirmed_at`, so it
-  neither shows on the buy list (which lists only `PENDING`/`AMENDED`) nor reaches
-  the floor. Harmless while B2C pay-now is disabled (`fee.b2c_enabled` off).
-  **Must be fixed before enabling B2C card payment** — route capture through
-  `markLineBought` or set `stock_confirmed_at` there. A warning is pinned at the
-  call site.
-- **Reconfirm remnants.** With the reconfirm desk replaced by the buy list, the
-  `/procurement/awaiting-reconfirm` + `/line-items/{id}/reconfirm` routes/store
-  methods are now UI-less, and the dashboard's "Procurement to reconfirm" tile was
-  removed (it dead-ended into the buy list). Any future path that produces
-  `AWAITING_RECONFIRM` lines (only `procure()` or `block_on_qty_short`) has no UI —
-  fold into the same fix as the B2C item if that path is ever re-activated.
+- **B2C pay-now vs the buy list — RESOLVED (branch `fix/b2c-paynow-buylist-gate`).**
+  `PaymentService::confirmPaid` previously auto-called `QuoteService::procure()`
+  on card capture, stranding the order in `PROCURING` with no `stock_confirmed_at`
+  (invisible to both the buy list and the floor). Now it calls
+  `QuoteService::markQuoteBought()` — the same gate as a manual buy — so a
+  card-paid order is billed once and reaches `READY` in one step. Covered by
+  `PayNowTest`.
+- **Reconfirm remnants (now fully dormant).** With the reconfirm desk replaced by
+  the buy list and the payment path rerouted, `QuoteService::procure()` /
+  `reconfirmLine()` have **no live caller** — the only producers of
+  `AWAITING_RECONFIRM` are the UI-less `/procure` route and the off-by-default
+  `block_on_qty_short` config. The `/procurement/awaiting-reconfirm` +
+  `/line-items/{id}/reconfirm` routes/store methods and that state have no UI;
+  the dashboard's dead "Procurement to reconfirm" tile was removed. Fold into the
+  future "rip out" if `procure()` is ever deleted.
 - Live-DB minimum-order-quantity audit (data check, run by an admin):
   `Product::where('min_order_qty','>',1)->count()`.

@@ -121,16 +121,13 @@ final class PaymentService
 
             $this->audit->log($po, 'payment.captured', null, ['reference' => $reference, 'amount' => $po->amount]);
 
-            // WARNING — conflicts with the manual buy-list flow. procure() drives
-            // the order to PROCURING with lines READY but leaves stock_confirmed_at
-            // null, so it neither appears on the buy list (which lists only
-            // PENDING/AMENDED lines) nor reaches the floor (tryQueue needs
-            // stock_confirmed_at). Harmless while B2C pay-now is disabled
-            // (fee.b2c_enabled defaults off). Before enabling B2C card payment,
-            // route capture through the buy-list gate (QuoteService::markLineBought)
-            // or set stock_confirmed_at here. See
-            // docs/superpowers/specs/2026-08-06-unplug-legacy-procurement-design.md.
-            $this->quotes->procure($locked->fresh());
+            // Route capture through the buy-list gate, NOT the legacy procure().
+            // Paying is the B2C equivalent of a staffer clicking "Bought": it
+            // bills the order (already done above), advances every line to READY
+            // and confirms stock in one step, so the order reaches the production
+            // floor. procure() would leave stock_confirmed_at null and strand the
+            // order in PROCURING (invisible to both the buy list and the floor).
+            $this->quotes->markQuoteBought($locked->fresh());
 
             return $po;
         });

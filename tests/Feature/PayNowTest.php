@@ -43,10 +43,12 @@ function proofApprovedQuote(int $companyId): Quote
     return $quote;
 }
 
-// Payment carries the order as far as procurement, and no further. Production
-// now waits for a person to confirm the goods are in hand - paying does not
-// bypass that gate any more than staff issuing an invoice does.
-it('captures a B2C payment and drives the quote to procurement', function (): void {
+// Paying is the buy-list "bought" action for a B2C order: it bills the order and
+// carries it straight to the production floor in one step, through the same gate
+// as a manual buy (no separate staff stock-confirm). Previously payment stranded
+// the order in PROCURING with no path forward once the confirm-stock UI was
+// removed.
+it('captures a B2C payment and sends the order to the floor, billed once', function (): void {
     enablePayNow();
     $quote = proofApprovedQuote($this->company->id);
 
@@ -54,30 +56,15 @@ it('captures a B2C payment and drives the quote to procurement', function (): vo
     $response = $this->postJson("/api/quotes/{$quote->id}/pay")->assertOk();
 
     expect($response->json('paid'))->toBeTrue()
-        ->and($quote->fresh()->state->value)->toBe('PROCURING')
-        ->and($quote->fresh()->stock_confirmed_at)->toBeNull();
+        ->and($quote->fresh()->state->value)->toBe('READY')
+        ->and($quote->fresh()->stock_confirmed_at)->not->toBeNull();
 
+    // Billed exactly once, and marked paid.
+    expect(\App\Models\Invoice::query()->where('quote_id', $quote->id)->count())->toBe(1);
     $this->assertDatabaseHas('invoices', [
         'quote_id' => $quote->id,
         'payment_state' => 'PAID',
     ]);
-});
-
-it('releases a paid order to the floor once staff confirm the stock', function (): void {
-    enablePayNow();
-    $quote = proofApprovedQuote($this->company->id);
-
-    Sanctum::actingAs($this->buyer);
-    $this->postJson("/api/quotes/{$quote->id}/pay")->assertOk();
-
-    $staff = User::factory()->staffAdmin()->create();
-    Sanctum::actingAs($staff);
-    $this->postJson("/api/quotes/{$quote->id}/confirm-stock")->assertOk();
-
-    $quote->refresh();
-    expect($quote->state->value)->toBe('READY')
-        ->and($quote->stock_confirmed_by)->toBe($staff->id)
-        ->and($quote->stock_confirmed_at)->not->toBeNull();
 });
 
 it('refuses pay-now when B2C is disabled', function (): void {
