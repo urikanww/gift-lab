@@ -48,24 +48,6 @@ it('writes nothing when a transition is rejected', function (): void {
     expect($quote->refresh()->state)->toBe(QuoteState::Draft);
 });
 
-it('rolls the state back when the audit insert fails during procure', function (): void {
-    $quote = Quote::factory()->create(['state' => 'CONFIRMED']);
-
-    // Fail the audit insert itself - the real AuditLogger and the real create()
-    // path still run, a `creating` hook just makes the write throw. That is the
-    // SECOND write in transitionTo, after the state save has already happened.
-    AuditLog::creating(function (): void {
-        throw new RuntimeException('audit insert failed');
-    });
-
-    expect(fn () => app(QuoteService::class)->procure($quote))
-        ->toThrow(RuntimeException::class);
-
-    // Without the transaction the state would have committed as PROCURING while
-    // the caller saw an exception - a transition that happened but was never logged.
-    expect(Quote::query()->find($quote->id)->state)->toBe(QuoteState::Confirmed);
-});
-
 it('rolls the state back when the audit insert fails closing the last job', function (): void {
     $quote = Quote::factory()->create(['state' => 'READY']);
     $job = ProductionJob::factory()->create(['quote_id' => $quote->id, 'state' => 'SHIPPED']);

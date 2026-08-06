@@ -310,18 +310,6 @@ class QuoteController extends Controller
         return new QuoteResource($quote->load('lineItems'));
     }
 
-    /**
-     * Staff confirm the goods are in hand, releasing the order to the floor.
-     * Attributed: with the automatic checks advisory this is the only safety
-     * net left before production starts.
-     */
-    public function confirmStock(Request $request, Quote $quote): QuoteResource
-    {
-        $this->authorize('manageProduction', $quote);
-
-        return new QuoteResource($this->quotes->confirmStock($quote)->load('lineItems'));
-    }
-
     public function send(SendQuoteRequest $request, Quote $quote): QuoteResource
     {
         $this->authorize('manageProduction', $quote);
@@ -418,13 +406,6 @@ class QuoteController extends Controller
             ],
             'quote' => new QuoteResource($quote->fresh()),
         ]);
-    }
-
-    public function procure(Request $request, Quote $quote): QuoteResource
-    {
-        $this->authorize('manageProduction', $quote);
-
-        return new QuoteResource($this->quotes->procure($quote));
     }
 
     public function cancel(CancelQuoteRequest $request, Quote $quote): QuoteResource

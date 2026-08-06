@@ -149,10 +149,9 @@ class StoreQuoteRequest extends FormRequest
 
             $artworkDisk = Storage::disk((string) config('filesystems.artwork_disk'));
 
-            // CORE products with no variants at all are structurally
-            // unprocurable (CoreProcurement sources blanks from variant
-            // stock), so quoting them only manufactures a stuck line
-            // (audit E4 interim guard - "Alpha Mug" case).
+            // A CORE product carries its buyable identity on its variants, so
+            // one with no variants at all cannot be ordered - quoting it only
+            // manufactures a stuck line (audit E4 interim guard - "Alpha Mug" case).
             $productIdsWithVariants = $productIds === []
                 ? collect()
                 : Variant::query()->whereIn('product_id', $productIds)->distinct()->pluck('product_id')->flip();
