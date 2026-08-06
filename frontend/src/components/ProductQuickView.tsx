@@ -131,7 +131,6 @@ export default function ProductQuickView({ productId, isSuperadmin, onClose, bac
             <dl className="flex flex-col gap-1.5 text-sm">
               <Row label="Category" value={product.category ? categoryLabel(product.category) : '—'} />
               <Row label="Sold" value={String(product.sold_count)} />
-              <Row label="In stock" value={String(product.stock_total)} />
               <Row label="Min order" value={String(product.min_order_qty ?? 1)} />
               {dims && <Row label="Dimensions" value={dims} />}
               {is3d && <Row label="Model parts" value={String(product.model_parts?.length ?? 0)} />}

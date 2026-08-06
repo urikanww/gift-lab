@@ -38,9 +38,9 @@ interface Meta {
 
 const PER_PAGE_OPTIONS = [15, 30, 50, 100] as const;
 
-type SortKey = 'newest' | 'most_sold' | 'name' | 'base_cost' | 'stock';
+type SortKey = 'newest' | 'most_sold' | 'name' | 'base_cost';
 
-const SORT_KEYS = new Set<SortKey>(['newest', 'most_sold', 'name', 'base_cost', 'stock']);
+const SORT_KEYS = new Set<SortKey>(['newest', 'most_sold', 'name', 'base_cost']);
 
 /**
  * Server-driven product browser (route /product-admin). All filtering, sorting
@@ -442,7 +442,6 @@ export default function ProductAdminPage() {
             <option value="most_sold">Most sold</option>
             <option value="name">Name</option>
             <option value="base_cost">Base cost</option>
-            <option value="stock">Stock</option>
           </Select>
           <div className="flex items-end">
             <Button
