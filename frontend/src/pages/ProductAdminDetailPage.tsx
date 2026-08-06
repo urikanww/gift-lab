@@ -761,7 +761,6 @@ export function VariantsSection({
 }) {
   const { toast } = useToast();
   const [variantName, setVariantName] = useState('');
-  const [variantStock, setVariantStock] = useState('');
   const [variantDelta, setVariantDelta] = useState('0');
   const [adding, setAdding] = useState(false);
   const variants = product.variants ?? [];
@@ -813,11 +812,10 @@ export function VariantsSection({
       await ensureCsrf();
       await api.post(`/admin/products/${product.id}/variants`, {
         attributes: { option: variantName },
-        stock_on_hand: Number(variantStock),
+        stock_on_hand: 0,
         price_delta: Number(variantDelta),
       });
       setVariantName('');
-      setVariantStock('');
       setVariantDelta('0');
       toast({ title: 'Variant added', description: `${product.name} · ${variantName}`, tone: 'success' });
       onChanged();
@@ -828,10 +826,10 @@ export function VariantsSection({
     }
   };
 
-  const saveVariant = async (variant: AdminVariant, stock: number, delta: number) => {
+  const saveVariant = async (variant: AdminVariant, delta: number) => {
     try {
       await ensureCsrf();
-      await api.patch(`/admin/variants/${variant.id}`, { stock_on_hand: stock, price_delta: delta });
+      await api.patch(`/admin/variants/${variant.id}`, { price_delta: delta });
       toast({ title: 'Variant saved', tone: 'success' });
       onChanged();
     } catch (err) {
@@ -865,7 +863,7 @@ export function VariantsSection({
               key={v.id}
               variant={v}
               disabled={disabled}
-              onSave={(stock, delta) => void saveVariant(v, stock, delta)}
+              onSave={(delta) => void saveVariant(v, delta)}
               onArchive={() => void archiveVariant(v)}
             />
           ))}
@@ -972,9 +970,6 @@ export function VariantsSection({
             <Input label="New variant (e.g. Silver)" value={variantName} onChange={(e) => setVariantName(e.target.value)} required disabled={adding} />
           </div>
           <div className="w-32">
-            <Input label="Stock on hand" type="number" min="0" value={variantStock} onChange={(e) => setVariantStock(e.target.value)} required disabled={adding} />
-          </div>
-          <div className="w-32">
             <Input label="Price delta" type="number" step="0.01" value={variantDelta} onChange={(e) => setVariantDelta(e.target.value)} disabled={adding} />
           </div>
           <Button type="submit" size="sm" loading={adding}>
@@ -993,24 +988,20 @@ function VariantRow({
   disabled,
 }: {
   variant: AdminVariant;
-  onSave: (stock: number, delta: number) => void;
+  onSave: (delta: number) => void;
   onArchive: () => void;
   disabled: boolean;
 }) {
-  const [stock, setStock] = useState(String(variant.stock_on_hand));
   const [delta, setDelta] = useState(String(variant.price_delta));
   const label = Object.values(variant.attributes ?? {}).join(' / ') || variant.sku || `#${variant.id}`;
 
   return (
     <li className="flex flex-wrap items-end gap-2 rounded-md border border-border p-2">
       <span className="min-w-24 text-sm font-medium text-fg">{label}</span>
-      <div className="w-24">
-        <Input label="Stock" type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} disabled={disabled} />
-      </div>
       <div className="w-28">
         <Input label="Price delta" type="number" step="0.01" value={delta} onChange={(e) => setDelta(e.target.value)} disabled={disabled} />
       </div>
-      <Button size="sm" variant="outline" disabled={disabled} onClick={() => onSave(Number(stock), Number(delta))}>
+      <Button size="sm" variant="outline" disabled={disabled} onClick={() => onSave(Number(delta))}>
         Save
       </Button>
       <Button size="sm" variant="ghost" disabled={disabled} onClick={onArchive}>
