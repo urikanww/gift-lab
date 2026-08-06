@@ -1678,17 +1678,22 @@ final class QuoteService
 
         // The buy IS the confirmation that goods are in hand — the manual gate
         // confirmStock() exists for. Set it once the last line is bought so
-        // tryQueue can build the jobs and advance the order to READY.
+        // tryQueue can build the jobs and advance the order to READY. Wrapped in
+        // a transaction so the save and its audit row commit together (mirrors
+        // confirmStock()) — a failed audit insert never strands a set
+        // stock_confirmed_at with no trail.
         if ($this->isReadyForProduction($quote) && $quote->stock_confirmed_at === null) {
-            $quote->stock_confirmed_at = now();
-            $quote->stock_confirmed_by = Auth::id();
-            $quote->save();
+            DB::transaction(function () use ($quote): void {
+                $quote->stock_confirmed_at = now();
+                $quote->stock_confirmed_by = Auth::id();
+                $quote->save();
 
-            $this->audit->log($quote, 'quote.stock_confirmed', null, [
-                'confirmed_by' => $quote->stock_confirmed_by,
-                'confirmed_at' => $quote->stock_confirmed_at?->toIso8601String(),
-                'via' => 'buy_list',
-            ]);
+                $this->audit->log($quote, 'quote.stock_confirmed', null, [
+                    'confirmed_by' => $quote->stock_confirmed_by,
+                    'confirmed_at' => $quote->stock_confirmed_at?->toIso8601String(),
+                    'via' => 'buy_list',
+                ]);
+            });
         }
 
         $this->tryQueue($quote->fresh(['lineItems']));

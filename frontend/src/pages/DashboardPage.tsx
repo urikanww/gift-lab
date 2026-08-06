@@ -40,7 +40,6 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Proofs pending" value={data.queues.proofsPending} to="/quotes" />
-        <StatTile label="Procurement to reconfirm" value={data.queues.procurementToReconfirm} to="/procurement" />
         <StatTile label="Catalogue pending" value={data.queues.cataloguePending} to="/catalogue-admin" />
         <StatTile label="At-risk / overdue jobs" value={data.production.overdue} to="/production-queue" />
         {/* LT14: delivered orders whose invoice is still outstanding - a
