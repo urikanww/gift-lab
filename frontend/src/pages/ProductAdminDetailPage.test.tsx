@@ -81,20 +81,17 @@ describe('VariantRow edit + archive', () => {
     variants: [{ id: 7, attributes: { option: 'M' }, stock_on_hand: 3, price_delta: '1.00', sku: null }],
   } as unknown as AdminProduct;
 
-  it('saves stock and price delta together', async () => {
+  it('saves the price delta with no stock field on the row', async () => {
     spies.patch.mockClear();
     wrap(<VariantsSection product={withVariant} onChanged={() => {}} disabled={false} />);
+
+    expect(screen.queryByLabelText('Stock')).toBeNull();
 
     // Row delta renders before the single-add form's delta of the same label.
     fireEvent.change(screen.getAllByLabelText('Price delta')[0], { target: { value: '2.5' } });
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() =>
-      expect(spies.patch).toHaveBeenCalledWith(
-        '/admin/variants/7',
-        expect.objectContaining({ stock_on_hand: 3, price_delta: 2.5 }),
-      ),
-    );
+    await waitFor(() => expect(spies.patch).toHaveBeenCalledWith('/admin/variants/7', { price_delta: 2.5 }));
   });
 
   it('archives a variant after confirm', async () => {
