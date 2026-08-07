@@ -59,6 +59,13 @@ describe('humanizeActivity', () => {
     expect(r.when).toBe('');
     expect(r.title).toBe('');
   });
+
+  it('drops the redundant "Type #id" label for self-contained config events', () => {
+    const r = humanizeActivity(act({ actor: null, event: 'pricing_config.updated', auditableLabel: 'PricingConfig #1' }));
+    expect(r.text).toBe('System updated pricing config');
+    expect(r.text).not.toContain('PricingConfig');
+    expect(r.category).toBe('system');
+  });
 });
 
 describe('timeAgo', () => {

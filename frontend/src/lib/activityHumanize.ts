@@ -95,12 +95,25 @@ export interface HumanizedActivity {
   title: string;
 }
 
+/**
+ * Events whose verb already names the thing acted on - config/settings
+ * singletons. Appending the generic "Type #id" label would just double the
+ * noun ("updated pricing config PricingConfig #1"), so drop the label for these.
+ */
+const LABELLESS_EVENTS = new Set<string>([
+  'courier_config.updated',
+  'pricing_config.updated',
+  'notification_setting.updated',
+  'notification_cadence.updated',
+]);
+
 export function humanizeActivity(a: DashboardActivity, now: Date = new Date()): HumanizedActivity {
   const actor = a.actor ?? 'System';
   const verb = VERBS[a.event] ?? a.event.replace(/[._]/g, ' ');
+  const body = LABELLESS_EVENTS.has(a.event) ? verb : `${verb} ${a.auditableLabel}`;
   return {
     category: activityCategory(a.event),
-    text: `${actor} ${verb} ${a.auditableLabel}`.trim(),
+    text: `${actor} ${body}`.trim(),
     when: timeAgo(a.at, now),
     title: a.at ? new Date(a.at).toLocaleString() : '',
   };
