@@ -19,7 +19,9 @@ it('computes the three KPI numbers from existing data', function (): void {
     // week/month window so they don't inflate ordersThisWeek/bookedThisMonth.
     $oldQuote = Quote::factory()->create(['created_at' => now()->subMonths(2), 'state' => 'DRAFT', 'total' => 0]);
     Invoice::factory()->for($oldQuote, 'quote')->create(['payment_state' => 'PARTIAL', 'amount' => 500, 'amount_paid' => 200]); // owes 300
-    Invoice::factory()->for($oldQuote, 'quote')->create(['payment_state' => 'PAID', 'amount' => 800, 'amount_paid' => 800]);     // ignored
+    Invoice::factory()->for($oldQuote, 'quote')->create(['payment_state' => 'UNPAID', 'amount' => 100, 'amount_paid' => null]);  // owes 100
+    Invoice::factory()->for($oldQuote, 'quote')->create(['payment_state' => 'PAID', 'amount' => 800, 'amount_paid' => 800]);     // excluded
+    Invoice::factory()->for($oldQuote, 'quote')->create(['payment_state' => 'VOID', 'amount' => 999, 'amount_paid' => null]);    // excluded
 
     $kpis = app(DashboardMetrics::class)->kpis();
 
@@ -27,7 +29,7 @@ it('computes the three KPI numbers from existing data', function (): void {
     expect($kpis['ordersThisWeek'])->toBe(2)
         // bookedThisMonth: ACCEPTED@250 (3d) + ACCEPTED@999 (10d, same month) + CONFIRMED@400 (1st) = 1649; DRAFT excluded.
         ->and($kpis['bookedThisMonth']['amount'])->toBe(1649.0)
-        ->and($kpis['outstanding']['amount'])->toBe(300.0);
+        ->and($kpis['outstanding']['amount'])->toBe(400.0);
 
     Carbon::setTestNow();
 });

@@ -245,10 +245,10 @@ class DashboardMetrics
     {
         $now = now();
 
-        $outstanding = Invoice::query()
+        $outstanding = (float) Invoice::query()
             ->whereIn('payment_state', ['UNPAID', 'PARTIAL'])
-            ->get(['amount', 'amount_paid'])
-            ->sum(fn (Invoice $i): float => (float) $i->amount - (float) ($i->amount_paid ?? 0));
+            ->selectRaw('COALESCE(SUM(amount - COALESCE(amount_paid, 0)), 0) as owed')
+            ->value('owed');
 
         return [
             'ordersThisWeek' => Quote::query()
@@ -261,7 +261,7 @@ class DashboardMetrics
                     ->where('created_at', '>=', $now->copy()->startOfMonth())
                     ->sum('total'),
             ],
-            'outstanding' => ['currency' => 'SGD', 'amount' => (float) $outstanding],
+            'outstanding' => ['currency' => 'SGD', 'amount' => $outstanding],
         ];
     }
 
