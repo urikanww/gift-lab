@@ -65,7 +65,13 @@ class AdminUserController extends Controller
             ->when($q !== '', fn ($qr) => $qr->where(function ($w) use ($q): void {
                 $like = '%'.mb_strtolower($q).'%';
                 $w->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
+                    ->orWhereRaw('LOWER(email) LIKE ?', [$like])
+                    ->orWhereHas('company', fn ($c) => $c->whereRaw('LOWER(name) LIKE ?', [$like]));
+                // A purely numeric query also matches an exact user id, so staff can
+                // paste an id from a URL/log and jump straight to the account.
+                if (ctype_digit($q)) {
+                    $w->orWhere('id', (int) $q);
+                }
             }))
             ->with('company:id,name')
             ->orderBy($sortColumn, $sortDir)
