@@ -80,26 +80,18 @@ it('creates a staff user with company_id forced null', function (): void {
     $this->assertDatabaseHas('audit_logs', ['event' => 'user.created']);
 });
 
-it('requires company_id when creating a buyer, and creates it when provided', function (): void {
+it('rejects creating a buyer account (buyers self-register)', function (): void {
     Sanctum::actingAs($this->superadmin);
 
     $this->postJson('/api/admin/users', [
-        'name' => 'New Buyer',
-        'email' => 'new.buyer@example.com',
-        'password' => 'password123',
-        'role' => 'buyer',
-    ])->assertStatus(422)->assertJsonValidationErrors('company_id');
-
-    $response = $this->postJson('/api/admin/users', [
-        'name' => 'New Buyer',
-        'email' => 'new.buyer@example.com',
+        'name' => 'Nope Buyer',
+        'email' => 'nope.buyer@example.com',
         'password' => 'password123',
         'role' => 'buyer',
         'company_id' => $this->company->id,
-    ])->assertCreated();
+    ])->assertStatus(422)->assertJsonValidationErrors('role');
 
-    $response->assertJsonPath('data.role', 'buyer')
-        ->assertJsonPath('data.company.id', $this->company->id);
+    expect(User::where('email', 'nope.buyer@example.com')->exists())->toBeFalse();
 });
 
 it('rejects duplicate email on create', function (): void {

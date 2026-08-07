@@ -105,12 +105,9 @@ class AdminUserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')],
             'password' => ['required', 'string', 'min:8'],
-            'role' => ['required', 'string', Rule::in(['buyer', 'staff_admin', 'superadmin'])],
-            'company_id' => [
-                Rule::requiredIf(fn (): bool => $request->input('role') === 'buyer'),
-                'nullable',
-                'exists:companies,id',
-            ],
+            // Buyers self-register (they create their company at /register); staff
+            // never provision them. Only staff-tier accounts are creatable here.
+            'role' => ['required', 'string', Rule::in(['staff_admin', 'superadmin'])],
         ]);
 
         // Only a superadmin may mint another superadmin - a delegated Users
@@ -119,15 +116,13 @@ class AdminUserController extends Controller
             return response()->json(['message' => 'Only a superadmin can create a superadmin.'], 422);
         }
 
-        // Buyers keep their company_id; staff/superadmin are always company-less.
-        $companyId = $validated['role'] === 'buyer' ? ($validated['company_id'] ?? null) : null;
-
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
-            'company_id' => $companyId,
+            // Staff/superadmin are always company-less; buyers are not creatable here.
+            'company_id' => null,
         ]);
 
         $user->forceFill(['registration_source' => RegistrationSource::StaffCreated])->save();
