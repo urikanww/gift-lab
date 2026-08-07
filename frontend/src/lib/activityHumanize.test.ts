@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { humanizeActivity, activityCategory } from './activityHumanize';
+import { humanizeActivity, activityCategory, timeAgo } from './activityHumanize';
 import type { DashboardActivity } from './dashboard';
 
 function act(partial: Partial<DashboardActivity>): DashboardActivity {
@@ -58,5 +58,15 @@ describe('humanizeActivity', () => {
     const r = humanizeActivity(act({ at: null }));
     expect(r.when).toBe('');
     expect(r.title).toBe('');
+  });
+});
+
+describe('timeAgo', () => {
+  const now = new Date('2026-08-07T12:00:00Z');
+  it('formats past and future with correct unit and direction', () => {
+    expect(timeAgo('2026-08-07T10:00:00Z', now)).toBe('2 hours ago');
+    expect(timeAgo('2026-08-07T11:59:30Z', now)).toBe('30 seconds ago');
+    expect(timeAgo('2026-08-07T14:00:00Z', now)).toBe('in 2 hours');
+    expect(timeAgo(null, now)).toBe('');
   });
 });
