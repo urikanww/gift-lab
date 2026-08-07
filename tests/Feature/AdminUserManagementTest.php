@@ -65,12 +65,17 @@ it('matches q against company name', function (): void {
 it('matches q against an exact numeric id', function (): void {
     Sanctum::actingAs($this->superadmin);
 
-    $response = $this->getJson('/api/admin/users?q='.$this->buyer->id)->assertOk();
+    // Digit-free name/email and no company, so the ONLY way this user can match
+    // its own numeric id is the id branch - not a LIKE coincidence on name/email.
+    $target = User::factory()->create([
+        'role' => 'staff_admin',
+        'name' => 'Alpha Bravo',
+        'email' => 'alpha.bravo@example.test',
+    ]);
+
+    $response = $this->getJson('/api/admin/users?q='.$target->id)->assertOk();
     $ids = collect($response->json('data'))->pluck('id');
-    // Assert only inclusion: a numeric q also LIKE-matches name/email substrings,
-    // and faker's unique emails can contain digits, so an exact-count assertion
-    // would be flaky. Inclusion proves the id branch works.
-    expect($ids)->toContain($this->buyer->id);
+    expect($ids)->toContain($target->id);
 });
 
 it('returns companies id/name and blocks buyer access', function (): void {
