@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dashboard;
 
 use App\Models\AuditLog;
+use App\Models\Invoice;
 use App\Models\LineItem;
 use App\Models\Product;
 use App\Models\ProductionJob;
@@ -55,9 +56,18 @@ class DashboardMetrics
             ? Cache::remember('dashboard.metrics.v1.value', 45, fn (): array => $this->valueBooked())
             : null;
 
+        $kpis = $includeValue
+            ? Cache::remember('dashboard.metrics.v1.kpis', 45, fn (): array => $this->kpis())
+            : null;
+        $trends = $includeValue
+            ? Cache::remember('dashboard.metrics.v1.trends', 45, fn (): array => $this->trends())
+            : null;
+
         return [
             ...$counts,
             'valueBooked' => $valueBooked,
+            'kpis' => $kpis,
+            'trends' => $trends,
             'atRisk' => $this->atRisk(),
             'activity' => $this->activity(),
         ];
@@ -222,6 +232,73 @@ class DashboardMetrics
         $amount = Quote::query()->whereIn('state', self::BOOKED_STATES)->sum('total');
 
         return ['currency' => 'SGD', 'amount' => (float) $amount];
+    }
+
+    /**
+     * Top-line KPI numbers. Money figures follow the same superadmin gate as
+     * valueBooked (see snapshot()). Dates are by created_at - the app has no
+     * accepted_at/paid_at, so "this week/month" means "orders created in it".
+     *
+     * @return array<string,mixed>
+     */
+    public function kpis(): array
+    {
+        $now = now();
+
+        $outstanding = Invoice::query()
+            ->whereIn('payment_state', ['UNPAID', 'PARTIAL'])
+            ->get(['amount', 'amount_paid'])
+            ->sum(fn (Invoice $i): float => (float) $i->amount - (float) ($i->amount_paid ?? 0));
+
+        return [
+            'ordersThisWeek' => Quote::query()
+                ->where('created_at', '>=', $now->copy()->subDays(7))
+                ->count(),
+            'bookedThisMonth' => [
+                'currency' => 'SGD',
+                'amount' => (float) Quote::query()
+                    ->whereIn('state', self::BOOKED_STATES)
+                    ->where('created_at', '>=', $now->copy()->startOfMonth())
+                    ->sum('total'),
+            ],
+            'outstanding' => ['currency' => 'SGD', 'amount' => (float) $outstanding],
+        ];
+    }
+
+    /**
+     * 8 weekly buckets (oldest -> newest) of order count + booked value, from
+     * quotes.created_at. Bucketed in PHP (not a DB WEEK() expression) so the
+     * math is identical on sqlite (tests) and MySQL (prod).
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function trends(): array
+    {
+        $start = now()->startOfWeek()->subWeeks(7);
+
+        $quotes = Quote::query()
+            ->where('created_at', '>=', $start)
+            ->get(['total', 'state', 'created_at']);
+
+        $weeks = [];
+        for ($i = 0; $i < 8; $i++) {
+            $ws = $start->copy()->addWeeks($i);
+            $we = $ws->copy()->addWeek();
+            $bucket = $quotes->filter(
+                fn (Quote $q): bool => $q->created_at >= $ws && $q->created_at < $we,
+            );
+            $booked = $bucket->filter(
+                fn (Quote $q): bool => in_array($q->state->value, self::BOOKED_STATES, true),
+            );
+
+            $weeks[] = [
+                'weekStart' => $ws->toDateString(),
+                'orders' => $bucket->count(),
+                'bookedValue' => (float) $booked->sum(fn (Quote $q): float => (float) $q->total),
+            ];
+        }
+
+        return $weeks;
     }
 
     /**
