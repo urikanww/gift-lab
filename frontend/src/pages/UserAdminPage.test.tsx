@@ -67,3 +67,17 @@ it('flips the sort param when the Name column header is clicked', async () => {
   await userEvent.click(screen.getByRole('button', { name: /^Name/ }));
   await waitFor(() => expect(lastUsersParams().sort).toBe('name_desc'));
 });
+
+it('renders numbered pages and loads the page that is clicked', async () => {
+  get.mockReset();
+  get.mockImplementation((url: string) => {
+    if (url === '/admin/companies') return Promise.resolve({ data: { data: [] } });
+    return Promise.resolve({
+      data: { data: [USER], meta: { current_page: 1, last_page: 3, per_page: 15, total: 45 } },
+    });
+  });
+  renderPage();
+  await waitFor(() => expect(screen.getAllByText('Dana Buyer')[0]).toBeTruthy());
+  await userEvent.click(screen.getByRole('button', { name: '3' }));
+  await waitFor(() => expect(lastUsersParams().page).toBe(3));
+});

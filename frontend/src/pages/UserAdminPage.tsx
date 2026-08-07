@@ -71,6 +71,20 @@ function SortCaret({ active, dir }: { active: boolean; dir: SortDir }) {
   return <span aria-hidden="true" className="ml-1 text-fg">{dir === 'asc' ? '↑' : '↓'}</span>;
 }
 
+/** Page numbers to show: first, last, and a window around current, with -1 as an ellipsis marker. */
+function pageWindow(current: number, last: number): number[] {
+  const pages = new Set<number>([1, last, current, current - 1, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= last).sort((a, b) => a - b);
+  const out: number[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev && p - prev > 1) out.push(-1);
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
 export default function UserAdminPage() {
   const navigate = useNavigate();
 
@@ -283,12 +297,28 @@ export default function UserAdminPage() {
       </AsyncBoundary>
 
       {meta && meta.last_page > 1 && (
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <span className="text-sm text-fg-muted">{rangeLabel}</span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-1">
             <Button variant="outline" size="sm" disabled={loading || meta.current_page <= 1} onClick={() => setPage((n) => Math.max(1, n - 1))}>
               Prev
             </Button>
+            {pageWindow(meta.current_page, meta.last_page).map((p, i) =>
+              p === -1 ? (
+                <span key={`gap-${i}`} className="px-2 text-fg-subtle" aria-hidden="true">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={p === meta.current_page ? 'primary' : 'outline'}
+                  size="sm"
+                  aria-current={p === meta.current_page ? 'page' : undefined}
+                  disabled={loading}
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </Button>
+              ),
+            )}
             <Button variant="outline" size="sm" disabled={loading || meta.current_page >= meta.last_page} onClick={() => setPage((n) => n + 1)}>
               Next
             </Button>
