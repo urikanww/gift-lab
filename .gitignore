@@ -32,3 +32,6 @@ Thumbs.db
 frontend/vite.config.js
 frontend/vite.config.d.ts
 *.tsbuildinfo
+
+# E2E (Playwright)
+/.env.e2e

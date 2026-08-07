@@ -65,7 +65,13 @@ class AdminUserController extends Controller
             ->when($q !== '', fn ($qr) => $qr->where(function ($w) use ($q): void {
                 $like = '%'.mb_strtolower($q).'%';
                 $w->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
+                    ->orWhereRaw('LOWER(email) LIKE ?', [$like])
+                    ->orWhereHas('company', fn ($c) => $c->whereRaw('LOWER(name) LIKE ?', [$like]));
+                // A purely numeric query also matches an exact user id, so staff can
+                // paste an id from a URL/log and jump straight to the account.
+                if (ctype_digit($q)) {
+                    $w->orWhere('id', (int) $q);
+                }
             }))
             ->with('company:id,name')
             ->orderBy($sortColumn, $sortDir)
@@ -105,12 +111,9 @@ class AdminUserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')],
             'password' => ['required', 'string', 'min:8'],
-            'role' => ['required', 'string', Rule::in(['buyer', 'staff_admin', 'superadmin'])],
-            'company_id' => [
-                Rule::requiredIf(fn (): bool => $request->input('role') === 'buyer'),
-                'nullable',
-                'exists:companies,id',
-            ],
+            // Buyers self-register (they create their company at /register); staff
+            // never provision them. Only staff-tier accounts are creatable here.
+            'role' => ['required', 'string', Rule::in(['staff_admin', 'superadmin'])],
         ]);
 
         // Only a superadmin may mint another superadmin - a delegated Users
@@ -119,15 +122,13 @@ class AdminUserController extends Controller
             return response()->json(['message' => 'Only a superadmin can create a superadmin.'], 422);
         }
 
-        // Buyers keep their company_id; staff/superadmin are always company-less.
-        $companyId = $validated['role'] === 'buyer' ? ($validated['company_id'] ?? null) : null;
-
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
-            'company_id' => $companyId,
+            // Staff/superadmin are always company-less; buyers are not creatable here.
+            'company_id' => null,
         ]);
 
         $user->forceFill(['registration_source' => RegistrationSource::StaffCreated])->save();
@@ -159,7 +160,7 @@ class AdminUserController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'role' => ['sometimes', 'string', Rule::in(['buyer', 'staff_admin', 'superadmin'])],
+            'role' => ['sometimes', 'string', Rule::in(['staff_admin', 'superadmin'])],
             'company_id' => ['nullable', 'exists:companies,id'],
             // Granular access allowlist. Every entry must be a known permission
             // key; unknown keys are rejected rather than silently stored.

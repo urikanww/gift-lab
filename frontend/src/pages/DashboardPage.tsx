@@ -3,6 +3,10 @@ import { useDashboardStore } from '../stores/dashboardStore';
 import { Card, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { humanizeState } from '../lib/quoteStatus';
+import { humanizeActivity, type ActivityCategory } from '../lib/activityHumanize';
+import { OrderIcon, CatalogueIcon, UserIcon, ProductionIcon, SystemIcon } from '../components/icons';
+import type { DashboardActivity } from '../lib/dashboard';
+import TrendChart from '../components/dashboard/TrendChart';
 
 const PIPELINE_ORDER = [
   'DRAFT', 'SENT', 'CHANGES_REQUESTED', 'ACCEPTED', 'PROOFING', 'ARTWORK_APPROVED', 'PROOF_APPROVED',
@@ -15,6 +19,41 @@ function StatTile({ label, value, to }: { label: string; value: number; to: stri
       <p className="text-sm text-fg-muted">{label}</p>
       <p className="mt-1 font-display text-3xl text-fg">{value}</p>
     </Link>
+  );
+}
+
+function money(v: { currency: string; amount: number }): string {
+  return `${v.currency} ${v.amount.toLocaleString()}`;
+}
+
+function MoneyTile({ label, value, to }: { label: string; value: string; to: string }) {
+  return (
+    <Link to={to} className="rounded-lg border border-border bg-surface p-4 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <p className="text-sm text-fg-muted">{label}</p>
+      <p className="mt-1 font-display text-2xl text-fg">{value}</p>
+    </Link>
+  );
+}
+
+const CATEGORY_ICON: Record<ActivityCategory, (p: { className?: string }) => JSX.Element> = {
+  order: OrderIcon,
+  catalogue: CatalogueIcon,
+  user: UserIcon,
+  production: ProductionIcon,
+  system: SystemIcon,
+};
+
+function ActivityRow({ activity }: { activity: DashboardActivity }) {
+  const h = humanizeActivity(activity);
+  const Icon = CATEGORY_ICON[h.category];
+  return (
+    <div className="flex items-center gap-3 p-3 text-sm">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-fg-muted">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-fg">{h.text}</span>
+      <span className="shrink-0 text-fg-subtle" title={h.title}>{h.when}</span>
+    </div>
   );
 }
 
@@ -46,6 +85,23 @@ export default function DashboardPage() {
             completed-yet-unpaid order used to have no flag and nothing to chase. */}
         <StatTile label="Delivered · unpaid" value={data.queues.unpaidDelivered} to="/quotes?filter=delivered_unpaid" />
       </section>
+
+      {data.kpis && (
+        <section className="grid gap-4 sm:grid-cols-3">
+          <StatTile label="Orders this week" value={data.kpis.ordersThisWeek} to="/quotes" />
+          <MoneyTile label="Booked value (this month)" value={money(data.kpis.bookedThisMonth)} to="/quotes" />
+          <MoneyTile label="Outstanding to collect" value={money(data.kpis.outstanding)} to="/quotes?filter=delivered_unpaid" />
+        </section>
+      )}
+
+      {data.trends && data.trends.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-xl text-fg">Orders &amp; booked value · last 8 weeks</h2>
+          <Card padding="md">
+            <TrendChart data={data.trends} />
+          </Card>
+        </section>
+      )}
 
       {data.valueBooked && (
         <Card padding="md">
@@ -105,15 +161,7 @@ export default function DashboardPage() {
           {data.activity.length === 0 ? (
             <p className="p-4 text-sm text-fg-muted">No recent activity.</p>
           ) : (
-            data.activity.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-                <span className="text-fg">
-                  <span className="font-medium">{a.actor ?? 'System'}</span> · {a.event}
-                  <span className="text-fg-muted"> ({a.auditableLabel})</span>
-                </span>
-                <span className="shrink-0 text-fg-subtle">{a.at ? new Date(a.at).toLocaleString() : ''}</span>
-              </div>
-            ))
+            data.activity.map((a) => <ActivityRow key={a.id} activity={a} />)
           )}
         </Card>
       </section>

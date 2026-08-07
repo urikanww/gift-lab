@@ -9,6 +9,8 @@ const payload: dash.DashboardPayload = {
   queues: { proofsPending: 3, changesRequested: 0, procurementToReconfirm: 1, cataloguePending: 4, reordersOpen: 2, unpaidDelivered: 0 },
   activity: [],
   valueBooked: null,
+  kpis: null,
+  trends: null,
 };
 
 beforeEach(() => {

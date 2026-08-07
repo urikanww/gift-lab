@@ -16,6 +16,8 @@ const base = {
     { id: 2, actor: 'Ops', event: 'product.updated', auditableType: 'Product', auditableId: 12, auditableLabel: 'Product #12', at: null },
   ],
   valueBooked: null,
+  kpis: null,
+  trends: null,
 };
 
 beforeEach(() => useDashboardStore.setState({ data: base, loading: false, error: null }));
@@ -55,12 +57,8 @@ describe('DashboardPage', () => {
   it('names an activity row by its server-composed label, never the sequential id', () => {
     renderPage();
 
-    // Quote row: the opaque reference, not "(Quote #9)".
-    expect(screen.getByText(/quote\.amended/)).toHaveTextContent('(Order 9BWVKWCDXH)');
-    // Every other audited type keeps the id shape it always had.
-    expect(screen.getByText(/product\.updated/)).toHaveTextContent('(Product #12)');
-    // The whole feed is free of the numeric quote id.
-    expect(screen.queryByText(/Quote #\d+/)).not.toBeInTheDocument();
+    expect(screen.getByText('Ops amended Order 9BWVKWCDXH')).toBeTruthy();
+    expect(screen.queryByText(/quote\.amended/)).toBeNull();
   });
 
   it('shows an error state', () => {

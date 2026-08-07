@@ -163,16 +163,14 @@ it('marks a self-registered user as self_registered', function (): void {
         ->toBe(RegistrationSource::SelfRegistered);
 });
 
-it('marks a staff-created buyer as staff_created with no consent', function (): void {
-    $company = Company::factory()->create();
+it('marks a staff-created staff user as staff_created with no consent', function (): void {
     Sanctum::actingAs(User::factory()->superadmin()->create());
 
     $this->postJson('/api/admin/users', [
         'name' => 'Contact Person',
         'email' => 'source-staff@acme.example',
         'password' => 'super-secret-1',
-        'role' => 'buyer',
-        'company_id' => $company->id,
+        'role' => 'staff_admin',
     ])->assertCreated();
 
     $created = User::where('email', 'source-staff@acme.example')->firstOrFail();

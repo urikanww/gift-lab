@@ -35,6 +35,20 @@ it('lets the superadmin list users and blocks staff/buyer', function (): void {
     $this->getJson('/api/admin/users')->assertForbidden();
 });
 
+it('includes each buyer company in the list payload', function (): void {
+    Sanctum::actingAs($this->superadmin);
+
+    $acme = Company::factory()->create(['name' => 'Contract Guard Co']);
+    $buyer = User::factory()->create(['company_id' => $acme->id, 'role' => 'buyer']);
+
+    $response = $this->getJson('/api/admin/users?per_page=50')->assertOk();
+    $row = collect($response->json('data'))->firstWhere('id', $buyer->id);
+
+    expect($row)->not->toBeNull()
+        ->and($row['company'])->not->toBeNull()
+        ->and($row['company']['name'])->toBe('Contract Guard Co');
+});
+
 it('filters users by role and by q (email)', function (): void {
     Sanctum::actingAs($this->superadmin);
 
@@ -49,6 +63,33 @@ it('filters users by role and by q (email)', function (): void {
     $response = $this->getJson('/api/admin/users?q='.urlencode($this->buyer->email))->assertOk();
     expect($response->json('meta.total'))->toBe(1)
         ->and($response->json('data.0.email'))->toBe($this->buyer->email);
+});
+
+it('matches q against company name', function (): void {
+    Sanctum::actingAs($this->superadmin);
+
+    $acme = Company::factory()->create(['name' => 'Zenith Widgets Pte Ltd']);
+    $target = User::factory()->create(['company_id' => $acme->id, 'role' => 'buyer', 'name' => 'Unrelated Name', 'email' => 'x@other.example']);
+
+    $response = $this->getJson('/api/admin/users?q=zenith')->assertOk();
+    $ids = collect($response->json('data'))->pluck('id');
+    expect($ids)->toContain($target->id);
+});
+
+it('matches q against an exact numeric id', function (): void {
+    Sanctum::actingAs($this->superadmin);
+
+    // Digit-free name/email and no company, so the ONLY way this user can match
+    // its own numeric id is the id branch - not a LIKE coincidence on name/email.
+    $target = User::factory()->create([
+        'role' => 'staff_admin',
+        'name' => 'Alpha Bravo',
+        'email' => 'alpha.bravo@example.test',
+    ]);
+
+    $response = $this->getJson('/api/admin/users?q='.$target->id)->assertOk();
+    $ids = collect($response->json('data'))->pluck('id');
+    expect($ids)->toContain($target->id);
 });
 
 it('returns companies id/name and blocks buyer access', function (): void {
@@ -80,26 +121,18 @@ it('creates a staff user with company_id forced null', function (): void {
     $this->assertDatabaseHas('audit_logs', ['event' => 'user.created']);
 });
 
-it('requires company_id when creating a buyer, and creates it when provided', function (): void {
+it('rejects creating a buyer account (buyers self-register)', function (): void {
     Sanctum::actingAs($this->superadmin);
 
     $this->postJson('/api/admin/users', [
-        'name' => 'New Buyer',
-        'email' => 'new.buyer@example.com',
-        'password' => 'password123',
-        'role' => 'buyer',
-    ])->assertStatus(422)->assertJsonValidationErrors('company_id');
-
-    $response = $this->postJson('/api/admin/users', [
-        'name' => 'New Buyer',
-        'email' => 'new.buyer@example.com',
+        'name' => 'Nope Buyer',
+        'email' => 'nope.buyer@example.com',
         'password' => 'password123',
         'role' => 'buyer',
         'company_id' => $this->company->id,
-    ])->assertCreated();
+    ])->assertStatus(422)->assertJsonValidationErrors('role');
 
-    $response->assertJsonPath('data.role', 'buyer')
-        ->assertJsonPath('data.company.id', $this->company->id);
+    expect(User::where('email', 'nope.buyer@example.com')->exists())->toBeFalse();
 });
 
 it('rejects duplicate email on create', function (): void {
@@ -132,6 +165,18 @@ it('forbids changing your own role', function (): void {
 
     $this->patchJson("/api/admin/users/{$this->superadmin->id}", ['role' => 'staff_admin'])
         ->assertStatus(422);
+});
+
+it('rejects changing a user to the buyer role', function (): void {
+    Sanctum::actingAs($this->superadmin);
+    $staff = User::factory()->staffAdmin()->create();
+
+    $this->patchJson("/api/admin/users/{$staff->id}", [
+        'role' => 'buyer',
+        'company_id' => $this->company->id,
+    ])->assertStatus(422)->assertJsonValidationErrors('role');
+
+    expect($staff->fresh()->role->value)->toBe('staff_admin');
 });
 
 it('protects the last active superadmin from demotion but allows demoting a spare one', function (): void {
