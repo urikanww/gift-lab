@@ -154,7 +154,7 @@ class AdminUserController extends Controller
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'role' => ['sometimes', 'string', Rule::in(['buyer', 'staff_admin', 'superadmin'])],
+            'role' => ['sometimes', 'string', Rule::in(['staff_admin', 'superadmin'])],
             'company_id' => ['nullable', 'exists:companies,id'],
             // Granular access allowlist. Every entry must be a known permission
             // key; unknown keys are rejected rather than silently stored.

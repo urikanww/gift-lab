@@ -126,6 +126,18 @@ it('forbids changing your own role', function (): void {
         ->assertStatus(422);
 });
 
+it('rejects changing a user to the buyer role', function (): void {
+    Sanctum::actingAs($this->superadmin);
+    $staff = User::factory()->staffAdmin()->create();
+
+    $this->patchJson("/api/admin/users/{$staff->id}", [
+        'role' => 'buyer',
+        'company_id' => $this->company->id,
+    ])->assertStatus(422)->assertJsonValidationErrors('role');
+
+    expect($staff->fresh()->role->value)->toBe('staff_admin');
+});
+
 it('protects the last active superadmin from demotion but allows demoting a spare one', function (): void {
     $secondSuperadmin = User::factory()->create(['role' => 'superadmin', 'company_id' => null]);
 
