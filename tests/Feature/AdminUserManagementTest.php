@@ -35,6 +35,20 @@ it('lets the superadmin list users and blocks staff/buyer', function (): void {
     $this->getJson('/api/admin/users')->assertForbidden();
 });
 
+it('includes each buyer company in the list payload', function (): void {
+    Sanctum::actingAs($this->superadmin);
+
+    $acme = Company::factory()->create(['name' => 'Contract Guard Co']);
+    $buyer = User::factory()->create(['company_id' => $acme->id, 'role' => 'buyer']);
+
+    $response = $this->getJson('/api/admin/users?per_page=50')->assertOk();
+    $row = collect($response->json('data'))->firstWhere('id', $buyer->id);
+
+    expect($row)->not->toBeNull()
+        ->and($row['company'])->not->toBeNull()
+        ->and($row['company']['name'])->toBe('Contract Guard Co');
+});
+
 it('filters users by role and by q (email)', function (): void {
     Sanctum::actingAs($this->superadmin);
 
