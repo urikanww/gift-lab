@@ -6,6 +6,7 @@ import { humanizeState } from '../lib/quoteStatus';
 import { humanizeActivity, type ActivityCategory } from '../lib/activityHumanize';
 import { OrderIcon, CatalogueIcon, UserIcon, ProductionIcon, SystemIcon } from '../components/icons';
 import type { DashboardActivity } from '../lib/dashboard';
+import TrendChart from '../components/dashboard/TrendChart';
 
 const PIPELINE_ORDER = [
   'DRAFT', 'SENT', 'CHANGES_REQUESTED', 'ACCEPTED', 'PROOFING', 'ARTWORK_APPROVED', 'PROOF_APPROVED',
@@ -17,6 +18,19 @@ function StatTile({ label, value, to }: { label: string; value: number; to: stri
     <Link to={to} className="rounded-lg border border-border bg-surface p-4 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <p className="text-sm text-fg-muted">{label}</p>
       <p className="mt-1 font-display text-3xl text-fg">{value}</p>
+    </Link>
+  );
+}
+
+function money(v: { currency: string; amount: number }): string {
+  return `${v.currency} ${v.amount.toLocaleString()}`;
+}
+
+function MoneyTile({ label, value, to }: { label: string; value: string; to: string }) {
+  return (
+    <Link to={to} className="rounded-lg border border-border bg-surface p-4 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <p className="text-sm text-fg-muted">{label}</p>
+      <p className="mt-1 font-display text-2xl text-fg">{value}</p>
     </Link>
   );
 }
@@ -71,6 +85,23 @@ export default function DashboardPage() {
             completed-yet-unpaid order used to have no flag and nothing to chase. */}
         <StatTile label="Delivered · unpaid" value={data.queues.unpaidDelivered} to="/quotes?filter=delivered_unpaid" />
       </section>
+
+      {data.kpis && (
+        <section className="grid gap-4 sm:grid-cols-3">
+          <StatTile label="Orders this week" value={data.kpis.ordersThisWeek} to="/quotes" />
+          <MoneyTile label="Booked value (this month)" value={money(data.kpis.bookedThisMonth)} to="/quotes" />
+          <MoneyTile label="Outstanding to collect" value={money(data.kpis.outstanding)} to="/quotes?filter=delivered_unpaid" />
+        </section>
+      )}
+
+      {data.trends && data.trends.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-display text-xl text-fg">Orders &amp; booked value · last 8 weeks</h2>
+          <Card padding="md">
+            <TrendChart data={data.trends} />
+          </Card>
+        </section>
+      )}
 
       {data.valueBooked && (
         <Card padding="md">

@@ -47,6 +47,12 @@ export interface DashboardPayload {
   };
   activity: DashboardActivity[];
   valueBooked: { currency: string; amount: number } | null;
+  kpis: {
+    ordersThisWeek: number;
+    bookedThisMonth: { currency: string; amount: number };
+    outstanding: { currency: string; amount: number };
+  } | null;
+  trends: { weekStart: string; orders: number; bookedValue: number }[] | null;
 }
 
 export async function fetchDashboard(): Promise<DashboardPayload> {

@@ -16,6 +16,8 @@ const base = {
     { id: 2, actor: 'Ops', event: 'product.updated', auditableType: 'Product', auditableId: 12, auditableLabel: 'Product #12', at: null },
   ],
   valueBooked: null,
+  kpis: null,
+  trends: null,
 };
 
 beforeEach(() => useDashboardStore.setState({ data: base, loading: false, error: null }));
