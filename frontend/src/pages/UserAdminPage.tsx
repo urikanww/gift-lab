@@ -131,10 +131,10 @@ export default function UserAdminPage() {
           page,
           per_page: perPage,
           q: debouncedQ || undefined,
+          ...popupParams,
           role: role || undefined,
           status,
           sort,
-          ...popupParams,
         },
       });
       setUsers(data.data);
@@ -220,14 +220,14 @@ export default function UserAdminPage() {
             <table className="w-full min-w-[44rem] text-left text-sm">
               <thead className="border-b border-border text-xs uppercase tracking-wide text-fg-subtle">
                 <tr>
-                  <th className="px-4 py-2 font-medium">
+                  <th className="px-4 py-2 font-medium" aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                     <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       Name<SortCaret active={sortKey === 'name'} dir={sortDir} />
                     </button>
                   </th>
                   <th className="px-4 py-2 font-medium">Role</th>
                   <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-4 py-2 font-medium">
+                  <th className="px-4 py-2 font-medium" aria-sort={sortKey === 'created' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
                     <button type="button" onClick={() => toggleSort('created')} className="inline-flex items-center hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       Joined<SortCaret active={sortKey === 'created'} dir={sortDir} />
                     </button>
