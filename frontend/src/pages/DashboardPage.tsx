@@ -3,6 +3,9 @@ import { useDashboardStore } from '../stores/dashboardStore';
 import { Card, Skeleton } from '../ui';
 import { ErrorState } from '../components/ui/States';
 import { humanizeState } from '../lib/quoteStatus';
+import { humanizeActivity, type ActivityCategory } from '../lib/activityHumanize';
+import { OrderIcon, CatalogueIcon, UserIcon, ProductionIcon, SystemIcon } from '../components/icons';
+import type { DashboardActivity } from '../lib/dashboard';
 
 const PIPELINE_ORDER = [
   'DRAFT', 'SENT', 'CHANGES_REQUESTED', 'ACCEPTED', 'PROOFING', 'ARTWORK_APPROVED', 'PROOF_APPROVED',
@@ -15,6 +18,28 @@ function StatTile({ label, value, to }: { label: string; value: number; to: stri
       <p className="text-sm text-fg-muted">{label}</p>
       <p className="mt-1 font-display text-3xl text-fg">{value}</p>
     </Link>
+  );
+}
+
+const CATEGORY_ICON: Record<ActivityCategory, (p: { className?: string }) => JSX.Element> = {
+  order: OrderIcon,
+  catalogue: CatalogueIcon,
+  user: UserIcon,
+  production: ProductionIcon,
+  system: SystemIcon,
+};
+
+function ActivityRow({ activity }: { activity: DashboardActivity }) {
+  const h = humanizeActivity(activity);
+  const Icon = CATEGORY_ICON[h.category];
+  return (
+    <div className="flex items-center gap-3 p-3 text-sm">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-fg-muted">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-fg">{h.text}</span>
+      <span className="shrink-0 text-fg-subtle" title={h.title}>{h.when}</span>
+    </div>
   );
 }
 
@@ -105,15 +130,7 @@ export default function DashboardPage() {
           {data.activity.length === 0 ? (
             <p className="p-4 text-sm text-fg-muted">No recent activity.</p>
           ) : (
-            data.activity.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-                <span className="text-fg">
-                  <span className="font-medium">{a.actor ?? 'System'}</span> · {a.event}
-                  <span className="text-fg-muted"> ({a.auditableLabel})</span>
-                </span>
-                <span className="shrink-0 text-fg-subtle">{a.at ? new Date(a.at).toLocaleString() : ''}</span>
-              </div>
-            ))
+            data.activity.map((a) => <ActivityRow key={a.id} activity={a} />)
           )}
         </Card>
       </section>
