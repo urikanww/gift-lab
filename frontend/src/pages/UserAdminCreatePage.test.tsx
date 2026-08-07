@@ -30,6 +30,7 @@ it('offers only staff roles and no buyer/company field', () => {
   const roleSelect = screen.getByLabelText('Role') as HTMLSelectElement;
   const values = Array.from(roleSelect.options).map((o) => o.value);
   expect(values).toEqual(['staff_admin', 'superadmin']);
+  expect(roleSelect.value).toBe('staff_admin');
   expect(screen.queryByText('Buyer')).toBeNull();
   // Company selector only ever appeared for buyers - it must be gone.
   expect(screen.queryByLabelText('Company')).toBeNull();
