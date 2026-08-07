@@ -11,28 +11,6 @@ import type { FilterField, FilterValues, RangeValue } from '../components/filter
 export function userFilterFields(companies: AdminCompany[]): FilterField[] {
   return [
     {
-      key: 'status',
-      label: 'Status',
-      type: 'select',
-      // Empty = the API default ("active"), so it isn't shown as an active badge.
-      placeholder: 'Active',
-      options: [
-        { value: 'deactivated', label: 'Deactivated' },
-        { value: 'all', label: 'All' },
-      ],
-    },
-    {
-      key: 'role',
-      label: 'Role',
-      type: 'select',
-      placeholder: 'All roles',
-      options: [
-        { value: 'buyer', label: 'Buyer' },
-        { value: 'staff_admin', label: 'Staff admin' },
-        { value: 'superadmin', label: 'Superadmin' },
-      ],
-    },
-    {
       key: 'company',
       label: 'Company',
       type: 'select',
@@ -40,17 +18,6 @@ export function userFilterFields(companies: AdminCompany[]): FilterField[] {
       options: companies.map((c) => ({ value: String(c.id), label: c.name })),
     },
     { key: 'created', label: 'Joined', type: 'daterange' },
-    {
-      key: 'sort',
-      label: 'Sort',
-      type: 'select',
-      placeholder: 'Name: A to Z',
-      options: [
-        { value: 'name_desc', label: 'Name: Z to A' },
-        { value: 'created_desc', label: 'Newest first' },
-        { value: 'created_asc', label: 'Oldest first' },
-      ],
-    },
   ];
 }
 
