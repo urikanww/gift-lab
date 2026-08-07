@@ -32,12 +32,25 @@ const staffUser = {
   permissions_editable: true,
 };
 
+const buyerUser = {
+  id: 7,
+  name: 'Bev Buyer',
+  email: 'bev@x.test',
+  role: 'buyer',
+  company: { id: 3, name: 'Acme Co' },
+  active: true,
+  created_at: '2026-07-01T00:00:00Z',
+  permissions: [],
+  permissions_editable: false,
+};
+
 beforeEach(() => {
   get.mockReset();
   patch.mockClear();
   get.mockImplementation((url: string) => {
     if (url === '/admin/users/5') return Promise.resolve({ data: { data: staffUser } });
-    if (url === '/admin/companies') return Promise.resolve({ data: { data: [] } });
+    if (url === '/admin/users/7') return Promise.resolve({ data: { data: buyerUser } });
+    if (url === '/admin/companies') return Promise.resolve({ data: { data: [{ id: 3, name: 'Acme Co' }] } });
     if (url === '/admin/permissions/catalog') return Promise.resolve({ data: { data: CATALOG } });
     return Promise.resolve({ data: { data: {} } });
   });
@@ -47,11 +60,11 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-function renderPage() {
+function renderPage(id = 5) {
   return render(
     <ThemeProvider>
       <ToastProvider>
-        <MemoryRouter initialEntries={['/user-admin/5']}>
+        <MemoryRouter initialEntries={[`/user-admin/${id}`]}>
           <Routes>
             <Route path="/user-admin/:id" element={<UserAdminDetailPage />} />
           </Routes>
@@ -90,6 +103,23 @@ it('saves the toggled allowlist in catalogue order', async () => {
     // Catalogue order: quotes.view, quotes.edit, then production.view.
     permissions: ['quotes.view', 'quotes.edit', 'production.view'],
   });
+});
+
+it('editing a buyer name omits role from the PATCH payload', async () => {
+  renderPage(7);
+  const user = userEvent.setup();
+
+  const nameInput = await screen.findByLabelText(/^Name/);
+  await user.clear(nameInput);
+  await user.type(nameInput, 'Bev Renamed');
+  await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+  await waitFor(() => expect(patch).toHaveBeenCalled());
+  const editCall = patch.mock.calls.find((c) => c[0] === '/admin/users/7');
+  expect(editCall).toBeDefined();
+  const payload = editCall![1] as Record<string, unknown>;
+  expect(payload).not.toHaveProperty('role');
+  expect(payload.name).toBe('Bev Renamed');
 });
 
 it('Clear all unchecks every box', async () => {

@@ -181,8 +181,12 @@ function EditForm({
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
-    const payload: Record<string, unknown> = { name, email, role };
-    if (role === 'buyer') payload.company_id = companyId ? Number(companyId) : undefined;
+    const payload: Record<string, unknown> = { name, email };
+    // Only send role when it actually changed. A buyer's role is read-only here
+    // (buyers self-register; admins don't reassign the buyer role), so a buyer
+    // edit never re-asserts role=buyer, which update() now rejects.
+    if (role !== user.role) payload.role = role;
+    if (user.role === 'buyer') payload.company_id = companyId ? Number(companyId) : undefined;
     setSaving(true);
     try {
       await ensureCsrf();
@@ -210,17 +214,22 @@ function EditForm({
             required
             disabled={saving}
           />
-          <Select
-            label="Role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole)}
-            disabled={saving || isSelf}
-            hint={isSelf ? "You can't change your own role." : undefined}
-          >
-            <option value="buyer">Buyer</option>
-            <option value="staff_admin">Staff admin</option>
-            <option value="superadmin">Superadmin</option>
-          </Select>
+          {user.role === 'buyer' ? (
+            <Select label="Role" value="buyer" disabled hint="Buyers self-register; their role isn't editable here.">
+              <option value="buyer">Buyer</option>
+            </Select>
+          ) : (
+            <Select
+              label="Role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as UserRole)}
+              disabled={saving || isSelf}
+              hint={isSelf ? "You can't change your own role." : undefined}
+            >
+              <option value="staff_admin">Staff admin</option>
+              <option value="superadmin">Superadmin</option>
+            </Select>
+          )}
           {role === 'buyer' && (
             <Select
               label="Company"
