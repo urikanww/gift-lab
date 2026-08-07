@@ -76,6 +76,8 @@ class InvoiceFactory extends Factory
 
 Confirm `App\Models\Invoice` uses the `HasFactory` trait; if it does not, add `use Illuminate\Database\Eloquent\Factories\HasFactory;` and `use HasFactory;` to the model (factories won't resolve otherwise). Laravel factories set attributes directly, bypassing mass-assignment guards, so `po_ref` is fine even if not in `$fillable`.
 
+> **As-built note (commit `868bbbc`):** the executed test pins the clock with `Carbon::setTestNow('2026-06-15 …')` instead of the skip-guard shown below, and binds both invoices to ONE out-of-window quote (`created_at => now()->subMonths(2)`, DRAFT/total 0) via `->for($oldQuote, 'quote')` — because `Invoice::factory()` cascade-creates a `Quote`, which otherwise inflated `ordersThisWeek`. Assertions: `ordersThisWeek=2`, `bookedThisMonth=1649.0`, `outstanding=300.0`. `HasFactory` was also added to `App\Models\Invoice` (was absent). The block below is the original draft; the committed test is source of truth.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/Feature/DashboardKpisTest.php`:
